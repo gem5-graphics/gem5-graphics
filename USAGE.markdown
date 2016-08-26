@@ -17,7 +17,8 @@
    5. Now to build gem5 run the following command in ./gem5: 
 scons build/ARM_VI_hammer_GPU/gem5.debug --default=ARM EXTRAS=../gem5-gpu/src:../gpgpu-sim/ PROTOCOL=VI_hammer GPGPU_SIM=True -j8
 
-   6. I included a gem5 checkpoint that you can use to test the build. 
-Run the following command in under ./android_test_cp: ../../../gem5-gpu/configs/soc_arm.py -b android --kernel=vmlinux.smp.mouse.arm --frame-capture -r 1 --restore-with-cpu=timing --cpu-type=timing --max-checkpoints=0 --kernel_stats --g_start_frame=455 --g_end_frame=455 --num-dirs=1 --total-mem-size=2112MB --g_skip_cp_frames=1 --g_depth_shader=1
+   6. You will need to run an Android image that was modified to work with our simulator, you may download it from [here](www.ece.ubc.ca/~ayoubg/files/android_images.tar.xz). Also youcan use an already made checkpiont,  taken after Android booted, available [here](http://www.ece.ubc.ca/~ayoubg/files/android_test_cp.tar.gz). Unpack android_images.tar.xz and android_test_cp.tar.xz and place anroid_images and android_test_cp in  ./gem5-graphics.
 
-   .the command should load the Android checkpoint and render a frame from the Android desktop. To check output go to m5out/gpgpusimFrameDumps for rendering results, and check stats.txt for gem5 performance data. Modify the run command or/and config files to run gem5 under different modes/configurations.
+   7. Run the following command under ./android_test_cp: ../../../gem5-gpu/configs/soc_arm.py -b android --kernel=vmlinux.smp.mouse.arm --frame-capture -r 1 --restore-with-cpu=timing --cpu-type=timing --max-checkpoints=0 --kernel_stats --g_start_frame=455 --g_end_frame=455 --num-dirs=1 --total-mem-size=2112MB --g_skip_cp_frames=1 --g_depth_shader=1
+
+   this command will load the checkpoint and render a frame of Android desktop. To check output go to m5out/gpgpusimFrameDumps for rendering results, and check stats.txt for gem5 performance data. More documentation will be posted later but you may try to modify the run command or/and config files to run gem5 under different modes/configurations. 
