@@ -1,10 +1,11 @@
 * To build the system you will need: CUDA 3.1 or higher (tested under 3.1). Once installed please set the CUDAHOME env variable in setMesa_GPGPU.
-* Please check the prerequisites for gem5, gpgpusim and Mesa3D: 
-··* http://gem5.org/Dependencies; 
-··* https://github.com/gpgpu-sim/gpgpu-sim_distribution/blob/master/README; 
-··* and http://www.mesa3d.org/install.html.
 
-* To build the simulator:
+* Please check the prerequisites for gem5, gpgpusim and Mesa3D: 
+   * http://gem5.org/Dependencies; 
+   * https://github.com/gpgpu-sim/gpgpu-sim_distribution/blob/master/README; 
+   * and http://www.mesa3d.org/install.html.
+
+*To build the simulator:
 
 ..1. Uncomment and set CUDAHOME in setMesa_GPGPU.
 
