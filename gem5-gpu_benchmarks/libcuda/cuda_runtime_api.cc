@@ -174,6 +174,14 @@ inline void m5_gpu(uint64_t __gpusysno, uint64_t call_params) {
 
 cudaError_t g_last_cudaError = cudaSuccess;
 
+#if __GNUC__
+#if __x86_64__ || __ppc64__
+#define ENVIRONMENT64
+#else
+#define ENVIRONMENT32
+#endif
+#endif
+
 /*******************************************************************************
 *                                                                              *
 *                                                                              *
@@ -289,24 +297,26 @@ __host__ cudaError_t CUDARTAPI cudaMallocPitch(void **devPtr, size_t *pitch, siz
 
 __host__ cudaError_t CUDARTAPI cudaMallocArray(struct cudaArray **array, const struct cudaChannelFormatDesc *desc, size_t width, size_t height, unsigned int flags)
 {
-    cuda_not_implemented(__FILE__, __my_func__, __LINE__);
-    return g_last_cudaError = cudaErrorUnknown;
-//   unsigned size = width * height * ((desc->x + desc->y + desc->z + desc->w)/8);
-//   CUctx_st* context = GPGPUSim_Context();
-//   (*array) = (struct cudaArray*) malloc(sizeof(struct cudaArray));
-//   (*array)->desc = *desc;
-//   (*array)->width = width;
-//   (*array)->height = height;
-//   (*array)->size = size;
-//   (*array)->dimensions = 2;
-//   ((*array)->devPtr32)= (int) (long long)context->get_device()->get_gpgpu()->gpu_mallocarray(size);
-//   printf("GPGPU-Sim PTX: cudaMallocArray: devPtr32 = %d\n", ((*array)->devPtr32));
-//   ((*array)->devPtr) = (void*) (long long) ((*array)->devPtr32);
-//   if ( ((*array)->devPtr) ) {
-//       return g_last_cudaError = cudaSuccess;
-//   } else {
-//       return g_last_cudaError = cudaErrorMemoryAllocation;
-//   }
+    //cuda_not_implemented(__FILE__, __my_func__, __LINE__);
+    //return g_last_cudaError = cudaErrorUnknown;
+
+    unsigned size = width * height * ((desc->x + desc->y + desc->z + desc->w)/8);
+    int dims = (desc->x > 0? 1 : 0) + (desc->y > 0? 1 : 0) + (desc->z > 0? 1 : 0); //TODO: correct?
+    (*array) = (struct cudaArray*) malloc(sizeof(cudaArray));
+    (*array)->desc = *desc;
+    (*array)->width = width;
+    (*array)->height = height;
+    (*array)->size = size;
+    (*array)->dimensions = dims; 
+
+    cudaError_t ret = cudaMallocHelper(&((*array)->devPtr), size, CUDA_MALLOC_DEVICE);
+    #ifdef ENVIRONMENT32
+    ((*array)->devPtr32) = (uint32_t)(*array)->devPtr;
+    #else 
+    ((*array)->devPtr32) = NULL;
+    #endif
+
+    return ret;
 }
 
 __host__ cudaError_t CUDARTAPI cudaFreeHelper(void* ptr, unsigned type)
@@ -393,8 +403,11 @@ blockThread()
 
 __host__ cudaError_t CUDARTAPI cudaFreeArray(struct cudaArray *array)
 {
-    cuda_not_implemented(__FILE__, __my_func__, __LINE__);
-    return g_last_cudaError = cudaErrorUnknown;
+    //cuda_not_implemented(__FILE__, __my_func__, __LINE__);
+    //return g_last_cudaError = cudaErrorUnknown;
+    cudaError_t ret = cudaFreeHelper(array->devPtr, CUDA_FREE_DEVICE);
+    free(array);
+    return ret;
 };
 
 
@@ -513,32 +526,29 @@ __host__ cudaError_t CUDARTAPI cudaMemcpy2D(void *dst, size_t dpitch, const void
 
 __host__ cudaError_t CUDARTAPI cudaMemcpy2DToArray(struct cudaArray *dst, size_t wOffset, size_t hOffset, const void *src, size_t spitch, size_t width, size_t height, enum cudaMemcpyKind kind)
 {
-    cuda_not_implemented(__FILE__, __my_func__, __LINE__);
-    return g_last_cudaError = cudaErrorUnknown;
-//   CUctx_st *context = GPGPUSim_Context();
-//   gpgpu_t *gpu = context->get_device()->get_gpgpu();
-//   size_t size = spitch*height;
-//   size_t channel_size = dst->desc.w+dst->desc.x+dst->desc.y+dst->desc.z;
-//   gpgpusim_ptx_assert( ((channel_size%8) == 0), "none byte multiple destination channel size not supported (sz=%u)", channel_size );
-//   unsigned elem_size = channel_size/8;
-//   gpgpusim_ptx_assert( (dst->dimensions==2), "copy to none 2D array not supported" );
-//   gpgpusim_ptx_assert( (wOffset==0), "non-zero wOffset not yet supported" );
-//   gpgpusim_ptx_assert( (hOffset==0), "non-zero hOffset not yet supported" );
-//   gpgpusim_ptx_assert( (dst->height == (int)height), "partial copy not supported" );
-//   gpgpusim_ptx_assert( (elem_size*dst->width == width), "partial copy not supported" );
-//   gpgpusim_ptx_assert( (spitch == width), "spitch != width not supported" );
-//   if( kind == cudaMemcpyHostToDevice )
-//      gpu->memcpy_to_gpu( (size_t)(dst->devPtr), src, size);
-//   else if( kind == cudaMemcpyDeviceToHost )
-//      gpu->memcpy_from_gpu( dst->devPtr, (size_t)src, size);
-//   else if( kind == cudaMemcpyDeviceToDevice )
-//      gpu->memcpy_gpu_to_gpu( (size_t)dst->devPtr, (size_t)src, size);
-//   else {
-//      printf("GPGPU-Sim PTX: cudaMemcpy2D - ERROR : unsupported cudaMemcpyKind\n");
-//      abort();
-//   }
-//   dst->devPtr32 = (unsigned) (size_t)(dst->devPtr);
-//   return g_last_cudaError = cudaSuccess;
+   //cuda_not_implemented(__FILE__, __my_func__, __LINE__);
+   //return g_last_cudaError = cudaErrorUnknown;
+   size_t size = spitch*height;
+   size_t channel_size = dst->desc.w+dst->desc.x+dst->desc.y+dst->desc.z;
+   unsigned elem_size = channel_size/8;
+
+   if(
+         (channel_size%8) 
+         or (dst->dimensions!=2) //copy to none 2D array not supported
+         or (wOffset!=0) //non-zero wOffset not yet supported"
+         or (hOffset!=0) //non-zero hOffset not yet supported
+         or (dst->height != ((int)height)) //partial copy not supported
+         or (elem_size*dst->width != width) //partial copy not supported
+         or (spitch == width) //spitch != width not supported 
+      ){
+      return g_last_cudaError = cudaErrorUnknown;
+   }
+
+
+   g_last_cudaError = cudaMemcpy(dst->devPtr, src, size, kind);
+   dst->devPtr32 = (unsigned) (size_t)(dst->devPtr);
+
+   return g_last_cudaError;
 }
 
 __host__ cudaError_t CUDARTAPI cudaMemcpy2DFromArray(void *dst, size_t dpitch, const struct cudaArray *src, size_t wOffset, size_t hOffset, size_t width, size_t height, enum cudaMemcpyKind kind)
@@ -951,16 +961,38 @@ __host__ cudaError_t CUDARTAPI cudaBindTexture(size_t *offset,
 
 __host__ cudaError_t CUDARTAPI cudaBindTextureToArray(const struct textureReference *texref, const struct cudaArray *array, const struct cudaChannelFormatDesc *desc)
 {
-    cuda_not_implemented(__FILE__, __my_func__, __LINE__);
-    return g_last_cudaError = cudaErrorUnknown;
-//    CUctx_st *context = GPGPUSim_Context();
-//    gpgpu_t *gpu = context->get_device()->get_gpgpu();
-//   printf("GPGPU-Sim PTX: in cudaBindTextureToArray: %p %p\n", texref, array);
-//   printf("GPGPU-Sim PTX:   devPtr32 = %x\n", array->devPtr32);
-//   printf("GPGPU-Sim PTX:   Name corresponding to textureReference: %s\n", gpu->gpgpu_ptx_sim_findNamefromTexture(texref));
-//   printf("GPGPU-Sim PTX:   Texture Normalized? = %d\n", texref->normalized);
-//   gpu->gpgpu_ptx_sim_bindTextureToArray(texref, array);
-//   return g_last_cudaError = cudaSuccess;
+    //cuda_not_implemented(__FILE__, __my_func__, __LINE__);
+    //return g_last_cudaError = cudaErrorUnknown;
+    gpusyscall_t call_params;
+    call_params.num_args = 3;
+    call_params.arg_lengths = new int[call_params.num_args];
+
+    call_params.arg_lengths[0] = sizeof(const struct textureReference*);
+    call_params.arg_lengths[1] = sizeof(const struct cudaArray *);
+    call_params.arg_lengths[2] = sizeof(const struct cudaChannelFormatDesc*);
+
+    call_params.total_bytes = call_params.arg_lengths[0] +
+            call_params.arg_lengths[1] + call_params.arg_lengths[2];
+
+    call_params.args = new char[call_params.total_bytes];
+    call_params.ret = new char[sizeof(cudaError_t)];
+    cudaError_t* ret_spot = (cudaError_t*)call_params.ret;
+    *ret_spot = cudaSuccess;
+
+    int bytes_off = 0;
+    int lengths_off = 0;
+    pack(call_params.args, bytes_off, call_params.arg_lengths, lengths_off, (char *)&texref, call_params.arg_lengths[0]);
+    pack(call_params.args, bytes_off, call_params.arg_lengths, lengths_off, (char *)&array, call_params.arg_lengths[1]);
+    pack(call_params.args, bytes_off, call_params.arg_lengths, lengths_off, (char *)&desc, call_params.arg_lengths[2]);
+
+    m5_gpu(33, (uint64_t)&call_params);
+    cudaError_t ret = *((cudaError_t*)call_params.ret);
+
+    delete call_params.args;
+    delete call_params.arg_lengths;
+    delete call_params.ret;
+
+    return ret;
 }
 
 __host__ cudaError_t CUDARTAPI cudaUnbindTexture(const struct textureReference *texref)

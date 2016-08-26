@@ -205,4 +205,23 @@ void pack(char *bytes, int &bytes_off, int *lengths, int &lengths_off, char *arg
     lengths_off += 1;
 }
 
+/*******************************************************************************
+ *
+ * CUDA API structs
+ *
+ ******************************************************************************/
+
+struct cudaArray
+{
+	void *devPtr;
+	uint32_t devPtr32;
+	struct cudaChannelFormatDesc desc;
+	int32_t width;
+	int32_t height;
+	int32_t size; //in bytes
+	uint32_t dimensions;
+   uint8_t * texData;
+};
+
+
 #endif // __CUDA_RUNTIME_UTIL_H__
