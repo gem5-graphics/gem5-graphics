@@ -1,0 +1,27 @@
+// This is C3E4v_twist from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 79.
+
+struct C3E4v_Output {
+  float4 position : POSITION;
+  float4 color    : COLOR;
+};
+
+C3E4v_Output C3E4v_twist(float2 position : POSITION,
+                         float4 color    : COLOR,
+
+                         uniform float twisting)
+{	
+  C3E4v_Output OUT;
+  float angle = twisting * length(position);
+  float cosLength, sinLength;
+  sincos(angle, sinLength, cosLength);
+  OUT.position[0] = cosLength * position[0] +
+                   -sinLength * position[1];
+  OUT.position[1] = sinLength * position[0] +
+                    cosLength * position[1];
+  OUT.position[2] = 0;
+  OUT.position[3] = 1;
+  OUT.color = color;
+  return OUT;	
+}
+

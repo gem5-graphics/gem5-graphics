@@ -1,0 +1,18 @@
+// This is C2E2f_passthru from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 53.
+
+struct C3E1v_Output {
+  float4 position : POSITION;
+  float3 color    : COLOR;
+};
+
+struct C2E2f_Output {
+  float4 color : COLOR;
+};
+
+C2E2f_Output C2E2f_passthru( C3E1v_Output input )
+{
+  C2E2f_Output OUT;
+  OUT.color = float4( input.color, 1.0 );
+  return OUT;
+}

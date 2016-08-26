@@ -1,0 +1,24 @@
+// This is C9E2v_fog from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 240.
+
+void C9E2v_fog(float4 position    : POSITION,
+               float4 color       : COLOR,
+               float2 decalCoords : TEXCOORD0,
+
+            out float4 oPosition    : POSITION,
+            out float4 oColor       : COLOR,
+            out float2 oDecalCoords : TEXCOORD0,
+            out float  fogExponent  : TEXCOORD1,
+
+        uniform float    fogDensity,  // Based on log2
+        uniform float4x4 modelViewProj,
+        uniform float4x4 modelView)
+{	
+  // Assume nonprojective modelview matrix
+  float3 eyePosition = mul(modelView, position).xyz;
+  float fogDistance  = length(eyePosition);
+  fogExponent  = fogDistance * fogDensity;
+  oPosition    = mul(modelViewProj, position);
+  oDecalCoords = decalCoords;
+  oColor       = color;
+}

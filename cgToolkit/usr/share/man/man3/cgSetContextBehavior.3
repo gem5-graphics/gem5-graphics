@@ -1,0 +1,248 @@
+.de Sh \" Subsection heading
+.br
+.if t .Sp
+.ne 5
+.PP
+\fB\\$1\fR
+.PP
+..
+.de Sp \" Vertical space (when we can't use .PP)
+.if t .sp .5v
+.if n .sp
+..
+.de Vb \" Begin verbatim text
+.ft CW
+.nf
+.ne \\$1
+..
+.de Ve \" End verbatim text
+.ft R
+.fi
+..
+.tr \(*W-
+.ds C+ C\v'-.1v'\h'-1p'\s-2+\h'-1p'+\s0\v'.1v'\h'-1p'
+.ie n \{\
+.    ds -- \(*W-
+.    ds PI pi
+.    if (\n(.H=4u)&(1m=24u) .ds -- \(*W\h'-12u'\(*W\h'-12u'-\" diablo 10 pitch
+.    if (\n(.H=4u)&(1m=20u) .ds -- \(*W\h'-12u'\(*W\h'-8u'-\"  diablo 12 pitch
+.    ds L" ""
+.    ds R" ""
+.    ds C` ""
+.    ds C' ""
+'br\}
+.el\{\
+.    ds -- \|\(em\|
+.    ds PI \(*p
+.    ds L" ``
+.    ds R" ''
+'br\}
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.ie \nF \{\
+.    de IX
+.    tm Index:\\$1\t\\n%\t"\\$2"
+..
+.    nr % 0
+.    rr F
+.\}
+.el \{\
+.    de IX
+..
+.\}
+.    \" fudge factors for nroff and troff
+.if n \{\
+.    ds #H 0
+.    ds #V .8m
+.    ds #F .3m
+.    ds #[ \f1
+.    ds #] \fP
+.\}
+.if t \{\
+.    ds #H ((1u-(\\\\n(.fu%2u))*.13m)
+.    ds #V .6m
+.    ds #F 0
+.    ds #[ \&
+.    ds #] \&
+.\}
+.    \" simple accents for nroff and troff
+.if n \{\
+.    ds ' \&
+.    ds ` \&
+.    ds ^ \&
+.    ds , \&
+.    ds ~ ~
+.    ds /
+.\}
+.if t \{\
+.    ds ' \\k:\h'-(\\n(.wu*8/10-\*(#H)'\'\h"|\\n:u"
+.    ds ` \\k:\h'-(\\n(.wu*8/10-\*(#H)'\`\h'|\\n:u'
+.    ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'^\h'|\\n:u'
+.    ds , \\k:\h'-(\\n(.wu*8/10)',\h'|\\n:u'
+.    ds ~ \\k:\h'-(\\n(.wu-\*(#H-.1m)'~\h'|\\n:u'
+.    ds / \\k:\h'-(\\n(.wu*8/10-\*(#H)'\z\(sl\h'|\\n:u'
+.\}
+.    \" troff and (daisy-wheel) nroff accents
+.ds : \\k:\h'-(\\n(.wu*8/10-\*(#H+.1m+\*(#F)'\v'-\*(#V'\z.\h'.2m+\*(#F'.\h'|\\n:u'\v'\*(#V'
+.ds 8 \h'\*(#H'\(*b\h'-\*(#H'
+.ds o \\k:\h'-(\\n(.wu+\w'\(de'u-\*(#H)/2u'\v'-.3n'\*(#[\z\(de\v'.3n'\h'|\\n:u'\*(#]
+.ds d- \h'\*(#H'\(pd\h'-\w'~'u'\v'-.25m'\f2\(hy\fP\v'.25m'\h'-\*(#H'
+.ds D- D\\k:\h'-\w'D'u'\v'-.11m'\z\(hy\v'.11m'\h'|\\n:u'
+.ds th \*(#[\v'.3m'\s+1I\s-1\v'-.3m'\h'-(\w'I'u*2/3)'\s-1o\s+1\*(#]
+.ds Th \*(#[\s+2I\s-2\h'-\w'I'u*3/5'\v'-.3m'o\v'.3m'\*(#]
+.ds ae a\h'-(\w'a'u*4/10)'e
+.ds Ae A\h'-(\w'A'u*4/10)'E
+.    \" corrections for vroff
+.if v .ds ~ \\k:\h'-(\\n(.wu*9/10-\*(#H)'\s-2\u~\d\s+2\h'|\\n:u'
+.if v .ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'\v'-.4m'^\v'.4m'\h'|\\n:u'
+.    \" for low resolution devices (crt and lpr)
+.if \n(.H>23 .if \n(.V>19 \
+\{\
+.    ds : e
+.    ds 8 ss
+.    ds o a
+.    ds d- d\h'-1'\(ga
+.    ds D- D\h'-1'\(hy
+.    ds th \o'bp'
+.    ds Th \o'LP'
+.    ds ae ae
+.    ds Ae AE
+.\}
+.rm #[ #] #H #V #F C
+.IX Title "cgSetContextBehavior 3"
+.TH cgSetContextBehavior 3 "Cg Toolkit 3.0" "perl v5.10.0" "Cg Core Runtime API"
+.if n .ad l
+.nh
+.SH "NAME"
+\&\fBcgSetContextBehavior\fR \- set the behavior for a context
+.SH "SYNOPSIS"
+.IX Header "SYNOPSIS"
+.Vb 1
+\&  #include <Cg/cg.h>
+\&
+\&  void cgSetContextBehavior( CGcontext context,
+\&                             CGbehavior behavior );
+.Ve
+.SH "PARAMETERS"
+.IX Header "PARAMETERS"
+.IP "\fIcontext\fR" 8
+.IX Item "context"
+The context for which the behavior will be set.
+.IP "\fIbehavior\fR" 8
+.IX Item "behavior"
+An enumerant which defines the behavior that will be exhibited
+by \fBcontext\fR.  The following enumerants are allowed:
+.RS 8
+.IP "\(bu" 4
+\&\fB\s-1CG_BEHAVIOR_3000\s0\fR
+.IP "\(bu" 4
+\&\fB\s-1CG_BEHAVIOR_2200\s0\fR
+.IP "\(bu" 4
+\&\fB\s-1CG_BEHAVIOR_CURRENT\s0\fR
+.IP "\(bu" 4
+\&\fB\s-1CG_BEHAVIOR_LATEST\s0\fR
+.RE
+.RS 8
+.RE
+.SH "RETURN VALUES"
+.IX Header "RETURN VALUES"
+None.
+.SH "DESCRIPTION"
+.IX Header "DESCRIPTION"
+Each new version of Cg is supposed to be completely backwards compatible
+with previous versions, providing bug fixes and/or new capabilities while
+maintaining the behavior which applications were written against.  The
+intent is to allow Cg to be updated and have existing applications continue
+to work exactly as designed.
+.PP
+Occasionally a case is made that some behavior of Cg is wrong, but fixing
+that behavior could break existing applications.  This is a problem.
+\&\fBcgSetContextBehavior\fR provides a solution by documenting such changes to
+the library's behavior and allowing applications to explicitly opt-in to
+the new behavior.  For applications which don't use \fBcgSetContextBehavior\fR
+Cg will continue to behave exactly as it did before this routine was introduced.
+.PP
+It is expected that the definition of a new context behavior will be
+a rare occurance and not something that happens with every new Cg release.
+Routine bug fixes and additions to the \s-1API\s0 won't result in creating new values
+of \fBbehavior\fR.  Instead this will only be done when the fix for a broken
+library behavior could cause a correctly written application to fail.
+.PP
+\&\fBbehavior\fR must be one of the following enumerants :
+.IP "\(bu" 4
+\&\fB\s-1CG_BEHAVIOR_3000\s0\fR
+.Sp
+Cg 3.0 added support for 16 additional texture units for a total of 32 using 
+the semantics \s-1TEXUNIT16\s0 through \s-1TEXUNIT31\s0 and resource enums \s-1CG_TEXUNIT16\s0 
+through \s-1CG_TEXUNIT31\s0. To use these new resources, \s-1CG_BEHAVIOR_3000\s0 is required.
+Using \s-1CG_BEHAVIOR_2200\s0 with these new texture unit resources will result in
+a Cg error.
+.IP "\(bu" 4
+\&\fB\s-1CG_BEHAVIOR_2200\s0\fR
+.Sp
+This value specifies a pattern of behavior matching what was seen from Cg
+through release 2.2.  Applications which specify \fB\s-1CG_BEHAVIOR_2200\s0\fR
+do not need to be modified to handle new context behaviors since they will
+continue to get the oldest behavior from the library.
+.Sp
+Note that this selection is the default behavior for applications which
+never call \fBcgSetContextBehavior\fR, which means that existing binaries will
+continue to get the behavior they expect from Cg.  This is also the fallback
+behavior if an invalid value of \fBbehavior\fR is passed to
+\&\fBcgSetContextBehavior\fR.
+.IP "\(bu" 4
+\&\fB\s-1CG_BEHAVIOR_CURRENT\s0\fR
+.Sp
+When this value is used the most advanced context behavior supported
+by the library will be determined at compile time and will become part
+of the application binary.  Updating the Cg runtime files will not change
+the behavior seen by the application at runtime.  However, if the updated
+version of Cg defines a new value for \fBbehavior\fR then this new
+behavior will be used after the application is recompiled.
+.IP "\(bu" 4
+\&\fB\s-1CG_BEHAVIOR_LATEST\s0\fR
+.Sp
+When this value is used the most advanced context behavior supported
+by the library will be determined at application runtime.  Updating
+the Cg runtime files may result in new behavior from Cg even though
+the same application binaries are being used.
+.IP "\(bu" 4
+\&\fB\s-1CG_BEHAVIOR_UNKNOWN\s0\fR
+.Sp
+This value is returned by cgGetBehaviorString
+to indicate an invalid string argument has been used.  Passing
+\&\fB\s-1CG_BEHAVIOR_UNKNOWN\s0\fR to \fBcgSetContextBehavior\fR will generate an
+\&\fB\s-1CG_INVALID_ENUMERANT_ERROR\s0\fR and result in the context's behavior
+being set to \fB\s-1CG_BEHAVIOR_2200\s0\fR instead.
+.PP
+If the environment variable \fB\s-1CG_BEHAVIOR\s0\fR is set to any of
+the valid \fBCGbehavior\fR enumerant names, then that context behavior
+will be used instead of the behavior compiled into the application
+binary.  This is true even when the application doesn't explicitly
+call \fBcgSetContextBehavior\fR.  Note that \fB\s-1CG_BEHAVIOR_CURRENT\s0\fR and
+\&\fB\s-1CG_BEHAVIOR_UNKNOWN\s0\fR are not valid choices for \fB\s-1CG_BEHAVIOR\s0\fR.
+Trying to use either will result in an error.
+.SH "EXAMPLES"
+.IX Header "EXAMPLES"
+.Vb 1
+\&  /* create a context and set the behavior to CG_BEHAVIOR_3000 */
+\&
+\&  CGcontext context = cgCreateContext();
+\&  cgSetContextBehavior(context, CG_BEHAVIOR_3000);
+.Ve
+.SH "ERRORS"
+.IX Header "ERRORS"
+\&\fB\s-1CG_INVALID_CONTEXT_HANDLE_ERROR\s0\fR is generated if \fBcontext\fR is not a valid context.
+.PP
+\&\fB\s-1CG_INVALID_ENUMERANT_ERROR\s0\fR is generated if \fBbehavior\fR is not
+\&\fB\s-1CG_BEHAVIOR_3000\s0\fR, \fB\s-1CG_BEHAVIOR_2200\s0\fR,
+\&\fB\s-1CG_BEHAVIOR_CURRENT\s0\fR, or \fB\s-1CG_BEHAVIOR_LATEST\s0\fR.
+.SH "HISTORY"
+.IX Header "HISTORY"
+\&\fBcgSetContextBehavior\fR was introduced in Cg 3.0.
+.SH "SEE ALSO"
+.IX Header "SEE ALSO"
+cgCreateContext,
+cgGetContextBehavior,
+cgGetBehavior,
+cgGetBehaviorString

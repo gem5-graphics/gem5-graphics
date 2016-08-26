@@ -1,0 +1,2485 @@
+
+// CgFX effect for rendering bump-mapped and shadowed MD2 models
+
+// Supports
+// *  Key frame interpolation
+// *  Shadow volume extrusion and stencil update (requires geometry programs)
+// *  Bump mapping using the implicit texture-space defined by the MD2 model's
+//    skin texture coordinates
+//
+// Extra techniques:
+// *  Both robust zfail shadow volumes and faster "zpass" shadow volumes (not
+//    robust when the eye is in the shadow volume)
+// *  Shadow volume visualization (both zfail & zpass)
+// *  Possible silhouette loop visualization
+// *  Ambient only
+// *  Single-light bump mapping
+
+// The 2.2 compiler is capable of both row-major and column-major matrix ordering.
+// By default, Cg is row-major
+
+//#pragma pack_matrix(row_major)
+#pragma pack_matrix(column_major)
+
+//// VERTEX PROGRAMS
+
+// Structure returned by MD2_KeyFrame_vertex containing various
+// computed vectors in various coordinate systems.  Functions
+// calling MD2_KeyFrame_vertex can use the results they require
+// and let the compiler dead-code eliminate the other unused
+// vectors.
+struct VertexResult {
+ // Clip space
+ float4 position;
+ float4 positionProjectedtoInf;
+
+ // Texture space
+ float2 texCoord;
+
+ // Object space
+ float3 objPosition;
+ float3 objNormal;
+ float3 objView;
+ float3 objLight;
+
+ // Light space
+ float3 lightSpacePosition;
+};
+
+// Helper function so following vertex programs perform
+// per-vertex computations for MD2 model vertices the same
+// way in every pass.  Vertex entry functions should pass
+// on the VertexResult members they want.
+VertexResult MD2_KeyFrame_vertex(float3 positionA,
+                                 float3 positionB,
+                                 float3 normalA,
+                                 float3 normalB,
+                                 float2 texCoord,
+
+                                 // uniforms
+                                 float    keyFrameBlend,
+                                 float3   eyePosition,
+                                 float3   lightPosition,
+                                 float2   scaleFactor,
+                                 float4x4 modelViewProj)
+{
+  VertexResult retval;
+
+  // Keyframe interpolate two positions and two normals based
+  // on keyFrameBlend weight
+  float3 blendPosition = lerp(positionA, positionB,
+                              keyFrameBlend);
+  float3 blendNormal = lerp(normalA, normalB,
+                            keyFrameBlend);
+
+  // Transform weighted position to clip space
+  retval.position = mul(modelViewProj, float4(blendPosition, 1));
+
+  // Output scaled skin texture coordinates
+  // by 1/float2(skinWidth,skinHeight)
+  retval.texCoord = texCoord * scaleFactor;
+
+  //// Output object-space vectors...
+  // Weighted object-space position
+  retval.objPosition = blendPosition;
+
+  // Weighted object-space normal (assumed normalized)
+  retval.objNormal = normalize(blendNormal);
+
+  // Normalized weighted object-space view vector
+  retval.objView = normalize(eyePosition - blendPosition);
+
+  // Position in light-space (origin at light position)
+  retval.lightSpacePosition = blendPosition - lightPosition;
+
+  // Normalized weighted object-space light vector
+  retval.objLight = normalize(lightPosition - blendPosition);
+
+  // Transform weighted pos
+  retval.positionProjectedtoInf = mul(modelViewProj,
+                                      float4(retval.lightSpacePosition, 0));
+
+  return retval;
+}
+
+void MD2_AmbientAndDepthInit_vertex(float3 positionA : POSITION,
+                                    float2 texCoord  : TEXCOORD0,
+                                    float3 positionB : TEXCOORD1,
+
+                                out float4 oPosition : POSITION,
+                                out float2 oTexCoord : TEXCOORD0,
+
+                            uniform float    keyFrameBlend,
+                            uniform float2   scaleFactor,
+                            uniform float4x4 modelViewProj)
+{
+  float3 unusedNormal = float3(0);
+  float3 unusedEyePosition = float3(0);
+  float3 unusedLightPosition = float3(0);
+
+  VertexResult vertex = MD2_KeyFrame_vertex(positionA,
+                                            positionB,
+                                            unusedNormal,
+                                            unusedNormal,
+                                            texCoord,
+
+                                            keyFrameBlend,
+                                            unusedEyePosition,
+                                            unusedLightPosition,
+                                            scaleFactor,
+                                            modelViewProj);
+
+  oPosition = vertex.position;
+  oTexCoord = vertex.texCoord;
+}
+
+void transform_vertex(float3 position : POSITION,
+
+                  out float4 oPosition : POSITION,
+
+              uniform float4x4 modelViewProj)
+{
+  oPosition = mul(modelViewProj, float4(position,1));
+}
+
+void Walls_Diffuse_vertex(float3 position : POSITION,
+                          float3 normal   : NORMAL,
+
+                      out float4 oPosition : POSITION,
+                      out float3 lightVec  : TEXCOORD0,
+                      out float3 oNormal   : TEXCOORD1,
+
+                  uniform float4x4 modelViewProj,
+                  uniform float3 lightPosition)  // object-space
+{
+  oPosition = mul(modelViewProj, float4(position,1));
+  lightVec = lightPosition - position;
+  oNormal = normal;
+}
+
+void MD2_ShadowVolumeExtrude_vertex(float3 positionA : POSITION,
+                                    float3 positionB : TEXCOORD1,
+
+                                out float4 oPosition               : POSITION,
+                                out float4 oPositionProjectedtoInf : TEXCOORD0,
+                                out float3 oLightSpacePosition     : TEXCOORD1,
+
+                            uniform float    keyFrameBlend,
+                            uniform float3   lightPosition,
+                            uniform float4x4 modelViewProj)
+{
+  float3 unusedNormal = float3(0);
+  float2 unusedTexCoord = float2(0);
+  float3 unusedEyePosition = float3(0);
+  float2 unusedScaleFactor = float2(0);
+
+  VertexResult result = MD2_KeyFrame_vertex(positionA,
+                                            positionB,
+                                            unusedNormal,
+                                            unusedNormal,
+                                            unusedTexCoord,
+
+                                            keyFrameBlend,
+                                            unusedEyePosition,
+                                            lightPosition,
+                                            unusedScaleFactor,
+                                            modelViewProj);
+
+  oPosition               = result.position;
+  oPositionProjectedtoInf = result.positionProjectedtoInf;
+  oLightSpacePosition     = result.lightSpacePosition;
+}
+
+void MD2_AddSingleLight_vertex(float3 positionA : POSITION,
+                               float3 normalA   : NORMAL,
+                               float2 texCoord  : TEXCOORD0,
+                               float3 positionB : TEXCOORD1,
+                               float3 normalB   : TEXCOORD2,
+
+                           out float4 oPosition    : POSITION,
+                           out float2 oTexCoord    : TEXCOORD0,
+                           out float3 oObjPosition : TEXCOORD1,
+                           out float3 oObjNormal   : TEXCOORD2,
+                           out float3 oObjView     : TEXCOORD3,
+                           out float3 oObjLight    : TEXCOORD4,
+
+                       uniform float    keyFrameBlend,
+                       uniform float3   eyePosition,
+                       uniform float3   lightPosition,
+                       uniform float2   scaleFactor,
+                       uniform float4x4 modelViewProj)
+{
+  VertexResult result = MD2_KeyFrame_vertex(positionA,
+                                            positionB,
+                                            normalA,
+                                            normalB,
+                                            texCoord,
+
+                                            keyFrameBlend,
+                                            eyePosition,
+                                            lightPosition,
+                                            scaleFactor,
+                                            modelViewProj);
+
+  oPosition    = result.position;
+  oTexCoord    = result.texCoord;
+  oObjPosition = result.objPosition;
+  oObjNormal   = result.objNormal;
+  oObjView     = result.objView;
+  oObjLight    = result.objLight;
+}
+
+void MD2_AddSingleLight_vertex_sans_normal
+                              (float3 positionA : POSITION,
+                               // IGNORE normalA
+                               float2 texCoord  : TEXCOORD0,
+                               float3 positionB : TEXCOORD1,
+                               // IGNORE normalB
+
+                           out float4 oPosition    : POSITION,
+                           out float2 oTexCoord    : TEXCOORD0,
+                           out float3 oObjPosition : TEXCOORD1,
+                           // IGNORE output normal
+                           out float3 oObjView     : TEXCOORD3,
+                           out float3 oObjLight    : TEXCOORD4,
+
+                       uniform float    keyFrameBlend,
+                       uniform float3   eyePosition,
+                       uniform float3   lightPosition,
+                       uniform float2   scaleFactor,
+                       uniform float4x4 modelViewProj)
+{
+  float3 unusedNormal = float3(0);
+
+  VertexResult result = MD2_KeyFrame_vertex(positionA,
+                                            positionB,
+                                            unusedNormal,
+                                            unusedNormal,
+                                            texCoord,
+
+                                            keyFrameBlend,
+                                            eyePosition,
+                                            lightPosition,
+                                            scaleFactor,
+                                            modelViewProj);
+
+  oPosition    = result.position;
+  oTexCoord    = result.texCoord;
+  oObjPosition = result.objPosition;
+  oObjView     = result.objView;
+  oObjLight    = result.objLight;
+}
+
+//// GEOMETRY PROGRAMS
+
+// Helper function to determine whether or not each of four
+// triangles (a central triangle and its three adjacent triangles)
+// faces a light source.  The function assumes the vertex
+// positions are in a consitent coordinate system with the light
+// source located at the origin.
+//
+// The signed volume of a tetrahedron when one of the tetrahedron's
+// vertices is at the origin is the scalar computed by the 3x3
+// determinant of a matrix whose rows are the other three tetrahedron
+// vertex positions.
+float4 makeFacesVector(AttribArray<float3> lightSpacePosition)
+{
+  return float4(determinant(float3x3(lightSpacePosition[0],
+                                     lightSpacePosition[1],
+                                     lightSpacePosition[2])),
+                determinant(float3x3(lightSpacePosition[2],
+                                     lightSpacePosition[3],
+                                     lightSpacePosition[4])),
+                determinant(float3x3(lightSpacePosition[4],
+                                     lightSpacePosition[5],
+                                     lightSpacePosition[0])),
+                determinant(float3x3(lightSpacePosition[0],
+                                     lightSpacePosition[2],
+                                     lightSpacePosition[4])));
+}
+
+TRIANGLE_ADJ void
+ShadowVolumeExtrude_geometry(AttribArray<float4> position                    : POSITION,
+                             AttribArray<float4> positionProjectedToInfinity : TEXCOORD0,
+                             AttribArray<float3> lightSpacePosition          : TEXCOORD1)
+{
+  // The following explanation assumes the following...
+  //
+  // Input topology:
+  //
+  //          v3
+  //         /  \
+  //        /    \
+  //       /      \
+  //      v2 ---- v4
+  //     /  \    /  \
+  //    /    \  /    \
+  //  v1 ---- v0 ---- v5
+  //
+  // v# vertices are the input vertex attribute sets
+  // <v0,v2,v4> is the "central" triangle; <v0,v1,v2>,
+  // <v2,v3,v4>, and <v4,v5,v0> are "adjacent" triangles.
+  //
+  // Two possible output topologies:
+  //
+  //  A)      a2               B)      t2
+  //         /  \                     /  \
+  //        /    \                   /    \
+  //       /      \                 /      \
+  //      t2 ---- t4               a2 ---- a4
+  //     /  \    /  \             /  \    /  \
+  //    /    \  /    \           /    \  /    \
+  //  a0 ---- t0 ---- a4       t0 ---- a0 ---- t4
+  //
+  //  ^^ central triangle      ^^ central triangle
+  //     faces TOWARDS light      faces AWAY from light
+  //
+  // t# vertices are position[#] vectors
+  // a# vertices are positionProjectedToInfinity[#] vectors
+  //
+  // t# and a# are both clip-space positions
+  //
+  // When the central triangle faces TOWARDS the light (ie,
+  // is front-facing with respect to the light), output
+  // topology A is used; otherwise when the central triangle
+  // faces AWAY from the light (ie, is back-facing wrt. the
+  // light), output topology B is used.  Output topology A and
+  // B are the same except the use of a# and t# vertices is
+  // swapped.
+  //
+  // While we always output the central triangle in the
+  // output topology, the adjacent triangles are output only
+  // if the input topology's adjacent triangle's light
+  // facingness is the opposite of the input topolgy's
+  // central triangle.
+  //
+  // For example, if the central triangle <v0,v2,v4> is
+  // front-facing wrt. the light, we emit the
+  // adjacent output triangle (either <a0,t2,t0> or
+  // <t0,a2,a0>) if the adjacent triangle <v0,v1,v2> is
+  // back-facing wrt. the light; otherwise, we simply
+  // skip generating this particular adjacent triangle
+  // in the output topology.
+  //
+  // Computing whether a triangle is front- or back-facing
+  // wrt. the light is equivalent to computing the
+  // determinant of the 3x3 matrix whose rows are formed
+  // by the three vertex positions in light-space.  Light-space
+  // is any coordinate system where the light position is
+  // the origin.  Mathematically, this 3x3 determinant is
+  // proportional (by a factor of 1/6) to the signed volume
+  // of the tetrahedron formed by the three triangle vertices
+  // and the origin.  The sign of the determinant indicates
+  // whether the triangle is front- or back-facing.
+  //
+  // Given the signed volumes of two tetrahedrons of two
+  // triangles that share an edge, if the product of the
+  // two signed volumes is negative, the volumes must have
+  // opposite signs and, hence, the shared edge is a possible
+  // silhouette edge, meaning one triangle on the edge faces
+  // the light while the other triangle faces away.
+  //
+  // With this mathematical framework, we can proceed to
+  // efficiently computing possible silhouette edges and
+  // then project half the quad (a triangle) of the shadow
+  // volume extrusion for the edge.
+  //
+  // The GPU runs geometry programs most efficiently when
+  // we can minimally bound the maximum number of vertices that
+  // the program will ever output by a particular geometry program.
+  // We also favor SIMD patterns of execution rather than
+  // divergent control flow.  For example, a conditional move
+  // to emit one of two possible vertex attribute values
+  // is preferable to if/the/else logic.
+  //
+  // To minimally bound the number of vertices output, we
+  // seek to emit the output topology exploiting the vertex
+  // re-use provided by triangle strip output.
+  //
+  // Consider a given output topology broken into two
+  // triangle strips:
+  //
+  //          a2
+  //         /  \
+  //        /    \
+  //       /      \
+  //      t2 ---- t4
+  //
+  //      t2 ---- t4
+  //     /  \    /  \
+  //    /    \  /    \
+  //  a0 ---- t0 ---- a4
+  //
+  // The bottom strip is 5 vertices forming 3 triangles.  Then
+  // we must restart a new strip to form the final top triangle.
+  // If we output all 4 triangles in the worst case, this bounds
+  // the maximum number of output vertices to 8.
+  //
+  // Contrast this with outputing each triangle as an independent
+  // triangle requiring a strip restart after each triangle:
+  //
+  //               a2
+  //              /  \
+  //             /    \
+  //            /      \
+  //           t2 ---- t4
+  //
+  //      t2   t2 ---- t4   t4
+  //     /  \    \    /    /  \
+  //    /    \    \  /    /    \
+  //  a0 ---- t0   t0   t0 ---- a4
+  //
+  // This would require outputing 12 vertices.
+  //
+  // Correct front- and back-facingness wrt. window space is
+  // required for stenciled shadow volume algorithms so we must
+  // preserve the consistent winding order of the output triangles.
+  //
+  // If we don't need to output the adjacent triangle <a0,t2,t0>,
+  // we cannot simply skip emiting a0 from the triangle strip
+  // <a0,t2,t0,t4,a4>.  Such a strip <t2,t0,t4,a4> would have the
+  // incorrect polygon winding.
+  //
+  // The solution is to avoid outputing triangle <a0,t2,t0> by
+  // instead outputing the degenerate triangle <t0,t2,t0> so the
+  // strip becomes <t0,t2,t0,t4,a4> which preserves correct
+  // polygon winding order.
+  //
+  // Generating the proper degenerate vertex to preseve the
+  // proper winding order is actually quite simple.  If the first
+  // adjacent triangle <a0,t2,t0> is front-facing wrt. the light,
+  // we emit t0 and otherwise emit a0 (forming the degenerate
+  // triangle <a0,t2,a0>).
+  //
+  // Droping the triangle <t0,t4,a4> is easier because it is at
+  // the end of the triangle strip and we can simply skip emiting
+  // vertex a4 to avoid assembling this last triangle in the strip.
+
+// Define NO_SHADOW_VOLUME_COLORIZE to avoid emiting colors (useful
+// for visualizing the generated shadow volumes but color writes
+// are, in fact, disabled during actual stenciled shadow volume
+// rendering).
+#ifdef NO_SHADOW_VOLUME_COLORIZE
+#define EMIT_COLOR(_color)
+#else
+#define EMIT_COLOR(_color) , _color:COLOR
+#endif
+
+  float3 color = 2*sin(position[0].xyz * 0.1)-1;
+
+  // facesVector.x = <a0,t2,t0> facingness
+  // facesVector.y = <t2,a4,t4> facingness
+  // facesVector.z = <t0,t4,a4> facingness
+  // facesVector.w = <t0,t2,t4> facingness, the "central" triangle
+  float4 facesVector = makeFacesVector(lightSpacePosition);
+
+  bool facesLight = (facesVector.w < 0);
+
+  // Start triangle strip...
+  emitVertex((facesVector.x < 0) ? position[0] : positionProjectedToInfinity[0] : POSITION
+             EMIT_COLOR(color));
+  emitVertex(facesLight ? position[2] : positionProjectedToInfinity[2] : POSITION
+             EMIT_COLOR(color));
+  emitVertex(facesLight ? position[0] : positionProjectedToInfinity[0] : POSITION
+             EMIT_COLOR(color));
+  // The first projected half-quad "left" adjacent triangle formed may be degenerate!
+  emitVertex(facesLight ? position[4] : positionProjectedToInfinity[4] : POSITION
+             EMIT_COLOR(color));
+  // The second triangle formed is the central triangle which is either a near cap (if the
+  // position[] vectors are output) or a far cap (if the positionProjectedToInfinity[]
+  // vectors are output.
+
+  if ((facesVector.w * facesVector.z) < 0) {
+    // The third projected half-quad "right" adjacent triangle is emited only if necessary.
+    emitVertex(facesLight ? positionProjectedToInfinity[4] : position[4] : POSITION
+               EMIT_COLOR(float3(0,0.2,0.6)));
+  }
+
+  // If needed, start a final (possible fourth) independent triangle is output for the
+  // last projected half-quad "top" adjacent triangle...
+  if ((facesVector.w * facesVector.y) < 0) {
+    restartStrip();
+    emitVertex(facesLight ? position[2] : positionProjectedToInfinity[2] : POSITION
+               EMIT_COLOR(float3(0,0.2,0.2)));
+    emitVertex(facesLight ? positionProjectedToInfinity[2] : position[2] : POSITION
+               EMIT_COLOR(float3(0,0.2,0.6)));
+    emitVertex(facesLight ? position[4] : positionProjectedToInfinity[4] : POSITION
+               EMIT_COLOR(float3(0,0.2,0.2)));
+  }
+
+  // In its worst case, this program emits 8 vertices.
+}
+
+// Render the extruded shadow volume edges (but not the shadow volume's
+// near and far caps) using external triangles.
+TRIANGLE_ADJ void
+ShadowVolumeExtrude_zpass_geometry(AttribArray<float4> position           : POSITION,
+                                   AttribArray<float3> lightSpacePosition : TEXCOORD1,
+
+                           uniform float4 negatedClipSpaceLightPosition)
+{
+  // facesVector.x = <a0,t2,t0> facingness
+  // facesVector.y = <t2,a4,t4> facingness
+  // facesVector.z = <t0,t4,a4> facingness
+  // facesVector.w = <t0,t2,t4> facingness, the "central" triangle
+  float4 facesVector = makeFacesVector(lightSpacePosition);
+
+  if (facesVector.w < 0) {
+    if (facesVector.x >=0) {
+      emitVertex(position[0]                              EMIT_COLOR(float3(1,0,0)));
+      emitVertex(negatedClipSpaceLightPosition : POSITION EMIT_COLOR(float3(0.5,0,0)));
+      emitVertex(position[2]                              EMIT_COLOR(float3(0.8,0,0)));
+    }
+    if (facesVector.y >=0) {
+      restartStrip();
+      emitVertex(position[2]                              EMIT_COLOR(float3(0,1,0)));
+      emitVertex(negatedClipSpaceLightPosition : POSITION EMIT_COLOR(float3(0,0.5,0)));
+      emitVertex(position[4]                              EMIT_COLOR(float3(0,0.8,0)));
+    }
+    if (facesVector.z >=0) {
+      restartStrip();
+      emitVertex(position[4]                              EMIT_COLOR(float3(0,0,1)));
+      emitVertex(negatedClipSpaceLightPosition : POSITION EMIT_COLOR(float3(0,0,0.5)));
+      emitVertex(position[0]                              EMIT_COLOR(float3(0,0,0.8)));
+    }
+  }
+}
+
+// Geometry program to just output "possible silhouette edge line loops"
+// from a triangle adjacency mesh.
+TRIANGLE_ADJ LINE_OUT void
+ShadowVolumeSilhouette_geometry(AttribArray<float4> position           : POSITION,
+                                AttribArray<float3> lightSpacePosition : TEXCOORD1)
+{
+  // facesVector.x = <a0,t2,t0> facingness
+  // facesVector.y = <t2,a4,t4> facingness
+  // facesVector.z = <t0,t4,a4> facingness
+  // facesVector.w = <t0,t2,t4> facingness, the "central" triangle
+  float4 facesVector = makeFacesVector(lightSpacePosition);
+
+  if (facesVector.w < 0) {
+    if (facesVector.x >=0) {
+      float3 yellow : COLOR = float3(1,1,0);
+
+      emitVertex(position[0], yellow);
+      emitVertex(position[2], yellow);
+    }
+    if (facesVector.y >=0) {
+      float3 cyan : COLOR = float3(0,1,1);
+
+      restartStrip();
+      emitVertex(position[2], cyan);
+      emitVertex(position[4], cyan);
+    }
+    if (facesVector.z >= 0) {
+      float3 magenta : COLOR = float3(1,0,1);
+
+      restartStrip();
+      emitVertex(position[4], magenta);
+      emitVertex(position[0], magenta);
+    }
+  }
+}
+
+// Compute surface-local normal, view, and light vectors for per-fragment
+// lighting using the skin decal texture coordinates to generate a texture-space
+// coordinate system basis.
+TRIANGLE void
+MD2_AddSingleLight_geometry(AttribArray<float4> position    : POSITION,
+                            AttribArray<float2> texCoord    : TEXCOORD0,
+                            AttribArray<float3> objPosition : TEXCOORD1,
+                            AttribArray<float3> objNormal   : TEXCOORD2,
+                            AttribArray<float3> objView     : TEXCOORD3,
+                            AttribArray<float3> objLight    : TEXCOORD4)
+{
+  // Express the per-vertex object-space (x,y,z) position and texture
+  // coordinates with short math equation-friendly variable names.
+  float3 P0 = objPosition[0],
+         P1 = objPosition[1],
+         P2 = objPosition[2];
+  float  s0 = texCoord[0].s,
+         s1 = texCoord[1].s,
+         s2 = texCoord[2].s;
+  float  t0 = texCoord[0].t,
+         t1 = texCoord[1].t,
+         t2 = texCoord[2].t;
+
+  // How can we compute a texture-space basis to convert object-space
+  // direction vectors to texture space?  How can we do this so this
+  // basis is consistent with the per-vertex normals?  How can we do
+  // this in the most math-efficient way?  Read on...
+  //
+  // Solving for the (x,y,z) position P in terms of (s,t) is:
+  //
+  //   P(s,t) = P0 + A / B
+  //
+  // where
+  //
+  //   A = (P2-P0)*((t-t0)*(s1-s0)-(s-s0)*(t1-t0)) -
+  //       (P1-P0)*((t-t0)*(s2-s0)-(s-s0)*(t2-t0))
+  //
+  //   B = (s1-s0)*(t2-t0) - (s2-s0)*(t1-t0)
+  //     =  s1*t2 - s1*t0 - s0*t2 - s2*t1 + s0*t1 + s2*t0
+  //     = -t0*s1 + t0*s2 + s1*t2 + s0*t1 - s0*t2 - s2*t1
+  //
+  // B can be expressed as a 2x2 determinant:
+  //
+  //   B = determinant(matrix([[s1-s0, s2-s0],
+  //                           [t1-t0, t2-t0]])
+  //
+  // In this form, B clearly has a geometric interpretation as the signed
+  // area of our triangle in texture space!
+  //
+  // Then we can compute the gradient of P(s,t) in terms of s and t:
+  //
+  //   dPds = diff(P,s) = -C/B
+  //
+  //   dPdt = diff(P,t) =  D/B
+  //
+  // where
+  //
+  //   C = t0*P1-t0*P2-t1*P0+t1*P2-t2*P1+t2*P0
+  //     = det(matrix([[t1-t0,t2-t0],
+  //                   [P1-P0,P2-P0]]))
+  //
+  //   D = -s1*P0+s1*P2+s0*P1-s0*P2-s2*P1+s2*P0
+  //     = det(matrix([[s1-s0,s2-s0],
+  //                   [P1-P0,P2-P0]]))
+  //
+  // Ultimately we wish to compute a tangent (T) and binormal (B) to
+  // accompany either per-vertex normal (N) to form a texture-space
+  // basis to transform object-space directions into texture space.
+  //
+  // First we consider how to create such a basis for the triangle,
+  // ignoring the triangle's per-vertex object-space normals.
+  //
+  // Compute an object-space facet normal for the triangle:
+  //
+  //   Nt = cross(normalize(dPds),
+  //              normalize(dPdt))
+  //
+  // The tangent and binormal are respectively the gradients of P(s,t)
+  // in terms of t and s crossed with Nt:
+  //
+  //   T = cross(normalize(dPdt), Nt))
+  //
+  //   B = cross(normalize(dPds), Nt))
+  //
+  // Note the following:
+  //
+  //   1)  This construction ensures T, B, and Nt are orthonormal.
+  //
+  //   2)  T, B, and Nt are constant over the triangle.
+  //
+  //   3)  This construction uses Nt, without regard for the triangle's
+  //       specified per-vertex object-space normals (N0, N1, and N2).
+  //
+  // Normalizing a vector divided by a scalar is equivalent
+  // to the normalized undivided vector when the scalar is positive.
+  // In other words, dividing by a positive scalar changes the length
+  // of a vector, but not its direction.  So:
+  //
+  //   normalize(V / S) = normalize(V)
+  //
+  // when S>0
+  //
+  // More generally, when the scalar is known to be non-zero but not
+  // known to be positive or negative then:
+  //
+  //   normalize(V / S) = normalize(V / abs(S)) * sign(S)
+  //                    = normalize(V) * sign(S)
+  //
+  // when S!=0
+  //
+  // We are interested in efficiently computing the normalized gradients
+  // of P in terms s and t:
+  //
+  //   normalize(diff(P,s)) = normalize(C / B)
+  //                        = normalize(C / abs(B)) * sign(B)
+  //                        = normalize(C)          * sign(B)
+  //
+  //   normalize(diff(P,t)) = normalize(D / B)
+  //                        = normalize(D / abs(B)) * sign(B)
+  //                        = normalize(D)          * sign(B)
+  //
+  // The per-vertex normals N0, N1, and N2 are, by modeling convention, normals
+  // that point outward from the (potentially curved) surface for which
+  // the triangle is a proxy.  We assume that "outward" is always the positive
+  // z direction in texture space.
+  //
+  // Nt does not necessarily point outward from the surface.  Nt may, in
+  // fact, point inward when Nt has to a negative z component.  This is
+  // the case when the signed area of the triangle in texture space is
+  // negative.  More succinctly, this is when B is negative!
+  //
+  // When authoring texture-skinned 3D model, this situation occurs when
+  // an artists "mirrors" a section of the texture on a triangle of the
+  // model.
+  //
+  // We desire the object-space to texture-space basis to be consistent with
+  // our per-vertex normals whether or not "texture mirroring" exists.  For
+  // this reason, we weant to negate the normalized gradients diff(P,s) and
+  // diff(P,t) when the area of the triangle is negative in texture space.
+  //
+  // More succinctly, we want to multiply these normalized gradients
+  // by sign(B).  This is fortuitous:
+  //
+  //   normalize(diff(P,s)) * sign(B) = normalize(C / B) * sign(B)
+  //                                  = normalize(C) * sign(B) * sign(B)
+  //                                  = normalize(C)
+  //
+  //   normalize(diff(P,t)) * sign(B) = normalize(D / B) * sign(B)
+  //                                  = normalize(D) * sign(B) * sign(B)
+  //                                  = normalize(D)
+  //
+  // because
+  //
+  //   sign(x) * sign(x) = 1
+  //
+  // This does assume that B!=0 but we safely assume this because we expect
+  // artists to skin their models without triangles having zero area in
+  // texture space!  A triangle with zero area in texture space is a degenerate
+  // situation that makes texture-space bump mapping impossible.
+  //
+  // Incorporating the result above, these per-vertex tangent and binormal
+  // vectors
+  //
+  //   T0 = cross(normalize(dPdt), N0))
+  //   T1 = cross(normalize(dPdt), N1))
+  //   T2 = cross(normalize(dPdt), N2))
+  //
+  //   B0 = cross(normalize(dPds), N0))
+  //   B1 = cross(normalize(dPds), N1))
+  //   B2 = cross(normalize(dPds), N2))
+  //
+  // are more efficiently computed as:
+  //
+  //   Cn = normalize(C)
+  //   Dn = normalize(D)
+  //
+  //   T0 = cross(Cn, N0))
+  //   T1 = cross(Cn, N1))
+  //   T2 = cross(Cn, N2))
+  //
+  //   B0 = cross(Dn, N0))
+  //   B1 = cross(Dn, N1))
+  //   B2 = cross(Dn, N2))
+  //
+  // Note the following:
+  //
+  //   1)  The vector sets {T0,B0,N0}, {T1,B1,N1}, and {T2,B2,N2} are
+  //       orthonormal if we assume N0, N1, and N2 are already normalized,
+  //       a safe assumption for object-space normals (or else something
+  //       easily done in the vertex program).
+  //
+  //   2)  Unlike, the vectors T,B,Nt, these vector sets T0,B0,N0;
+  //       T1,B1,N1; and T2,B2,N2 could be interpolated to vary over
+  //       the triangle.
+  //
+  //   3)  Rather than interpolate the basis over the triangle, it is
+  //       often more efficient to transform object-space vectors into
+  //       texture space in the geometry shader and then interpolating
+  //       and renormalizing in the fragment shader.  This reduces the
+  //       number of interpolated attributes by 9 scalar interpolants!
+  //
+  //   4)  Computing T0, B0, T1, B1, T2, and B2 does not require
+  //       the explicit computation of the signed area of the triangle
+  //       in texture space!
+  //
+  //   5)  The vectors C and D requiring normalization are efficiently
+  //       evaluated as a sum of vector products.
+  //
+  float3 C  = t0*P1-t0*P2-t1*P0+t1*P2-t2*P1+t2*P0,
+         Cn = normalize(C),
+         D  = -s1*P0+s1*P2+s0*P1-s0*P2-s2*P1+s2*P0,
+         Dn = normalize(D);
+
+  // for each vertex in the triangle...
+  for (int i=0; i<3; i++) {
+    float3 normal   = objNormal[i],
+           // T = cross(dPdt,N)
+           tangent  = cross(Dn,normal),
+           // B = cross(N,dPds)
+           binormal = cross(Cn,normal); // = cross(normal,-C)
+
+    // Construct 3x3 basis matrix that transforms object-space
+    // vectors into (surface local) texture-space vectors using
+    // tangent, binormal, and normal for the three respective
+    // rows
+    float3x3 basis = float3x3(tangent,
+                              binormal,
+                              normal);
+
+    // Transform object-space light and view vectors by basis
+    // for texture-space versions
+    float3 surfaceLightVector : TEXCOORD1 = mul(basis, objLight[i]);
+    float3 surfaceViewVector  : TEXCOORD2 = mul(basis, objView[i]);
+
+    emitVertex(position[i], texCoord[i],
+               surfaceLightVector, surfaceViewVector);
+  }
+}
+
+// Compute surface-local normal, view, and light vectors for per-fragment
+// lighting using the skin decal texture coordinates to generate a texture-space
+// coordinate system basis.
+TRIANGLE void
+MD2_InterpolatedBasisAddSingleLight_geometry(AttribArray<float4> position    : POSITION,
+                                             AttribArray<float2> texCoord    : TEXCOORD0,
+                                             AttribArray<float3> objPosition : TEXCOORD1,
+                                             AttribArray<float3> objNormal   : TEXCOORD2,
+                                             AttribArray<float3> objView     : TEXCOORD3,
+                                             AttribArray<float3> objLight    : TEXCOORD4)
+{
+  // Express the per-vertex object-space (x,y,z) position and texture
+  // coordinates with short math equation-friendly variable names.
+  float3 P0 = objPosition[0],
+         P1 = objPosition[1],
+         P2 = objPosition[2];
+  float  s0 = texCoord[0].s,
+         s1 = texCoord[1].s,
+         s2 = texCoord[2].s;
+  float  t0 = texCoord[0].t,
+         t1 = texCoord[1].t,
+         t2 = texCoord[2].t;
+
+  float3 C = t0*P1-t0*P2-t1*P0+t1*P2-t2*P1+t2*P0,
+         D = -s1*P0+s1*P2+s0*P1-s0*P2-s2*P1+s2*P0;
+
+  // for each vertex in the triangle...
+  for (int i=0; i<3; i++) {
+    float3 normal = objNormal[i];
+
+    emitVertex(position[i], texCoord[i],
+        objLight[i] : TEXCOORD1,
+        objView[i]  : TEXCOORD2,
+        C           : TEXCOORD3,
+        D           : TEXCOORD4,
+        normal      : TEXCOORD5);
+  }
+}
+
+// Compute surface-local normal, view, and light vectors for per-fragment
+// lighting using the skin decal texture coordinates to generate a texture-space
+// coordinate system basis.
+TRIANGLE void
+MD2_VisualizeSignFlips_geometry(AttribArray<float4> position    : POSITION,
+                                AttribArray<float2> texCoord    : TEXCOORD0)
+{
+  // Compute the signed area of the triangle in texture space.
+  float area = determinant(float2x2(texCoord[1] - texCoord[0],
+                                    texCoord[2] - texCoord[0]));
+
+  float3 rgb : COLOR = { area < 0,  // red
+                         area >= 0, // green
+                         0 };       // blue
+
+  // for each vertex in the triangle...
+  for (int i=0; i<3; i++) {
+    emitVertex(position[i], rgb);
+  }
+}
+
+//
+TRIANGLE void
+MD2_AddSingleLight_geometry_sans_normal(
+                 AttribArray<float4> position    : POSITION,
+                 AttribArray<float2> texCoord    : TEXCOORD0,
+                 AttribArray<float3> objPosition : TEXCOORD1,
+                 // IGNORE per-vertex normal!
+                 AttribArray<float3> objView     : TEXCOORD3,
+                 AttribArray<float3> objLight    : TEXCOORD4)
+{
+  float3 P0 = objPosition[0],
+         P1 = objPosition[1],
+         P2 = objPosition[2];
+  float  s0 = texCoord[0].s,
+         s1 = texCoord[1].s,
+         s2 = texCoord[2].s;
+  float  t0 = texCoord[0].t,
+         t1 = texCoord[1].t,
+         t2 = texCoord[2].t;
+
+  float3 C  = t0*P1-t0*P2-t1*P0+t1*P2-t2*P1+t2*P0,
+         Cn = normalize(C),
+         D  = -s1*P0+s1*P2+s0*P1-s0*P2-s2*P1+s2*P0,
+         Dn = normalize(D);
+
+  float3 normal = cross(Dn,Cn);
+
+  // Signed area of traingle in texture space.
+  float area = determinant(float2x2(texCoord[1] - texCoord[0],
+                                    texCoord[2] - texCoord[0]));
+  // Flip the normal to be "up" in texture space if the signed area is negative.
+  if (area < 0) {
+      normal = -normal;
+  }
+
+  float3 // T = cross(dPdt,N)
+         tangent  = cross(Dn,normal),
+         // B = cross(N,dPds)
+         binormal = cross(Cn,normal); // = cross(normal,-C)
+
+  // Construct 3x3 basis matrix that transforms object-space
+  // vectors into (surface local) texture-space vectors using
+  // tangent, binormal, and normal for the three respective
+  // rows
+  float3x3 basis = float3x3(tangent,
+                            binormal,
+                            normal);
+
+  // for each vertex in the triangle...
+  for (int i=0; i<3; i++) {
+    // Transform object-space light and view vectors by basis
+    // for texture-space versions
+    float3 surfaceLightVector : TEXCOORD1 = mul(basis, objLight[i]);
+    float3 surfaceViewVector  : TEXCOORD2 = mul(basis, objView[i]);
+
+    emitVertex(position[i], texCoord[i],
+               surfaceLightVector, surfaceViewVector);
+  }
+}
+
+//// FRAGMENT PROGRAMS
+
+float4 AmbientAndDepthInit_fragment(float2 texCoord : TEXCOORD0,
+
+                            uniform float3 ambient,
+                            uniform sampler2D decalGlossMap) : COLOR
+{
+  float4 packedGlossDecal = tex2D(decalGlossMap, texCoord);
+  float3 decal = packedGlossDecal.xyz;
+
+  // Compute diffuse radiance
+  float3 radiance = ambient*decal;
+
+  return float4(radiance, 1);
+}
+
+float4 InterpolateColor_fragment(float4 color : COLOR) : COLOR
+{
+  return color;
+}
+
+float4 ConstantColor_fragment(uniform float4 color) : COLOR
+{
+  return color;
+}
+
+float4 PerPixelDiffuse_fragment(float3 lightVec : TEXCOORD0,
+                                float3 normal   : TEXCOORD1,
+
+                        uniform float3 lightColor)   : COLOR
+{
+  float LdotN = dot(normalize(lightVec), normalize(normal));
+  float3 rgb = lightColor * max(LdotN, 0.0);
+  return float4(rgb,1);
+}
+
+// Lighting model parameters
+uniform float3 globalAmbient = float3(0.3);
+uniform float lightAmbient = 0.3;
+uniform float3 lightColor = float3(1,1,1);
+uniform float shininess = 30.2;
+uniform float3 specularMaterial = float3(1,1,1);
+uniform float2 geometricSelfShadowDiffuseFallOffRange = float2(-0.05,0.1);
+
+// Helper function to unpack [0,1] normal map texels to signed normals
+float3 expand(float3 v) { return (v-0.5)*2; }
+
+float computeDiffuse(float3 normal,
+                     float3 lightVec,
+                     float diffuseDimFactorForNormal)
+{
+  float NdotL = dot(normal, lightVec);
+  float dimNdotL = NdotL * diffuseDimFactorForNormal;
+  float diffuse = max(0.0, NdotL);
+
+  // When lightVec.z is negative, geometrically, the light is
+  // "below" the plane of the triangle to which this fragment
+  // belongs.  In such a circumstance, geometric self-shadowing
+  // presumes no illumination then when lightVec.z is negative.
+  // Rather than an abrupt forcing of the diffuse irradiance (and
+  // hence specular irradiance too) to zero, smoothly transition
+  // the diffuse irradiance over the [x,y] range of
+  // geometricSelfShadowDiffuseFallOffRange.
+  diffuse *= smoothstep(geometricSelfShadowDiffuseFallOffRange.x,
+                        geometricSelfShadowDiffuseFallOffRange.y,
+                        lightVec.z);
+
+  return diffuse;
+}
+
+float computeSpecular(float3 normal,
+                      float3 lightVec,
+                      float3 viewVec,
+                      float diffuse)
+{
+  // Compute specular radiance using half-angle model
+  float3 halfAngle = normalize(lightVec + viewVec);
+  float NdotH = dot(normal, halfAngle);
+  float specular = pow(diffuse > 0 ? NdotH : 0, shininess);
+
+  return specular;
+}
+
+float4 AddSingleLight_fragment(float2 texcoord : TEXCOORD0,
+                               float3 lightVec : TEXCOORD1,
+                               float3 viewVec  : TEXCOORD2,
+
+                       uniform bool normalizeInterpolatedLightVec,
+                       uniform bool normalizeInterpolatedViewVec,
+
+                       uniform float3 shineColor,  // lightColor*specularMaterial
+                       uniform sampler2D decalGlossMap,
+                       uniform sampler2D normalMap) : COLOR
+{
+  float4 packedNormal = tex2D(normalMap, texcoord);
+  float4 packedGlossDecal = tex2D(decalGlossMap, texcoord);
+  float3 decal = packedGlossDecal.xyz;
+  float  gloss = packedGlossDecal.w;
+  float3 normal = expand(packedNormal.xyz);
+  // Bumpy diffuse objects in the distance should appear
+  // dimmer (reduces aliasing of distant diffuse bumpy objects)
+  float  diffuseDimFactorForNormal = packedNormal.w;
+
+  if (normalizeInterpolatedLightVec) {
+    lightVec = normalize(lightVec);
+  }
+  if (normalizeInterpolatedViewVec) {
+    viewVec = normalize(viewVec);
+  }
+
+  float diffuse = computeDiffuse(normal, lightVec, diffuseDimFactorForNormal);
+  float specular = computeSpecular(normal, lightVec, viewVec, diffuse);
+
+  // Compute total radiance as decal-modulated diffuse
+  // added to glossed specular color
+  float3 radiance = (lightAmbient+diffuse)*lightColor*decal +
+                    specular*gloss*shineColor;
+
+  return float4(radiance, 1);
+}
+
+float4 InterpolatedBasisAddSingleLight_fragment(float2 texcoord : TEXCOORD0,
+                                                float3 lightVec : TEXCOORD1,
+                                                float3 viewVec  : TEXCOORD2,
+                                                float3 C        : TEXCOORD3,
+                                                float3 D        : TEXCOORD4,
+                                                float3 VertexN  : TEXCOORD5,
+
+                                         uniform float3 shineColor,  // lightColor*specularMaterial
+                                         uniform sampler2D decalGlossMap,
+                                         uniform sampler2D normalMap) : COLOR
+{
+  float3 nVertexN = normalize(VertexN),
+         nC = normalize(C),
+         nD = normalize(D);
+  float3 // T = cross(dPdt,N)
+         T = cross(nD,nVertexN),
+         // B = cross(N,dPds)
+         B = cross(nC,nVertexN); // = cross(normal,-C)
+  float3x3 basis = float3x3(T,B,nVertexN);
+  lightVec = mul(basis, lightVec);
+  viewVec  = mul(basis, viewVec);
+  float4 packedNormal = tex2D(normalMap, texcoord);
+  float4 packedGlossDecal = tex2D(decalGlossMap, texcoord);
+  float3 decal = packedGlossDecal.xyz;
+  float  gloss = packedGlossDecal.w;
+  float3 normal = expand(packedNormal.xyz);
+  // Bumpy diffuse objects in the distance should appear
+  // dimmer (reduces aliasing of distant diffuse bumpy objects)
+  float  diffuseDimFactorForNormal = packedNormal.w;
+
+  lightVec = normalize(lightVec);
+  viewVec = normalize(viewVec);
+
+  float diffuse = computeDiffuse(normal, lightVec, diffuseDimFactorForNormal);
+  float specular = computeSpecular(normal, lightVec, viewVec, diffuse);
+
+  // Compute total radiance as decal-modulated diffuse
+  // added to glossed specular color
+  float3 radiance = (lightAmbient+diffuse)*lightColor*decal +
+                    specular*gloss*shineColor;
+
+  return float4(radiance, 1);
+}
+
+float4 DiffuseOnly_fragment(float2 texcoord : TEXCOORD0,
+                            float3 lightVec : TEXCOORD1,
+
+                        uniform bool normalizeInterpolatedLightVec,
+
+                        uniform sampler2D normalMap) : COLOR
+{
+  float4 packedNormal = tex2D(normalMap, texcoord);
+  float3 normal = expand(packedNormal.xyz);
+  // Bumpy diffuse objects in the distance should appear
+  // dimmer (reduces aliasing of distant diffuse bumpy objects)
+  float  diffuseDimFactorForNormal = packedNormal.w;
+
+  if (normalizeInterpolatedLightVec) {
+    lightVec = normalize(lightVec);
+  }
+
+  float diffuse = computeDiffuse(normal, lightVec, diffuseDimFactorForNormal);
+
+  return float4(float3(diffuse), 1);
+}
+
+float4 InterpolatedBasisDiffuseOnly_fragment(float2 texcoord : TEXCOORD0,
+                                             float3 lightVec : TEXCOORD1,
+
+                                             float3 C        : TEXCOORD3,
+                                             float3 D        : TEXCOORD4,
+                                             float3 VertexN  : TEXCOORD5,
+
+                        uniform sampler2D normalMap) : COLOR
+{
+  float3 nVertexN = normalize(VertexN),
+         nC = normalize(C),
+         nD = normalize(D);
+  float3 // T = cross(dPdt,N)
+         T = cross(nD,nVertexN),
+         // B = cross(N,dPds)
+         B = cross(nC,nVertexN); // = cross(normal,-C)
+  float3x3 basis = float3x3(T,B,nVertexN);
+  lightVec = mul(basis, lightVec);
+  lightVec = normalize(lightVec);
+  float4 packedNormal = tex2D(normalMap, texcoord);
+  float3 normal = expand(packedNormal.xyz);
+  // Bumpy diffuse objects in the distance should appear
+  // dimmer (reduces aliasing of distant diffuse bumpy objects)
+  float diffuseDimFactorForNormal = packedNormal.w;
+  float diffuse = computeDiffuse(normal, lightVec, diffuseDimFactorForNormal);
+  return float4(float3(diffuse), 1);
+}
+
+float4 seeTexCoords(float2 texcoord : TEXCOORD0) : COLOR
+{
+  return float4(texcoord.st, 0, 1);
+}
+
+float4 passcolor(float3 rgb : COLOR) : COLOR
+{
+  return float4(float3(rgb), 1);
+}
+
+float4 SmoothDiffuseOnly_fragment(float3 lightVec : TEXCOORD1,
+
+                          uniform bool normalizeInterpolatedLightVec) : COLOR
+{
+  float3 straightUpNormal = float3(0,0,1);
+
+  if (normalizeInterpolatedLightVec) {
+    lightVec = normalize(lightVec);
+  }
+
+  float diffuse = computeDiffuse(straightUpNormal, lightVec, 1.0);
+
+  return float4(float3(diffuse), 1);
+}
+
+float4 SpecularOnly_fragment(float2 texcoord : TEXCOORD0,
+                             float3 lightVec : TEXCOORD1,
+                             float3 viewVec  : TEXCOORD2,
+
+                            uniform bool normalizeInterpolatedLightVec,
+                            uniform bool normalizeInterpolatedViewVec,
+
+                     uniform sampler2D normalMap) : COLOR
+{
+  float4 packedNormal = tex2D(normalMap, texcoord);
+  float3 normal = expand(packedNormal.xyz);
+  // Bumpy diffuse objects in the distance should appear
+  // dimmer (reduces aliasing of distant diffuse bumpy objects)
+  float  diffuseDimFactorForNormal = packedNormal.w;
+
+  if (normalizeInterpolatedLightVec) {
+    lightVec = normalize(lightVec);
+  }
+  if (normalizeInterpolatedViewVec) {
+    viewVec = normalize(viewVec);
+  }
+
+  float diffuse = computeDiffuse(normal, lightVec, diffuseDimFactorForNormal);
+  float specular = computeSpecular(normal, lightVec, viewVec, diffuse);
+
+  return float4(float3(specular), 1);
+}
+
+float4 GlossedSpecularOnly_fragment(float2 texcoord : TEXCOORD0,
+                                    float3 lightVec : TEXCOORD1,
+                                    float3 viewVec  : TEXCOORD2,
+
+                            uniform bool normalizeInterpolatedLightVec,
+                            uniform bool normalizeInterpolatedViewVec,
+
+                            uniform sampler2D decalGlossMap,
+                            uniform sampler2D normalMap) : COLOR
+{
+  float4 packedNormal = tex2D(normalMap, texcoord);
+  float4 packedGlossDecal = tex2D(decalGlossMap, texcoord);
+  float  gloss = packedGlossDecal.w;
+  float3 normal = expand(packedNormal.xyz);
+  // Bumpy diffuse objects in the distance should appear
+  // dimmer (reduces aliasing of distant diffuse bumpy objects)
+  float  diffuseDimFactorForNormal = packedNormal.w;
+
+  if (normalizeInterpolatedLightVec) {
+    lightVec = normalize(lightVec);
+  }
+  if (normalizeInterpolatedViewVec) {
+    viewVec = normalize(viewVec);
+  }
+
+  float diffuse = computeDiffuse(normal, lightVec, diffuseDimFactorForNormal);
+  float specular = computeSpecular(normal, lightVec, viewVec, diffuse);
+
+  return float4(float3(specular*gloss), 1);
+}
+
+float4 NormalMapOnly_fragment(float2 texcoord : TEXCOORD0,
+
+                      uniform sampler2D normalMap) : COLOR
+{
+  float4 packedNormal = tex2D(normalMap, texcoord);
+
+  return float4(packedNormal);
+}
+
+float4 DecalOnly_fragment(float2 texcoord : TEXCOORD0,
+
+                  uniform sampler2D decalGlossMap) : COLOR
+{
+  float4 packedGlossDecal = tex2D(decalGlossMap, texcoord);
+  float3 decal = packedGlossDecal.xyz;
+
+  return float4(decal, 1);
+}
+
+float4 GlossOnly_fragment(float2 texcoord : TEXCOORD0,
+
+                    uniform sampler2D decalGlossMap) : COLOR
+{
+  float4 packedGlossDecal = tex2D(decalGlossMap, texcoord);
+  float  gloss = packedGlossDecal.w;
+
+  return float4(float3(gloss), 1);
+}
+
+//// EFFECT PARAMETERS
+
+float     keyFrameBlend;
+float2    scaleFactor;
+float3    eyePosition;    // in same coord. system as positionA/B
+float3    lightPosition;  // in same coord. system as positionA/B
+float4x4  modelViewProj;
+
+sampler2D decalGlossMap;
+sampler2D normalMap;
+
+//// TECHNIQUES
+
+// Bump mapping with robust shadow volumes (zfail) for shadowing.
+// This technique works even when the eye is in the shadow volume.
+technique MD2_KeyFramed_ShadowVolumes_BumpMapped {
+  pass MD2_AmbientAndDepthInit {
+
+    VertexProgram = compile latest
+      MD2_AmbientAndDepthInit_vertex(keyFrameBlend,
+                                     scaleFactor,
+                                     modelViewProj);
+
+    GeometryProgram = NULL;
+
+    FragmentProgram = compile latest
+      AmbientAndDepthInit_fragment(globalAmbient, decalGlossMap);
+
+    CullFaceEnable = true;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = Less;  // Use LEqual so depth clamp works
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+  pass Walls_RenderDarkAndDepthInit <int DrawBackdrop=1;> {
+    VertexProgram = compile latest
+      transform_vertex(modelViewProj);
+    FragmentProgram = compile latest
+      ConstantColor_fragment(float4(globalAmbient,1));
+
+    CullFaceEnable = true;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = Less;  // Use LEqual so depth clamp works
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+  // The presence of the NeedsAdjacency annotation for a pass means the pass
+  // needs to be rendered as a "triangle adjacency" mesh.
+  pass ShadowVolumeExtrude <int NeedsAdjacency=1;> {
+
+    VertexProgram = compile latest
+      MD2_ShadowVolumeExtrude_vertex(keyFrameBlend,
+                                     lightPosition,
+                                     modelViewProj);
+
+    GeometryProgram = compile latest
+      ShadowVolumeExtrude_geometry();
+
+    FragmentProgram = compile latest
+      InterpolateColor_fragment();
+
+    CullFaceEnable = false;
+
+    StencilTestEnable = true;
+    // Workaround CgFX StencilOpSeparate bug: Only one (the last) state applies to a pass,
+    // but the Stencil*Separate states use their 1st argument to apply to the front and/or
+    // back stencil state.  So specify the StencilOp state that applies to front and back
+    // and then change the back state with a single StencilOpSeperate state of the Back
+    // state.
+    StencilOp = { Keep, DecrWrap, Keep };
+    StencilOpSeparate = { Back,  Keep, IncrWrap, Keep };
+    StencilFuncSeparate = { FrontAndBack, Always, 0, ~0 };
+    StencilMaskSeparate = { FrontAndBack, ~0 };
+
+    DepthTestEnable = true;
+    DepthFunc = Less;
+    DepthMask = false;
+
+    BlendEnable = false;
+    ColorMask = { 0, 0, 0, 0 };
+  }
+  pass MD2_AccmulateSingleLight {
+
+    VertexProgram = compile latest
+      MD2_AddSingleLight_vertex(keyFrameBlend,
+                                eyePosition,
+                                lightPosition,
+                                scaleFactor,
+                                modelViewProj);
+
+    GeometryProgram = compile latest
+      MD2_AddSingleLight_geometry();
+
+    FragmentProgram = compile latest
+      AddSingleLight_fragment(/*normalizeInterpolatedLightVec*/true,
+                              /*normalizeInterpolatedViewVec*/true,
+                              lightColor * specularMaterial,
+                              decalGlossMap,
+                              normalMap);
+
+    CullFaceEnable = true;
+
+    StencilTestEnable = true;
+    StencilOp = { Keep, Keep, Keep };
+    StencilFunc = { Equal, 0, ~0 };
+
+    DepthTestEnable = true;
+    DepthFunc = Equal;
+
+    BlendEnable = true;
+    BlendFunc = { One, One };
+    ColorMask = { 1, 1, 1, 1 };
+  }
+  pass Walls_AccmulateSingleLight <int DrawBackdrop=1;> {
+    VertexProgram = compile latest
+      Walls_Diffuse_vertex(modelViewProj,
+                           lightPosition);
+    FragmentProgram = compile latest
+      PerPixelDiffuse_fragment(lightColor);
+
+    CullFaceEnable = true;
+
+    StencilTestEnable = true;
+    StencilOp = { Keep, Keep, Keep };
+    StencilFunc = { Equal, 0, ~0 };
+
+    DepthTestEnable = true;
+    DepthFunc = Equal;
+
+    BlendEnable = true;
+    BlendFunc = { One, One };
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}
+
+technique MD2_KeyFramed_ShadowVolumes_InterpolatedBasisBumpMapped {
+  pass MD2_AmbientAndDepthInit {
+
+    VertexProgram = compile latest
+      MD2_AmbientAndDepthInit_vertex(keyFrameBlend,
+                                     scaleFactor,
+                                     modelViewProj);
+
+    GeometryProgram = NULL;
+
+    FragmentProgram = compile latest
+      AmbientAndDepthInit_fragment(globalAmbient, decalGlossMap);
+
+    CullFaceEnable = true;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = Less;  // Use LEqual so depth clamp works
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+  pass Walls_RenderDarkAndDepthInit <int DrawBackdrop=1;> {
+    VertexProgram = compile latest
+      transform_vertex(modelViewProj);
+    FragmentProgram = compile latest
+      ConstantColor_fragment(float4(globalAmbient,1));
+
+    CullFaceEnable = true;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = Less;  // Use LEqual so depth clamp works
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+  // The presence of the NeedsAdjacency annotation for a pass means the pass
+  // needs to be rendered as a "triangle adjacency" mesh.
+  pass ShadowVolumeExtrude <int NeedsAdjacency=1;> {
+
+    VertexProgram = compile latest
+      MD2_ShadowVolumeExtrude_vertex(keyFrameBlend,
+                                     lightPosition,
+                                     modelViewProj);
+
+    GeometryProgram = compile latest
+      ShadowVolumeExtrude_geometry();
+
+    FragmentProgram = compile latest
+      InterpolateColor_fragment();
+
+    CullFaceEnable = false;
+
+    StencilTestEnable = true;
+    // Workaround CgFX StencilOpSeparate bug: Only one (the last) state applies to a pass,
+    // but the Stencil*Separate states use their 1st argument to apply to the front and/or
+    // back stencil state.  So specify the StencilOp state that applies to front and back
+    // and then change the back state with a single StencilOpSeperate state of the Back
+    // state.
+    StencilOp = { Keep, DecrWrap, Keep };
+    StencilOpSeparate = { Back,  Keep, IncrWrap, Keep };
+    StencilFuncSeparate = { FrontAndBack, Always, 0, ~0 };
+    StencilMaskSeparate = { FrontAndBack, ~0 };
+
+    DepthTestEnable = true;
+    DepthFunc = Less;
+    DepthMask = false;
+
+    BlendEnable = false;
+    ColorMask = { 0, 0, 0, 0 };
+  }
+  pass MD2_AccmulateSingleLight {
+
+    VertexProgram = compile latest
+      MD2_AddSingleLight_vertex(keyFrameBlend,
+                                eyePosition,
+                                lightPosition,
+                                scaleFactor,
+                                modelViewProj);
+
+    GeometryProgram = compile latest
+      MD2_InterpolatedBasisAddSingleLight_geometry();
+
+    FragmentProgram = compile latest
+      InterpolatedBasisAddSingleLight_fragment(lightColor * specularMaterial,
+                                               decalGlossMap,
+                                               normalMap);
+
+    CullFaceEnable = true;
+
+    StencilTestEnable = true;
+    StencilOp = { Keep, Keep, Keep };
+    StencilFunc = { Equal, 0, ~0 };
+
+    DepthTestEnable = true;
+    DepthFunc = Equal;
+
+    BlendEnable = true;
+    BlendFunc = { One, One };
+    ColorMask = { 1, 1, 1, 1 };
+  }
+  pass Walls_AccmulateSingleLight <int DrawBackdrop=1;> {
+    VertexProgram = compile latest
+      Walls_Diffuse_vertex(modelViewProj,
+                           lightPosition);
+    FragmentProgram = compile latest
+      PerPixelDiffuse_fragment(lightColor);
+
+    CullFaceEnable = true;
+
+    StencilTestEnable = true;
+    StencilOp = { Keep, Keep, Keep };
+    StencilFunc = { Equal, 0, ~0 };
+
+    DepthTestEnable = true;
+    DepthFunc = Equal;
+
+    BlendEnable = true;
+    BlendFunc = { One, One };
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}
+
+// This technique is faster than the "zfail" technique but fails
+// to produce correct shadows when the eye is in the shadow volume!
+technique MD2_KeyFramed_ShadowVolumes_zpass_BumpMapped {
+  pass MD2_AmbientAndDepthInit {
+
+    VertexProgram = compile latest
+      MD2_AmbientAndDepthInit_vertex(keyFrameBlend,
+                                     scaleFactor,
+                                     modelViewProj);
+
+    GeometryProgram = NULL;
+
+    FragmentProgram = compile latest
+      AmbientAndDepthInit_fragment(globalAmbient, decalGlossMap);
+
+    CullFaceEnable = true;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = Less;  // Use LEqual so depth clamp works
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+  pass Walls_RenderDarkAndDepthInit <int DrawBackdrop=1;> {
+    VertexProgram = compile latest
+      transform_vertex(modelViewProj);
+    FragmentProgram = compile latest
+      ConstantColor_fragment(float4(globalAmbient,1));
+
+    CullFaceEnable = true;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = Less;  // Use LEqual so depth clamp works
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+  // The presence of the NeedsAdjacency annotation for a pass means the pass
+  // needs to be rendered as a "triangle adjacency" mesh.
+  pass ShadowVolumeExtrude <int NeedsAdjacency=1;> {
+
+    VertexProgram = compile latest
+      MD2_ShadowVolumeExtrude_vertex(keyFrameBlend,
+                                     lightPosition,
+                                     modelViewProj);
+
+    // Pass in negated object-space light position transformed to clip
+    // space via the modelViewProj matrix.  Negating the object-space
+    // light position facilitates rendering external triangles projecting
+    // away from the light position.
+    GeometryProgram = compile latest
+      ShadowVolumeExtrude_zpass_geometry(mul(modelViewProj, float4(-lightPosition,-1)));
+
+    FragmentProgram = compile latest
+      InterpolateColor_fragment();
+
+    CullFaceEnable = false;
+
+    StencilTestEnable = true;
+    // Workaround CgFX StencilOpSeparate bug: Only one (the last) state applies to a pass,
+    // but the Stencil*Separate states use their 1st argument to apply to the front and/or
+    // back stencil state.  So specify the StencilOp state that applies to front and back
+    // and then change the back state with a single StencilOpSeperate state of the Back
+    // state.
+    StencilOp = { Keep, Keep, IncrWrap };
+    StencilOpSeparate = { Back,  Keep, Keep, DecrWrap };
+    StencilFuncSeparate = { FrontAndBack, Always, 0, ~0 };
+    StencilMaskSeparate = { FrontAndBack, ~0 };
+
+    DepthTestEnable = true;
+    DepthFunc = Less;
+    DepthMask = false;
+
+    BlendEnable = false;
+    ColorMask = { 0, 0, 0, 0 };
+  }
+  pass AccmulateSingleLight {
+
+    VertexProgram = compile latest
+      MD2_AddSingleLight_vertex(keyFrameBlend,
+                                eyePosition,
+                                lightPosition,
+                                scaleFactor,
+                                modelViewProj);
+
+    GeometryProgram = compile latest
+      MD2_AddSingleLight_geometry();
+
+    FragmentProgram = compile latest
+      AddSingleLight_fragment(/*normalizeInterpolatedLightVec*/true,
+                              /*normalizeInterpolatedViewVec*/true,
+                              lightColor * specularMaterial,
+                              decalGlossMap,
+                              normalMap);
+
+    CullFaceEnable = true;
+
+    StencilTestEnable = true;
+    StencilOp = { Keep, Keep, Keep };
+    StencilFunc = { Equal, 0, ~0 };
+
+    DepthTestEnable = true;
+    DepthFunc = Equal;
+
+    BlendEnable = true;
+    BlendFunc = { One, One };
+    ColorMask = { 1, 1, 1, 1 };
+  }
+  pass Walls_AccmulateSingleLight <int DrawBackdrop=1;> {
+    VertexProgram = compile latest
+      Walls_Diffuse_vertex(modelViewProj,
+                           lightPosition);
+    FragmentProgram = compile latest
+      PerPixelDiffuse_fragment(lightColor);
+
+    CullFaceEnable = true;
+
+    StencilTestEnable = true;
+    StencilOp = { Keep, Keep, Keep };
+    StencilFunc = { Equal, 0, ~0 };
+
+    DepthTestEnable = true;
+    DepthFunc = Equal;
+
+    BlendEnable = true;
+    BlendFunc = { One, One };
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}
+
+technique MD2_ShadowVolumeVisualize {
+  pass ShadowVolumeVisualize <int NeedsAdjacency=1;> {
+
+    VertexProgram = compile latest
+      MD2_ShadowVolumeExtrude_vertex(keyFrameBlend,
+                                     lightPosition,
+                                     modelViewProj);
+
+    GeometryProgram = compile latest
+      ShadowVolumeExtrude_geometry();
+
+    FragmentProgram = compile latest
+      InterpolateColor_fragment();
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = LEqual;  // Use LEqual so depth clamp works
+    DepthMask = true;
+
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}
+
+technique MD2_ShadowVolumeVisualize_zpass {
+  pass AmbientOnly {
+
+    VertexProgram = compile latest
+      MD2_AmbientAndDepthInit_vertex(keyFrameBlend,
+                                     scaleFactor,
+                                     modelViewProj);
+
+    GeometryProgram = NULL;
+
+    FragmentProgram = compile latest
+      AmbientAndDepthInit_fragment(globalAmbient, decalGlossMap);
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = LEqual;  // Use LEqual so depth clamp works
+    DepthMask = true;
+
+    ColorMask = { 1, 1, 1, 1 };
+  }
+  pass ShadowVolumeVisualize <int NeedsAdjacency=1;> {
+
+    VertexProgram = compile latest
+      MD2_ShadowVolumeExtrude_vertex(keyFrameBlend,
+                                     lightPosition,
+                                     modelViewProj);
+
+    // Pass in negated object-space light position transformed to clip
+    // space via the modelViewProj matrix.  Negating the object-space
+    // light position facilitates rendering external triangles projecting
+    // away from the light position.
+    GeometryProgram = compile latest
+      ShadowVolumeExtrude_zpass_geometry(mul(modelViewProj, float4(-lightPosition,-1)));
+
+    FragmentProgram = compile latest
+      InterpolateColor_fragment();
+
+    CullFaceEnable = true;
+    CullFace = Back;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = LEqual;  // Use LEqual so depth clamp works
+    DepthMask = true;
+
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}
+
+technique MD2_ShadowVolumeSilhouette {
+  pass ShadowVolumeSilhouetteVisualize <int NeedsAdjacency=1;> {
+
+    VertexProgram = compile latest
+      MD2_ShadowVolumeExtrude_vertex(keyFrameBlend,
+                                     lightPosition,
+                                     modelViewProj);
+
+    GeometryProgram = compile latest
+      ShadowVolumeSilhouette_geometry();
+
+    FragmentProgram = compile latest
+      InterpolateColor_fragment();
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = Less;
+    DepthMask = true;
+
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}
+
+technique MD2_AmbientOnly {
+  pass AmbientOnly {
+
+    VertexProgram = compile latest
+      MD2_AmbientAndDepthInit_vertex(keyFrameBlend,
+                                     scaleFactor,
+                                     modelViewProj);
+
+    GeometryProgram = NULL;
+
+    FragmentProgram = compile latest
+      AmbientAndDepthInit_fragment(globalAmbient, decalGlossMap);
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = Less;
+    DepthMask = true;
+
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}
+
+technique MD2_SingleLight {
+  pass SingleLight {
+
+    VertexProgram = compile latest
+      MD2_AddSingleLight_vertex(keyFrameBlend,
+                                eyePosition,
+                                lightPosition,
+                                scaleFactor,
+                                modelViewProj);
+
+    GeometryProgram = compile latest
+      MD2_AddSingleLight_geometry();
+
+    FragmentProgram = compile latest
+      AddSingleLight_fragment(/*normalizeInterpolatedLightVec*/false,
+                              /*normalizeInterpolatedViewVec*/false,
+                              lightColor * specularMaterial,
+                              decalGlossMap,
+                              normalMap);
+
+    CullFaceEnable = true;
+    CullFace = Back;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = LEqual;
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}
+
+technique MD2_RenormSingleLight {
+  pass SingleLight {
+
+    VertexProgram = compile latest
+      MD2_AddSingleLight_vertex(keyFrameBlend,
+                                eyePosition,
+                                lightPosition,
+                                scaleFactor,
+                                modelViewProj);
+
+    GeometryProgram = compile latest
+      MD2_AddSingleLight_geometry();
+
+    FragmentProgram = compile latest
+      AddSingleLight_fragment(/*normalizeInterpolatedLightVec*/true,
+                              /*normalizeInterpolatedViewVec*/true,
+                              lightColor * specularMaterial,
+                              decalGlossMap,
+                              normalMap);
+
+    CullFaceEnable = true;
+    CullFace = Back;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = LEqual;
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}
+
+technique MD2_InterpolatedBasisSingleLight {
+  pass SingleLight {
+
+    VertexProgram = compile latest
+      MD2_AddSingleLight_vertex(keyFrameBlend,
+                                eyePosition,
+                                lightPosition,
+                                scaleFactor,
+                                modelViewProj);
+
+    GeometryProgram = compile latest
+      MD2_InterpolatedBasisAddSingleLight_geometry();
+
+    FragmentProgram = compile latest
+      InterpolatedBasisAddSingleLight_fragment(lightColor * specularMaterial,
+                                               decalGlossMap,
+                                               normalMap);
+
+    CullFaceEnable = true;
+    CullFace = Back;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = LEqual;
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}
+
+technique MD2_DiffuseOnly {
+  pass SingleLight {
+
+    VertexProgram = compile latest
+      MD2_AddSingleLight_vertex(keyFrameBlend,
+                                eyePosition,
+                                lightPosition,
+                                scaleFactor,
+                                modelViewProj);
+
+    GeometryProgram = compile latest
+      MD2_AddSingleLight_geometry();
+
+    FragmentProgram = compile latest
+      DiffuseOnly_fragment(/*normalizeInterpolatedLightVec*/true, normalMap);
+
+    CullFaceEnable = true;
+    CullFace = Back;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = LEqual;
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}
+
+technique MD2_RenormDiffuseOnly {
+  pass SingleLight {
+
+    VertexProgram = compile latest
+      MD2_AddSingleLight_vertex(keyFrameBlend,
+                                eyePosition,
+                                lightPosition,
+                                scaleFactor,
+                                modelViewProj);
+
+    GeometryProgram = compile latest
+      MD2_AddSingleLight_geometry();
+
+    FragmentProgram = compile latest
+      DiffuseOnly_fragment(/*normalizeInterpolatedLightVec*/true, normalMap);
+
+    CullFaceEnable = true;
+    CullFace = Back;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = LEqual;
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}
+
+technique MD2_InterpolatedBasisDiffuseOnly {
+  pass SingleLight {
+    VertexProgram = compile latest
+      MD2_AddSingleLight_vertex(keyFrameBlend,
+                                eyePosition,
+                                lightPosition,
+                                scaleFactor,
+                                modelViewProj);
+
+    GeometryProgram = compile latest
+      MD2_InterpolatedBasisAddSingleLight_geometry();
+
+    FragmentProgram = compile latest
+      InterpolatedBasisDiffuseOnly_fragment(normalMap);
+
+    CullFaceEnable = true;
+    CullFace = Back;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = LEqual;
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}
+
+technique MD2_VisualizeSignFlips {
+  pass SingleLight {
+
+    VertexProgram = compile latest
+      MD2_AddSingleLight_vertex(keyFrameBlend,
+                                eyePosition,
+                                lightPosition,
+                                scaleFactor,
+                                modelViewProj);
+
+    GeometryProgram = compile latest
+      MD2_VisualizeSignFlips_geometry();
+
+    FragmentProgram = compile latest
+      passcolor();
+
+    CullFaceEnable = true;
+    CullFace = Back;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = LEqual;
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}
+
+technique MD2_VisualizeTexCoordContinuity {
+  pass SingleLight {
+
+    VertexProgram = compile latest
+      MD2_AddSingleLight_vertex(keyFrameBlend,
+                                eyePosition,
+                                lightPosition,
+                                scaleFactor,
+                                modelViewProj);
+
+    FragmentProgram = compile latest
+      seeTexCoords();
+
+    CullFaceEnable = true;
+    CullFace = Back;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = LEqual;
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}
+
+// Like MD2_DiffuseOnly but has no reliance on per-vertex
+// normals (leads to faceted look).
+technique MD2_DiffuseOnly_sans_normal {
+  pass SingleLight {
+
+    VertexProgram = compile latest
+      MD2_AddSingleLight_vertex_sans_normal(
+                                keyFrameBlend,
+                                eyePosition,
+                                lightPosition,
+                                scaleFactor,
+                                modelViewProj);
+
+    GeometryProgram = compile latest
+      MD2_AddSingleLight_geometry_sans_normal();
+
+    FragmentProgram = compile latest
+      DiffuseOnly_fragment(/*normalizeInterpolatedLightVec*/false, normalMap);
+
+    CullFaceEnable = true;
+    CullFace = Back;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = LEqual;
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}
+
+
+technique MD2_SpecularOnly {
+  pass SingleLight {
+
+    VertexProgram = compile latest
+      MD2_AddSingleLight_vertex(keyFrameBlend,
+                                eyePosition,
+                                lightPosition,
+                                scaleFactor,
+                                modelViewProj);
+
+    GeometryProgram = compile latest
+      MD2_AddSingleLight_geometry();
+
+    FragmentProgram = compile latest
+      SpecularOnly_fragment(/*normalizeInterpolatedLightVec*/false,
+                            /*normalizeInterpolatedViewVec*/false,
+                            normalMap);
+
+    CullFaceEnable = true;
+    CullFace = Back;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = LEqual;
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}
+
+technique MD2_RenormSpecularOnly {
+  pass SingleLight {
+
+    VertexProgram = compile latest
+      MD2_AddSingleLight_vertex(keyFrameBlend,
+                                eyePosition,
+                                lightPosition,
+                                scaleFactor,
+                                modelViewProj);
+
+    GeometryProgram = compile latest
+      MD2_AddSingleLight_geometry();
+
+    FragmentProgram = compile latest
+      SpecularOnly_fragment(/*normalizeInterpolatedLightVec*/true,
+                            /*normalizeInterpolatedViewVec*/true,
+                            normalMap);
+
+    CullFaceEnable = true;
+    CullFace = Back;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = LEqual;
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}
+
+technique MD2_GlossedSpecularOnly {
+  pass SingleLight {
+
+    VertexProgram = compile latest
+      MD2_AddSingleLight_vertex(keyFrameBlend,
+                                eyePosition,
+                                lightPosition,
+                                scaleFactor,
+                                modelViewProj);
+
+    GeometryProgram = compile latest
+      MD2_AddSingleLight_geometry();
+
+    FragmentProgram = compile latest
+      GlossedSpecularOnly_fragment(/*normalizeInterpolatedLightVec*/false,
+                                   /*normalizeInterpolatedViewVec*/false,
+                                   decalGlossMap,
+                                   normalMap);
+
+    CullFaceEnable = true;
+    CullFace = Back;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = LEqual;
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}
+
+technique MD2_RenormGlossedSpecularOnly {
+  pass SingleLight {
+
+    VertexProgram = compile latest
+      MD2_AddSingleLight_vertex(keyFrameBlend,
+                                eyePosition,
+                                lightPosition,
+                                scaleFactor,
+                                modelViewProj);
+
+    GeometryProgram = compile latest
+      MD2_AddSingleLight_geometry();
+
+    FragmentProgram = compile latest
+      GlossedSpecularOnly_fragment(/*normalizeInterpolatedLightVec*/true,
+                                   /*normalizeInterpolatedViewVec*/true,
+                                   decalGlossMap,
+                                   normalMap);
+
+    CullFaceEnable = true;
+    CullFace = Back;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = LEqual;
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}
+
+technique MD2_NormalMapOnly {
+  pass SingleLight {
+
+    VertexProgram = compile latest
+      MD2_AddSingleLight_vertex(keyFrameBlend,
+                                eyePosition,
+                                lightPosition,
+                                scaleFactor,
+                                modelViewProj);
+
+    GeometryProgram = compile latest
+      MD2_AddSingleLight_geometry();
+
+    FragmentProgram = compile latest
+      NormalMapOnly_fragment(normalMap);
+
+    CullFaceEnable = true;
+    CullFace = Back;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = LEqual;
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}
+
+technique MD2_DecalOnly {
+  pass SingleLight {
+
+    VertexProgram = compile latest
+      MD2_AddSingleLight_vertex(keyFrameBlend,
+                                eyePosition,
+                                lightPosition,
+                                scaleFactor,
+                                modelViewProj);
+
+    GeometryProgram = compile latest
+      MD2_AddSingleLight_geometry();
+
+    FragmentProgram = compile latest
+      DecalOnly_fragment(decalGlossMap);
+
+    CullFaceEnable = true;
+    CullFace = Back;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = LEqual;
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}
+
+technique MD2_GlossOnly {
+  pass SingleLight {
+
+    VertexProgram = compile latest
+      MD2_AddSingleLight_vertex(keyFrameBlend,
+                                eyePosition,
+                                lightPosition,
+                                scaleFactor,
+                                modelViewProj);
+
+    GeometryProgram = compile latest
+      MD2_AddSingleLight_geometry();
+
+    FragmentProgram = compile latest
+      GlossOnly_fragment(decalGlossMap);
+
+    CullFaceEnable = true;
+    CullFace = Back;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = LEqual;
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}
+
+const float4 darkGray = { 0.2, 0.2, 0.2, 1.0 };
+const float4 dullYellow = { 0.7, 0.7, 0.1, 1.0 };
+
+technique MD2_ShadowRegion {
+  pass MD2_RenderDarkAndDepthInit {
+
+    VertexProgram = compile latest
+      MD2_AmbientAndDepthInit_vertex(keyFrameBlend,
+                                     scaleFactor,
+                                     modelViewProj);
+
+    GeometryProgram = NULL;
+
+    FragmentProgram = compile latest
+      ConstantColor_fragment(darkGray);
+
+    CullFaceEnable = true;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = Less;  // Use LEqual so depth clamp works
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+  pass Walls_RenderDarkAndDepthInit <int DrawBackdrop=1;> {
+    VertexProgram = compile latest
+      transform_vertex(modelViewProj);
+    FragmentProgram = compile latest
+      ConstantColor_fragment(darkGray);
+
+    CullFaceEnable = true;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = Less;  // Use LEqual so depth clamp works
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+  // The presence of the NeedsAdjacency annotation for a pass means the pass
+  // needs to be rendered as a "triangle adjacency" mesh.
+  pass ShadowVolumeExtrude <int NeedsAdjacency=1;> {
+
+    VertexProgram = compile latest
+      MD2_ShadowVolumeExtrude_vertex(keyFrameBlend,
+                                     lightPosition,
+                                     modelViewProj);
+
+    GeometryProgram = compile latest
+      ShadowVolumeExtrude_geometry();
+
+    FragmentProgram = compile latest
+      InterpolateColor_fragment();
+
+    CullFaceEnable = false;
+
+    StencilTestEnable = true;
+    // Workaround CgFX StencilOpSeparate bug: Only one (the last) state applies to a pass,
+    // but the Stencil*Separate states use their 1st argument to apply to the front and/or
+    // back stencil state.  So specify the StencilOp state that applies to front and back
+    // and then change the back state with a single StencilOpSeperate state of the Back
+    // state.
+    StencilOp = { Keep, DecrWrap, Keep };
+    StencilOpSeparate = { Back,  Keep, IncrWrap, Keep };
+    StencilFuncSeparate = { FrontAndBack, Always, 0, ~0 };
+    StencilMaskSeparate = { FrontAndBack, ~0 };
+
+    DepthTestEnable = true;
+    DepthFunc = Less;
+    DepthMask = false;
+
+    BlendEnable = false;
+    ColorMask = { 0, 0, 0, 0 };
+  }
+  pass MD2_RenderLitRegionInYellow {
+
+    VertexProgram = compile latest
+      MD2_AmbientAndDepthInit_vertex(keyFrameBlend,
+                                     scaleFactor,
+                                     modelViewProj);
+
+    GeometryProgram = NULL;
+
+    FragmentProgram = compile latest
+      ConstantColor_fragment(dullYellow);
+
+    CullFaceEnable = true;
+
+    StencilTestEnable = true;
+    StencilOp = { Keep, Keep, Keep };
+    StencilFunc = { Equal, 0, ~0 };
+
+    DepthTestEnable = true;
+    DepthFunc = Equal;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+  pass Walls_RenderLitRegionInYellow <int DrawBackdrop=1;> {
+    VertexProgram = compile latest
+      transform_vertex(modelViewProj);
+    FragmentProgram = compile latest
+      ConstantColor_fragment(dullYellow);
+
+    CullFaceEnable = true;
+
+    StencilTestEnable = true;
+    StencilOp = { Keep, Keep, Keep };
+    StencilFunc = { Equal, 0, ~0 };
+
+    DepthTestEnable = true;
+    DepthFunc = Equal;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}
+
+// Diffuse lighting without the normal map (just interpolate per-vertex normals)
+technique MD2_SmoothDiffuseOnly {
+  pass SingleLight {
+
+    VertexProgram = compile latest
+      MD2_AddSingleLight_vertex(keyFrameBlend,
+                                eyePosition,
+                                lightPosition,
+                                scaleFactor,
+                                modelViewProj);
+
+    GeometryProgram = compile latest
+      MD2_AddSingleLight_geometry();
+
+    FragmentProgram = compile latest
+      SmoothDiffuseOnly_fragment(/*normalizeInterpolatedLightVec*/false);
+
+    CullFaceEnable = true;
+    CullFace = Back;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = LEqual;
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}
+
+// Diffuse lighting without the normal map (just interpolate per-vertex normals)
+technique MD2_RenormSmoothDiffuseOnly {
+  pass SingleLight {
+
+    VertexProgram = compile latest
+      MD2_AddSingleLight_vertex(keyFrameBlend,
+                                eyePosition,
+                                lightPosition,
+                                scaleFactor,
+                                modelViewProj);
+
+    GeometryProgram = compile latest
+      MD2_AddSingleLight_geometry();
+
+    FragmentProgram = compile latest
+      SmoothDiffuseOnly_fragment(/*normalizeInterpolatedLightVec*/true);
+
+    CullFaceEnable = true;
+    CullFace = Back;
+
+    StencilTestEnable = false;
+
+    DepthTestEnable = true;
+    DepthFunc = LEqual;
+    DepthMask = true;
+
+    BlendEnable = false;
+    ColorMask = { 1, 1, 1, 1 };
+  }
+}

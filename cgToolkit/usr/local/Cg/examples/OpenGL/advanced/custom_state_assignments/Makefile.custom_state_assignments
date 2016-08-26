@@ -1,0 +1,104 @@
+#
+# Additional compilation flags may be passed via CFLAGS, CXXFLAGS and CLINKFLAGS
+#
+# Linux:
+#   make CFLAGS=-m32
+#   make CFLAGS=-m64
+#
+# Ubuntu 9.04 64-bit
+#   make CFLAGS=-m32 CXXFLAGS=-m32 CLINKFLAGS="-L/lib32 -L/usr/lib32 -Wl,-rpath-link,/lib32:/usr/lib32"
+#
+# OSX:
+#   make 'CFLAGS=-arch ppc'    'CXXFLAGS=-arch ppc'
+#   make 'CFLAGS=-arch i386'   'CXXFLAGS=-arch i386'
+#   make 'CFLAGS=-arch x86_64' 'CXXFLAGS=-arch x86_64'
+
+UNAME := $(shell uname)
+
+GLEW  := ../../glew
+
+C_SOURCE   := custom_state_assignments.c
+OBJ        := $(C_SOURCE:.c=.o) 
+BIN        := custom_state_assignments
+
+CC         =  gcc
+C_FLAGS    += -Wall
+C_FLAGS    += -I"$(GLEW)/include"
+C_FLAGS    += -DGLEW_STATIC
+
+ifdef CG_INC_PATH
+  C_FLAGS  += -I"$(CG_INC_PATH)"
+endif
+
+ifdef CG_LIB_PATH
+    LINKFLAGS  += -L"$(CG_LIB_PATH)"
+endif
+
+ifeq ($(UNAME), Darwin)
+  LINKFLAGS  += -L"$(GLEW)"
+  LINKFLAGS  += -lglewlib
+  LINKFLAGS  += -framework Cg
+  LINKFLAGS  += -framework GLUT
+  LINKFLAGS  += -framework OpenGL
+else
+  ifeq ($(findstring CYGWIN, $(UNAME)), CYGWIN)
+    BIN = custom_state_assignments.exe
+    C_FLAGS    += -D_WIN32
+    C_FLAGS    += -mno-cygwin
+    C_FLAGS    += -DGLUT_DISABLE_ATEXIT_HACK
+    C_FLAGS    += -I"C:\Program Files\NVIDIA Corporation\Cg\include"
+    LINKFLAGS  += -mno-cygwin
+    LINKFLAGS  += -L"$(GLEW)"
+    LINKFLAGS  += -lglewlib
+    LINKFLAGS  += -L"C:\Program Files\NVIDIA Corporation\Cg\lib"
+    LINKFLAGS  += -lcgGL -lcg
+    LINKFLAGS  += -lglut32
+    LINKFLAGS  += -lglu32 -lopengl32 -lgdi32
+  else
+    ifeq ($(UNAME), SunOS)
+      C_FLAGS    += -fPIC
+      LINKFLAGS  += -L"$(GLEW)"
+      LINKFLAGS  += -lglewlib
+      LINKFLAGS  += -lCgGL -lCg
+      LINKFLAGS  += -L/usr/X11R6/lib64 -L/usr/X11R6/lib
+      LINKFLAGS  += -lglut -lXi -lXmu -lX11 -lm
+      LINKFLAGS  += -lGLU -lGL
+      LINKFLAGS  += -lpthread
+    else
+      LINKFLAGS  += -L"$(GLEW)"
+      LINKFLAGS  += -lglewlib
+      LINKFLAGS  += -lCgGL -lCg
+      LINKFLAGS  += -L/usr/X11R6/lib64 -L/usr/X11R6/lib
+      LINKFLAGS  += -lglut -lXi -lXmu -lX11 -lm
+      LINKFLAGS  += -lGLU -lGL
+      LINKFLAGS  += -lpthread
+    endif
+  endif
+endif
+
+override CFLAGS := $(CFLAGS) $(C_FLAGS)
+
+all: custom_state_assignments
+
+glew:
+	$(MAKE) -C '$(GLEW)' -f Makefile glewlib
+
+.PHONY: glew
+
+custom_state_assignments: glew $(OBJ)
+	$(CC) $(CFLAGS) $(OBJ) -o $(BIN) $(LINKFLAGS) $(CLINKFLAGS)
+
+test:
+	./$(BIN)
+
+run: all
+	./$(BIN)
+
+clean:
+	$(RM) $(BIN) $(OBJ) 
+	$(MAKE) -C '$(GLEW)' -f Makefile clean
+
+clobber: clean
+	$(RM) *.bak *.o *~
+
+.PHONY: all test run clean clobber

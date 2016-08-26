@@ -1,0 +1,41 @@
+// These pass-through vertex, geometry, and fragment programs are 
+// used by gs_shrinky.c
+
+// Vertex pass-through program for 2D positions with color
+void vertex_passthru(float2 position  : POSITION,
+                     float4 color     : COLOR,
+                     
+                 out float2 oPosition : POSITION,
+                 out float4 oColor    : COLOR)
+{
+  oPosition = position;
+  oColor    = color;
+}
+
+float2 average(AttribArray<float2> array)
+{
+  float2 sum = 0;
+  for (int i=0; i<array.length; i++) {
+    sum += array[i];
+  }
+  return sum / array.length;
+}
+
+// Geometry pass-through program for colored triangles
+TRIANGLE void triangle_shrinky(AttribArray<float2> position : POSITION,
+                               AttribArray<float4> color    : COLOR,
+
+                       uniform float shrinkFactor)
+{
+  float2 averagePosition = average(position);
+  for (int i=0; i<position.length; i++) {
+    emitVertex(lerp(position[i], averagePosition, shrinkFactor) : POSITION,
+               color[i]);
+  }
+}
+
+// Fragment pass-through program
+float4 fragment_passthru(float4 color : COLOR) : COLOR
+{
+  return color;
+}

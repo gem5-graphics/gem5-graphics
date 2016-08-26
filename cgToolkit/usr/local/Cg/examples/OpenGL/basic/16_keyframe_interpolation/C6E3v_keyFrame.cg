@@ -1,0 +1,21 @@
+// This is C6E3v_keyFrame from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 159.
+
+void C6E3v_keyFrame(float3 positionA : POSITION,
+                    float3 positionB : TEXCOORD1,
+                    float4 color     : COLOR,
+                    float2 texCoord  : TEXCOORD0,
+
+                out float4 oPosition : POSITION,
+                out float2 oTexCoord : TEXCOORD0,
+                out float4 oColor    : COLOR,
+
+            uniform float    keyFrameBlend,
+            uniform float4x4 modelViewProj)
+{
+  float3 position = lerp(positionA, positionB,
+                         keyFrameBlend);
+  oPosition = mul(modelViewProj, float4(position, 1));
+  oTexCoord = texCoord;
+  oColor = color;
+}

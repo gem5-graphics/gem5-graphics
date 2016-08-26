@@ -1,0 +1,37 @@
+#!/system/bin/sh
+echo "Starting Angry Birds benchmark..."
+am start -n com.rovio.angrybirds/com.rovio.fusion.App
+sleep 25
+echo "Starting events..."
+echo "Event 0..."
+/sbin/su -c "sendevent /dev/input/event0 3 0 522"
+/sbin/su -c "sendevent /dev/input/event0 3 1 407"
+/sbin/su -c "sendevent /dev/input/event0 1 330 1"
+/sbin/su -c "sendevent /dev/input/event0 0 0 0"
+/sbin/su -c "sendevent /dev/input/event0 1 330 0"
+/sbin/su -c "sendevent /dev/input/event0 0 0 0"
+sleep 10
+echo "Event 1..."
+/sbin/su -c "sendevent /dev/input/event0 3 0 157"
+/sbin/su -c "sendevent /dev/input/event0 3 1 269"
+/sbin/su -c "sendevent /dev/input/event0 1 330 1"
+/sbin/su -c "sendevent /dev/input/event0 0 0 0"
+/sbin/su -c "sendevent /dev/input/event0 1 330 0"
+/sbin/su -c "sendevent /dev/input/event0 0 0 0"
+sleep 10
+echo "Event 2..."
+/sbin/su -c "sendevent /dev/input/event0 3 0 81"
+/sbin/su -c "sendevent /dev/input/event0 3 1 106"
+/sbin/su -c "sendevent /dev/input/event0 1 330 1"
+/sbin/su -c "sendevent /dev/input/event0 0 0 0"
+/sbin/su -c "sendevent /dev/input/event0 1 330 0"
+/sbin/su -c "sendevent /dev/input/event0 0 0 0"
+sleep 20
+echo "Event 3..."
+/sbin/su -c "sendevent /dev/input/event0 3 0 685"
+/sbin/su -c "sendevent /dev/input/event0 3 1 563"
+/sbin/su -c "sendevent /dev/input/event0 1 330 1"
+/sbin/su -c "sendevent /dev/input/event0 0 0 0"
+/sbin/su -c "sendevent /dev/input/event0 1 330 0"
+/sbin/su -c "sendevent /dev/input/event0 0 0 0"
+sleep 10

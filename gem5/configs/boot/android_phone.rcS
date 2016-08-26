@@ -1,0 +1,103 @@
+#!/system/bin/sh
+echo "Starting Android phone benchmark..."
+am start -n com.android.contacts/.activities.DialtactsActivity
+sleep 4
+echo "Starting events..."
+echo "Event 0..."
+su -c 'sendevent /dev/input/event0 3 0 184'
+su -c 'sendevent /dev/input/event0 3 1 439'
+su -c 'sendevent /dev/input/event0 1 330 1'
+su -c 'sendevent /dev/input/event0 0 0 0'
+su -c 'sendevent /dev/input/event0 1 330 0'
+su -c 'sendevent /dev/input/event0 0 0 0'
+sleep 1
+echo "Event 1..."
+su -c 'sendevent /dev/input/event0 3 0 482'
+su -c 'sendevent /dev/input/event0 3 1 300'
+su -c 'sendevent /dev/input/event0 1 330 1'
+su -c 'sendevent /dev/input/event0 0 0 0'
+su -c 'sendevent /dev/input/event0 1 330 0'
+su -c 'sendevent /dev/input/event0 0 0 0'
+sleep 1
+echo "Event 2..."
+su -c 'sendevent /dev/input/event0 3 0 492'
+su -c 'sendevent /dev/input/event0 3 1 410'
+su -c 'sendevent /dev/input/event0 1 330 1'
+su -c 'sendevent /dev/input/event0 0 0 0'
+su -c 'sendevent /dev/input/event0 1 330 0'
+su -c 'sendevent /dev/input/event0 0 0 0'
+sleep 1
+echo "Event 3..."
+su -c 'sendevent /dev/input/event0 3 0 271'
+su -c 'sendevent /dev/input/event0 3 1 423'
+su -c 'sendevent /dev/input/event0 1 330 1'
+su -c 'sendevent /dev/input/event0 0 0 0'
+su -c 'sendevent /dev/input/event0 1 330 0'
+su -c 'sendevent /dev/input/event0 0 0 0'
+sleep 1
+echo "Event 4..."
+su -c 'sendevent /dev/input/event0 3 0 101'
+su -c 'sendevent /dev/input/event0 3 1 533'
+su -c 'sendevent /dev/input/event0 1 330 1'
+su -c 'sendevent /dev/input/event0 0 0 0'
+su -c 'sendevent /dev/input/event0 1 330 0'
+su -c 'sendevent /dev/input/event0 0 0 0'
+sleep 1
+echo "Event 5..."
+su -c 'sendevent /dev/input/event0 3 0 311'
+su -c 'sendevent /dev/input/event0 3 1 618'
+su -c 'sendevent /dev/input/event0 1 330 1'
+su -c 'sendevent /dev/input/event0 0 0 0'
+su -c 'sendevent /dev/input/event0 1 330 0'
+su -c 'sendevent /dev/input/event0 0 0 0'
+sleep 1
+echo "Event 6..."
+su -c 'sendevent /dev/input/event0 3 0 519'
+su -c 'sendevent /dev/input/event0 3 1 313'
+su -c 'sendevent /dev/input/event0 1 330 1'
+su -c 'sendevent /dev/input/event0 0 0 0'
+su -c 'sendevent /dev/input/event0 1 330 0'
+su -c 'sendevent /dev/input/event0 0 0 0'
+sleep 1
+echo "Event 7..."
+su -c 'sendevent /dev/input/event0 3 0 64'
+su -c 'sendevent /dev/input/event0 3 1 289'
+su -c 'sendevent /dev/input/event0 1 330 1'
+su -c 'sendevent /dev/input/event0 0 0 0'
+su -c 'sendevent /dev/input/event0 3 0 65'
+su -c 'sendevent /dev/input/event0 0 0 0'
+sleep 1
+echo "Event 8..."
+su -c 'sendevent /dev/input/event0 3 0 66'
+su -c 'sendevent /dev/input/event0 0 0 0'
+su -c 'sendevent /dev/input/event0 1 330 0'
+su -c 'sendevent /dev/input/event0 0 0 0'
+sleep 1
+echo "Event 9..."
+su -c 'sendevent /dev/input/event0 3 0 286'
+su -c 'sendevent /dev/input/event0 3 1 418'
+su -c 'sendevent /dev/input/event0 1 330 1'
+su -c 'sendevent /dev/input/event0 0 0 0'
+su -c 'sendevent /dev/input/event0 3 0 285'
+su -c 'sendevent /dev/input/event0 3 1 417'
+su -c 'sendevent /dev/input/event0 0 0 0'
+sleep 1
+echo "Event 10..."
+su -c 'sendevent /dev/input/event0 1 330 0'
+su -c 'sendevent /dev/input/event0 0 0 0'
+su -c 'sendevent /dev/input/event0 3 0 118'
+su -c 'sendevent /dev/input/event0 3 1 505'
+su -c 'sendevent /dev/input/event0 1 330 1'
+su -c 'sendevent /dev/input/event0 0 0 0'
+sleep 1
+echo "Event 11..."
+su -c 'sendevent /dev/input/event0 1 330 0'
+su -c 'sendevent /dev/input/event0 0 0 0'
+su -c 'sendevent /dev/input/event0 3 0 834'
+su -c 'sendevent /dev/input/event0 3 1 680'
+su -c 'sendevent /dev/input/event0 1 330 1'
+su -c 'sendevent /dev/input/event0 0 0 0'
+sleep 1
+echo "Event 12..."
+su -c 'sendevent /dev/input/event0 1 330 0'
+su -c 'sendevent /dev/input/event0 0 0 0'

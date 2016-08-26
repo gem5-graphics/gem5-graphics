@@ -1,0 +1,201 @@
+.de Sh \" Subsection heading
+.br
+.if t .Sp
+.ne 5
+.PP
+\fB\\$1\fR
+.PP
+..
+.de Sp \" Vertical space (when we can't use .PP)
+.if t .sp .5v
+.if n .sp
+..
+.de Vb \" Begin verbatim text
+.ft CW
+.nf
+.ne \\$1
+..
+.de Ve \" End verbatim text
+.ft R
+.fi
+..
+.tr \(*W-
+.ds C+ C\v'-.1v'\h'-1p'\s-2+\h'-1p'+\s0\v'.1v'\h'-1p'
+.ie n \{\
+.    ds -- \(*W-
+.    ds PI pi
+.    if (\n(.H=4u)&(1m=24u) .ds -- \(*W\h'-12u'\(*W\h'-12u'-\" diablo 10 pitch
+.    if (\n(.H=4u)&(1m=20u) .ds -- \(*W\h'-12u'\(*W\h'-8u'-\"  diablo 12 pitch
+.    ds L" ""
+.    ds R" ""
+.    ds C` ""
+.    ds C' ""
+'br\}
+.el\{\
+.    ds -- \|\(em\|
+.    ds PI \(*p
+.    ds L" ``
+.    ds R" ''
+'br\}
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.ie \nF \{\
+.    de IX
+.    tm Index:\\$1\t\\n%\t"\\$2"
+..
+.    nr % 0
+.    rr F
+.\}
+.el \{\
+.    de IX
+..
+.\}
+.    \" fudge factors for nroff and troff
+.if n \{\
+.    ds #H 0
+.    ds #V .8m
+.    ds #F .3m
+.    ds #[ \f1
+.    ds #] \fP
+.\}
+.if t \{\
+.    ds #H ((1u-(\\\\n(.fu%2u))*.13m)
+.    ds #V .6m
+.    ds #F 0
+.    ds #[ \&
+.    ds #] \&
+.\}
+.    \" simple accents for nroff and troff
+.if n \{\
+.    ds ' \&
+.    ds ` \&
+.    ds ^ \&
+.    ds , \&
+.    ds ~ ~
+.    ds /
+.\}
+.if t \{\
+.    ds ' \\k:\h'-(\\n(.wu*8/10-\*(#H)'\'\h"|\\n:u"
+.    ds ` \\k:\h'-(\\n(.wu*8/10-\*(#H)'\`\h'|\\n:u'
+.    ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'^\h'|\\n:u'
+.    ds , \\k:\h'-(\\n(.wu*8/10)',\h'|\\n:u'
+.    ds ~ \\k:\h'-(\\n(.wu-\*(#H-.1m)'~\h'|\\n:u'
+.    ds / \\k:\h'-(\\n(.wu*8/10-\*(#H)'\z\(sl\h'|\\n:u'
+.\}
+.    \" troff and (daisy-wheel) nroff accents
+.ds : \\k:\h'-(\\n(.wu*8/10-\*(#H+.1m+\*(#F)'\v'-\*(#V'\z.\h'.2m+\*(#F'.\h'|\\n:u'\v'\*(#V'
+.ds 8 \h'\*(#H'\(*b\h'-\*(#H'
+.ds o \\k:\h'-(\\n(.wu+\w'\(de'u-\*(#H)/2u'\v'-.3n'\*(#[\z\(de\v'.3n'\h'|\\n:u'\*(#]
+.ds d- \h'\*(#H'\(pd\h'-\w'~'u'\v'-.25m'\f2\(hy\fP\v'.25m'\h'-\*(#H'
+.ds D- D\\k:\h'-\w'D'u'\v'-.11m'\z\(hy\v'.11m'\h'|\\n:u'
+.ds th \*(#[\v'.3m'\s+1I\s-1\v'-.3m'\h'-(\w'I'u*2/3)'\s-1o\s+1\*(#]
+.ds Th \*(#[\s+2I\s-2\h'-\w'I'u*3/5'\v'-.3m'o\v'.3m'\*(#]
+.ds ae a\h'-(\w'a'u*4/10)'e
+.ds Ae A\h'-(\w'A'u*4/10)'E
+.    \" corrections for vroff
+.if v .ds ~ \\k:\h'-(\\n(.wu*9/10-\*(#H)'\s-2\u~\d\s+2\h'|\\n:u'
+.if v .ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'\v'-.4m'^\v'.4m'\h'|\\n:u'
+.    \" for low resolution devices (crt and lpr)
+.if \n(.H>23 .if \n(.V>19 \
+\{\
+.    ds : e
+.    ds 8 ss
+.    ds o a
+.    ds d- d\h'-1'\(ga
+.    ds D- D\h'-1'\(hy
+.    ds th \o'bp'
+.    ds Th \o'LP'
+.    ds ae ae
+.    ds Ae AE
+.\}
+.rm #[ #] #H #V #F C
+.IX Title "SIN Cg"
+.TH SIN Cg "Cg Toolkit 3.0" "perl v5.10.0" "Cg Standard Library"
+.if n .ad l
+.nh
+.SH "NAME"
+\&\fBsin\fR \- returns sine of scalars and vectors.
+.SH "SYNOPSIS"
+.IX Header "SYNOPSIS"
+.Vb 5
+\&  float  sin(float a);
+\&  float1 sin(float1 a);
+\&  float2 sin(float2 a);
+\&  float3 sin(float3 a);
+\&  float4 sin(float4 a);
+\& 
+\&  half   sin(half a);
+\&  half1  sin(half1 a);
+\&  half2  sin(half2 a);
+\&  half3  sin(half3 a);
+\&  half4  sin(half4 a);
+\& 
+\&  fixed  sin(fixed a);
+\&  fixed1 sin(fixed1 a);
+\&  fixed2 sin(fixed2 a);
+\&  fixed3 sin(fixed3 a);
+\&  fixed4 sin(fixed4 a);
+.Ve
+.SH "PARAMETERS"
+.IX Header "PARAMETERS"
+.IP "a" 8
+.IX Item "a"
+Vector or scalar of which to determine the sine.
+.SH "DESCRIPTION"
+.IX Header "DESCRIPTION"
+Returns the sine of \fIa\fR in radians. The return value is in the range
+[\-1,+1].
+.PP
+For vectors, the returned vector contains the sine of each
+element of the input vector.
+.SH "REFERENCE IMPLEMENTATION"
+.IX Header "REFERENCE IMPLEMENTATION"
+\&\fBsin\fR is best implemented as a native sine instruction, however \fBsin\fR
+for a \fBfloat\fR scalar could be implemented by an approximation like this.
+.PP
+.Vb 10
+\&  float sin(float a)
+\&  {
+\&    /* C simulation gives a max absolute error of less than 1.8e\-7 */
+\&    float4 c0 = float4( 0.0,            0.5,
+\&                        1.0,            0.0            );
+\&    float4 c1 = float4( 0.25,          \-9.0,
+\&                        0.75,           0.159154943091 );
+\&    float4 c2 = float4( 24.9808039603, \-24.9808039603,
+\&                       \-60.1458091736,  60.1458091736  );
+\&    float4 c3 = float4( 85.4537887573, \-85.4537887573,
+\&                       \-64.9393539429,  64.9393539429  );
+\&    float4 c4 = float4( 19.7392082214, \-19.7392082214,
+\&                       \-1.0,            1.0            );
+\&
+\&    /* r0.x = sin(a) */
+\&    float3 r0, r1, r2;
+\&
+\&    r1.x  = c1.w * a \- c1.x;                // only difference from cos!
+\&    r1.y  = frac( r1.x );                   // and extract fraction
+\&    r2.x  = (float) ( r1.y < c1.x );        // range check: 0.0 to 0.25
+\&    r2.yz = (float2) ( r1.yy >= c1.yz );    // range check: 0.75 to 1.0
+\&    r2.y  = dot( r2, c4.zwz );              // range check: 0.25 to 0.75
+\&    r0    = c0.xyz \- r1.yyy;                // range centering
+\&    r0    = r0 * r0;
+\&    r1    = c2.xyx * r0 + c2.zwz;           // start power series
+\&    r1    =     r1 * r0 + c3.xyx;
+\&    r1    =     r1 * r0 + c3.zwz;
+\&    r1    =     r1 * r0 + c4.xyx;
+\&    r1    =     r1 * r0 + c4.zwz;
+\&    r0.x  = dot( r1, \-r2 );                 // range extract
+\&
+\&    return r0.x;
+\&  }
+.Ve
+.SH "PROFILE SUPPORT"
+.IX Header "PROFILE SUPPORT"
+\&\fBsin\fR is fully supported in all profiles unless otherwise specified.
+.PP
+\&\fBsin\fR is supported via an approximation (shown above) in the
+vs_1_1, vp20, and arbvp1 profiles.
+.PP
+\&\fBsin\fR is unsupported in the fp20, ps_1_1, ps_1_2, and ps_1_3 profiles.
+.SH "SEE ALSO"
+.IX Header "SEE ALSO"
+asin, cos, dot, frac, sincos, tan

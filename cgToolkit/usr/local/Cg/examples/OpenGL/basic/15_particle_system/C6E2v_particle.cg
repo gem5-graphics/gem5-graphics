@@ -1,0 +1,33 @@
+// This is C6E2v_particle from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 152.
+
+void C6E2v_particle(float4 pInitial : POSITION,
+                    float4 vInitial : TEXCOORD0,
+                    float  tInitial : TEXCOORD1,
+
+                out float4 oPosition : POSITION,
+                out float4 color     : TEXCOORD0,
+                out float  pointSize : PSIZE,
+
+            uniform float    globalTime,
+            uniform float4   acceleration,
+            uniform float4x4 modelViewProj)
+{
+  float t = globalTime - tInitial;
+  float4 pFinal = pInitial + vInitial * t + 0.5 * acceleration * t * t;
+
+  oPosition = mul(modelViewProj, pFinal);
+  
+  color = float4(t, t, t, 1);
+ 
+  pointSize = -8.0 * t * t + 
+               8.0 * t + 
+               0.1 * pFinal.y + 1;
+}
+
+// Fragment program to accompany C6E2v_particle...
+// Emits texture coordinate set as a color
+float4 texcoord2color(float4 color : TEXCOORD0) : COLOR
+{
+  return color;
+}

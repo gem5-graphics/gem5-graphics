@@ -1,0 +1,13 @@
+# -*- mode:python -*-
+
+Import('*')
+
+if env['PROTOCOL'] == 'None':
+   Return ()
+
+SimObject('RubyDRAMCtrl.py')
+
+Source('ruby_dram_ctrl.cc')
+
+DebugFlag("RubyDramMemory")
+DebugFlag("RubyDramMemoryState")

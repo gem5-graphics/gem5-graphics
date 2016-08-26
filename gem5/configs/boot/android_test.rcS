@@ -1,0 +1,10 @@
+echo "start test"
+/sbin/su -c "sendevent /dev/input/event0 3 0 528"
+/sbin/su -c "sendevent /dev/input/event0 3 1 669"
+/sbin/su -c "sendevent /dev/input/event0 1 330 1"
+/sbin/su -c "sendevent /dev/input/event0 0 0 0"
+/sbin/su -c "sendevent /dev/input/event0 1 330 0"
+/sbin/su -c "sendevent /dev/input/event0 0 0 0"
+echo "sleeping"
+sleep 1000
+echo "end test"

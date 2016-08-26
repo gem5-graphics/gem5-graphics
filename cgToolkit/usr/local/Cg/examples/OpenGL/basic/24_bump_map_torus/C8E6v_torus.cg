@@ -1,0 +1,47 @@
+// This is C8E6v_torus from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 223.
+
+
+void C8E6v_torus(float2 parametric : POSITION,
+
+             out float4 position       : POSITION,
+             out float2 oTexCoord      : TEXCOORD0,
+             out float3 lightDirection : TEXCOORD1,
+             out float3 halfAngle      : TEXCOORD2,
+
+         uniform float3 lightPosition,  // Object-space
+         uniform float3 eyePosition,    // Object-space
+         uniform float4x4 modelViewProj,
+         uniform float2 torusInfo)
+{
+  const float pi2 = 6.28318530;  // 2 times Pi
+  // Stetch texture coordinates counterclockwise
+  // over torus to repeat normal map in 6 by 2 pattern
+  float M = torusInfo[0];
+  float N = torusInfo[1];
+  oTexCoord = parametric * float2(-6, 2);
+  // Compute torus position from its parameteric equation
+  float cosS, sinS;
+  sincos(pi2 * parametric.x, sinS, cosS);
+  float cosT, sinT;
+  sincos(pi2 * parametric.y, sinT, cosT);
+  float3 torusPosition = float3((M + N * cosT) * cosS,
+                                (M + N * cosT) * sinS,
+                                N * sinT);
+  position = mul(modelViewProj, float4(torusPosition, 1));
+  // Compute per-vertex rotation matrix
+  float3 dPds = float3(-sinS*(M+N*cosT), cosS*(M+N*cosT), 0);
+  float3 norm_dPds = normalize(dPds);
+  float3 normal = float3(cosS * cosT, sinS * cosT, sinT);
+  float3 dPdt = cross(normal, norm_dPds);
+  float3x3 rotation = float3x3(norm_dPds,
+                               dPdt,
+                               normal);
+  // Rotate object-space vectors to texture space
+  float3 eyeDirection = eyePosition - torusPosition;
+  lightDirection = lightPosition - torusPosition;
+  lightDirection = mul(rotation, lightDirection);
+  eyeDirection = mul(rotation, eyeDirection);
+  halfAngle = normalize(normalize(lightDirection) +
+                        normalize(eyeDirection));
+}

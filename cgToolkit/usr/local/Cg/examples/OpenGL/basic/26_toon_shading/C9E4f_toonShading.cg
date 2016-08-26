@@ -1,0 +1,24 @@
+// This is C9E4f_toonShading from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 248.
+
+void C9E4f_toonShading(float diffuseLight : TEXCOORD0,  
+                       float specularLight: TEXCOORD1,  
+                       float edge         : TEXCOORD2,
+
+                   out float4 color : COLOR,
+               
+               uniform float4 Kd,
+               uniform float4 Ks,
+               uniform sampler1D diffuseRamp,
+               uniform sampler1D specularRamp,
+               uniform sampler1D edgeRamp)
+{
+  // Apply step functions
+  diffuseLight = tex1D(diffuseRamp, diffuseLight).x;
+  specularLight = tex1D(specularRamp,specularLight).x;
+  edge = tex1D(edgeRamp, edge).x;
+
+  // Compute the final color
+  color = edge * (Kd * diffuseLight + 
+                  Ks * specularLight);
+}

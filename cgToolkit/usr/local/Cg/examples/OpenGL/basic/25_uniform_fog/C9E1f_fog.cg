@@ -1,0 +1,20 @@
+// This is C9E1f_fog from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 240.
+
+void C9E1f_fog(float2 texCoord    : TEXCOORD0,
+               float  fogExponent : TEXCOORD1,
+               float4 color       : COLOR,
+
+           out float4 oColor : COLOR,
+
+       uniform sampler2D decal,
+       uniform float3 fogColor)
+{
+  float fogFactor   = exp2(-abs(fogExponent));
+  float4 decalColor = tex2D(decal, texCoord);
+  float4 texColor   = color*decalColor;
+
+  oColor.xyz = lerp(fogColor, texColor.xyz,
+                    fogFactor);
+  oColor.w   = color.w;
+}

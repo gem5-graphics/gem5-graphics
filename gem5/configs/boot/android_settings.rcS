@@ -1,0 +1,24 @@
+#!/system/bin/sh
+echo "Starting Android settings benchmark..."
+am start -n com.android.settings/.Settings
+sleep 8
+su -c 'sendevent /dev/input/event0 3 0 90'
+su -c 'sendevent /dev/input/event0 3 1 373'
+su -c 'sendevent /dev/input/event0 1 330 1'
+su -c 'sendevent /dev/input/event0 0 0 0'
+su -c 'sendevent /dev/input/event0 1 330 0'
+su -c 'sendevent /dev/input/event0 0 0 0'
+sleep 5
+su -c 'sendevent /dev/input/event0 3 0 150'
+su -c 'sendevent /dev/input/event0 3 1 495'
+su -c 'sendevent /dev/input/event0 1 330 1'
+su -c 'sendevent /dev/input/event0 0 0 0'
+su -c 'sendevent /dev/input/event0 1 330 0'
+su -c 'sendevent /dev/input/event0 0 0 0'
+sleep 5
+su -c 'sendevent /dev/input/event0 3 0 173'
+su -c 'sendevent /dev/input/event0 3 1 683'
+su -c 'sendevent /dev/input/event0 1 330 1'
+su -c 'sendevent /dev/input/event0 0 0 0'
+su -c 'sendevent /dev/input/event0 1 330 0'
+su -c 'sendevent /dev/input/event0 0 0 0'

@@ -1,0 +1,319 @@
+
+/* CgFX 1.4 file for bumpdemo2 effect. */
+
+/* Includes verbatim shaders from The Cg Tutorial (ISBN: 0321194969). */
+#include "C8E4f_specSurf.cg"      /* page 209 */
+#include "C8E6v_torus.cg"         /* page 223 */
+
+/* Additional shaders */
+#define EXPAND_DEFINED
+#include "specSurfNormalize.cg"   /* modernized version of C8E4f_specSurf */
+#include "specSurfSelfShadow.cg"  /* specSurfNormalize with geometric self-shadowing */
+#include "noBump.cg"              /* diffuse+specular without bumpmapping */
+
+float4x4 ModelViewProj : ModelViewProjection;
+float OuterRadius = 6;
+float InnerRadius = 2;
+float3 LightPosition = { -8, 0, 15 };
+float3 EyePosition = { 0, 0, 18 };
+
+float Ambient<
+  string type = "ambient";
+  float minValue = 0.0;
+  float maxValue = 1.0;
+> = 0.3;
+
+float Shininess <
+  string type = "shininess";
+  float minValue = 1.0;
+  float maxValue = 128.0;
+> = 40.0;
+
+float Opacity <
+  string type = "opacity";
+  float minValue = 0.0;
+  float maxValue = 1.0;
+> = 1.0;
+
+float3 DiffuseMaterial<
+  string type = "color";
+  float3 minValue = float3(0,0,0);
+  float3 maxValue = float3(1,1,1);
+> = { 0.9, 0.6, 0.3 };
+
+float3 SpecularMaterial<
+  string type = "color";
+  float3 minValue = float3(0,0,0);
+  float3 maxValue = float3(1,1,1);
+> = { 1, 1, 1 };
+
+float3 LightColor<
+  string type = "color";
+  float3 minValue = float3(0,0,0);
+  float3 maxValue = float3(1,1,1);
+> = { 1.0, 0.9, 0.9 };
+
+sampler2D normalMap = sampler_state {
+  generateMipMap = true;
+  minFilter = LinearMipMapLinear;
+  magFilter = Linear;
+};
+
+samplerCUBE normalizeCube = sampler_state {
+  minFilter = Linear;
+  magFilter = Linear;
+  wrapS = ClampToEdge;
+  wrapT = ClampToEdge;
+};
+
+// Because bumpdemo2.c picks the first valid technique, list techniques
+// in relative order of preference...
+
+// Best technique for GeForce 8 GPUs...
+technique bumpdemo_g80 {
+  pass {
+    FragmentProgram =
+      compile gp4fp specSurfNormalize(Ambient,
+                                      Shininess,
+                                      Opacity,
+                                      DiffuseMaterial  * LightColor,
+                                      SpecularMaterial * LightColor,
+                                      normalMap);
+    VertexProgram =
+      compile gp4vp C8E6v_torus(LightPosition,
+                                EyePosition,
+                                ModelViewProj,
+                                float2(OuterRadius, InnerRadius));
+  }
+}
+
+// Best technique for GeForce 7 and 6 GPUs...
+technique bumpdemo_nv40 {
+  pass {
+    FragmentProgram =
+      compile fp40 specSurfNormalize(Ambient,
+                                     Shininess,
+                                     Opacity,
+                                     DiffuseMaterial  * LightColor,
+                                     SpecularMaterial * LightColor,
+                                     normalMap);
+    VertexProgram =
+      compile vp40 C8E6v_torus(LightPosition,
+                               EyePosition,
+                               ModelViewProj,
+                               float2(OuterRadius, InnerRadius));
+  }
+}
+
+// Best technique for GeForce FX 5xxx GPUs...
+technique bumpdemo_nv30 {
+  pass {
+    FragmentProgram =
+      compile fp30 specSurfNormalize(Ambient,
+                                     Shininess,
+                                     Opacity,
+                                     DiffuseMaterial  * LightColor,
+                                     SpecularMaterial * LightColor,
+                                     normalMap);
+    VertexProgram =
+      compile vp30 C8E6v_torus(LightPosition,
+                               EyePosition,
+                               ModelViewProj,
+                               float2(OuterRadius, InnerRadius));
+  }
+}
+
+// Best technique for ATI GPUs (using multi-vendor assembly extensions)...
+technique bumpdemo_arb {
+  pass {
+    FragmentProgram =
+      compile arbfp1 specSurfNormalize(Ambient,
+                                       Shininess,
+                                       Opacity,
+                                       DiffuseMaterial  * LightColor,
+                                       SpecularMaterial * LightColor,
+                                       normalMap);
+    VertexProgram =
+      compile arbvp1 C8E6v_torus(LightPosition,
+                                 EyePosition,
+                                 ModelViewProj,
+                                 float2(OuterRadius, InnerRadius));
+  }
+}
+
+// Best technique for GeForce 3 and 4 Ti GPUs...
+technique bumpdemo_nv20 {
+  pass {
+    FragmentProgram =
+      compile fp20 C8E4f_specSurf(Ambient,
+                                  float4(DiffuseMaterial  * LightColor, 1),
+                                  float4(SpecularMaterial * LightColor, 1),
+                                  normalMap,
+                                  normalizeCube,
+                                  normalizeCube);
+    VertexProgram =
+      compile vp20 C8E6v_torus(LightPosition,
+                               EyePosition,
+                               ModelViewProj,
+                               float2(OuterRadius, InnerRadius));
+  }
+}
+
+// Best technique for GLSL-capable GPUs...
+technique bumpdemo_GLSL {
+  pass {
+    FragmentProgram =
+      compile glslf specSurfNormalize(Ambient,
+                                      Shininess,
+                                      Opacity,
+                                      DiffuseMaterial  * LightColor,
+                                      SpecularMaterial * LightColor,
+                                      normalMap);
+    VertexProgram =
+      compile glslv C8E6v_torus(LightPosition,
+                                EyePosition,
+                                ModelViewProj,
+                                float2(OuterRadius, InnerRadius));
+  }
+}
+
+// Technique using book's exact programs with multi-vendor profiles...
+technique bumpdemo_book_arb {
+  pass {
+    FragmentProgram =
+      compile arbfp1 C8E4f_specSurf(Ambient,
+                                    float4(DiffuseMaterial  * LightColor, 1),
+                                    float4(SpecularMaterial * LightColor, 1),
+                                    normalMap,
+                                    normalizeCube,
+                                    normalizeCube);
+    VertexProgram =
+      compile arbvp1 C8E6v_torus(LightPosition,
+                                 EyePosition,
+                                 ModelViewProj,
+                                 float2(OuterRadius, InnerRadius));
+  }
+}
+
+// Technique using book's exact programs with GLSL profiles...
+technique bumpdemo_book_GLSL {
+  pass {
+    FragmentProgram =
+      compile glslf C8E4f_specSurf(Ambient,
+                                   float4(DiffuseMaterial  * LightColor, 1),
+                                   float4(SpecularMaterial * LightColor, 1),
+                                   normalMap,
+                                   normalizeCube,
+                                   normalizeCube);
+    VertexProgram =
+      compile glslv C8E6v_torus(LightPosition,
+                                EyePosition,
+                                ModelViewProj,
+                                float2(OuterRadius, InnerRadius));
+  }
+}
+
+// Technique for phong shading without bump mapping...
+technique nobump_arb {
+  pass {
+    FragmentProgram =
+      compile arbfp1 noBump(Ambient,
+                            Shininess,
+                            Opacity,      
+                            DiffuseMaterial  * LightColor,
+                            SpecularMaterial * LightColor);
+    VertexProgram =
+      compile arbvp1 C8E6v_torus(LightPosition,
+                                 EyePosition,
+                                 ModelViewProj,
+                                 float2(OuterRadius, InnerRadius));
+  }
+}
+
+// Technique using GLSL for phong shading without bump mapping...
+technique nobump_GLSL {
+  pass {
+    FragmentProgram =
+      compile glslf noBump(Ambient,
+                           40.0,
+                           Opacity,      
+                           DiffuseMaterial  * LightColor,
+                           SpecularMaterial * LightColor);
+    VertexProgram =
+      compile glslv C8E6v_torus(LightPosition,
+                                EyePosition,
+                                ModelViewProj,
+                                float2(OuterRadius, InnerRadius));
+  }
+}
+
+// Technique with geometric self-shadowing for the bump mapping for GeForce 8...
+technique bump_selfShadow_g80 {
+  pass {
+    FragmentProgram =
+      compile gp4fp specSurfSelfShadow(Ambient,
+                                       Shininess,
+                                       Opacity,
+                                       DiffuseMaterial  * LightColor,
+                                       SpecularMaterial * LightColor,
+                                       normalMap);
+    VertexProgram =
+      compile gp4vp C8E6v_torus(LightPosition,
+                                EyePosition,
+                                ModelViewProj,
+                                float2(OuterRadius, InnerRadius));
+  }
+}
+
+// Technique with geometric self-shadowing for the bump mapping for GeForce 6 & 7...
+technique bump_selfShadow_nv40 {
+  pass {
+    FragmentProgram =
+      compile fp40 specSurfSelfShadow(Ambient,
+                                      Shininess,
+                                      Opacity,
+                                      DiffuseMaterial  * LightColor,
+                                      SpecularMaterial * LightColor,
+                                      normalMap);
+    VertexProgram =
+      compile vp40 C8E6v_torus(LightPosition,
+                               EyePosition,
+                               ModelViewProj,
+                               float2(OuterRadius, InnerRadius));
+  }
+}
+
+// Technique with geometric self-shadowing for the bump mapping for ATI...
+technique bump_selfShadow_arb {
+  pass {
+    FragmentProgram =
+      compile arbfp1 specSurfSelfShadow(Ambient,
+                                        Shininess,
+                                        Opacity,
+                                        DiffuseMaterial  * LightColor,
+                                        SpecularMaterial * LightColor,
+                                        normalMap);
+    VertexProgram =
+      compile arbvp1 C8E6v_torus(LightPosition,
+                                 EyePosition,
+                                 ModelViewProj,
+                                 float2(OuterRadius, InnerRadius));
+  }
+}
+
+technique bump_selfShadow_GLSL {
+  pass {
+    FragmentProgram =
+      compile glslf specSurfSelfShadow(Ambient,
+                                       40.0,
+                                       Opacity,
+                                       DiffuseMaterial  * LightColor,
+                                       SpecularMaterial * LightColor,
+                                       normalMap);
+    VertexProgram =
+      compile glslv C8E6v_torus(LightPosition,
+                                EyePosition,
+                                ModelViewProj,
+                                float2(OuterRadius, InnerRadius));
+  }
+}

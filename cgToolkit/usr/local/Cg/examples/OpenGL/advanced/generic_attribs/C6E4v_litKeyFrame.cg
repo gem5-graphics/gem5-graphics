@@ -1,0 +1,53 @@
+// This is C5E7_attenuateLighting from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 161-2.
+
+// Page 161
+struct Light {
+  float3 eyePosition;    // In object space
+  float3 lightPosition;  // In object space
+  float4 lightColor;
+  float  specularExponent;
+  float  ambient;
+};
+
+float4 computeLighting(Light light,
+                       float3 position,  // In object space
+                       float3 normal)    // In object space
+{
+  float3 lightDirection = light.lightPosition - position;
+  float3 lightDirNorm = normalize(lightDirection);
+  float3 eyeDirection = light.eyePosition - position;
+  float3 eyeDirNorm = normalize(eyeDirection);
+  float3 halfAngle = normalize(lightDirNorm + eyeDirNorm);
+  float diffuse = max(0.0,dot(lightDirNorm, normal));
+  float specular = pow(max(0.0,dot(halfAngle, normal)),
+                       light.specularExponent);
+  return light.lightColor * (light.ambient + 
+                             diffuse + specular);
+}
+
+// Page 162
+void generic_attrib_litKeyFrame(float3 positionA : ATTR0,
+                                float3 positionB : ATTR1,
+                                float3 normalA   : ATTR2,
+                                float3 normalB   : ATTR3,
+                                float2 texCoord  : ATTR4,
+                              //float4 color     : ATTR5,
+
+                            out float4 oPosition : POSITION,
+                            out float2 oTexCoord : TEXCOORD0,
+                            out float4 color     : COLOR,
+
+                        uniform float     keyFrameBlend,
+                        uniform Light     light,
+                        uniform float4x4  modelViewProj)
+{
+  float3 position = lerp(positionA, positionB,
+                         keyFrameBlend);
+  float3 blendNormal = lerp(normalA, normalB,
+                            keyFrameBlend);
+  float3 normal = normalize(blendNormal);
+  oPosition = mul(modelViewProj, float4(position, 1));
+  oTexCoord = texCoord;
+  color = computeLighting(light, position, normal);
+}

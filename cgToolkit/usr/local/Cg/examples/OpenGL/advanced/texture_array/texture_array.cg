@@ -1,0 +1,23 @@
+// These vertex and fragment programs are used by texture_array.c
+
+// Vertex pass-through program for 2D positions with color
+void offset_layer(float2 position  : POSITION,
+                  float3 texcoord  : TEXCOORD0,
+                     
+              out float4 oPosition : POSITION,
+              out float3 oTexCoord : TEXCOORD0,
+          
+          uniform float layerOffset)
+{
+  oPosition = float4(position,0,1);
+  oTexCoord = texcoord;
+  oTexCoord.z += layerOffset;
+}
+
+// Fragment program using 2D texture array sampler
+float4 choose_decal(float3 texcoord : TEXCOORD0,
+                         
+            uniform sampler2DARRAY decalArray) : COLOR
+{
+  return tex2DARRAY(decalArray, texcoord);
+}

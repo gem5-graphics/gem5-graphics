@@ -1,0 +1,233 @@
+.de Sh \" Subsection heading
+.br
+.if t .Sp
+.ne 5
+.PP
+\fB\\$1\fR
+.PP
+..
+.de Sp \" Vertical space (when we can't use .PP)
+.if t .sp .5v
+.if n .sp
+..
+.de Vb \" Begin verbatim text
+.ft CW
+.nf
+.ne \\$1
+..
+.de Ve \" End verbatim text
+.ft R
+.fi
+..
+.tr \(*W-
+.ds C+ C\v'-.1v'\h'-1p'\s-2+\h'-1p'+\s0\v'.1v'\h'-1p'
+.ie n \{\
+.    ds -- \(*W-
+.    ds PI pi
+.    if (\n(.H=4u)&(1m=24u) .ds -- \(*W\h'-12u'\(*W\h'-12u'-\" diablo 10 pitch
+.    if (\n(.H=4u)&(1m=20u) .ds -- \(*W\h'-12u'\(*W\h'-8u'-\"  diablo 12 pitch
+.    ds L" ""
+.    ds R" ""
+.    ds C` ""
+.    ds C' ""
+'br\}
+.el\{\
+.    ds -- \|\(em\|
+.    ds PI \(*p
+.    ds L" ``
+.    ds R" ''
+'br\}
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.ie \nF \{\
+.    de IX
+.    tm Index:\\$1\t\\n%\t"\\$2"
+..
+.    nr % 0
+.    rr F
+.\}
+.el \{\
+.    de IX
+..
+.\}
+.    \" fudge factors for nroff and troff
+.if n \{\
+.    ds #H 0
+.    ds #V .8m
+.    ds #F .3m
+.    ds #[ \f1
+.    ds #] \fP
+.\}
+.if t \{\
+.    ds #H ((1u-(\\\\n(.fu%2u))*.13m)
+.    ds #V .6m
+.    ds #F 0
+.    ds #[ \&
+.    ds #] \&
+.\}
+.    \" simple accents for nroff and troff
+.if n \{\
+.    ds ' \&
+.    ds ` \&
+.    ds ^ \&
+.    ds , \&
+.    ds ~ ~
+.    ds /
+.\}
+.if t \{\
+.    ds ' \\k:\h'-(\\n(.wu*8/10-\*(#H)'\'\h"|\\n:u"
+.    ds ` \\k:\h'-(\\n(.wu*8/10-\*(#H)'\`\h'|\\n:u'
+.    ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'^\h'|\\n:u'
+.    ds , \\k:\h'-(\\n(.wu*8/10)',\h'|\\n:u'
+.    ds ~ \\k:\h'-(\\n(.wu-\*(#H-.1m)'~\h'|\\n:u'
+.    ds / \\k:\h'-(\\n(.wu*8/10-\*(#H)'\z\(sl\h'|\\n:u'
+.\}
+.    \" troff and (daisy-wheel) nroff accents
+.ds : \\k:\h'-(\\n(.wu*8/10-\*(#H+.1m+\*(#F)'\v'-\*(#V'\z.\h'.2m+\*(#F'.\h'|\\n:u'\v'\*(#V'
+.ds 8 \h'\*(#H'\(*b\h'-\*(#H'
+.ds o \\k:\h'-(\\n(.wu+\w'\(de'u-\*(#H)/2u'\v'-.3n'\*(#[\z\(de\v'.3n'\h'|\\n:u'\*(#]
+.ds d- \h'\*(#H'\(pd\h'-\w'~'u'\v'-.25m'\f2\(hy\fP\v'.25m'\h'-\*(#H'
+.ds D- D\\k:\h'-\w'D'u'\v'-.11m'\z\(hy\v'.11m'\h'|\\n:u'
+.ds th \*(#[\v'.3m'\s+1I\s-1\v'-.3m'\h'-(\w'I'u*2/3)'\s-1o\s+1\*(#]
+.ds Th \*(#[\s+2I\s-2\h'-\w'I'u*3/5'\v'-.3m'o\v'.3m'\*(#]
+.ds ae a\h'-(\w'a'u*4/10)'e
+.ds Ae A\h'-(\w'A'u*4/10)'E
+.    \" corrections for vroff
+.if v .ds ~ \\k:\h'-(\\n(.wu*9/10-\*(#H)'\s-2\u~\d\s+2\h'|\\n:u'
+.if v .ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'\v'-.4m'^\v'.4m'\h'|\\n:u'
+.    \" for low resolution devices (crt and lpr)
+.if \n(.H>23 .if \n(.V>19 \
+\{\
+.    ds : e
+.    ds 8 ss
+.    ds o a
+.    ds d- d\h'-1'\(ga
+.    ds D- D\h'-1'\(hy
+.    ds th \o'bp'
+.    ds Th \o'LP'
+.    ds ae ae
+.    ds Ae AE
+.\}
+.rm #[ #] #H #V #F C
+.IX Title "TRACE Cg"
+.TH TRACE Cg "Cg Toolkit 3.0" "perl v5.10.0" "Cg Topics"
+.if n .ad l
+.nh
+.SH "TOPIC"
+.IX Header "TOPIC"
+\&\fBTrace\fR \- \s-1API\s0 Trace for Cg, CgGL, OpenGL and \s-1GLUT\s0
+.Sh "\s-1INTRODUCTION\s0"
+.IX Subsection "INTRODUCTION"
+The \s-1NVIDIA\s0 Cg Toolkit provides trace wrapper libraries for logging \s-1API\s0 calls
+to Cg, CgGL, OpenGL and \s-1GLUT\s0 libraries.  The log includes nested function 
+call information and function parameter and return values.  The logged data can be
+useful for debugging, trouble shooting and reporting issues.
+.PP
+The libraries are experimental and require some software development expertise.
+.Sh "\s-1REQUIREMENTS\s0 \s-1AND\s0 \s-1LIMITATIONS\s0"
+.IX Subsection "REQUIREMENTS AND LIMITATIONS"
+Trace supports Cg version 2.2.010 (October 2009) and onwards.
+Cg, CgGL, OpenGL, and \s-1GLUT\s0 trace libraries are included.
+.PP
+CgD3D8, CgD3D9, CgD3D10 and CgD3D10 are not currently supported.
+.PP
+Cg and \s-1GLUT\s0 are supported for \s-1OSX\s0, but currently not OpenGL.
+.PP
+Trace captures calls and parameters, but not the contents of files
+referenced by calls such as cgCreateProgramFromFile.
+Archive the logs, .cg and .cgfx files together into a .zip or .tgz for later reference.
+.Sh "\s-1BUILDING\s0"
+.IX Subsection "BUILDING"
+The trace library source code, makefile and Visual Studio projects are 
+located in the examples/Tools/trace directory of the Cg Toolkit installation.
+Pre-built binaries are also included.
+.PP
+The trace library components are as follows.
+.PP
+.Vb 11
+\&  trace.c       }
+\&  traceOutput.c } \-\-\-\-> trace library
+\&  traceFilter.c }
+\&  traceTime.c   }
+\&  b64.c         }
+\&  traceCg.c       \-\-\-\-> Cg wrapper library
+\&  traceCgGL.c     \-\-\-\-> CgGL wrapper library
+\&  traceGLUT.c     \-\-\-\-> GLUT wrapper library
+\&  traceGL.c     }
+\&  traceGLX.c    } \-\-\-\-> GL wrapper library
+\&  traceWGL.c    }
+.Ve
+.Sh "\s-1DEPLOYMENT\s0"
+.IX Subsection "DEPLOYMENT"
+\fI\s-1ENVIRONMENT\s0 \s-1VARIABLES\s0\fR
+.IX Subsection "ENVIRONMENT VARIABLES"
+.PP
+The \fB\s-1CG_TRACE_FILE\s0\fR and \fB\s-1CG_TRACE_ERROR\s0\fR environment variables specify
+paths to the trace log and error log.  The two file names can be the same.
+Otherwise \fBstdout\fR and \fBstderr\fR are used.
+.PP
+The \fB\s-1CG_TRACE_CG_LIBRARY\s0\fR and \fB\s-1CG_TRACE_CGGL_LIBRARY\s0\fR environment variables
+specify the path of the target Cg and CgGL libraries.
+The \fB\s-1CG_TRACE_GL_LIBRARY\s0\fR environment variable specifies the path of the
+target OpenGL library.
+The \fB\s-1CG_TRACE_GLUT_LIBRARY\s0\fR environment variable specifies the path of the
+target OpenGL library.
+.PP
+Otherwise, default system locations are used.
+.PP
+The \fB\s-1CG_TRACE_BLOB_LIMIT\s0\fR environment variable limits the size of raw data logged.
+Just the pointer value is stored for parameters that exceed the limit.
+This variable is typically set to avoid capturing texture image data.
+By default there is no limit and all parameter data is logged.
+.PP
+The \fB\s-1CG_TRACE_TIMESTAMP\s0\fR environment variable specifies timestamp logging for each call.
+Any non-zero integer value enables timestamp tracing.
+By default timestamp logging is disabled.
+.PP
+Recommended settings:
+.PP
+.Vb 2
+\&  CG_TRACE_FILE traceLog.txt
+\&  CG_TRACE_ERROR traceError.txt
+.Ve
+.PP
+\fI\s-1WINDOWS\s0\fR
+.IX Subsection "WINDOWS"
+.PP
+Select a trace directory to copy the trace libraries to.
+This can be the same as the application directory.
+The directory of the target \fB.exe\fR is recommended.
+.PP
+Copy \fBtrace.dll\fR to the trace directory.
+The API-specific trace libraries depend on \fBtrace.dll\fR.
+The other trace libraries are optional.
+.PP
+Optionally copy trace \fBcg.dll\fR and \fBcgGL.dll\fR to the trace directory.
+The \fB\s-1CG_BIN_PATH\s0\fR (32\-bit) or \fB\s-1CG_BIN64_PATH\s0\fR (64\-bit) environment variables are used
+unless \fB\s-1CG_TRACE_CG_LIBRARY\s0\fR or \fB\s-1CG_TRACE_CGGL_LIBRARY\s0\fR are defined.
+.PP
+Optionally copy trace \fBopengl32.dll\fR to the trace directory.
+.PP
+Optionally copy trace \fBglut32.dll\fR to the trace directory.
+.PP
+\fI\s-1LINUX\s0 and \s-1SOLARIS\s0\fR
+.IX Subsection "LINUX and SOLARIS"
+.PP
+Set the \fB\s-1LD_LIBRARY_PATH\s0\fR environment variable to the directory containing the trace libraries.
+The API-specific trace libraries depend on \fBlibtrace.so\fR.
+The other trace libraries are optional.
+.PP
+\fI\s-1OSX\s0\fR
+.IX Subsection "OSX"
+.PP
+Set the \fB\s-1DYLD_LIBRARY_PATH\s0\fR environment variable to the directory containing the trace libraries.
+These are installed to \fB/Developer/NVIDIA/Cg/examples/Tools/trace\fR by default.
+The API-specific trace libraries depend on \fBlibtrace.dylib\fR.
+The \fBCg\fR and \fB\s-1GLUT\s0\fR trace frameworks are both optional.
+The symlinks \fBlibCg.dylib\fR and \fBlibGLUT.dylib\fR specify the full path of the native frameworks.
+.Sh "\s-1CREDITS\s0 \s-1AND\s0 \s-1LICENCES\s0"
+.IX Subsection "CREDITS AND LICENCES"
+The core trace library uses the base64 C implementation of
+Base64 Content-Transfer-Encoding standard (also known as \s-1RFC1113\s0) by Bob Trower, Trantor Standard Systems Inc.
+.PP
+The Cg trace library uses the uthash C hash table implementation by Troy D. Hanson.

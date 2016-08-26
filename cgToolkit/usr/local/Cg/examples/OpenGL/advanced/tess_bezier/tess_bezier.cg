@@ -1,0 +1,112 @@
+// Vertex program
+
+void mainV
+(
+  in  float4 position  : POSITION,
+  out float4 oPosition : POSITION
+)
+{
+  oPosition = position;
+}
+
+// gp5tcp - Tessellation Control Program
+//
+// - Input and output 4x4 cubic Bezier patch.
+// - Transform control points by a uniform non-projective transformation.
+// - Copy inner and outer tessellation from uniform parameters.
+
+gp5tcp PATCH_16
+void main
+(
+  in int id                       : CONTROLPOINT_ID,
+  in AttribArray<float4> position : POSITION,
+
+  out float4 oPosition     : POSITION,
+  out float  oEdgeTess[4]  : EDGETESS,
+  out float  oInnerTess[2] : INNERTESS,
+
+  uniform int2     innerTess,
+  uniform float4   outerTess,
+  uniform float4x4 modelview
+)
+{
+  // Per control-point output
+  
+  oPosition = mul(modelview, position[id]);
+
+  // Per patch output
+
+  oEdgeTess[0] = outerTess.x;
+  oEdgeTess[1] = outerTess.y;
+  oEdgeTess[2] = outerTess.z;
+  oEdgeTess[3] = outerTess.w;
+  
+  oInnerTess[0] = innerTess.x;
+  oInnerTess[1] = innerTess.y;
+}
+
+// gp5tep - Tessellation Evaluation Program
+//
+// - Evaluate 4x4 cubic Bezier patch.
+// - Transform position by a uniform 4x4 projection matrix.
+
+gp5tep QUADS PATCH_16
+void main
+(
+  in float2              uv       : UV,
+  in AttribArray<float3> position : POSITION,
+
+  out float4 oPosition : POSITION,
+  out float4 oColor    : COLOR,
+
+  uniform float4x4 projection
+)
+{
+  // Compute Bernstein weights for U (1 ADD, 8 MULs)
+  float  u          = uv.x;
+  float  uu         = u*u;
+  float  oneMinusU  = 1-u;
+  float  oneMinusUU = oneMinusU*oneMinusU;
+  float3 Bu[4] =
+  {
+    (oneMinusU*oneMinusUU).xxx, // (1-u)^3
+    (3*u*oneMinusUU).xxx,       // 3u(1-u)^2
+    (3*uu*oneMinusU).xxx,       // 3u^2(1-u)
+    (u*uu).xxx                  // u^3
+  };
+
+  // Four horizontally symmetric sum-of-products with Bu weights (3*8 MULs, 3*8 MADs, 3*4 ADDs)
+  [precise] float3 w0 = fma(Bu[0], position[0], Bu[1]*position[4]) + fma(Bu[3], position[12], Bu[2]*position[8]),
+                   w1 = fma(Bu[0], position[1], Bu[1]*position[5]) + fma(Bu[3], position[13], Bu[2]*position[9]),
+                   w2 = fma(Bu[0], position[2], Bu[1]*position[6]) + fma(Bu[3], position[14], Bu[2]*position[10]),
+                   w3 = fma(Bu[0], position[3], Bu[1]*position[7]) + fma(Bu[3], position[15], Bu[2]*position[11]);
+
+  // Compute Bernstein weights for V (1 ADD, 8 MULs)
+  float  v          = uv.y;
+  float  vv         = v*v;
+  float  oneMinusV  = 1-v;
+  float  oneMinusVV = oneMinusV*oneMinusV;
+  float3 Bv[4] =
+  {
+    (oneMinusV*oneMinusVV).xxx, // (1-u)^3
+    (3*v*oneMinusVV).xxx,       // 3u(1-u)^2
+    (3*vv*oneMinusV).xxx,       // 3u^2(1-u)
+    (v*vv).xxx                  // u^3
+  };
+
+  // One verically symmetric sum-of-products with Bu weights (3*2 MULs, 3*2 MADs, 3 ADDs)
+  [precise] float3 sum = fma(Bv[0],w0, Bv[1]*w1) + fma(Bv[3],w3, Bv[2]*w2);
+
+  oPosition = mul(projection, float4(sum,1));
+  oColor = float4(0,0.4,0,1);
+}
+
+// Fragment program
+
+float4 mainF
+(
+  in float4 color  : COLOR
+) : COLOR
+{
+  return color;
+}

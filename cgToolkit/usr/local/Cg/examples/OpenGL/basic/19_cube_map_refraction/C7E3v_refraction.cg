@@ -1,0 +1,28 @@
+// This is C7E3v_refraction from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 187.
+
+void C7E3v_refraction(float4 position : POSITION,
+                      float2 texCoord : TEXCOORD0,
+                      float3 normal   : NORMAL,
+   
+                  out float4 oPosition  : POSITION,
+                  out float2 oTexCoord  : TEXCOORD0,
+                  out float3 T          : TEXCOORD1,
+
+              uniform float etaRatio,
+              uniform float3 eyePositionW,
+              uniform float4x4 modelViewProj, 
+              uniform float4x4 modelToWorld)
+{
+  oPosition = mul(modelViewProj, position);
+  oTexCoord = texCoord;
+
+  // Compute position and normal in world space
+  float3 positionW = mul(modelToWorld, position).xyz;
+  float3 N = mul((float3x3)modelToWorld, normal);
+  N = normalize(N);
+  
+  // Compute the incident and refracted vectors
+  float3 I = normalize(positionW - eyePositionW);
+  T = refract(I, N, etaRatio);
+}

@@ -1,0 +1,351 @@
+// This geometry program example demonstrates the following:
+// * vertex program
+//   *  keyframe interpolate object-space position and normal
+//   *  output the position transformed to clip space
+//   *  output object-space normalized view and light vectors
+// * geometry program
+//   *  compute a per-vertex "object-space to texture-space" basis
+//      for each assembled triangle using object-space position and 
+//      skin texture coordinates
+//   *  pass through skin texture coordinates and clip-space position
+//   *  output object-space view and light vectors transformed to 
+//      texture space
+// * fragment program
+//   *  sample decal/gloss and normal map textures based on skin 
+//      texture coordinates
+//   *  compute diffuse and specular terms
+//   *  diffuse/ambient contribution modulates decal by sum of ambient
+//      and diffuse terms
+//   *  specular contribution modulate gloss, shine color, and specular term
+//   *  output sum of diffuse/ambient and specular contributions
+
+void md2bump_vertex(float3 positionA : POSITION,
+                    float3 normalA   : NORMAL,
+                    float2 texCoord  : TEXCOORD0,
+                    float3 positionB : TEXCOORD1,
+                    float3 normalB   : TEXCOORD2,
+
+               out float4 oPosition    : POSITION,
+               out float2 oTexCoord    : TEXCOORD0,
+               out float3 oObjPosition : TEXCOORD1,
+               out float3 oObjNormal   : TEXCOORD2,
+               out float3 oObjView     : TEXCOORD3,
+               out float3 oObjLight    : TEXCOORD4,
+
+           uniform float     keyFrameBlend,
+           uniform float3    eyePosition,
+           uniform float3    lightPosition,
+           uniform float2    scaleFactor,
+           uniform float4x4  modelViewProj)
+{
+  // Keyframe interpolate two positions and two normals based
+  // on keyFrameBlend weight
+  float3 blendPosition = lerp(positionA, positionB,
+                              keyFrameBlend);
+  float3 blendNormal = lerp(normalA, normalB,
+                            keyFrameBlend);
+                            
+  // Transform weighted position to clip space
+  oPosition = mul(modelViewProj, float4(blendPosition, 1));
+  
+  // Output scaled skin texture coordinates
+  // by 1/float2(skinWidth,skinHeight)
+  oTexCoord = texCoord * scaleFactor;
+  
+  // Output object-space vectors...
+  //// Weighted object-space position
+  oObjPosition = blendPosition;
+  //// Weighted object-space normal (assumed normalized)
+  oObjNormal = normalize(blendNormal);
+  //// Normalized weighted object-space view vector
+  oObjView = normalize(eyePosition - blendPosition);
+  //// Normalized weighted object-space light vector
+  oObjLight = normalize(lightPosition - blendPosition);
+}
+
+TRIANGLE void
+md2bump_geometry(AttribArray<float4> position    : POSITION,
+                 AttribArray<float2> texCoord    : TEXCOORD0,
+                 AttribArray<float3> objPosition : TEXCOORD1,
+                 AttribArray<float3> objNormal   : TEXCOORD2,
+                 AttribArray<float3> objView     : TEXCOORD3,
+                 AttribArray<float3> objLight    : TEXCOORD4)
+{
+  // Express the per-vertex object-space (x,y,z) position and texture
+  // coordinates with short math equation-friendly variable names.
+  float3 P0 = objPosition[0],
+         P1 = objPosition[1],
+         P2 = objPosition[2];
+  float  s0 = texCoord[0].s,
+         s1 = texCoord[1].s,
+         s2 = texCoord[2].s;
+  float  t0 = texCoord[0].t,
+         t1 = texCoord[1].t,
+         t2 = texCoord[2].t;
+
+  // How can we compute a texture-space basis to convert object-space
+  // direction vectors to texture space?  How can we do this so this
+  // basis is consistent with the per-vertex normals?  How can we do
+  // this in the most math-efficient way?  Read on...
+  //
+  // Solving for the (x,y,z) position P in terms of (s,t) is:
+  //
+  //   P(s,t) = P0 + A / B
+  //
+  // where
+  //
+  //   A = (P2-P0)*((t-t0)*(s1-s0)-(s-s0)*(t1-t0)) -
+  //       (P1-P0)*((t-t0)*(s2-s0)-(s-s0)*(t2-t0))
+  //
+  //   B = (s1-s0)*(t2-t0) - (s2-s0)*(t1-t0)
+  //
+  // B can be expressed as a 2x2 determinant:
+  //
+  //   B = determinant(array([[s1-s0, s2-s0],
+  //                          [t1-t0, t2-t0]])
+  //
+  // In this form, B clearly has a geometric interpretation as the signed
+  // area of our triangle in texture space!
+  //
+  // Then we can compute the gradient of P(s,t) in terms of s and t:
+  //
+  //   dPds = diff(P,s) = -C / B
+  //
+  //   dPdt = diff(P,t) =  D / B
+  //
+  // where
+  //
+  //   C  = t0*P1-t0*P2-t1*P0+t1*P2-t2*P1+t2*P0,
+  //
+  //   D  = -s1*P0+s1*P2+s0*P1-s0*P2-s2*P1+s2*P0,
+  //
+  // Ultimately we wish to compute a tangent (T) and binormal (B) to
+  // accompany either per-vertex normal (N) to form a texture-space
+  // basis to transform object-space directions into texture space.
+  //
+  // First we consider how to create such a basis for the triangle,
+  // ignoring the triangle's per-vertex object-space normals.
+  //
+  // Compute an object-space facet normal for the triangle:
+  //
+  //   Nt = cross(normalize(dPds),
+  //              normalize(dPdt))
+  //
+  // The tangent and binormal are respectively the gradients of P(s,t)
+  // in terms of t and s crossed with Nt:
+  //
+  //   T = cross(normalize(dPdt), Nt))
+  //
+  //   B = cross(normalize(dPds), Nt))
+  //
+  // Note the following:
+  //
+  //   1)  This construction ensures T, B, and Nt are orthonormal.
+  //
+  //   2)  T, B, and Nt are constant over the triangle.
+  //
+  //   3)  This construction uses Nt, without regard for the triangle's
+  //       specified per-vertex object-space normals (N0, N1, and N2).
+  //
+  // Normalizing a vector divided by a scalar is equivalent
+  // to the normalized undivided vector when the scalar is positive.
+  // In other words, dividing by a positive scalar changes the length
+  // of a vector, but not its direction.  So:
+  //
+  //   normalize(V / S) = normalize(V)
+  //
+  // when S>0
+  //
+  // More generally, when the scalar is known to be non-zero but not
+  // known to be positive or negative then:
+  //
+  //   normalize(V / S) = normalize(V / abs(S)) * sign(S)
+  //                    = normalize(V) * sign(S)
+  //
+  // when S!=0
+  //
+  // We are interested in efficiently computing the normalized gradients
+  // of P in terms s and t:
+  //
+  //   normalize(diff(P,s)) = normalize(C / B)
+  //                        = normalize(C / abs(B)) * sign(B)
+  //                        = normalize(C)          * sign(B)
+  //
+  //   normalize(diff(P,t)) = normalize(D / B)
+  //                        = normalize(D / abs(B)) * sign(B)
+  //                        = normalize(D)          * sign(B)
+  //
+  // The per-vertex normals N0, N1, and N2 are, by modeling convention, normals
+  // that point outward from the (potentially curved) surface for which 
+  // the triangle is a proxy.  We assume that "outward" is always the positive
+  // z direction in texture space.
+  //
+  // Nt does not necessarily point outward from the surface.  Nt may, in
+  // fact, point inward when Nt has to a negative z component.  This is
+  // the case when the signed area of the triangle in texture space is
+  // negative.  More succinctly, this is when B is negative!
+  //
+  // When authoring texture-skinned 3D model, this situation occurs when
+  // an artists "mirrors" a section of the texture on a triangle of the
+  // model.
+  //
+  // We desire the object-space to texture-space basis to be consistent with
+  // our per-vertex normals whether or not "texture mirroring" exists.  For
+  // this reason, we weant to negate the normalized gradients diff(P,s) and
+  // diff(P,t) when the area of the triangle is negative in texture space.
+  //
+  // More succinctly, we want to multiply these normalized gradients
+  // by sign(B).  This is fortuitous:
+  //
+  //   normalize(diff(P,s)) * sign(B) = normalize(C / B) * sign(B)
+  //                                  = normalize(C) * sign(B) * sign(B)
+  //                                  = normalize(C)
+  //
+  //   normalize(diff(P,t)) * sign(B) = normalize(D / B) * sign(B)
+  //                                  = normalize(D) * sign(B) * sign(B)
+  //                                  = normalize(D)
+  //
+  // because
+  //
+  //   sign(x) * sign(x) = 1
+  //
+  // This does assume that B!=0 but we safely assume this because we expect
+  // artists to skin their models without triangles having zero area in
+  // texture space!  A triangle with zero area in texture space is a degenerate
+  // situation that makes texture-space bump mapping impossible.
+  //
+  // Incorporating the result above, these per-vertex tangent and binormal
+  // vectors
+  //
+  //   T0 = cross(normalize(dPdt), N0))
+  //   T1 = cross(normalize(dPdt), N1))
+  //   T2 = cross(normalize(dPdt), N2))
+  //
+  //   B0 = cross(normalize(dPds), N0))
+  //   B1 = cross(normalize(dPds), N1))
+  //   B2 = cross(normalize(dPds), N2))
+  //
+  // are more efficiently computed as:
+  //
+  //   Cn = normalize(C)
+  //   Dn = normalize(D)
+  //
+  //   T0 = cross(Cn, N0))
+  //   T1 = cross(Cn, N1))
+  //   T2 = cross(Cn, N2))
+  //
+  //   B0 = cross(Dn, N0))
+  //   B1 = cross(Dn, N1))
+  //   B2 = cross(Dn, N2))
+  // 
+  // Note the following:
+  //
+  //   1)  The vector sets {T0,B0,N0}, {T1,B1,N1}, and {T2,B2,N2} are
+  //       orthonormal if we assume N0, N1, and N2 are already normalized,
+  //       a safe assumption for object-space normals (or else something
+  //       easily done in the vertex program).
+  //
+  //   2)  Unlike, the vectors T,B,Nt, these vector sets T0,B0,N0;
+  //       T1,B1,N1; and T2,B2,N2 could be interpolated to vary over
+  //       the triangle.
+  //
+  //   3)  Rather than interpolate the basis over the triangle, it is
+  //       often more efficient to transform object-space vectors into
+  //       texture space in the geometry shader and then interpolating
+  //       and renormalizing in the fragment shader.  This reduces the
+  //       number of interpolated attributes by 9 scalar interpolants!
+  //
+  //   4)  Computing T0, B0, T1, B1, T2, and B2 does not require
+  //       the explicit computation of the signed area of the triangle
+  //       in texture space!
+  //
+  //   5)  The vectors C and D requiring normalization are efficiently
+  //       evaluated as a sum of vector products.
+  // 
+  float3 C  = t0*P1-t0*P2-t1*P0+t1*P2-t2*P1+t2*P0,
+         Cn = normalize(C),
+         D  = -s1*P0+s1*P2+s0*P1-s0*P2-s2*P1+s2*P0,
+         Dn = normalize(D);
+
+  // for each vertex in the triangle...
+  for (int i=0; i<3; i++) {
+    float3 normal   = objNormal[i],
+           // T = cross(dPdt,N)
+           tangent  = cross(Dn,normal),
+           // B = cross(N,dPds)
+           binormal = cross(Cn,normal); // = cross(normal,-C)
+    
+    // Construct 3x3 basis matrix that transforms object-space
+    // vectors into (surface local) texture-space vectors using
+    // tangent, binormal, and normal for the three respective
+    // rows
+    float3x3 basis = float3x3(tangent,
+                              binormal,
+                              normal);
+
+                              
+    // Transform object-space light and view vectors by basis 
+    // for texture-space versions
+    float3 surfaceLightVector : TEXCOORD1 = mul(basis, objLight[i]);
+    float3 surfaceViewVector  : TEXCOORD2 = mul(basis, objView[i]);
+
+    emitVertex(position[i], texCoord[i],
+               surfaceLightVector, surfaceViewVector);
+  }
+}
+
+// Helper function to unpack [0,1] normal map texels to signed normals
+float3 expand(float3 v) { return (v-0.5)*2; }
+
+// Lighting model parameters 
+uniform float ambient = 0.3;
+uniform float shininess = 40.2;
+uniform float3 shineColor = float3(1,1,1);
+uniform float2 geometricSelfShadowDiffuseFallOffRange = float2(-0.05,0.1);
+
+float4 md2bump_fragment(float4 color    : COLOR,
+                        float2 texcoord : TEXCOORD0,
+                        float3 lightVec : TEXCOORD1,
+                        float3 viewVec  : TEXCOORD2,
+
+                uniform sampler2D decalGlossMap,
+                uniform sampler2D normalMap) : COLOR
+{
+  float4 packedNormal = tex2D(normalMap, texcoord);
+  float4 packedGlossDecal = tex2D(decalGlossMap, texcoord);
+  float3 decal = packedGlossDecal.xyz;
+  float  gloss = packedGlossDecal.w;
+  float3 normal = expand(packedNormal.xyz) * packedNormal.a;
+  // Bumpy diffuse objects in the distance should appear 
+  // dimmer (reduces aliasing of distant diffuse bumpy objects)
+  float  diffuseDimFactorForNormal = packedNormal.w;
+ 
+  // Compute diffuse radiance
+  float3 diffuseNormal = normal * diffuseDimFactorForNormal;
+  float NdotL = dot(diffuseNormal, lightVec);
+  float diffuse = max(0.0, NdotL);
+  
+  // When lightVec.z is negative, geometrically, the light is
+  // "below" the plane of the triangle to which this fragment
+  // belongs.  In such a circumstance, geometric self-shadowing
+  // presumes no illumination then when lightVec.z is negative.
+  // Rather than an abrupt forcing of the diffuse irradiance (and
+  // hence specular irradiance too) to zero, smoothly transition
+  // the diffuse irradiance over the [x,y] range of
+  // geometricSelfShadowDiffuseFallOffRange.
+  diffuse *= smoothstep(geometricSelfShadowDiffuseFallOffRange.x,
+                        geometricSelfShadowDiffuseFallOffRange.y,
+                        lightVec.z);
+  
+  // Compute specular radiance using half-angle model
+  float3 halfAngle = normalize(lightVec + viewVec);
+  float NdotH = dot(normal, halfAngle);
+  float specular = pow(diffuse > 0 ? NdotH : 0, shininess);
+  
+  // Compute total radiance as decal-modulated ambient/diffuse sum
+  // added to glossed specular color
+  float3 radiance = (ambient+diffuse)*decal +
+                    gloss*shineColor*specular;
+
+  return float4(radiance, 1);
+}

@@ -1,0 +1,11 @@
+// Simple fragment program to modulate interpolated
+// color with a decal texture lookup.
+
+float4 texmodulate(float4 color    : COLOR,
+                   float2 texcoord : TEXCOORD0,
+
+           uniform float2 scaleFactor,
+           uniform sampler2D decal) : COLOR
+{
+  return color * tex2D(decal, texcoord * scaleFactor);
+}

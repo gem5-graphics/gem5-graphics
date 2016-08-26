@@ -1,0 +1,61 @@
+
+// interpolation_modifier.cgfx - CgFX file demonstrating interpolation modifiers
+
+float4 normal_color_interpolation(float4 c : TEXCOORD0) : COLOR
+{
+  return c;
+}
+
+float4 flat_color_interpolation(float4 c : TEXCOORD0.FLAT) : COLOR
+{
+  return c;
+}
+
+float4 noperspective_color_interpolation(float4 c : TEXCOORD0.NOPERSPECTIVE) : COLOR
+{
+  return c;
+}
+
+float4 centroid_color_interpolation(float4 c : TEXCOORD0.CENTROID) : COLOR
+{
+  return c;
+}
+
+struct VP_OUT
+{
+	float4 pos : POSITION;
+	float4 t : TEXCOORD0;
+};
+
+VP_OUT vp( in float4 pos : POSITION, in float4 t : TEXCOORD0 )
+{
+	VP_OUT Out;
+	Out.pos = pos;
+	Out.t = t;
+	return Out;
+}
+
+technique NormalColorInterpolation {
+  pass {
+    VertexProgram = compile vs_4_0 vp();
+    FragmentProgram = compile ps_4_0 normal_color_interpolation();
+  }
+}
+technique FlatColorInterpolation {
+  pass {
+    VertexProgram = compile vs_4_0 vp();
+    FragmentProgram = compile ps_4_0 flat_color_interpolation();
+  }
+}
+technique NoPerspectiveColorInterpolation {
+  pass {
+    VertexProgram = compile vs_4_0 vp();
+    FragmentProgram = compile ps_4_0 noperspective_color_interpolation();
+  }
+}
+technique CentroidColorInterpolation {
+  pass {
+    VertexProgram = compile vs_4_0 vp();
+    FragmentProgram = compile ps_4_0 centroid_color_interpolation();
+  }
+}

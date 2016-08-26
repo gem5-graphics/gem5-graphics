@@ -1,0 +1,18 @@
+// This is C8E1v_bumpWall from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 205.
+
+void C8E1v_bumpWall(float4 position : POSITION,
+                    float2 texCoord : TEXCOORD0,
+
+                out float4 oPosition      : POSITION,
+                out float2 oTexCoord      : TEXCOORD0,
+                out float3 lightDirection : TEXCOORD1,
+
+            uniform float3   lightPosition,  // Object-space
+            uniform float4x4 modelViewProj)
+{
+  oPosition = mul(modelViewProj, position);
+  oTexCoord = texCoord;
+  // Difference vectors for object-space light direction
+  lightDirection = lightPosition - position.xyz;
+}

@@ -1,0 +1,26 @@
+// This is C9E5v_projTex from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 254.
+
+void C9E5v_projTex(float4 position : POSITION,
+                   float3 normal   : NORMAL,
+       
+               out float4 oPosition       : POSITION,
+               out float4 texCoordProj    : TEXCOORD0,
+               out float4 diffuseLighting : COLOR,
+       
+           uniform float Kd,
+           uniform float4x4 modelViewProj,
+           uniform float3   lightPosition, 
+           uniform float4x4 textureMatrix)
+{
+  oPosition = mul(modelViewProj, position);
+
+  // Compute texture coordinates for 
+  // querying the projective texture
+  texCoordProj = mul(textureMatrix, position);
+  
+  // Compute diffuse lighting
+  float3 N = normalize(normal);
+  float3 L = normalize(lightPosition - position.xyz);
+  diffuseLighting = Kd * max(dot(N, L), 0);
+}

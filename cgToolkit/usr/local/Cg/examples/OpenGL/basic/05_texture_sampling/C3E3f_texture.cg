@@ -1,0 +1,15 @@
+// This is C3E3f_texture from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 67.
+
+struct C3E3f_Output {
+  float4 color : COLOR;
+};
+
+C3E3f_Output C3E3f_texture(float2 texCoord : TEXCOORD0,
+                           uniform sampler2D decal : TEX0)
+{
+  C3E3f_Output OUT;
+  OUT.color = tex2D(decal,texCoord);
+  return OUT;
+}
+

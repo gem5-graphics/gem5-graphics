@@ -1,0 +1,24 @@
+// This is a version using generic attributes of C6E3v_keyFrame from
+// "The Cg Tutorial" (Addison-Wesley, ISBN 0321194969) by Randima Fernando
+// and Mark J. Kilgard.  See page 159.
+
+void generic_attrib_keyFrame(float3 positionA : ATTR0,
+                             float3 positionB : ATTR1,
+                           //float3 normalA   : ATTR2,
+                           //float3 normalB   : ATTR3,                             
+                             float2 texCoord  : ATTR4,
+                             float4 color     : ATTR5,
+
+                         out float4 oPosition : POSITION,
+                         out float2 oTexCoord : TEXCOORD0,
+                         out float4 oColor    : COLOR,
+
+                     uniform float    keyFrameBlend,
+                     uniform float4x4 modelViewProj)
+{
+  float3 position = lerp(positionA, positionB,
+                         keyFrameBlend);
+  oPosition = mul(modelViewProj, float4(position, 1));
+  oTexCoord = texCoord;
+  oColor = color;
+}

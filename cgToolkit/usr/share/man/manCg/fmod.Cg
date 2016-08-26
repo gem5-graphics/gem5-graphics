@@ -1,0 +1,171 @@
+.de Sh \" Subsection heading
+.br
+.if t .Sp
+.ne 5
+.PP
+\fB\\$1\fR
+.PP
+..
+.de Sp \" Vertical space (when we can't use .PP)
+.if t .sp .5v
+.if n .sp
+..
+.de Vb \" Begin verbatim text
+.ft CW
+.nf
+.ne \\$1
+..
+.de Ve \" End verbatim text
+.ft R
+.fi
+..
+.tr \(*W-
+.ds C+ C\v'-.1v'\h'-1p'\s-2+\h'-1p'+\s0\v'.1v'\h'-1p'
+.ie n \{\
+.    ds -- \(*W-
+.    ds PI pi
+.    if (\n(.H=4u)&(1m=24u) .ds -- \(*W\h'-12u'\(*W\h'-12u'-\" diablo 10 pitch
+.    if (\n(.H=4u)&(1m=20u) .ds -- \(*W\h'-12u'\(*W\h'-8u'-\"  diablo 12 pitch
+.    ds L" ""
+.    ds R" ""
+.    ds C` ""
+.    ds C' ""
+'br\}
+.el\{\
+.    ds -- \|\(em\|
+.    ds PI \(*p
+.    ds L" ``
+.    ds R" ''
+'br\}
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.ie \nF \{\
+.    de IX
+.    tm Index:\\$1\t\\n%\t"\\$2"
+..
+.    nr % 0
+.    rr F
+.\}
+.el \{\
+.    de IX
+..
+.\}
+.    \" fudge factors for nroff and troff
+.if n \{\
+.    ds #H 0
+.    ds #V .8m
+.    ds #F .3m
+.    ds #[ \f1
+.    ds #] \fP
+.\}
+.if t \{\
+.    ds #H ((1u-(\\\\n(.fu%2u))*.13m)
+.    ds #V .6m
+.    ds #F 0
+.    ds #[ \&
+.    ds #] \&
+.\}
+.    \" simple accents for nroff and troff
+.if n \{\
+.    ds ' \&
+.    ds ` \&
+.    ds ^ \&
+.    ds , \&
+.    ds ~ ~
+.    ds /
+.\}
+.if t \{\
+.    ds ' \\k:\h'-(\\n(.wu*8/10-\*(#H)'\'\h"|\\n:u"
+.    ds ` \\k:\h'-(\\n(.wu*8/10-\*(#H)'\`\h'|\\n:u'
+.    ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'^\h'|\\n:u'
+.    ds , \\k:\h'-(\\n(.wu*8/10)',\h'|\\n:u'
+.    ds ~ \\k:\h'-(\\n(.wu-\*(#H-.1m)'~\h'|\\n:u'
+.    ds / \\k:\h'-(\\n(.wu*8/10-\*(#H)'\z\(sl\h'|\\n:u'
+.\}
+.    \" troff and (daisy-wheel) nroff accents
+.ds : \\k:\h'-(\\n(.wu*8/10-\*(#H+.1m+\*(#F)'\v'-\*(#V'\z.\h'.2m+\*(#F'.\h'|\\n:u'\v'\*(#V'
+.ds 8 \h'\*(#H'\(*b\h'-\*(#H'
+.ds o \\k:\h'-(\\n(.wu+\w'\(de'u-\*(#H)/2u'\v'-.3n'\*(#[\z\(de\v'.3n'\h'|\\n:u'\*(#]
+.ds d- \h'\*(#H'\(pd\h'-\w'~'u'\v'-.25m'\f2\(hy\fP\v'.25m'\h'-\*(#H'
+.ds D- D\\k:\h'-\w'D'u'\v'-.11m'\z\(hy\v'.11m'\h'|\\n:u'
+.ds th \*(#[\v'.3m'\s+1I\s-1\v'-.3m'\h'-(\w'I'u*2/3)'\s-1o\s+1\*(#]
+.ds Th \*(#[\s+2I\s-2\h'-\w'I'u*3/5'\v'-.3m'o\v'.3m'\*(#]
+.ds ae a\h'-(\w'a'u*4/10)'e
+.ds Ae A\h'-(\w'A'u*4/10)'E
+.    \" corrections for vroff
+.if v .ds ~ \\k:\h'-(\\n(.wu*9/10-\*(#H)'\s-2\u~\d\s+2\h'|\\n:u'
+.if v .ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'\v'-.4m'^\v'.4m'\h'|\\n:u'
+.    \" for low resolution devices (crt and lpr)
+.if \n(.H>23 .if \n(.V>19 \
+\{\
+.    ds : e
+.    ds 8 ss
+.    ds o a
+.    ds d- d\h'-1'\(ga
+.    ds D- D\h'-1'\(hy
+.    ds th \o'bp'
+.    ds Th \o'LP'
+.    ds ae ae
+.    ds Ae AE
+.\}
+.rm #[ #] #H #V #F C
+.IX Title "FMOD Cg"
+.TH FMOD Cg "Cg Toolkit 3.0" "perl v5.10.0" "Cg Standard Library"
+.if n .ad l
+.nh
+.SH "NAME"
+\&\fBfmod\fR \- returns the remainder of \fIx\fR/\fIy\fR with the same sign as \fIx\fR
+.SH "SYNOPSIS"
+.IX Header "SYNOPSIS"
+.Vb 5
+\&  float  fmod(float x, float y);
+\&  float1 fmod(float1 x, float1 y);
+\&  float2 fmod(float2 x, float2 y);
+\&  float3 fmod(float3 x, float3 y);
+\&  float4 fmod(float4 x, float4 y);
+\& 
+\&  half   fmod(half x, half y);
+\&  half1  fmod(half1 x, half1 y);
+\&  half2  fmod(half2 x, half2 y);
+\&  half3  fmod(half3 x, half3 y);
+\&  half4  fmod(half4 x, half4 y);
+\& 
+\&  fixed  fmod(fixed x, fixed y);
+\&  fixed1 fmod(fixed1 x, fixed1 y);
+\&  fixed2 fmod(fixed2 x, fixed2 y);
+\&  fixed3 fmod(fixed3 x, fixed3 y);
+\&  fixed4 fmod(fixed4 x, fixed4 y);
+.Ve
+.SH "PARAMETERS"
+.IX Header "PARAMETERS"
+.IP "x" 8
+.IX Item "x"
+Vector or scalar numerator
+.IP "y" 8
+.IX Item "y"
+Vector or scalar denominator
+.SH "DESCRIPTION"
+.IX Header "DESCRIPTION"
+\&\fBfmod\fR returns the remainder of \fIx\fR divided by \fIy\fR with the same sign
+as \fIx\fR.  If \fIy\fR is zero, the result is implementation-defined because
+of division by zero.
+.PP
+For vectors, the returned vector contains the signed remainder of each
+element of the input vector.
+.SH "REFERENCE IMPLEMENTATION"
+.IX Header "REFERENCE IMPLEMENTATION"
+\&\fBfmod\fR for an \fBfloat2\fR vector could be implemented as:
+.PP
+.Vb 5
+\&  float2 fmod(float2 a, float2 b)
+\&  {
+\&    float2 c = frac(abs(a/b))*abs(b);
+\&    return (a < 0) ? \-c : c;   /* if ( a < 0 ) c = 0\-c */
+\&  }
+.Ve
+.SH "PROFILE SUPPORT"
+.IX Header "PROFILE SUPPORT"
+\&\fBfmod\fR is supported in all profiles but fp20.
+.SH "SEE ALSO"
+.IX Header "SEE ALSO"
+abs, frac

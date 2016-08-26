@@ -1,0 +1,95 @@
+# -*- mode:python -*-
+
+# Copyright (c) 2011 Mark D. Hill and David A. Wood
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are
+# met: redistributions of source code must retain the above copyright
+# notice, this list of conditions and the following disclaimer;
+# redistributions in binary form must reproduce the above copyright
+# notice, this list of conditions and the following disclaimer in the
+# documentation and/or other materials provided with the distribution;
+# neither the name of the copyright holders nor the names of its
+# contributors may be used to endorse or promote products derived from
+# this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+
+
+Import('*')
+
+Source('batchtrafficmanager.cpp', Werror=False)
+Source('booksim_config.cpp', Werror=False)
+Source('buffer.cpp', Werror=False)
+Source('buffer_state.cpp', Werror=False)
+Source('config_utils.cpp', Werror=False)
+Source('credit.cpp', Werror=False)
+Source('flitchannel.cpp', Werror=False)
+Source('flit.cpp', Werror=False)
+Source('gputrafficmanager.cpp', Werror=False)
+Source('injection.cpp', Werror=False)
+Source('interconnect_interface.cpp', Werror=False)
+Source('intersim_config.cpp', Werror=False)
+Source('lex.yy.c', Werror=False)
+Source('main.cpp', Werror=False)
+Source('misc_utils.cpp', Werror=False)
+Source('module.cpp', Werror=False)
+Source('outputset.cpp', Werror=False)
+Source('packet_reply_info.cpp', Werror=False)
+Source('rng_double_wrapper.cpp', Werror=False)
+Source('rng_wrapper.cpp', Werror=False)
+Source('routefunc.cpp', Werror=False)
+Source('stats.cpp', Werror=False)
+Source('traffic.cpp', Werror=False)
+Source('trafficmanager.cpp', Werror=False)
+Source('vc.cpp', Werror=False)
+Source('y.tab.c', Werror=False)
+
+Source('allocators/allocator.cpp', Werror=False)
+Source('allocators/islip.cpp', Werror=False)
+Source('allocators/loa.cpp', Werror=False)
+Source('allocators/maxsize.cpp', Werror=False)
+Source('allocators/pim.cpp', Werror=False)
+Source('allocators/selalloc.cpp', Werror=False)
+Source('allocators/separable.cpp', Werror=False)
+Source('allocators/separable_input_first.cpp', Werror=False)
+Source('allocators/separable_output_first.cpp', Werror=False)
+Source('allocators/wavefront.cpp', Werror=False)
+
+Source('arbiters/arbiter.cpp', Werror=False)
+Source('arbiters/matrix_arb.cpp', Werror=False)
+Source('arbiters/prio_arb.cpp', Werror=False)
+Source('arbiters/roundrobin_arb.cpp', Werror=False)
+Source('arbiters/tree_arb.cpp', Werror=False)
+
+Source('networks/anynet.cpp', Werror=False)
+Source('networks/cmesh.cpp', Werror=False)
+Source('networks/dragonfly.cpp', Werror=False)
+Source('networks/fattree.cpp', Werror=False)
+Source('networks/flatfly_onchip.cpp', Werror=False)
+Source('networks/fly.cpp', Werror=False)
+Source('networks/kncube.cpp', Werror=False)
+Source('networks/network.cpp', Werror=False)
+Source('networks/qtree.cpp', Werror=False)
+Source('networks/tree4.cpp', Werror=False)
+
+Source('power/buffer_monitor.cpp', Werror=False)
+Source('power/power_module.cpp', Werror=False)
+Source('power/switch_monitor.cpp', Werror=False)
+
+Source('routers/chaos_router.cpp', Werror=False)
+Source('routers/event_router.cpp', Werror=False)
+Source('routers/iq_router.cpp', Werror=False)
+Source('routers/router.cpp', Werror=False)

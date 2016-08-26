@@ -1,0 +1,5 @@
+Some issues related to the grammer in arb4.y:
+- I commented the grammer resultOptColorNum, as it is spcified empty and generates warnings.
+- Rules resultColor and resultBasic has a conflict since resultBasic define resPrefix "color" as resultColor (this is in the given nv4 grammer), this problem manifests at rules resultUseD and resultUseW so I had to do some changes which are highlighted in the comments around the rules in the file. The changes will allow the parser to get the resultBasic stuff with attributes that should not have.
+- A general rule here with the tokens is that all the one letter charachters are returned as char values not as defined tokens values in the yacc file, this can help with reading the yacc file as for instance it will be awkward to read ; as SEMI_COLON and so forth.
+- To add support to unsupported rule search for accompanying rules and add the conditions to handle any case related to the rule to be supported when needed.

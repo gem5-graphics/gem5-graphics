@@ -1,0 +1,640 @@
+.de Sh \" Subsection heading
+.br
+.if t .Sp
+.ne 5
+.PP
+\fB\\$1\fR
+.PP
+..
+.de Sp \" Vertical space (when we can't use .PP)
+.if t .sp .5v
+.if n .sp
+..
+.de Vb \" Begin verbatim text
+.ft CW
+.nf
+.ne \\$1
+..
+.de Ve \" End verbatim text
+.ft R
+.fi
+..
+.tr \(*W-
+.ds C+ C\v'-.1v'\h'-1p'\s-2+\h'-1p'+\s0\v'.1v'\h'-1p'
+.ie n \{\
+.    ds -- \(*W-
+.    ds PI pi
+.    if (\n(.H=4u)&(1m=24u) .ds -- \(*W\h'-12u'\(*W\h'-12u'-\" diablo 10 pitch
+.    if (\n(.H=4u)&(1m=20u) .ds -- \(*W\h'-12u'\(*W\h'-8u'-\"  diablo 12 pitch
+.    ds L" ""
+.    ds R" ""
+.    ds C` ""
+.    ds C' ""
+'br\}
+.el\{\
+.    ds -- \|\(em\|
+.    ds PI \(*p
+.    ds L" ``
+.    ds R" ''
+'br\}
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.ie \nF \{\
+.    de IX
+.    tm Index:\\$1\t\\n%\t"\\$2"
+..
+.    nr % 0
+.    rr F
+.\}
+.el \{\
+.    de IX
+..
+.\}
+.    \" fudge factors for nroff and troff
+.if n \{\
+.    ds #H 0
+.    ds #V .8m
+.    ds #F .3m
+.    ds #[ \f1
+.    ds #] \fP
+.\}
+.if t \{\
+.    ds #H ((1u-(\\\\n(.fu%2u))*.13m)
+.    ds #V .6m
+.    ds #F 0
+.    ds #[ \&
+.    ds #] \&
+.\}
+.    \" simple accents for nroff and troff
+.if n \{\
+.    ds ' \&
+.    ds ` \&
+.    ds ^ \&
+.    ds , \&
+.    ds ~ ~
+.    ds /
+.\}
+.if t \{\
+.    ds ' \\k:\h'-(\\n(.wu*8/10-\*(#H)'\'\h"|\\n:u"
+.    ds ` \\k:\h'-(\\n(.wu*8/10-\*(#H)'\`\h'|\\n:u'
+.    ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'^\h'|\\n:u'
+.    ds , \\k:\h'-(\\n(.wu*8/10)',\h'|\\n:u'
+.    ds ~ \\k:\h'-(\\n(.wu-\*(#H-.1m)'~\h'|\\n:u'
+.    ds / \\k:\h'-(\\n(.wu*8/10-\*(#H)'\z\(sl\h'|\\n:u'
+.\}
+.    \" troff and (daisy-wheel) nroff accents
+.ds : \\k:\h'-(\\n(.wu*8/10-\*(#H+.1m+\*(#F)'\v'-\*(#V'\z.\h'.2m+\*(#F'.\h'|\\n:u'\v'\*(#V'
+.ds 8 \h'\*(#H'\(*b\h'-\*(#H'
+.ds o \\k:\h'-(\\n(.wu+\w'\(de'u-\*(#H)/2u'\v'-.3n'\*(#[\z\(de\v'.3n'\h'|\\n:u'\*(#]
+.ds d- \h'\*(#H'\(pd\h'-\w'~'u'\v'-.25m'\f2\(hy\fP\v'.25m'\h'-\*(#H'
+.ds D- D\\k:\h'-\w'D'u'\v'-.11m'\z\(hy\v'.11m'\h'|\\n:u'
+.ds th \*(#[\v'.3m'\s+1I\s-1\v'-.3m'\h'-(\w'I'u*2/3)'\s-1o\s+1\*(#]
+.ds Th \*(#[\s+2I\s-2\h'-\w'I'u*3/5'\v'-.3m'o\v'.3m'\*(#]
+.ds ae a\h'-(\w'a'u*4/10)'e
+.ds Ae A\h'-(\w'A'u*4/10)'E
+.    \" corrections for vroff
+.if v .ds ~ \\k:\h'-(\\n(.wu*9/10-\*(#H)'\s-2\u~\d\s+2\h'|\\n:u'
+.if v .ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'\v'-.4m'^\v'.4m'\h'|\\n:u'
+.    \" for low resolution devices (crt and lpr)
+.if \n(.H>23 .if \n(.V>19 \
+\{\
+.    ds : e
+.    ds 8 ss
+.    ds o a
+.    ds d- d\h'-1'\(ga
+.    ds D- D\h'-1'\(hy
+.    ds th \o'bp'
+.    ds Th \o'LP'
+.    ds ae ae
+.    ds Ae AE
+.\}
+.rm #[ #] #H #V #F C
+.IX Title "INDEX_STATES Cg"
+.TH INDEX_STATES Cg "Cg Toolkit 3.0" "perl v5.10.0" "Cg Documentation"
+.if n .ad l
+.nh
+.SH "CgFX States"
+.IX Header "CgFX States"
+Back to Top
+.IP "AddressUi" 2
+.IX Item "AddressUi"
+.PD 0
+.IP "AddressVi" 2
+.IX Item "AddressVi"
+.IP "AddressWi" 2
+.IX Item "AddressWi"
+.IP "AlphaBlendEnable" 2
+.IX Item "AlphaBlendEnable"
+.IP "AlphaFunc" 2
+.IX Item "AlphaFunc"
+.IP "AlphaRef" 2
+.IX Item "AlphaRef"
+.IP "AlphaTestEnable" 2
+.IX Item "AlphaTestEnable"
+.IP "Ambient" 2
+.IX Item "Ambient"
+.IP "AmbientMaterialSource" 2
+.IX Item "AmbientMaterialSource"
+.IP "AutoNormalEnable" 2
+.IX Item "AutoNormalEnable"
+.IP "BlendColor" 2
+.IX Item "BlendColor"
+.IP "BlendEnable" 2
+.IX Item "BlendEnable"
+.IP "BlendEquation" 2
+.IX Item "BlendEquation"
+.IP "BlendEquationSeparate" 2
+.IX Item "BlendEquationSeparate"
+.IP "BlendFunc" 2
+.IX Item "BlendFunc"
+.IP "BlendFuncSeparate" 2
+.IX Item "BlendFuncSeparate"
+.IP "BlendOp" 2
+.IX Item "BlendOp"
+.IP "BlendOpAlpha" 2
+.IX Item "BlendOpAlpha"
+.IP "BorderColori" 2
+.IX Item "BorderColori"
+.IP "ClearColor" 2
+.IX Item "ClearColor"
+.IP "ClearDepth" 2
+.IX Item "ClearDepth"
+.IP "ClearStencil" 2
+.IX Item "ClearStencil"
+.IP "ClipPlane" 2
+.IX Item "ClipPlane"
+.IP "ClipPlaneEnable" 2
+.IX Item "ClipPlaneEnable"
+.IP "Clipping" 2
+.IX Item "Clipping"
+.IP "ColorLogicOpEnable" 2
+.IX Item "ColorLogicOpEnable"
+.IP "ColorMask" 2
+.IX Item "ColorMask"
+.IP "ColorMaterial" 2
+.IX Item "ColorMaterial"
+.IP "ColorMatrix" 2
+.IX Item "ColorMatrix"
+.IP "ColorTransform" 2
+.IX Item "ColorTransform"
+.IP "ColorVertex" 2
+.IX Item "ColorVertex"
+.IP "ColorWriteEnable" 2
+.IX Item "ColorWriteEnable"
+.IP "ColorWriteEnable1" 2
+.IX Item "ColorWriteEnable1"
+.IP "ColorWriteEnable2" 2
+.IX Item "ColorWriteEnable2"
+.IP "ColorWriteEnable3" 2
+.IX Item "ColorWriteEnable3"
+.IP "CullFace" 2
+.IX Item "CullFace"
+.IP "CullFaceEnable" 2
+.IX Item "CullFaceEnable"
+.IP "CullMode" 2
+.IX Item "CullMode"
+.IP "DepthBias" 2
+.IX Item "DepthBias"
+.IP "DepthBounds" 2
+.IX Item "DepthBounds"
+.IP "DepthBoundsEnable" 2
+.IX Item "DepthBoundsEnable"
+.IP "DepthClampEnable" 2
+.IX Item "DepthClampEnable"
+.IP "DepthFunc" 2
+.IX Item "DepthFunc"
+.IP "DepthMask" 2
+.IX Item "DepthMask"
+.IP "DepthRange" 2
+.IX Item "DepthRange"
+.IP "DepthTestEnable" 2
+.IX Item "DepthTestEnable"
+.IP "DestBlend" 2
+.IX Item "DestBlend"
+.IP "DestBlendAlpha" 2
+.IX Item "DestBlendAlpha"
+.IP "DiffuseMaterialSource" 2
+.IX Item "DiffuseMaterialSource"
+.IP "DitherEnable" 2
+.IX Item "DitherEnable"
+.IP "EmissiveMaterialSource" 2
+.IX Item "EmissiveMaterialSource"
+.IP "FillMode" 2
+.IX Item "FillMode"
+.IP "FogColor" 2
+.IX Item "FogColor"
+.IP "FogCoordSrc" 2
+.IX Item "FogCoordSrc"
+.IP "FogDensity" 2
+.IX Item "FogDensity"
+.IP "FogDistanceMode" 2
+.IX Item "FogDistanceMode"
+.IP "FogEnable" 2
+.IX Item "FogEnable"
+.IP "FogEnd" 2
+.IX Item "FogEnd"
+.IP "FogMode" 2
+.IX Item "FogMode"
+.IP "FogStart" 2
+.IX Item "FogStart"
+.IP "FogTableMode" 2
+.IX Item "FogTableMode"
+.IP "FogVertexMode" 2
+.IX Item "FogVertexMode"
+.IP "FragmentEnvParameter" 2
+.IX Item "FragmentEnvParameter"
+.IP "FragmentLocalParameter" 2
+.IX Item "FragmentLocalParameter"
+.IP "FragmentProgram" 2
+.IX Item "FragmentProgram"
+.IP "FrontFace" 2
+.IX Item "FrontFace"
+.IP "GeometryProgram" 2
+.IX Item "GeometryProgram"
+.IP "GeometryShader" 2
+.IX Item "GeometryShader"
+.IP "IndexedVertexBlendEnable" 2
+.IX Item "IndexedVertexBlendEnable"
+.IP "LastPixel" 2
+.IX Item "LastPixel"
+.IP "LightAmbient" 2
+.IX Item "LightAmbient"
+.IP "LightAttenuation0" 2
+.IX Item "LightAttenuation0"
+.IP "LightAttenuation1" 2
+.IX Item "LightAttenuation1"
+.IP "LightAttenuation2" 2
+.IX Item "LightAttenuation2"
+.IP "LightConstantAttenuation" 2
+.IX Item "LightConstantAttenuation"
+.IP "LightDiffuse" 2
+.IX Item "LightDiffuse"
+.IP "LightDirection" 2
+.IX Item "LightDirection"
+.IP "LightEnable" 2
+.IX Item "LightEnable"
+.IP "LightFalloff" 2
+.IX Item "LightFalloff"
+.IP "LightLinearAttenuation" 2
+.IX Item "LightLinearAttenuation"
+.IP "LightModelAmbient" 2
+.IX Item "LightModelAmbient"
+.IP "LightModelColorControl" 2
+.IX Item "LightModelColorControl"
+.IP "LightModelLocalViewerEnable" 2
+.IX Item "LightModelLocalViewerEnable"
+.IP "LightModelTwoSideEnable" 2
+.IX Item "LightModelTwoSideEnable"
+.IP "LightPhi" 2
+.IX Item "LightPhi"
+.IP "LightPosition" 2
+.IX Item "LightPosition"
+.IP "LightQuadraticAttenuation" 2
+.IX Item "LightQuadraticAttenuation"
+.IP "LightRange" 2
+.IX Item "LightRange"
+.IP "LightSpecular" 2
+.IX Item "LightSpecular"
+.IP "LightSpotCutoff" 2
+.IX Item "LightSpotCutoff"
+.IP "LightSpotDirection" 2
+.IX Item "LightSpotDirection"
+.IP "LightSpotExponent" 2
+.IX Item "LightSpotExponent"
+.IP "LightTheta" 2
+.IX Item "LightTheta"
+.IP "LightType" 2
+.IX Item "LightType"
+.IP "Lighting" 2
+.IX Item "Lighting"
+.IP "LightingEnable" 2
+.IX Item "LightingEnable"
+.IP "LineSmoothEnable" 2
+.IX Item "LineSmoothEnable"
+.IP "LineStipple" 2
+.IX Item "LineStipple"
+.IP "LineStippleEnable" 2
+.IX Item "LineStippleEnable"
+.IP "LineWidth" 2
+.IX Item "LineWidth"
+.IP "LocalViewer" 2
+.IX Item "LocalViewer"
+.IP "LogicOp" 2
+.IX Item "LogicOp"
+.IP "LogicOpEnable" 2
+.IX Item "LogicOpEnable"
+.IP "MagFilteri" 2
+.IX Item "MagFilteri"
+.IP "MaterialAmbient" 2
+.IX Item "MaterialAmbient"
+.IP "MaterialDiffuse" 2
+.IX Item "MaterialDiffuse"
+.IP "MaterialEmission" 2
+.IX Item "MaterialEmission"
+.IP "MaterialEmissive" 2
+.IX Item "MaterialEmissive"
+.IP "MaterialPower" 2
+.IX Item "MaterialPower"
+.IP "MaterialShininess" 2
+.IX Item "MaterialShininess"
+.IP "MaterialSpecular" 2
+.IX Item "MaterialSpecular"
+.IP "MaxAnisotropyi" 2
+.IX Item "MaxAnisotropyi"
+.IP "MaxMipLeveli" 2
+.IX Item "MaxMipLeveli"
+.IP "MinFilteri" 2
+.IX Item "MinFilteri"
+.IP "MipFilteri" 2
+.IX Item "MipFilteri"
+.IP "MipMapLodBiasi" 2
+.IX Item "MipMapLodBiasi"
+.IP "ModelViewMatrix" 2
+.IX Item "ModelViewMatrix"
+.IP "ModelViewTransform" 2
+.IX Item "ModelViewTransform"
+.IP "MultiSampleAntialias" 2
+.IX Item "MultiSampleAntialias"
+.IP "MultiSampleMask" 2
+.IX Item "MultiSampleMask"
+.IP "MultisampleEnable" 2
+.IX Item "MultisampleEnable"
+.IP "NormalizeEnable" 2
+.IX Item "NormalizeEnable"
+.IP "NormalizeNormals" 2
+.IX Item "NormalizeNormals"
+.IP "PatchSegments" 2
+.IX Item "PatchSegments"
+.IP "PixelShader" 2
+.IX Item "PixelShader"
+.IP "PixelShaderConstant" 2
+.IX Item "PixelShaderConstant"
+.IP "PixelShaderConstant1" 2
+.IX Item "PixelShaderConstant1"
+.IP "PixelShaderConstant2" 2
+.IX Item "PixelShaderConstant2"
+.IP "PixelShaderConstant3" 2
+.IX Item "PixelShaderConstant3"
+.IP "PixelShaderConstant4" 2
+.IX Item "PixelShaderConstant4"
+.IP "PixelShaderConstantB" 2
+.IX Item "PixelShaderConstantB"
+.IP "PixelShaderConstantF" 2
+.IX Item "PixelShaderConstantF"
+.IP "PixelShaderConstantI" 2
+.IX Item "PixelShaderConstantI"
+.IP "PointDistanceAttenuation" 2
+.IX Item "PointDistanceAttenuation"
+.IP "PointFadeThresholdSize" 2
+.IX Item "PointFadeThresholdSize"
+.IP "PointScaleEnable" 2
+.IX Item "PointScaleEnable"
+.IP "PointScale_A" 2
+.IX Item "PointScale_A"
+.IP "PointScale_B" 2
+.IX Item "PointScale_B"
+.IP "PointScale_C" 2
+.IX Item "PointScale_C"
+.IP "PointSize" 2
+.IX Item "PointSize"
+.IP "PointSizeMax" 2
+.IX Item "PointSizeMax"
+.IP "PointSizeMin" 2
+.IX Item "PointSizeMin"
+.IP "PointSmoothEnable" 2
+.IX Item "PointSmoothEnable"
+.IP "PointSpriteCoordOrigin" 2
+.IX Item "PointSpriteCoordOrigin"
+.IP "PointSpriteCoordReplace" 2
+.IX Item "PointSpriteCoordReplace"
+.IP "PointSpriteEnable" 2
+.IX Item "PointSpriteEnable"
+.IP "PointSpriteRMode" 2
+.IX Item "PointSpriteRMode"
+.IP "PolygonMode" 2
+.IX Item "PolygonMode"
+.IP "PolygonOffset" 2
+.IX Item "PolygonOffset"
+.IP "PolygonOffsetFillEnable" 2
+.IX Item "PolygonOffsetFillEnable"
+.IP "PolygonOffsetLineEnable" 2
+.IX Item "PolygonOffsetLineEnable"
+.IP "PolygonOffsetPointEnable" 2
+.IX Item "PolygonOffsetPointEnable"
+.IP "PolygonSmoothEnable" 2
+.IX Item "PolygonSmoothEnable"
+.IP "PolygonStippleEnable" 2
+.IX Item "PolygonStippleEnable"
+.IP "ProjectionMatrix" 2
+.IX Item "ProjectionMatrix"
+.IP "ProjectionTransform" 2
+.IX Item "ProjectionTransform"
+.IP "RangeFogEnable" 2
+.IX Item "RangeFogEnable"
+.IP "RescaleNormalEnable" 2
+.IX Item "RescaleNormalEnable"
+.IP "SampleAlphaToCoverageEnable" 2
+.IX Item "SampleAlphaToCoverageEnable"
+.IP "SampleAlphaToOneEnable" 2
+.IX Item "SampleAlphaToOneEnable"
+.IP "SampleCoverageEnable" 2
+.IX Item "SampleCoverageEnable"
+.IP "Sampler" 2
+.IX Item "Sampler"
+.IP "Scissor" 2
+.IX Item "Scissor"
+.IP "ScissorTestEnable" 2
+.IX Item "ScissorTestEnable"
+.IP "SeparateAlphaBlendEnable" 2
+.IX Item "SeparateAlphaBlendEnable"
+.IP "ShadeMode" 2
+.IX Item "ShadeMode"
+.IP "ShadeModel" 2
+.IX Item "ShadeModel"
+.IP "SlopScaleDepthBias" 2
+.IX Item "SlopScaleDepthBias"
+.IP "SpecularEnable" 2
+.IX Item "SpecularEnable"
+.IP "SpecularMaterialSource" 2
+.IX Item "SpecularMaterialSource"
+.IP "SrcBlend" 2
+.IX Item "SrcBlend"
+.IP "SrcBlendAlpha" 2
+.IX Item "SrcBlendAlpha"
+.IP "StencilEnable" 2
+.IX Item "StencilEnable"
+.IP "StencilFail" 2
+.IX Item "StencilFail"
+.IP "StencilFunc" 2
+.IX Item "StencilFunc"
+.IP "StencilFuncSeparate" 2
+.IX Item "StencilFuncSeparate"
+.IP "StencilMask" 2
+.IX Item "StencilMask"
+.IP "StencilMaskSeparate" 2
+.IX Item "StencilMaskSeparate"
+.IP "StencilOp" 2
+.IX Item "StencilOp"
+.IP "StencilOpSeparate" 2
+.IX Item "StencilOpSeparate"
+.IP "StencilPass" 2
+.IX Item "StencilPass"
+.IP "StencilRef" 2
+.IX Item "StencilRef"
+.IP "StencilTestEnable" 2
+.IX Item "StencilTestEnable"
+.IP "StencilTestTwoSideEnable" 2
+.IX Item "StencilTestTwoSideEnable"
+.IP "StencilWriteMask" 2
+.IX Item "StencilWriteMask"
+.IP "StencilZFail" 2
+.IX Item "StencilZFail"
+.IP "TessellationControlProgram" 2
+.IX Item "TessellationControlProgram"
+.IP "TessellationControlShader" 2
+.IX Item "TessellationControlShader"
+.IP "TessellationEvaluationProgram" 2
+.IX Item "TessellationEvaluationProgram"
+.IP "TessellationEvaluationShader" 2
+.IX Item "TessellationEvaluationShader"
+.IP "TexGenQEnable" 2
+.IX Item "TexGenQEnable"
+.IP "TexGenQEyePlane" 2
+.IX Item "TexGenQEyePlane"
+.IP "TexGenQMode" 2
+.IX Item "TexGenQMode"
+.IP "TexGenQObjectPlane" 2
+.IX Item "TexGenQObjectPlane"
+.IP "TexGenREnable" 2
+.IX Item "TexGenREnable"
+.IP "TexGenREyePlane" 2
+.IX Item "TexGenREyePlane"
+.IP "TexGenRMode" 2
+.IX Item "TexGenRMode"
+.IP "TexGenRObjectPlane" 2
+.IX Item "TexGenRObjectPlane"
+.IP "TexGenSEnable" 2
+.IX Item "TexGenSEnable"
+.IP "TexGenSEyePlane" 2
+.IX Item "TexGenSEyePlane"
+.IP "TexGenSMode" 2
+.IX Item "TexGenSMode"
+.IP "TexGenSObjectPlane" 2
+.IX Item "TexGenSObjectPlane"
+.IP "TexGenTEnable" 2
+.IX Item "TexGenTEnable"
+.IP "TexGenTEyePlane" 2
+.IX Item "TexGenTEyePlane"
+.IP "TexGenTMode" 2
+.IX Item "TexGenTMode"
+.IP "TexGenTObjectPlane" 2
+.IX Item "TexGenTObjectPlane"
+.IP "Texture1D" 2
+.IX Item "Texture1D"
+.IP "Texture1DEnable" 2
+.IX Item "Texture1DEnable"
+.IP "Texture2D" 2
+.IX Item "Texture2D"
+.IP "Texture2DEnable" 2
+.IX Item "Texture2DEnable"
+.IP "Texture3D" 2
+.IX Item "Texture3D"
+.IP "Texture3DEnable" 2
+.IX Item "Texture3DEnable"
+.IP "TextureCubeMap" 2
+.IX Item "TextureCubeMap"
+.IP "TextureCubeMapEnable" 2
+.IX Item "TextureCubeMapEnable"
+.IP "TextureEnvColor" 2
+.IX Item "TextureEnvColor"
+.IP "TextureEnvMode" 2
+.IX Item "TextureEnvMode"
+.IP "TextureFactor" 2
+.IX Item "TextureFactor"
+.IP "TextureMatrix" 2
+.IX Item "TextureMatrix"
+.IP "TextureRectangle" 2
+.IX Item "TextureRectangle"
+.IP "TextureRectangleEnable" 2
+.IX Item "TextureRectangleEnable"
+.IP "TextureTransform" 2
+.IX Item "TextureTransform"
+.IP "TweenFactor" 2
+.IX Item "TweenFactor"
+.IP "TwoSidedStencilMode" 2
+.IX Item "TwoSidedStencilMode"
+.IP "VertexBlend" 2
+.IX Item "VertexBlend"
+.IP "VertexEnvParameter" 2
+.IX Item "VertexEnvParameter"
+.IP "VertexLocalParameter" 2
+.IX Item "VertexLocalParameter"
+.IP "VertexProgram" 2
+.IX Item "VertexProgram"
+.IP "VertexProgramPointSizeEnable" 2
+.IX Item "VertexProgramPointSizeEnable"
+.IP "VertexProgramTwoSideEnable" 2
+.IX Item "VertexProgramTwoSideEnable"
+.IP "VertexShader" 2
+.IX Item "VertexShader"
+.IP "VertexShaderConstant" 2
+.IX Item "VertexShaderConstant"
+.IP "VertexShaderConstant1" 2
+.IX Item "VertexShaderConstant1"
+.IP "VertexShaderConstant2" 2
+.IX Item "VertexShaderConstant2"
+.IP "VertexShaderConstant3" 2
+.IX Item "VertexShaderConstant3"
+.IP "VertexShaderConstantB" 2
+.IX Item "VertexShaderConstantB"
+.IP "VertexShaderConstantF" 2
+.IX Item "VertexShaderConstantF"
+.IP "VertexShaderConstantI" 2
+.IX Item "VertexShaderConstantI"
+.IP "ViewTransform" 2
+.IX Item "ViewTransform"
+.IP "WorldTransform" 2
+.IX Item "WorldTransform"
+.IP "Wrap0" 2
+.IX Item "Wrap0"
+.IP "Wrap1" 2
+.IX Item "Wrap1"
+.IP "Wrap10" 2
+.IX Item "Wrap10"
+.IP "Wrap11" 2
+.IX Item "Wrap11"
+.IP "Wrap12" 2
+.IX Item "Wrap12"
+.IP "Wrap13" 2
+.IX Item "Wrap13"
+.IP "Wrap14" 2
+.IX Item "Wrap14"
+.IP "Wrap15" 2
+.IX Item "Wrap15"
+.IP "Wrap2" 2
+.IX Item "Wrap2"
+.IP "Wrap3" 2
+.IX Item "Wrap3"
+.IP "Wrap4" 2
+.IX Item "Wrap4"
+.IP "Wrap5" 2
+.IX Item "Wrap5"
+.IP "Wrap6" 2
+.IX Item "Wrap6"
+.IP "Wrap7" 2
+.IX Item "Wrap7"
+.IP "Wrap8" 2
+.IX Item "Wrap8"
+.IP "Wrap9" 2
+.IX Item "Wrap9"
+.IP "ZEnable" 2
+.IX Item "ZEnable"
+.IP "ZFunc" 2
+.IX Item "ZFunc"
+.IP "ZWriteEnable" 2
+.IX Item "ZWriteEnable"
+.IP "vertexShaderConstant4" 2
+.IX Item "vertexShaderConstant4"
+.PD
+.PP
+Back to Top

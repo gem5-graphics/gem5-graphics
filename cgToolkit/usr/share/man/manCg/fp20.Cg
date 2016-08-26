@@ -1,0 +1,549 @@
+.de Sh \" Subsection heading
+.br
+.if t .Sp
+.ne 5
+.PP
+\fB\\$1\fR
+.PP
+..
+.de Sp \" Vertical space (when we can't use .PP)
+.if t .sp .5v
+.if n .sp
+..
+.de Vb \" Begin verbatim text
+.ft CW
+.nf
+.ne \\$1
+..
+.de Ve \" End verbatim text
+.ft R
+.fi
+..
+.tr \(*W-
+.ds C+ C\v'-.1v'\h'-1p'\s-2+\h'-1p'+\s0\v'.1v'\h'-1p'
+.ie n \{\
+.    ds -- \(*W-
+.    ds PI pi
+.    if (\n(.H=4u)&(1m=24u) .ds -- \(*W\h'-12u'\(*W\h'-12u'-\" diablo 10 pitch
+.    if (\n(.H=4u)&(1m=20u) .ds -- \(*W\h'-12u'\(*W\h'-8u'-\"  diablo 12 pitch
+.    ds L" ""
+.    ds R" ""
+.    ds C` ""
+.    ds C' ""
+'br\}
+.el\{\
+.    ds -- \|\(em\|
+.    ds PI \(*p
+.    ds L" ``
+.    ds R" ''
+'br\}
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.ie \nF \{\
+.    de IX
+.    tm Index:\\$1\t\\n%\t"\\$2"
+..
+.    nr % 0
+.    rr F
+.\}
+.el \{\
+.    de IX
+..
+.\}
+.    \" fudge factors for nroff and troff
+.if n \{\
+.    ds #H 0
+.    ds #V .8m
+.    ds #F .3m
+.    ds #[ \f1
+.    ds #] \fP
+.\}
+.if t \{\
+.    ds #H ((1u-(\\\\n(.fu%2u))*.13m)
+.    ds #V .6m
+.    ds #F 0
+.    ds #[ \&
+.    ds #] \&
+.\}
+.    \" simple accents for nroff and troff
+.if n \{\
+.    ds ' \&
+.    ds ` \&
+.    ds ^ \&
+.    ds , \&
+.    ds ~ ~
+.    ds /
+.\}
+.if t \{\
+.    ds ' \\k:\h'-(\\n(.wu*8/10-\*(#H)'\'\h"|\\n:u"
+.    ds ` \\k:\h'-(\\n(.wu*8/10-\*(#H)'\`\h'|\\n:u'
+.    ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'^\h'|\\n:u'
+.    ds , \\k:\h'-(\\n(.wu*8/10)',\h'|\\n:u'
+.    ds ~ \\k:\h'-(\\n(.wu-\*(#H-.1m)'~\h'|\\n:u'
+.    ds / \\k:\h'-(\\n(.wu*8/10-\*(#H)'\z\(sl\h'|\\n:u'
+.\}
+.    \" troff and (daisy-wheel) nroff accents
+.ds : \\k:\h'-(\\n(.wu*8/10-\*(#H+.1m+\*(#F)'\v'-\*(#V'\z.\h'.2m+\*(#F'.\h'|\\n:u'\v'\*(#V'
+.ds 8 \h'\*(#H'\(*b\h'-\*(#H'
+.ds o \\k:\h'-(\\n(.wu+\w'\(de'u-\*(#H)/2u'\v'-.3n'\*(#[\z\(de\v'.3n'\h'|\\n:u'\*(#]
+.ds d- \h'\*(#H'\(pd\h'-\w'~'u'\v'-.25m'\f2\(hy\fP\v'.25m'\h'-\*(#H'
+.ds D- D\\k:\h'-\w'D'u'\v'-.11m'\z\(hy\v'.11m'\h'|\\n:u'
+.ds th \*(#[\v'.3m'\s+1I\s-1\v'-.3m'\h'-(\w'I'u*2/3)'\s-1o\s+1\*(#]
+.ds Th \*(#[\s+2I\s-2\h'-\w'I'u*3/5'\v'-.3m'o\v'.3m'\*(#]
+.ds ae a\h'-(\w'a'u*4/10)'e
+.ds Ae A\h'-(\w'A'u*4/10)'E
+.    \" corrections for vroff
+.if v .ds ~ \\k:\h'-(\\n(.wu*9/10-\*(#H)'\s-2\u~\d\s+2\h'|\\n:u'
+.if v .ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'\v'-.4m'^\v'.4m'\h'|\\n:u'
+.    \" for low resolution devices (crt and lpr)
+.if \n(.H>23 .if \n(.V>19 \
+\{\
+.    ds : e
+.    ds 8 ss
+.    ds o a
+.    ds d- d\h'-1'\(ga
+.    ds D- D\h'-1'\(hy
+.    ds th \o'bp'
+.    ds Th \o'LP'
+.    ds ae ae
+.    ds Ae AE
+.\}
+.rm #[ #] #H #V #F C
+.IX Title "FP20 Cg"
+.TH FP20 Cg "Cg Toolkit 3.0" "perl v5.10.0" "Cg Profiles"
+.if n .ad l
+.nh
+.SH "NAME"
+\&\fBfp20\fR \- OpenGL fragment profile for NV2x (GeForce3, GeForce4 Ti, Quadro \s-1DCC\s0, etc.)
+.SH "SYNOPSIS"
+.IX Header "SYNOPSIS"
+.Vb 1
+\&  fp20
+.Ve
+.SH "DESCRIPTION"
+.IX Header "DESCRIPTION"
+This OpenGL profile corresponds to the per-fragment functionality
+introduced by GeForce3.
+.PP
+The capabilities of this profile are quite limited.
+.PP
+The compiler output for this profile conforms to the \fBnvparse\fR file
+format for describing \fBNV_register_combiners\fR and \fBNV_texture_shader\fR
+state configurations.
+.SH "3D API DEPENDENCIES"
+.IX Header "3D API DEPENDENCIES"
+Requires OpenGL support for \fBNV_texture_shader\fR, \fBNV_texture_shader2\fR,
+and \fBNV_register_combiners2\fR extensions.  These extensions were
+introduced by GeForce3 and Quadro \s-1DCC\s0 GPUs.
+.PP
+Some standard library functions may require \fBNV_texture_shader3\fR.
+This extension was introduced by GeForce4 Ti and Quadro4 \s-1XGL\s0 GPUs.
+.Sh "OpenGL Extension Specifications"
+.IX Subsection "OpenGL Extension Specifications"
+.Vb 4
+\& http://www.opengl.org/registry/specs/NV/register_combiners.txt 
+\& http://www.opengl.org/registry/specs/NV/register_combiners2.txt
+\& http://www.opengl.org/registry/specs/NV/texture_shader.txt
+\& http://www.opengl.org/registry/specs/NV/texture_shader2.txt
+.Ve
+.SH "PROFILE OPTIONS"
+.IX Header "PROFILE OPTIONS"
+None.
+.SH "DATA TYPES"
+.IX Header "DATA TYPES"
+.IP "fixed" 8
+.IX Item "fixed"
+The \fBfixed\fR data type corresponds to a native signed 9\-bit integers
+normalized to the [\-1.0,+1.0] range.
+.IP "float" 8
+.IX Item "float"
+.PD 0
+.IP "half" 8
+.IX Item "half"
+.PD
+In most cases, the \fBfloat\fR and \fBhalf\fR data types are mapped to \fBfixed\fR
+for math operations.
+.Sp
+Certain built-in standard library functions corresponding to
+\&\fBNV_texture_shader\fR operations operate at 32\-bit floating-point
+precision.
+.SH "SEMANTICS"
+.IX Header "SEMANTICS"
+.Sh "\s-1INPUT\s0 \s-1SEMANTICS\s0"
+.IX Subsection "INPUT SEMANTICS"
+The varying input semantics in the \fBfp20\fR profile correspond to the
+respectively named varying output semantics of the \fBvp20\fR profile.
+.PP
+.Vb 1
+\&  Binding Semantics Name           Corresponding Data
+\& 
+\&  COLOR                            Input primary color
+\&  COLOR0
+\&  COL
+\&  COL0
+\& 
+\&  COLOR1                           Input secondary color
+\&  COL1   
+\& 
+\&  TEX0                             Input texture coordinate sets 0
+\&  TEXCOORD0
+\&
+\&  TEX1                             Input texture coordinate sets 1
+\&  TEXCOORD1
+\&
+\&  TEX2                             Input texture coordinate sets 2
+\&  TEXCOORD2
+\&
+\&  TEX3                             Input texture coordinate sets 3
+\&  TEXCOORD3
+\& 
+\&  FOGP                             Input fog color (XYZ) and factor (W)
+\&  FOG
+.Ve
+.Sh "\s-1OUTPUT\s0 \s-1SEMANTICS\s0"
+.IX Subsection "OUTPUT SEMANTICS"
+.Vb 4
+\&  COLOR                            Output color (float4)
+\&  COLOR0
+\&  COL0
+\&  COL
+\& 
+\&  DEPTH                            Output depth (float)
+\&  DEPR
+.Ve
+.SH "STANDARD LIBRARY ISSUES"
+.IX Header "STANDARD LIBRARY ISSUES"
+There are a lot of standard library issues with this profile.
+.PP
+Because the 'fp20' profile has limited capabilities, not all of the Cg
+standard library functions are supported.  The list below presents the Cg
+standard library functions that are supported by this profile.  See
+the standard library documentation for descriptions of these
+functions.
+.PP
+.Vb 10
+\&  dot(floatN, floatN)
+\&  lerp(floatN, floatN, floatN)
+\&  lerp(floatN, floatN, float)
+\&  tex1D(sampler1D, float)
+\&  tex1D(sampler1D, float2)
+\&  tex1Dproj(sampler1D, float2)
+\&  tex1Dproj(sampler1D, float3)
+\&  tex2D(sampler2D, float2)
+\&  tex2D(sampler2D, float3)
+\&  tex2Dproj(sampler2D, float3)
+\&  tex2Dproj(sampler2D, float4)
+\&  texRECT(samplerRECT, float2)
+\&  texRECT(samplerRECT, float3)
+\&  texRECTproj(samplerRECT, float3)
+\&  texRECTproj(samplerRECT, float4)
+\&  tex3D(sampler3D, float3)
+\&  tex3Dproj(sampler3D, float4)
+\&  texCUBE(samplerCUBE, float3)
+\&  texCUBEproj(samplerCUBE, float4)
+.Ve
+.PP
+Note: The non-projective texture lookup functions are actually done as
+projective lookups on the underlying hardware.  Because of this, the
+\&'w' component of the texture coordinates passed to these functions
+from the application or vertex program must contain the value 1.
+.PP
+Texture coordinate parameters for projective texture lookup functions
+must have swizzles that match the swizzle done by the generated
+texture shader instruction.  While this may seem burdensome, it is
+intended to allow 'fp20' profile programs to behave correctly under
+other pixel shader profiles.  The list below shows the swizzles required on
+the texture coordinate parameter to the projective texture lookup
+functions.
+.PP
+.Vb 1
+\&  Texture lookup function       Texture coordinate swizzle
+\&  
+\&  tex1Dproj                     .xw/.ra
+\&  tex2Dproj                     .xyw/.rga
+\&  texRECTproj                   .xyw/.rga
+\&  tex3Dproj                     .xyzw/.rgba
+\&  texCUBEproj                   .xyzw/.rgba
+.Ve
+.Sh "\s-1TEXTURE\s0 \s-1SHADER\s0 \s-1OPERATIONS\s0"
+.IX Subsection "TEXTURE SHADER OPERATIONS"
+In order to take advantage of the more complex hard-wired shader
+operations provided by \fBNV_texture_shader\fR, a collection of built-in
+functions implement the various shader operations.
+.IP "offsettex2D" 8
+.IX Item "offsettex2D"
+.PD 0
+.IP "offsettexRECT" 8
+.IX Item "offsettexRECT"
+.PD
+.Vb 4
+\&  offsettex2D(uniform sampler2D tex,
+\&              float2 st,
+\&              float4 prevlookup,
+\&              uniform float4 m)
+\& 
+\&  offsettexRECT(uniform samplerRECT tex,
+\&                float2 st,
+\&                float4 prevlookup,
+\&                uniform float4 m)
+.Ve
+.Sp
+Performs the following
+.Sp
+.Vb 2
+\&  float2 newst = st + m.xy * prevlookup.xx + m.zw * prevlookup.yy;
+\&  return tex2D/RECT(tex, newst);
+.Ve
+.Sp
+where 'st' are texture coordinates associated with sampler 'tex',
+\&'prevlookup' is the result of a previous texture operation, and 'm' is
+the offset texture matrix.  This function can be used to generate the
+\&'offset_2d' or 'offset_rectangle' \fBNV_texture_shader\fR instructions.
+.IP "offsettex2DScaleBias" 8
+.IX Item "offsettex2DScaleBias"
+.PD 0
+.IP "offsettexRECTScaleBias" 8
+.IX Item "offsettexRECTScaleBias"
+.PD
+.Vb 6
+\&  offsettex2DScaleBias(uniform sampler2D tex,
+\&                       float2 st,
+\&                       float4 prevlookup,
+\&                       uniform float4 m,
+\&                       uniform float scale,
+\&                       uniform float bias)
+\&
+\&  offsettexRECTScaleBias(uniform samplerRECT tex,
+\&                         float2 st,
+\&                         float4 prevlookup,
+\&                         uniform float4 m,
+\&                         uniform float scale,
+\&                         uniform float bias)
+.Ve
+.Sp
+Performs the following
+.Sp
+.Vb 3
+\&  float2 newst = st + m.xy * prevlookup.xx + m.zw * prevlookup.yy;
+\&  float4 result = tex2D/RECT(tex, newst);
+\&  return result * saturate(prevlookup.z * scale + bias);
+.Ve
+.Sp
+where 'st' are texture coordinates associated with sampler 'tex',
+\&'prevlookup' is the result of a previous texture operation, 'm' is the
+offset texture matrix, 'scale' is the offset texture scale and 'bias'
+is the offset texture bias.  This function can be used to generate
+the 'offset_2d_scale' or 'offset_rectangle_scale' \fBNV_texture_shader\fR
+instructions.
+.IP "tex1D_dp3(sampler1D tex, float3 str, float4 prevlookup" 8
+.IX Item "tex1D_dp3(sampler1D tex, float3 str, float4 prevlookup"
+.Vb 3
+\&  tex1D_dp3(sampler1D tex,
+\&            float3 str,
+\&            float4 prevlookup
+.Ve
+.Sp
+Performs the following
+.Sp
+.Vb 1
+\&  return tex1D(tex, dot(str, prevlookup.xyz));
+.Ve
+.Sp
+where 'str' are texture coordinates associated with sampler 'tex'
+and 'prevlookup' is the result of a previous texture operation.  This
+function can be used to generate the 'dot_product_1d' \fBNV_texture_shader\fR
+instruction.
+.IP "tex2D_dp3x2" 8
+.IX Item "tex2D_dp3x2"
+.PD 0
+.IP "texRECT_dp3x2" 8
+.IX Item "texRECT_dp3x2"
+.PD
+.Vb 4
+\&  tex2D_dp3x2(uniform sampler2D tex,
+\&              float3 str,
+\&              float4 intermediate_coord,
+\&              float4 prevlookup)
+\& 
+\&  texRECT_dp3x2(uniform samplerRECT tex,
+\&                float3 str,
+\&                float4 intermediate_coord,
+\&                float4 prevlookup)
+.Ve
+.Sp
+Performs the following
+.Sp
+.Vb 3
+\&  float2 newst = float2(dot(intermediate_coord.xyz, prevlookup.xyz),
+\&                        dot(str, prevlookup.xyz));
+\&  return tex2D/RECT(tex, newst);
+.Ve
+.Sp
+where 'str' are texture coordinates associated with sampler 'tex',
+\&'prevlookup' is the result of a previous texture operation and
+\&'intermediate_coord' are texture coordinates associated with the previous
+texture unit.  This function can be used to generate the 'dot_product_2d'
+or 'dot_product_rectangle' \fBNV_texture_shader\fR instruction combinations.
+.IP "tex3D_dp3x3" 8
+.IX Item "tex3D_dp3x3"
+.PD 0
+.IP "texCUBE_dp3x3" 8
+.IX Item "texCUBE_dp3x3"
+.PD
+.Vb 5
+\&  tex3D_dp3x3(sampler3D tex,
+\&              float3 str,
+\&              float4 intermediate_coord1,
+\&              float4 intermediate_coord2,
+\&              float4 prevlookup)
+\&
+\&  texCUBE_dp3x3(samplerCUBE tex,
+\&                float3 str,
+\&                float4 intermediate_coord1,
+\&                float4 intermediate_coord2,
+\&                float4 prevlookup)
+.Ve
+.Sp
+Performs the following
+.Sp
+.Vb 4
+\&  float3 newst = float3(dot(intermediate_coord1.xyz, prevlookup.xyz),
+\&                        dot(intermediate_coord2.xyz, prevlookup.xyz),
+\&                        dot(str, prevlookup.xyz));
+\&  return tex3D/CUBE(tex, newst);
+.Ve
+.Sp
+where 'str' are texture coordinates associated with sampler
+\&'tex', 'prevlookup' is the result of a previous texture operation,
+\&'intermediate_coord1' are texture coordinates associated with the 'n\-2'
+texture unit and 'intermediate_coord2' are texture coordinates associated
+with the 'n\-1' texture unit.  This function can be used to generate the
+\&'dot_product_3d' or 'dot_product_cube_map' \fBNV_texture_shader\fR instruction
+combinations.
+.IP "texCUBE_reflect_dp3x3" 8
+.IX Item "texCUBE_reflect_dp3x3"
+.Vb 5
+\&  texCUBE_reflect_dp3x3(uniform samplerCUBE tex,
+\&                        float4 strq,
+\&                        float4 intermediate_coord1,
+\&                        float4 intermediate_coord2,
+\&                        float4 prevlookup)
+.Ve
+.Sp
+Performs the following
+.Sp
+.Vb 6
+\&  float3 E = float3(intermediate_coord2.w, intermediate_coord1.w,
+\&                    strq.w);
+\&  float3 N = float3(dot(intermediate_coord1.xyz, prevlookup.xyz),
+\&                    dot(intermediate_coord2.xyz, prevlookup.xyz),
+\&                    dot(strq.xyz, prevlookup.xyz));
+\&  return texCUBE(tex, 2 * dot(N, E) / dot(N, N) * N \- E);
+.Ve
+.Sp
+where 'strq' are texture coordinates associated with sampler
+\&'tex', 'prevlookup' is the result of a previous texture operation,
+\&'intermediate_coord1' are texture coordinates associated with the 'n\-2'
+texture unit and 'intermediate_coord2' are texture coordinates associated
+with the 'n\-1' texture unit.  This function can be used to generate the
+\&'dot_product_reflect_cube_map_eye_from_qs' \fBNV_texture_shader\fR instruction
+combination.
+.IP "texCUBE_reflect_eye_dp3x3" 8
+.IX Item "texCUBE_reflect_eye_dp3x3"
+.Vb 6
+\&  texCUBE_reflect_eye_dp3x3(uniform samplerCUBE tex,
+\&                            float3 str,
+\&                            float4 intermediate_coord1,
+\&                            float4 intermediate_coord2,
+\&                            float4 prevlookup,
+\&                            uniform float3 eye)
+.Ve
+.Sp
+Performs the following
+.Sp
+.Vb 4
+\&  float3 N = float3(dot(intermediate_coord1.xyz, prevlookup.xyz),
+\&                    dot(intermediate_coord2.xyz, prevlookup.xyz),
+\&                    dot(coords.xyz, prevlookup.xyz));
+\&  return texCUBE(tex, 2 * dot(N, E) / dot(N, N) * N \- E);
+.Ve
+.Sp
+where 'strq' are texture coordinates associated with sampler
+\&'tex', 'prevlookup' is the result of a previous texture operation,
+\&'intermediate_coord1' are texture coordinates associated with the 'n\-2'
+texture unit, 'intermediate_coord2' are texture coordinates associated
+with the 'n\-1' texture unit and 'eye' is the eye-ray vector.  This
+function can be used generate the 'dot_product_reflect_cube_map_const_eye'
+\&\fBNV_texture_shader\fR instruction combination.
+.IP "tex_dp3x2_depth" 8
+.IX Item "tex_dp3x2_depth"
+.Vb 3
+\&  tex_dp3x2_depth(float3 str,
+\&                  float4 intermediate_coord,
+\&                  float4 prevlookup)
+.Ve
+.Sp
+Performs the following
+.Sp
+.Vb 3
+\&  float z = dot(intermediate_coord.xyz, prevlookup.xyz);
+\&  float w = dot(str, prevlookup.xyz);
+\&  return z / w;
+.Ve
+.Sp
+where 'str' are texture coordinates associated with the 'n'th texture
+unit, 'intermediate_coord' are texture coordinates associated with
+the 'n\-1' texture unit and 'prevlookup' is the result of a previous
+texture operation.  This function can be used in conjunction with the
+\&'\s-1DEPTH\s0' varying out semantic to generate the 'dot_product_depth_replace'
+\&\fBNV_texture_shader\fR instruction combination.
+.SH "EXAMPLES"
+.IX Header "EXAMPLES"
+The following examples illustrate how a developer can use Cg to
+achieve \fBNV_texture_shader\fR/\fBNV_register_combiners\fR functionality.
+.Sh "Example 1"
+.IX Subsection "Example 1"
+.Vb 5
+\&  struct VertexOut {
+\&     float4 color     : COLOR0;
+\&     float4 texCoord0 : TEXCOORD0;
+\&     float4 texCoord1 : TEXCOORD1;
+\& };
+\& 
+\& float4 main(VertexOut IN,
+\&             uniform sampler2D diffuseMap,
+\&             uniform sampler2D normalMap) : COLOR
+\& {
+\&     float4 diffuseTexColor = tex2D(diffuseMap, IN.texCoord0.xy);
+\&     float4 normal = 2 * (tex2D(normalMap, IN.texCoord1.xy) \- 0.5);
+\&     float3 light_vector = 2 * (IN.color.rgb \- 0.5);
+\&     float4 dot_result = saturate(dot(light_vector, normal.xyz).xxxx);
+\&     return dot_result * diffuseTexColor;
+\& }
+.Ve
+.Sh "Example 2"
+.IX Subsection "Example 2"
+.Vb 6
+\& struct VertexOut {
+\&     float4 texCoord0 : TEXCOORD0;
+\&     float4 texCoord1 : TEXCOORD1;
+\&     float4 texCoord2 : TEXCOORD2;
+\&     float4 texCoord3 : TEXCOORD3;
+\& };
+\& 
+\& float4 main(VertexOut IN,
+\&             uniform sampler2D normalMap,
+\&             uniform sampler2D intensityMap,
+\&             uniform sampler2D colorMap) : COLOR
+\& {
+\&     float4 normal = 2 * (tex2D(normalMap, IN.texCoord0.xy) \- 0.5);
+\&     float2 intensCoord = float2(dot(IN.texCoord1.xyz, normal.xyz),
+\&                                 dot(IN.texCoord2.xyz, normal.xyz));
+\&     float4 intensity = tex2D(intensityMap, intensCoord);
+\&     float4 color = tex2D(colorMap, IN.texCoord3.xy);
+\&     return color * intensity;
+\& }
+.Ve
+.SH "SEE ALSO"
+.IX Header "SEE ALSO"
+vp20

@@ -1,0 +1,304 @@
+
+/* CgFX 1.5 effects for GPU-accelerated image rescaling */
+
+//// VERTEX PROGRAM
+
+void bilinear_vp(float2 position : POSITION,
+
+             out float4 oPosition : POSITION,
+             out float2 samplePos : TEXCOORD0,
+             
+         uniform float4 scaleBias)
+{
+  oPosition = float4(scaleBias.xy*position + scaleBias.zw, 0, 1);
+  samplePos = float2(1,-1) * position;
+}
+
+void boxfilter_vp(float2 position : POSITION,
+
+              out float4 oPosition : POSITION,
+              out float4 samplePos : TEXCOORD0,
+
+          uniform float4 scaleBias,
+          uniform float2 srcDestRectSize)
+{
+  oPosition = float4(scaleBias.xy*position + scaleBias.zw, 0, 1);
+  samplePos = position.xyxy * srcDestRectSize.xyxy + float4(0,0,1,1);
+}
+
+//// FRAGMENT PROGRAM
+
+void bilinear(float2 samplePos : TEXCOORD0,
+
+           out float4 destPixel : COLOR,
+           
+       uniform sampler2D sourceImage : TEX0)
+{
+  destPixel = tex2D(sourceImage, samplePos);
+}
+
+float area(float2 a, float2 b)
+{
+  float2 v = a - b;
+  return (v.x * v.y);
+}
+
+void boxfilter(float4 samplePos : TEXCOORD0,
+
+           out float4 destPixel : COLOR,
+               
+       uniform int2 sampleCount,
+       uniform float2 sampleSize,
+       uniform float4 texCoordScaleBias,
+       uniform float oneOverSampleArea,
+       uniform sampler2D sourceImage : TEX0)
+{
+  // compute corners of overall filter box in source image coordinates
+  float4 boxCorners = floor(samplePos) * sampleSize.xyxy;
+
+  float4 sum = 0;
+  for (int y = 0; y < sampleCount.y; y += 1) {
+    for (int x = 0; x < sampleCount.x; x += 1) {
+      float2 sampleCorner = floor(boxCorners.xy) + float2(x, y);
+
+      float4 pos = sampleCorner.xyxy + float4(0,0,1,1);
+
+      // clamp positions to dimensions of filter box
+      pos = max(pos, boxCorners.xyxy);
+      pos = min(pos, boxCorners.zwzw);
+
+      // texture coordinates
+      float2 tc = sampleCorner * texCoordScaleBias.xy + texCoordScaleBias.zw;
+
+      sum += tex2D(sourceImage, tc) * area(pos.xy, pos.zw);
+    }
+  }
+  destPixel = sum * oneOverSampleArea;
+}
+
+/* The "boxfilter_bilinear" Cg fragment program is functionally identical
+   to the above "boxfilter" version, but the bilinear one uses bilinear
+   filtering to weight 4 samples with a single texture fetch.  Extra math
+   carefully adjust the texture coordinates of each fetch to ensure
+   proper weighting.  Then the bilinear fetch results are further
+   weighted for correct box filter weighting.  The bilinear version is
+   about twice the performance of the "one texture fetch per sample"
+   boxfilter version.  */
+
+void boxfilter_bilinear(float4 samplePos : TEXCOORD0,
+
+                    out float4 destPixel : COLOR,
+               
+                uniform int2 sampleCount,
+                uniform float2 sampleSize,
+                uniform float4 texCoordScaleBias,
+                uniform float oneOverSampleArea,
+                uniform sampler2D sourceImage : TEX0)
+{
+  // compute corners of overall filter box in source image coordinates
+  float4 boxCorners = floor(samplePos) * sampleSize.xyxy;
+
+  float4 sum = 0;
+  for (int y = 0; y < sampleCount.y; y += 1) {
+    for (int x = 0; x < sampleCount.x; x += 1) {
+      float2 sampleCorner = floor(boxCorners.xy) + float2(x, y) * 2.0;
+      
+      // Consider a 2x2 of texels for a bilinear filtered fetch:
+      //
+      //               L
+      //   +-----+-----+
+      //   |     |     |
+      //   |  x  |  x  |
+      //   |     |     |
+      // K +-----+-----+
+      //   |     |     |
+      //   |  x  |  x  |
+      //   |     |     |
+      //   +-----+-----+
+      //   I     J
+      //
+      // x = texel center, I,J,K are corner vertices
+      float3 posX = sampleCorner.xxx + float3(0.0, 1.0, 2.0);
+      float3 posY = sampleCorner.yyy + float3(0.0, 1.0, 2.0);
+      
+      // Now:
+      // I = (posX.x,posY.x)
+      // J = (posX.y,posY.x)
+      // K = (posX.x,posY.y)
+      // L = (posX.z,posY.z)
+      
+      // clamp positions to dimensions of filter box
+      posX = max(posX, boxCorners.xxx);
+      posX = min(posX, boxCorners.zzz);
+      posY = max(posY, boxCorners.yyy);
+      posY = min(posY, boxCorners.www);
+      
+      half3 dx = posX.zzz - posX.yxx;  // dx(LJ,LK,LI)
+      half3 dy = posY.zzz - posY.xyx;  // dy(LJ,LK,LI)
+
+      // texture coordinates
+      float3 area = dx*dy; // area(LJ),area(LK),0,area(LI)
+      
+      float2 tc = sampleCorner + area.xy/area.z;
+      tc = tc * texCoordScaleBias.xy + texCoordScaleBias.zw;
+      sum += tex2D(sourceImage, tc) * area.z;
+    }
+  }
+  destPixel = sum * oneOverSampleArea;
+}
+
+//// EFFECT PARAMETERS
+
+float sourceWidth, sourceHeight;
+float destWidth, destHeight;
+float2 windowSize, imageWindowOffset;
+
+sampler2D sourceImage = sampler_state {
+  minFilter = Linear;
+  magFilter = Linear;
+};
+
+//// DEPENDENT UNIFORMS
+
+int2 sampleCount()
+{
+  // A box filter needs an extra "slop" pixel, hence the +1
+  return int2(ceil(sourceWidth/destWidth+1),
+              ceil(sourceHeight/destHeight+1));
+}
+
+float2 sampleSize()
+{
+  return float2(sourceWidth/destWidth, sourceHeight/destHeight);
+}
+
+float4 texCoordScaleBias()
+{
+  // -1 flips in Y
+  return float2(1/sourceWidth, -1/sourceHeight).xyxy * float2(1,0.5).xxyy;
+}
+
+float oneOverSampleArea()
+{
+  return (destWidth*destHeight)/(sourceWidth*sourceHeight);
+}
+
+float4 scaleBias()
+{
+  return float4(2*float2(destWidth,destHeight)/windowSize,
+                2*imageWindowOffset/windowSize-1);
+}
+
+float2 srcDestRectSize()
+{
+  return float2(destWidth, destHeight);
+}
+
+int2 bilinearSampleCount()
+{
+  // With a 2x2 bilinear footprint, we need about half as many samples,
+  // hence the 0.5* below, and only half an extra footprint for the
+  // box filter's "slop" pixel, hence the +0.5 (both prior to the ceil)
+  return int2(ceil(0.5*sourceWidth/destWidth+0.5),
+              ceil(0.5*sourceHeight/destHeight+0.5));
+}
+
+//// EFFECT
+
+technique boxfilter {
+  pass {
+    FragmentProgram = compile latest boxfilter(sampleCount(),
+                                               sampleSize(),
+                                               texCoordScaleBias(),
+                                               oneOverSampleArea(),
+                                               sourceImage);
+    VertexProgram = compile latest boxfilter_vp(scaleBias(),
+                                                srcDestRectSize());
+  }
+}
+
+technique boxfilter_bilinear {
+  pass {
+    FragmentProgram = compile latest boxfilter_bilinear(bilinearSampleCount(),
+                                                        sampleSize(),
+                                                        texCoordScaleBias(),
+                                                        oneOverSampleArea(),
+                                                        sourceImage);
+    VertexProgram = compile latest boxfilter_vp(scaleBias(),
+                                                srcDestRectSize());
+  }
+}
+
+technique bilinear {
+  pass {
+    FragmentProgram = compile latest bilinear(sourceImage);
+    VertexProgram = compile latest bilinear_vp(scaleBias());
+  }
+}
+
+// Using GeForce 6 & 7 profiles
+
+technique boxfilter_nv40 {
+  pass {
+    FragmentProgram = compile fp40 boxfilter(sampleCount(),
+                                             sampleSize(),
+                                             texCoordScaleBias(),
+                                             oneOverSampleArea(),
+                                             sourceImage);
+    VertexProgram = compile vp40 boxfilter_vp(scaleBias(),
+                                              srcDestRectSize());
+  }
+}
+
+technique boxfilter_bilinear_nv40 {
+  pass {
+    FragmentProgram = compile fp40 boxfilter_bilinear(bilinearSampleCount(),
+                                                      sampleSize(),
+                                                      texCoordScaleBias(),
+                                                      oneOverSampleArea(),
+                                                      sourceImage);
+    VertexProgram = compile vp40 boxfilter_vp(scaleBias(),
+                                              srcDestRectSize());
+  }
+}
+
+technique bilinear_nv40 {
+  pass {
+    FragmentProgram = compile fp40 bilinear(sourceImage);
+    VertexProgram = compile vp40 bilinear_vp(scaleBias());
+  }
+}
+
+// GLSL versions of the above techniques
+
+technique boxfilter_glsl {
+  pass {
+    FragmentProgram = compile glslf boxfilter(sampleCount(),
+                                              sampleSize(),
+                                              texCoordScaleBias(),
+                                              oneOverSampleArea(),
+                                              sourceImage);
+    VertexProgram = compile glslv boxfilter_vp(scaleBias(),
+                                               srcDestRectSize());
+  }
+}
+
+technique boxfilter_bilinear_glsl {
+  pass {
+    FragmentProgram = compile glslf boxfilter_bilinear(bilinearSampleCount(),
+                                                       sampleSize(),
+                                                       texCoordScaleBias(),
+                                                       oneOverSampleArea(),
+                                                       sourceImage);
+    VertexProgram = compile glslv boxfilter_vp(scaleBias(),
+                                               srcDestRectSize());
+  }
+}
+
+technique bilinear_glsl {
+  pass {
+    FragmentProgram = compile glslf bilinear(sourceImage);
+    VertexProgram = compile glslv bilinear_vp(scaleBias());
+  }
+}
+

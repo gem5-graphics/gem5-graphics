@@ -1,0 +1,340 @@
+<HTML>
+
+<HEAD>
+<TITLE>win64</TITLE>
+<STYLE TYPE="text/css" MEDIA=screen>
+<!--
+		
+BODY {
+ font-family: Arial,Helvetica;
+}
+
+BLOCKQUOTE { margin: 10pt;  }
+
+H1,A { color: #336699; }
+
+
+/*** Top menu style ****/
+.mmenuon { 
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #ff6600; font-size: 10pt;
+ }
+.mmenuoff { 
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #ffffff; font-size: 10pt;
+}	  
+.cpyright {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #ffffff; font-size: xx-small;
+}
+.cpyrightText {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #ffffff; font-size: xx-small;
+}
+.sections { 
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: 11pt;
+}	 
+.dsections { 
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: 12pt;
+}	
+.slink { 
+ font-family: Arial,Helvetica; font-weight: normal; text-decoration: none;
+ color: #336699; font-size: 9pt;
+}	 
+
+.slink2 { font-family: Arial,Helvetica; text-decoration: none; color: #336699; }	 
+
+.maintitle { 
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: 18pt;
+}	 
+.dblArrow {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: small;
+}
+.menuSec {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: small;
+}
+
+.newstext {
+ font-family: Arial,Helvetica; font-size: small;
+}
+
+.linkmenu {
+ font-family: Arial,Helvetica; color: #000000; font-weight: bold;
+ text-decoration: none;
+}
+
+P {
+ font-family: Arial,Helvetica;
+}
+
+PRE            { 
+																font-family: monospace;
+																white-space: pre; 
+																font-color: #333333; 
+																font-weight: 100;
+																background-color: #eeeeee; 
+																padding: 5px; 
+																width: 90%; 
+																border-style: solid;
+																border-width: 2px; 
+																border-color: #bebebe; 
+	              }
+.quote { 
+ font-family: Times; text-decoration: none;
+ color: #000000; font-size: 9pt; font-style: italic;
+}	
+.smstd { font-family: Arial,Helvetica; color: #000000; font-size: x-small; } 
+.std { font-family: Arial,Helvetica; color: #000000; } 
+.meerkatTitle { 
+ font-family: sans-serif; font-size: x-small;  color: black;    }
+
+.meerkatDescription { font-family: sans-serif; font-size: 10pt; color: black }
+.meerkatCategory { 
+ font-family: sans-serif; font-size: 9pt; font-weight: bold; font-style: italic; 
+ color: brown; }
+.meerkatChannel { 
+ font-family: sans-serif; font-size: 9pt; font-style: italic; color: brown; }
+.meerkatDate { font-family: sans-serif; font-size: xx-small; color: #336699; }
+
+.tocTitle {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #333333; font-size: 10pt;
+}
+
+.toc-item {
+ font-family: Arial,Helvetica; font-weight: bold; 
+ color: #336699; font-size: 10pt; text-decoration: underline;
+}
+
+.perlVersion {
+ font-family: Arial,Helvetica; font-weight: bold; 
+ color: #336699; font-size: 10pt; text-decoration: none;
+}
+
+.docTitle {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #000000; font-size: 10pt;
+}
+.dotDot {
+ font-family: Arial,Helvetica; font-weight: bold; 
+ color: #000000; font-size: 9pt;
+}
+
+.docSec {
+ font-family: Arial,Helvetica; font-weight: normal; 
+ color: #333333; font-size: 9pt;
+}
+.docVersion {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: 10pt;
+}
+
+.docSecs-on {
+ font-family: Arial,Helvetica; font-weight: normal; text-decoration: none;
+ color: #ff0000; font-size: 10pt;
+}
+.docSecs-off {
+ font-family: Arial,Helvetica; font-weight: normal; text-decoration: none;
+ color: #333333; font-size: 10pt;
+}
+
+h3 {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: small;
+}
+h2 {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: medium;
+}
+h1 {
+ font-family: Verdana,Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: large;
+}
+
+DL {
+ font-family: Arial,Helvetica; font-weight: normal; text-decoration: none;
+ color: #333333; font-size: 10pt;
+}
+
+UL > LI > A {
+ font-family: Arial,Helvetica; font-weight: bold;
+ color: #336699; font-size: 10pt;
+}
+
+.moduleInfo {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #333333; font-size: 11pt;
+}
+
+.moduleInfoSec {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: 10pt;
+}
+
+.moduleInfoVal {
+ font-family: Arial,Helvetica; font-weight: normal; text-decoration: underline;
+ color: #000000; font-size: 10pt;
+}
+
+.cpanNavTitle {
+ font-family: Arial,Helvetica; font-weight: bold; 
+ color: #ffffff; font-size: 10pt;
+}
+.cpanNavLetter {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none; 
+ color: #333333; font-size: 9pt;
+}
+.cpanCat {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none; 
+ color: #336699; font-size: 9pt;
+}
+
+
+-->
+</STYLE>
+
+</HEAD>
+
+<BODY>
+
+
+<object type="application/x-oleobject" classid="clsid:1e2a7bd0-dab9-11d0-b93a-00c04fc99f9e">
+</object>
+
+
+
+
+<BLOCKQUOTE>
+
+<H1><A NAME="TOPIC"><A NAME="1">TOPIC
+
+</A></A></H1>
+<P>
+<B>win64</B> - using Cg with 64-bit Windows
+
+
+</P>
+
+<H1><A NAME="ABSTRACT"><A NAME="2">ABSTRACT
+
+</A></A></H1>
+<P>
+The Cg Toolkit for Windows installs versions of the Cg compiler and
+runtime libraries for both 32-bit (x86) and 64-bit (x64) compilation.
+This topic documents how to use Cg for 64-bit Windows.
+
+
+</P>
+
+<H1><A NAME="64-BIT_INSTALLATION"><A NAME="3">64-BIT INSTALLATION
+
+</A></A></H1>
+<P>
+The Cg Toolkit installer (CgSetup.exe) installs the 32-bit version of
+the Cg compiler and the Cg runtime libraries by default.  To install
+the 64-bit support, you must check the component labeled "Files to run
+and link 64-bit (x64) Cg-based applications" during your installation.
+
+
+</P>
+<P>
+If you've forgotten to install the 64-bit component, you can re-run the
+Cg Toolkit installer and check the 64-bit component.
+
+
+</P>
+
+<H1><A NAME="EXAMPLES"><A NAME="4">EXAMPLES
+
+</A></A></H1>
+<P>
+The Cg Toolkit includes Visual Studio .NET 2003 projects intended to
+compile 64-bit versions of the Cg Toolkit examples.
+
+
+</P>
+<P>
+These project files match the pattern *_x64.vcproj
+
+
+</P>
+<P>
+The solution files that collect these projects matches the pattern
+*_x64.sln
+
+
+</P>
+<P>
+To use these project files with Visual Studio .NET 2003, you <I>must</I>
+also install the latest Windows Platform SDK to obtain 64-bit compiler
+tools and libraries.
+
+
+</P>
+<P>
+Once the Platform SDK is installed, from the Start menu navigate to start
+a Windows shell for the 64-bit Windows Build Environment.  This shell is
+started with the correct environment variables (Path, Include, and Lib)
+for the 64-bit compiler tools and libraries.
+
+
+</P>
+<P>
+Now run devenv.exe with the /useenv command line option that forces
+Visual Studio to pick up Path, Include, and Lib settings from the
+shell's environment.  When the Visual Studio IDE appears, select
+File->Open->Project... and locate one of the *_x64.sln files for
+the Cg examples.  These are usually under:
+
+
+</P>
+<PRE>  c:\Program Files\NVIDIA Corporation\Cg\examples
+</PRE><P>
+When you open a *_x64.vcproj solution, it references a number of
+*_x64.vcproj projects.  These have a "Debug x64" and "Release x64"
+configuration to build.
+
+
+</P>
+
+<H1><A NAME="HINTS"><A NAME="5">HINTS
+
+</A></A></H1>
+<P>
+Remember to link with BufferOverflowU.lib because of the /GS option to
+help detect string overflow runtime errors because Microsoft has enabled
+this option by default in its 64-bit compilers.  See:
+
+
+</P>
+<PRE>  <A HREF="http://support.microsoft.com/">support.microsoft.com/</A>?id=894573 
+</PRE>
+<H1><A NAME="IA64_SUPPORT"><A NAME="6">IA64 SUPPORT
+
+</A></A></H1>
+<P>
+The Cg Toolkit does not provide 64-bit support for Intel's Itanium
+architecture.
+
+
+</P>
+
+<H1><A NAME="SEE_ALSO"><A NAME="7">SEE ALSO
+
+</A></A></H1>
+<P>
+TBD
+
+</P>
+
+</BLOCKQUOTE>
+
+
+
+</BODY>
+

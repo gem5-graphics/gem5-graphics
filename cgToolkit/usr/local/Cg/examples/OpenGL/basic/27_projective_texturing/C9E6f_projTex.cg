@@ -1,0 +1,16 @@
+// This is C9E6f_projTex from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 254.
+
+void C9E6f_projTex(float4 texCoordProj    : TEXCOORD0,
+                   float4 diffuseLighting : COLOR,
+
+               out float4 color : COLOR,
+
+           uniform sampler2D projectiveMap)
+{
+  // Fetch color from the projective texture
+  float4 textureColor = tex2Dproj(projectiveMap, 
+                                  texCoordProj);
+
+  color = textureColor * diffuseLighting;
+}   

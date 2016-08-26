@@ -1,0 +1,5 @@
+#!/system/bin/sh
+echo "Starting Android L4D benchmark..."
+am start -n ru.SGWorld.L4D/com.unity3d.player.UnityPlayerProxyActivity
+sleep 100
+echo "end of waiting..."

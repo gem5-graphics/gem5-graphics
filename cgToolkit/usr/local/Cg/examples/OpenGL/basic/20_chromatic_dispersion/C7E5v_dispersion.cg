@@ -1,0 +1,41 @@
+// This is C7E5v_dispersion from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 193.
+
+void C7E5v_dispersion(float4 position : POSITION,
+                      float3 normal   : NORMAL,
+   
+                  out float4 oPosition        : POSITION,
+                  out float  reflectionFactor : COLOR,
+                  out float3 R                : TEXCOORD0,
+                  out float3 TRed             : TEXCOORD1,
+                  out float3 TGreen           : TEXCOORD2,
+                  out float3 TBlue            : TEXCOORD3,
+
+              uniform float fresnelBias,
+              uniform float fresnelScale,
+              uniform float fresnelPower,
+              uniform float3 etaRatio,
+              uniform float3 eyePositionW,
+              uniform float4x4 modelViewProj, 
+              uniform float4x4 modelToWorld)
+{
+  oPosition = mul(modelViewProj, position);
+
+  // Compute position and normal in world space
+  float3 positionW = mul(modelToWorld, position).xyz;
+  float3 N = mul((float3x3)modelToWorld, normal);
+  N = normalize(N);
+  
+  // Compute the incident, reflected, and refracted vectors
+  float3 I = positionW - eyePositionW;
+  R = reflect(I, N);  
+  I = normalize(I);
+  TRed   = refract(I, N, etaRatio.x);
+  TGreen = refract(I, N, etaRatio.y);
+  TBlue  = refract(I, N, etaRatio.z);
+
+  // Compute the reflection factor
+  reflectionFactor = fresnelBias + 
+                     fresnelScale * pow(1 + dot(I, N), 
+                                        fresnelPower );
+}

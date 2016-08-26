@@ -1,0 +1,6 @@
+// Simple fragment program to output interpolated color.
+
+float4 colorinterp(float4 color : COLOR) : COLOR
+{
+  return color;
+}

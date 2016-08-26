@@ -1,0 +1,19 @@
+// This is C3E2v_varying from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 65.
+
+struct C3E2v_Output {
+  float4 position : POSITION;
+  float2 texCoord : TEXCOORD0;
+};
+
+C3E2v_Output C3E2v_varying(float3 position : POSITION,                           
+                           float2 texCoord : TEXCOORD0)
+{
+  C3E2v_Output OUT;
+
+  OUT.position = float4(position,1);  
+  OUT.texCoord = texCoord;
+
+  return OUT;	
+}
+

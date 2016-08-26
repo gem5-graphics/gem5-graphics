@@ -1,0 +1,416 @@
+
+/* CgFX implementation of quadratic normal interpolation */
+
+/*** CgFX parameters ***/
+
+float4x4 ModelViewProj : ModelViewProjection;
+float4x4 ModelView : ModelView;
+float4x4 InverseModelView : InverseModelView;
+float OuterRadius = 6;
+float InnerRadius = 2;
+float3 LightPosition = { -8, 0, 15 };
+float3 EyePosition = { 0, 0, 18 };
+
+float Ambient<
+  string type = "ambient";
+  float minValue = 0.0;
+  float maxValue = 1.0;
+> = 0.3;
+
+float Shininess <
+  string type = "shininess";
+  float minValue = 1.0;
+  float maxValue = 128.0;
+> = 40.0;
+
+float Opacity <
+  string type = "opacity";
+  float minValue = 0.0;
+  float maxValue = 1.0;
+> = 1.0;
+
+float3 DiffuseMaterial<
+  string type = "color";
+  float3 minValue = float3(0,0,0);
+  float3 maxValue = float3(1,1,1);
+> = { 0.9, 0.6, 0.3 };
+
+float3 SpecularMaterial<
+  string type = "color";
+  float3 minValue = float3(0,0,0);
+  float3 maxValue = float3(1,1,1);
+> = { 1, 1, 1 };
+
+float3 LightColor<
+  string type = "color";
+  float3 minValue = float3(0,0,0);
+  float3 maxValue = float3(1,1,1);
+> = { 1.0, 0.9, 0.9 };
+
+// Because gs_quadnormal.c picks the first valid technique, list techniques
+// in relative order of preference...
+
+/*** Per-pixel lighting of a torus with LINEAR interpolated normal ***/
+
+// This is C8E6v_torus from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard
+void C8E6v_torus(float2 parametric : POSITION,
+
+             out float4 position       : POSITION,
+             out float3 lightDirection : TEXCOORD1,
+             out float3 halfAngle      : TEXCOORD2,
+
+         uniform float3 lightPosition,  // Object-space
+         uniform float3 eyePosition,    // Object-space
+         uniform float4x4 modelViewProj,
+         uniform float2 torusInfo)
+{
+  const float pi2 = 6.28318530;  // 2 times Pi
+  // Stetch texture coordinates counterclockwise
+  // over torus to repeat normal map in 6 by 2 pattern
+  float M = torusInfo[0];
+  float N = torusInfo[1];
+  // Compute torus position from its parameteric equation
+  float cosS, sinS;
+  sincos(pi2 * parametric.x, sinS, cosS);
+  float cosT, sinT;
+  sincos(pi2 * parametric.y, sinT, cosT);
+  float3 torusPosition = float3((M + N * cosT) * cosS,
+                                (M + N * cosT) * sinS,
+                                N * sinT);
+  position = mul(modelViewProj, float4(torusPosition, 1));
+  // Compute per-vertex rotation matrix
+  float3 dPds = float3(-sinS*(M+N*cosT), cosS*(M+N*cosT), 0);
+  float3 norm_dPds = normalize(dPds);
+  float3 normal = float3(cosS * cosT, sinS * cosT, sinT);
+  float3 dPdt = cross(normal, norm_dPds);
+  float3x3 rotation = float3x3(norm_dPds,
+                               dPdt,
+                               normal);
+  // Rotate object-space vectors to texture space
+  float3 eyeDirection = eyePosition - torusPosition;
+  lightDirection = lightPosition - torusPosition;
+  lightDirection = mul(rotation, lightDirection);
+  eyeDirection = mul(rotation, eyeDirection);
+  halfAngle = normalize(normalize(lightDirection) +
+                        normalize(eyeDirection));
+}
+
+// linearNormalPerPixelLighting does per-pixel diffuse and specular
+// lighting with linear normal interpolation
+void linearNormalTorusLighting(float3 lightDirection    : TEXCOORD1,
+                               float3 halfAngle         : TEXCOORD2,
+
+                           out float4 color : COLOR,
+
+                       uniform float  ambient,
+                       uniform float  shininessExponent,
+                       uniform float  opacity,
+                       uniform float3 LMd, // Light-material diffuse
+                       uniform float3 LMs) // Light-material specular
+{
+  // Normalize interpolated vectors, half-precision is adequate
+  half3 normLightDir = normalize(lightDirection);
+  half3 normHalfAngle = normalize(halfAngle);
+ 
+  // Compute diffuse and specular lighting contributions
+  half NdotL = normLightDir.z;
+  half NdotH = normHalfAngle.z;
+  half diffuse = saturate(NdotL);
+  half specular = (NdotL >= 0) ?
+                  pow(saturate(NdotH), shininessExponent) : 0;
+
+  color.rgb = LMd*(ambient+diffuse) + LMs*specular;
+  color.a = opacity;
+}
+
+// Technique for per-pixel lighting...
+technique LinearNormalInterpolationTorus {
+  pass {
+    VertexProgram =
+      compile arbvp1 C8E6v_torus(LightPosition,
+                                 EyePosition,
+                                 ModelViewProj,
+                                 float2(OuterRadius, InnerRadius));  
+    FragmentProgram =
+      compile arbfp1 linearNormalTorusLighting(Ambient,
+                                               Shininess,
+                                               Opacity,      
+                                               DiffuseMaterial  * LightColor,
+                                               SpecularMaterial * LightColor);
+  }
+}
+
+/*** Per-pixel lighting of a torus with QUADRATIC interpolated normal ***/
+
+// Same as C8E6v_torus but also outputs object-space position for
+// geometry program
+void quadraticNormalTorus(float2 parametric : POSITION,
+
+                      out float4 position       : POSITION,
+                      out float3 normal         : TEXCOORD0,
+                      out float3 lightDirection : TEXCOORD1,
+                      out float3 eyeDirection   : TEXCOORD2,
+                      out float3 objPos         : TEXCOORD3,
+
+                  uniform float3 lightPosition,  // Object-space
+                  uniform float3 eyePosition,    // Object-space
+                  uniform float4x4 modelViewProj,
+                  uniform float2 torusInfo)
+{
+  const float pi2 = 6.28318530;  // 2 times Pi
+  // Stetch texture coordinates counterclockwise
+  // over torus to repeat normal map in 6 by 2 pattern
+  float M = torusInfo[0];
+  float N = torusInfo[1];
+
+  // Compute torus position from its parameteric equation
+  float cosS, sinS;
+  sincos(pi2 * parametric.x, sinS, cosS);
+  float cosT, sinT;
+  sincos(pi2 * parametric.y, sinT, cosT);
+  float3 torusPosition = float3((M + N * cosT) * cosS,
+                                (M + N * cosT) * sinS,
+                                N * sinT);
+  position = mul(modelViewProj, float4(torusPosition, 1));
+  
+  normal = float3(cosS * cosT, sinS * cosT, sinT);
+ 
+  eyeDirection = eyePosition - torusPosition;
+  lightDirection = lightPosition - torusPosition;
+  objPos = torusPosition;
+}
+
+// helper function to compute mid-normal given two positions each
+// with normals
+float3 midnormal(float3 P1, float3 N1, float3 P2, float3 N2)
+{
+  float3 M, Navg, R, weight, Nmid;
+  
+  // direction of mid-plane orthogonal to edge positions
+  M = P2-P1;
+  
+  // average normal
+  Navg = N1+N2;
+  
+  // reflect normalized average normal through mid-plane
+  R = Navg - 2*dot(M,Navg)/dot(M,M) * M;
+  
+  // Navg and R have the same length
+  
+  // how coincident are the two normals?
+  weight = saturate(dot(N1,N2));
+  
+  // the more coincident, use reflected normal for inflection
+  Nmid = lerp(Navg, R, weight);
+  
+  return normalize(Nmid);
+}
+
+TRIANGLE void quadraticNormalSetup(AttribArray<float4> position : POSITION,
+                                   AttribArray<float3> normal   : TEXCOORD0,
+                                   AttribArray<float3> lightDir : TEXCOORD1,
+                                   AttribArray<float3> eyeDir   : TEXCOORD2,
+                                   AttribArray<float3> objPos   : TEXCOORD3)
+{
+  float2 uv       : TEXCOORD0;
+  float3 Au       : TEXCOORD3;
+  float3 BvCu     : TEXCOORD4;
+  float3 DuEvF    : TEXCOORD5;
+
+  float3 N1 = normal[0],
+         N2 = normal[1],
+         N3 = normal[2];
+  
+  float3 P1 = objPos[0],
+         P2 = objPos[1],
+         P3 = objPos[2];
+
+  float3 N12 = midnormal(P1,N1,P2,N2),
+         N23 = midnormal(P2,N2,P3,N3),
+         N31 = midnormal(P3,N3,P1,N1);
+
+  // Compute bi-quadratic coefficients for
+  // A*u^2 + B*v^2 + C*u*v + D*u + E*v + F
+  float3 A = 2*(N1 + N2 - 2*N12);
+  float3 B = 2*(N1 + N3 - 2*N31);
+  float3 C = 4*(N1 + N23 - N31 - N12);
+  // D = N2 - A - N1
+  // E = N3 - B - N1
+  // F = N1
+  
+  // Instead of sending A, B, C, D, E, & F as flat attributes and
+  // sending (u,v) as linear attributes, we harness the hardware's
+  // linear interpolation prowess by linearly interpolating u, v, A*u,
+  // B*v+C*u, and D*u+E*v+F, called respective u, v, Au, BvCu, and DuEvF.
+  // The fragment program accomplishes quadratic interpolation by then
+  // computing Au*u + BvCu*v + DuEvF.
+  
+  // Emit triangle vertices...
+
+  uv = float2(0,0);  // u=0,v=0
+  Au = 0;            // u=0     implies A*u    == 0
+  BvCu = 0;          // u=0,v=0 implies BvCu*v == 0
+  DuEvF = N1;        // u=0,v=0 implies DuEvF  == F == N1
+  emitVertex(position[0], uv, Au, BvCu, DuEvF, lightDir[0], eyeDir[0]);
+
+  uv = float2(1,0);  // u=1,v=0
+  Au = A;            // u=1     implies A*u    == A
+  BvCu = C;          // u=1,v=0 implies BvCu*v == C
+  DuEvF = N2 - A;    // u=1,v=0 implies DuEvF  == N2-A-N1+N1 == N2-A
+  emitVertex(position[1], uv, Au, BvCu, DuEvF, lightDir[1], eyeDir[1]);
+
+  uv = float2(0,1);  // u=0,v=1
+  Au = 0;            // u=0     implies A*u    == 0
+  BvCu = B;          // u=0,v=1 implies BvCu*v == C
+  DuEvF = N3 - B;    // u=0,v=1 implies DuEvF  == N3-B-N1+N1 == N3-B
+  emitVertex(position[2], uv, Au, BvCu, DuEvF, lightDir[2], eyeDir[2]);
+}
+
+void quadraticNormalPerPixelLighting(float2 uv       : TEXCOORD0,
+                                     float3 lightDir : TEXCOORD1,
+                                     float3 viewDir  : TEXCOORD2,
+                                     float3 Au       : TEXCOORD3,
+                                     float3 BvCu     : TEXCOORD4,
+                                     float3 DuEvF    : TEXCOORD5,
+                        
+                                 out float4 color : COLOR,
+                    
+                             uniform float  ambient,
+                             uniform float  shininessExponent,
+                             uniform float  opacity,
+                             uniform float3 LMd, // Light-material diffuse
+                             uniform float3 LMs) // Light-material specular                        
+{
+  float u = uv[0],
+        v = uv[1];
+
+  // Quadratic interpolation!
+  float3 normal = normalize(Au*u + BvCu*v + DuEvF);
+
+  lightDir = normalize(lightDir);
+  float3 halfAngleDir = normalize(normalize(viewDir) +
+                                  lightDir);
+
+  float diffuse  = saturate(dot(normal, lightDir));
+  float specular = diffuse > 0 ?
+                      pow(saturate(dot(normal, halfAngleDir)),
+                          shininessExponent) : 0;
+  color.rgb = LMd*(ambient + diffuse) +
+              LMs * specular;
+  color.a = opacity;
+}
+
+void linearNormalPerPixelLighting(float3 normal   : TEXCOORD0,
+                                  float3 lightDir : TEXCOORD1,
+                                  float3 viewDir  : TEXCOORD2,
+                        
+                              out float4 color : COLOR,
+                    
+                          uniform float  ambient,
+                          uniform float  shininessExponent,
+                          uniform float  opacity,
+                          uniform float3 LMd, // Light-material diffuse
+                          uniform float3 LMs) // Light-material specular                        
+{
+  normal = normalize(normal);
+  lightDir = normalize(lightDir);
+  float3 halfAngleDir = normalize(normalize(viewDir) +
+                                  lightDir);
+
+  float diffuse  = saturate(dot(normal, lightDir));
+  float specular = diffuse > 0 ?
+                   pow(saturate(dot(normal, halfAngleDir)),
+                       shininessExponent) : 0;
+  color.rgb = LMd*(ambient + diffuse) +
+              LMs * specular;
+  color.a = opacity;
+}
+
+technique QuadraticNormalInterpolationTorus {
+  pass {
+    VertexProgram =
+      compile gpu_vp quadraticNormalTorus(LightPosition,
+                                          EyePosition,
+                                          ModelViewProj,
+                                          float2(OuterRadius, InnerRadius));
+    GeometryProgram =
+      compile gpu_gp quadraticNormalSetup();                                           
+    FragmentProgram = compile gpu_fp
+      quadraticNormalPerPixelLighting(Ambient,
+                                      Shininess,
+                                      Opacity,      
+                                      DiffuseMaterial  * LightColor,
+                                      SpecularMaterial * LightColor);
+  }
+}
+
+void vertexSetup(float4 position : POSITION,
+                 float3 normal   : NORMAL,
+
+             out float4 oPosition      : POSITION,
+             out float3 oNormal        : TEXCOORD0,
+             out float3 lightDirection : TEXCOORD1,
+             out float3 eyeDirection   : TEXCOORD2,
+             out float3 eyePos         : TEXCOORD3,
+
+         uniform float3 lightPosition,  // Eye-space
+         uniform float3 eyePosition,    // Eye-space
+         uniform float4x4 modelViewProj,
+         uniform float4x4 modelView,
+         uniform float4x4 inverseModelView)
+{
+  oPosition   = mul(modelViewProj, position);
+  float4 eyePosHomo = mul(modelView, position);
+  eyePos      = eyePosHomo.xyz / eyePosHomo.w;
+  oNormal     = mul(float4(normal, 0), inverseModelView).xyz;
+  
+  // Teapot normals aren't normalized
+  oNormal     = normalize(oNormal);
+ 
+  eyeDirection = -eyePos;
+  lightDirection = lightPosition - eyePos;
+}
+
+/*** Per-pixel lighting of explict geometry with normals using LINEAR
+     interpolated normal ***/
+
+// Technique for per-pixel lighting...
+technique LinearNormalInterpolation {
+  pass {
+    VertexProgram =
+      compile arbvp1 vertexSetup(LightPosition,
+                                 EyePosition,
+                                 ModelViewProj,
+                                 ModelView,
+                                 InverseModelView);  
+    FragmentProgram = compile arbfp1
+      linearNormalPerPixelLighting(Ambient,
+                                   Shininess,
+                                   Opacity,      
+                                   DiffuseMaterial  * LightColor,
+                                   SpecularMaterial * LightColor);
+  }
+}
+
+/*** Per-pixel lighting of explict geometry with normals using QUADRATIC
+     interpolated normal ***/
+
+technique QuadraticNormalInterpolation {
+  pass {
+    VertexProgram =
+      compile gpu_vp vertexSetup(LightPosition,
+                                 EyePosition,
+                                 ModelViewProj,
+                                 ModelView,
+                                 InverseModelView);
+    GeometryProgram =
+      compile gpu_gp quadraticNormalSetup();                                           
+    FragmentProgram = compile gpu_fp
+      quadraticNormalPerPixelLighting(Ambient,
+                                      Shininess,
+                                      Opacity,      
+                                      DiffuseMaterial  * LightColor,
+                                      SpecularMaterial * LightColor);
+  }
+}

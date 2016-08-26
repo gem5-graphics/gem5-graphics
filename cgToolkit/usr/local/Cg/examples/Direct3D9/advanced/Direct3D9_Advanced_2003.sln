@@ -1,0 +1,29 @@
+Microsoft Visual Studio Solution File, Format Version 8.00
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "cgfx_bumpdemo", "cgfx_bumpdemo\cgfx_bumpdemo_2003.vcproj", "{14FEAE63-05F8-4D3D-AB7C-44AD83B441E1}"
+	ProjectSection(ProjectDependencies) = postProject
+		{E5B8FADB-F617-45A8-B2E9-343E6D32283B} = {E5B8FADB-F617-45A8-B2E9-343E6D32283B}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "miniDXUT", "..\miniDXUT\miniDXUT_2003.vcproj", "{E5B8FADB-F617-45A8-B2E9-343E6D32283B}"
+	ProjectSection(ProjectDependencies) = postProject
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfiguration) = preSolution
+		Debug = Debug
+		Release = Release
+	EndGlobalSection
+	GlobalSection(ProjectConfiguration) = postSolution
+		{14FEAE63-05F8-4D3D-AB7C-44AD83B441E1}.Debug.ActiveCfg = Debug|Win32
+		{14FEAE63-05F8-4D3D-AB7C-44AD83B441E1}.Debug.Build.0 = Debug|Win32
+		{14FEAE63-05F8-4D3D-AB7C-44AD83B441E1}.Release.ActiveCfg = Release|Win32
+		{E5B8FADB-F617-45A8-B2E9-343E6D32283B}.Debug.ActiveCfg = Debug|Win32
+		{E5B8FADB-F617-45A8-B2E9-343E6D32283B}.Debug.Build.0 = Debug|Win32
+		{E5B8FADB-F617-45A8-B2E9-343E6D32283B}.Release.ActiveCfg = Release|Win32
+		{E5B8FADB-F617-45A8-B2E9-343E6D32283B}.Release.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+	EndGlobalSection
+	GlobalSection(ExtensibilityAddIns) = postSolution
+	EndGlobalSection
+EndGlobal

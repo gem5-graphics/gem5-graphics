@@ -1,0 +1,371 @@
+<HTML>
+
+<HEAD>
+<TITLE>lit</TITLE>
+<STYLE TYPE="text/css" MEDIA=screen>
+<!--
+		
+BODY {
+ font-family: Arial,Helvetica;
+}
+
+BLOCKQUOTE { margin: 10pt;  }
+
+H1,A { color: #336699; }
+
+
+/*** Top menu style ****/
+.mmenuon { 
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #ff6600; font-size: 10pt;
+ }
+.mmenuoff { 
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #ffffff; font-size: 10pt;
+}	  
+.cpyright {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #ffffff; font-size: xx-small;
+}
+.cpyrightText {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #ffffff; font-size: xx-small;
+}
+.sections { 
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: 11pt;
+}	 
+.dsections { 
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: 12pt;
+}	
+.slink { 
+ font-family: Arial,Helvetica; font-weight: normal; text-decoration: none;
+ color: #336699; font-size: 9pt;
+}	 
+
+.slink2 { font-family: Arial,Helvetica; text-decoration: none; color: #336699; }	 
+
+.maintitle { 
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: 18pt;
+}	 
+.dblArrow {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: small;
+}
+.menuSec {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: small;
+}
+
+.newstext {
+ font-family: Arial,Helvetica; font-size: small;
+}
+
+.linkmenu {
+ font-family: Arial,Helvetica; color: #000000; font-weight: bold;
+ text-decoration: none;
+}
+
+P {
+ font-family: Arial,Helvetica;
+}
+
+PRE            { 
+																font-family: monospace;
+																white-space: pre; 
+																font-color: #333333; 
+																font-weight: 100;
+																background-color: #eeeeee; 
+																padding: 5px; 
+																width: 90%; 
+																border-style: solid;
+																border-width: 2px; 
+																border-color: #bebebe; 
+	              }
+.quote { 
+ font-family: Times; text-decoration: none;
+ color: #000000; font-size: 9pt; font-style: italic;
+}	
+.smstd { font-family: Arial,Helvetica; color: #000000; font-size: x-small; } 
+.std { font-family: Arial,Helvetica; color: #000000; } 
+.meerkatTitle { 
+ font-family: sans-serif; font-size: x-small;  color: black;    }
+
+.meerkatDescription { font-family: sans-serif; font-size: 10pt; color: black }
+.meerkatCategory { 
+ font-family: sans-serif; font-size: 9pt; font-weight: bold; font-style: italic; 
+ color: brown; }
+.meerkatChannel { 
+ font-family: sans-serif; font-size: 9pt; font-style: italic; color: brown; }
+.meerkatDate { font-family: sans-serif; font-size: xx-small; color: #336699; }
+
+.tocTitle {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #333333; font-size: 10pt;
+}
+
+.toc-item {
+ font-family: Arial,Helvetica; font-weight: bold; 
+ color: #336699; font-size: 10pt; text-decoration: underline;
+}
+
+.perlVersion {
+ font-family: Arial,Helvetica; font-weight: bold; 
+ color: #336699; font-size: 10pt; text-decoration: none;
+}
+
+.docTitle {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #000000; font-size: 10pt;
+}
+.dotDot {
+ font-family: Arial,Helvetica; font-weight: bold; 
+ color: #000000; font-size: 9pt;
+}
+
+.docSec {
+ font-family: Arial,Helvetica; font-weight: normal; 
+ color: #333333; font-size: 9pt;
+}
+.docVersion {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: 10pt;
+}
+
+.docSecs-on {
+ font-family: Arial,Helvetica; font-weight: normal; text-decoration: none;
+ color: #ff0000; font-size: 10pt;
+}
+.docSecs-off {
+ font-family: Arial,Helvetica; font-weight: normal; text-decoration: none;
+ color: #333333; font-size: 10pt;
+}
+
+h3 {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: small;
+}
+h2 {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: medium;
+}
+h1 {
+ font-family: Verdana,Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: large;
+}
+
+DL {
+ font-family: Arial,Helvetica; font-weight: normal; text-decoration: none;
+ color: #333333; font-size: 10pt;
+}
+
+UL > LI > A {
+ font-family: Arial,Helvetica; font-weight: bold;
+ color: #336699; font-size: 10pt;
+}
+
+.moduleInfo {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #333333; font-size: 11pt;
+}
+
+.moduleInfoSec {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: 10pt;
+}
+
+.moduleInfoVal {
+ font-family: Arial,Helvetica; font-weight: normal; text-decoration: underline;
+ color: #000000; font-size: 10pt;
+}
+
+.cpanNavTitle {
+ font-family: Arial,Helvetica; font-weight: bold; 
+ color: #ffffff; font-size: 10pt;
+}
+.cpanNavLetter {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none; 
+ color: #333333; font-size: 9pt;
+}
+.cpanCat {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none; 
+ color: #336699; font-size: 9pt;
+}
+
+
+-->
+</STYLE>
+
+</HEAD>
+
+<BODY>
+
+
+<object type="application/x-oleobject" classid="clsid:1e2a7bd0-dab9-11d0-b93a-00c04fc99f9e">
+</object>
+
+
+
+
+<BLOCKQUOTE>
+
+<H1><A NAME="NAME"><A NAME="1">NAME
+
+</A></A></H1>
+<P>
+<B>lit</B> - computes lighting coefficients for ambient, diffuse, and specular lighting contributions
+
+
+</P>
+
+<H1><A NAME="SYNOPSIS"><A NAME="2">SYNOPSIS
+
+</A></A></H1>
+<PRE>  float4 lit(float NdotL, float NdotH, float m);
+
+  half4 lit(half NdotL, half NdotH, half m);
+
+  fixed4 lit(fixed NdotL, fixed NdotH, fixed m);
+</PRE>
+<H1><A NAME="PARAMETERS"><A NAME="3">PARAMETERS
+
+</A></A></H1>
+<DL>
+<DT><STRONG>NdotL
+
+</STRONG></DT>
+<DD>
+
+<P>
+The dot product of a normalized surface normal and a normalized light
+vector.
+
+
+</P>
+<DT><STRONG>NdotH
+
+</STRONG></DT>
+<DD>
+
+<P>
+The dot product of a normalized surface normal and a normalized half-angle
+vector (for Blinn-style specular) where the half-angle vector is the sum
+of the normalized view vector and normalized light vector.  Alternatively,
+the dot product of a normlized light vector and a normalized view vector
+reflected by a normalized surface normal could be used (for Phong-style
+specular).
+
+
+</P>
+<DT><STRONG>m
+
+</STRONG></DT>
+<DD>
+
+<P>
+A specular exponent, typically described as a measure of shininess.
+The larger the exponent, the shinier the specular highlight, the smaller
+the exponent, the duller the specular highlight.
+
+
+</P>
+</DD></DL>
+
+<H1><A NAME="DESCRIPTION"><A NAME="4">DESCRIPTION
+
+</A></A></H1>
+<P>
+The <B>lit</B> function is a helper function useful to compute lighting
+coefficients for ambient, diffuse, and specular lighting contributions.
+The function efficiently maps to a native instruction for most GPUs.
+
+
+</P>
+<P>
+<B>lit</B> returns a 4-component vector arranged as follows:
+
+
+</P>
+<DL>
+<DT><STRONG>x
+
+</STRONG></DT>
+<DD>
+
+<P>
+The ambient coefficient that is always 1.0.
+
+
+</P>
+<DT><STRONG>y
+
+</STRONG></DT>
+<DD>
+
+<P>
+The diffuse coefficient that is zero if <I>NdotL</I> is less than zero, and <I>NdotL</I> otherwise.
+
+
+</P>
+<DT><STRONG>z
+
+</STRONG></DT>
+<DD>
+
+<P>
+The specular coefficient that is zero if either <I>NdotL</I> or <I>NdotH</I> are less than zero, and 
+otherwise <I>NdotH</I> raised to the power <I>m</I>.
+
+
+</P>
+<DT><STRONG>w
+
+</STRONG></DT>
+<DD>
+
+<P>
+Always 1.0.
+
+
+</P>
+</DD></DL>
+
+<H1><A NAME="REFERENCE_IMPLEMENTATION"><A NAME="5">REFERENCE IMPLEMENTATION
+
+</A></A></H1>
+<P>
+<B>lit</B> accepting <float> parameters could be implemented this way:
+
+
+</P>
+<PRE>  float4 lit(float NdotL, float NdotH, float m)
+  {
+    float specular = (NdotL &gt; 0) ? pow(max(0.0, NdotH), m);
+    return float4(1.0, max(0.0, NdotL), specular, 1.0);
+  }
+</PRE>
+<H1><A NAME="PROFILE_SUPPORT"><A NAME="6">PROFILE SUPPORT
+
+</A></A></H1>
+<P>
+<B>lit</B> is supported in all profiles.
+
+
+</P>
+
+<H1><A NAME="SEE_ALSO"><A NAME="7">SEE ALSO
+
+</A></A></H1>
+<P>
+<A HREF="dot.html"><I>dot</I></A>, <A HREF="max.html"><I>max</I></A>, <A HREF="normalize.html"><I>normalize</I></A>, <A HREF="pow.html"><I>pow</I></A>
+
+</P>
+
+</BLOCKQUOTE>
+
+
+
+</BODY>
+

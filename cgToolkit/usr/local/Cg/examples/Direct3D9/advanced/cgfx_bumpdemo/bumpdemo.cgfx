@@ -1,0 +1,181 @@
+
+/* CgFX 1.4 file for bumpdemo effect. */
+
+// The 2.2 compiler is capable of both row-major and column-major matrix ordering.
+// By default, Cg is row-major
+
+//#pragma pack_matrix(row_major)
+#pragma pack_matrix(column_major)
+
+/* Includes verbatim shaders from The Cg Tutorial (ISBN: 0321194969). */
+#include "C8E4f_specSurf.cg"  /* page 209 */
+#include "C8E6v_torus.cg"     /* page 223 */
+
+float4x4 ModelViewProj : ModelViewProjection;
+float OuterRadius = 6;
+float InnerRadius = 2;
+float3 LightPosition = { -8, 0, 15 };
+float3 EyePosition = { 0, 0, 18 };
+
+float Ambient<
+  string type = "ambient";
+  float minValue = 0.0;
+  float maxValue = 1.0;
+> = 0.3;
+
+float3 DiffuseMaterial<
+  string type = "color";
+  float3 minValue = float3(0,0,0);
+  float3 maxValue = float3(1,1,1);
+> = { 0.9, 0.6, 0.3 };
+
+float3 SpecularMaterial<
+  string type = "color";
+  float3 minValue = float3(0,0,0);
+  float3 maxValue = float3(1,1,1);
+> = { 1, 1, 1 };
+
+float3 LightColor<
+  string type = "color";
+  float3 minValue = float3(0,0,0);
+  float3 maxValue = float3(1,1,1);
+> = { 1.0, 0.9, 0.9 };
+
+sampler2D normalMap = sampler_state {
+  minFilter = LinearMipMapLinear;
+  magFilter = Linear;
+  wrapS = Repeat;
+  wrapT = Repeat;   
+};
+
+samplerCUBE normalizeCube = sampler_state {
+  minFilter = Linear;
+  magFilter = Linear;
+  wrapS = ClampToEdge;
+  wrapT = ClampToEdge;
+};
+
+// Because bumpdemo.c picks the first valid technique, list techniques
+// in relative order of preference...
+
+technique bumpdemo_nv40 {
+  pass {
+    FragmentProgram =
+      compile fp40 C8E4f_specSurf(Ambient,
+                                  float4(DiffuseMaterial  * LightColor, 1),
+                                  float4(SpecularMaterial * LightColor, 1),
+                                  normalMap,
+                                  normalizeCube,
+                                  normalizeCube);
+    VertexProgram =
+      compile vp40 C8E6v_torus(LightPosition,
+                               EyePosition,
+                               ModelViewProj,
+                               float2(OuterRadius, InnerRadius));
+  }
+}
+
+technique bumpdemo_nv30 {
+  pass {
+    FragmentProgram =
+      compile fp30 C8E4f_specSurf(Ambient,
+                                  float4(DiffuseMaterial  * LightColor, 1),
+                                  float4(SpecularMaterial * LightColor, 1),
+                                  normalMap,
+                                  normalizeCube,
+                                  normalizeCube);
+    VertexProgram =
+      compile vp30 C8E6v_torus(LightPosition,
+                               EyePosition,
+                               ModelViewProj,
+                               float2(OuterRadius, InnerRadius));
+  }
+}
+
+technique bumpdemo_arb {
+  pass {
+    FragmentProgram =
+      compile arbfp1 C8E4f_specSurf(Ambient,
+                                    float4(DiffuseMaterial  * LightColor, 1),
+                                    float4(SpecularMaterial * LightColor, 1),
+                                    normalMap,
+                                    normalizeCube,
+                                    normalizeCube);
+    VertexProgram =
+      compile arbvp1 C8E6v_torus(LightPosition,
+                                 EyePosition,
+                                 ModelViewProj,
+                                 float2(OuterRadius, InnerRadius));
+  }
+}
+
+technique bumpdemo_nv20 {
+  pass {
+    FragmentProgram =
+      compile fp20 C8E4f_specSurf(Ambient,
+                                  float4(DiffuseMaterial  * LightColor, 1),
+                                  float4(SpecularMaterial * LightColor, 1),
+                                  normalMap,
+                                  normalizeCube,
+                                  normalizeCube);
+    VertexProgram =
+      compile vp20 C8E6v_torus(LightPosition,
+                               EyePosition,
+                               ModelViewProj,
+                               float2(OuterRadius, InnerRadius));
+  }
+}
+
+// Shader Model 3.0
+technique bumpdemo_dx9c {
+  pass {
+    FragmentProgram =
+      compile ps_3_0 C8E4f_specSurf(Ambient,
+                                    float4(DiffuseMaterial  * LightColor, 1),
+                                    float4(SpecularMaterial * LightColor, 1),
+                                    normalMap,
+                                    normalizeCube,
+                                    normalizeCube);
+    VertexProgram =
+      compile vs_3_0 C8E6v_torus(LightPosition,
+                                 EyePosition,
+                                 ModelViewProj,
+                                 float2(OuterRadius, InnerRadius));
+  }
+}
+
+// Shader Model 2.0
+technique bumpdemo_dx9 {
+  pass {
+    FragmentProgram =
+      compile ps_2_0 C8E4f_specSurf(Ambient,
+                                    float4(DiffuseMaterial  * LightColor, 1),
+                                    float4(SpecularMaterial * LightColor, 1),
+                                    normalMap,
+                                    normalizeCube,
+                                    normalizeCube);
+    VertexProgram =
+      compile vs_2_0 C8E6v_torus(LightPosition,
+                                 EyePosition,
+                                 ModelViewProj,
+                                 float2(OuterRadius, InnerRadius));
+  }
+}
+
+// HLSL fragment and vertex profiles
+technique bumpdemo_hlsl {
+  pass {
+    FragmentProgram =
+      compile hlslf C8E4f_specSurf(Ambient,
+                                   float4(DiffuseMaterial  * LightColor, 1),
+                                   float4(SpecularMaterial * LightColor, 1),
+                                   normalMap,
+                                   normalizeCube,
+                                   normalizeCube);
+    VertexProgram =
+      compile hlslv C8E6v_torus(LightPosition,
+                                EyePosition,
+                                ModelViewProj,
+                                float2(OuterRadius, InnerRadius));
+  }
+}

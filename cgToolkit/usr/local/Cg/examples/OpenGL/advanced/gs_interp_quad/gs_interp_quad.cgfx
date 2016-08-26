@@ -1,0 +1,204 @@
+
+/* Geometry shader implementation of quadrilateral barycentric
+   interpolation scheme using mean value coordinates described in
+   "A Quadrilateral Rendering Primitive" by Hormann and Tarini (2004
+   Graphics Hardware Workshop). */
+
+// Vertex shader necessary for GLSL
+
+void vertexPassThru
+(
+      float4 position  : POSITION,
+      float4 color     : COLOR0,
+        
+  out float4 oPosition : POSITION,
+  out float4 oColor    : COLOR0
+)
+{
+  oPosition = position;
+  oColor    = color;
+}
+
+// Helper function to compute the 2D area between 2 vectors. */
+float area(float2 a, float2 b)
+{
+  return a.x*b.y - a.y*b.x;
+}
+
+// Pretend a 4-vertex "line adjacency" primitive represents a
+// quadrilateral
+#define QUAD LINE_ADJ
+
+// cgc -profile gp4gp -entry gs_interp_quad gs_interp_quad.cgfx
+QUAD TRIANGLE_OUT
+void gs_interp_quad(AttribArray<float4> position : POSITION,
+                    AttribArray<float3> rgb      : COLOR)
+{
+  float2 v[4];
+  float4 rgbOverW_oneOverW[4];  // .rgb = rgbOverW, .w = oneOverW
+  unsigned int i, j, j_next;
+
+  for (i=0; i<4; i++) {
+    float oneOverW = 1/position[i].w;
+
+    rgbOverW_oneOverW[i].rgb = rgb[i] * oneOverW;
+    rgbOverW_oneOverW[i].w   = oneOverW;
+    v[i] = position[i].xy * oneOverW;
+  }
+
+  for (i=0; i<4; i++) {
+    // Mapping of polygon vertex order to triangle strip vertex order.
+    //
+    // Quad (lines adjacency)    Triangle strip
+    // vertex order:             vertex order:
+    // 
+    //        1----2                 1----3
+    //        |    |      ===>       | \  |
+    //        |    |                 |  \ |
+    //        0----3                 0----2
+    //
+    const int reorder[4] = { 0, 1, 3, 2 };
+    const int ii = reorder[i];
+
+    float3 s_A[4];  // .xy = s[i], .z = A[i]
+
+    for (j=0; j<4; j++) {
+      s_A[j].xy = v[j] - v[ii];
+    }
+    for (j=0; j<4; j++) {
+      j_next = (j+1) % 4;
+      s_A[j].z = area(s_A[j].xy, s_A[j_next].xy);
+    }
+    emitVertex(position[ii] / position[ii].w,
+      s_A[0]:TEXCOORD0,
+      s_A[1]:TEXCOORD1,
+      s_A[2]:TEXCOORD2,
+      s_A[3]:TEXCOORD3,
+      rgbOverW_oneOverW[0]:TEXCOORD4,
+      rgbOverW_oneOverW[1]:TEXCOORD5,
+      rgbOverW_oneOverW[2]:TEXCOORD6,
+      rgbOverW_oneOverW[3]:TEXCOORD7);
+  }
+}
+
+// cgc -profile gp4fp -entry fs_interp_quad gs_interp_quad.cgfx
+float4 fs_interp_quad(float3 s_A[4]               : TEXCOORD0,
+                      float4 rgbOverW_oneOverW[4] : TEXCOORD4) : COLOR
+{
+  unsigned int i, i_next, i_prev;
+
+  float2 s[4];
+  float  A[4];
+  float3 rgbOverW[4];
+  float  oneOverW[4];
+
+  for (i=0; i<4; i++) {
+    s[i] = s_A[i].xy;
+    A[i] = s_A[i].z;
+    rgbOverW[i] = rgbOverW_oneOverW[i].rgb;
+    oneOverW[i] = rgbOverW_oneOverW[i].w;
+  }
+
+  float D[4];
+  float r[4];
+
+  for (i=0; i<4; i++) {
+    i_next = (i+1)%4;
+    D[i] = dot(s[i], s[i_next]);
+    r[i] = length(s[i]);
+    if (oneOverW[i] < 0) {  // is w[i] negative?
+      r[i] = -r[i];
+    }
+  }
+
+  float t[4];
+
+  for (i=0; i<4; i++) {
+    i_next = (i+1)%4;
+    t[i] = (r[i]*r[i_next] - D[i]) / A[i];
+  }
+
+  float uSum = 0;
+  float u[4];
+
+  for (i=0; i<4; i++) {
+    i_prev = (i-1)%4;
+    u[i] = (t[i_prev] + t[i]) / r[i];
+    uSum += u[i];
+  }
+
+  float3 interp_rgbOverW = 0;
+  float  interp_oneOverW = 0;
+  float  lambda[4];
+
+  for (i=0; i<4; i++) {
+    lambda[i] = u[i] / uSum;
+  }
+
+  /* Discard fragments when all the weights are neither all negative
+     nor all positive. */
+  float lambdaSignCount = 0;
+  for (i=0; i<4; i++) {
+    if (lambda[i] < 0) {
+      lambdaSignCount--;
+    } else {
+      lambdaSignCount++;
+    }
+  }
+  if (abs(lambdaSignCount) != 4) {
+    discard;
+  }
+
+  for (i=0; i<4; i++) {
+    interp_rgbOverW += lambda[i] * rgbOverW[i];
+    interp_oneOverW += lambda[i] * oneOverW[i];
+  }
+
+  float3 interp_rgb = interp_rgbOverW / interp_oneOverW;
+
+  float4 result;
+  result = float4(interp_rgb, 1);
+  return result;
+}
+
+QUAD TRIANGLE_OUT
+void quadToTrianglePair(AttribArray<float4> position : POSITION,
+                        AttribArray<float3> rgb      : COLOR)
+{
+  int i;
+
+  for (i=0; i<4; i++) {
+    // Mapping of polygon vertex order to triangle strip vertex order.
+    const int reorder[4] = { 0, 1, 3, 2 };
+    int ii = reorder[i];
+
+    emitVertex(position[ii], rgb[ii]);
+  }
+}
+
+float4 interpolateColor(float3 interp_rgb : COLOR) : COLOR
+{
+  float4 result;
+  result = float4(interp_rgb, 1);
+  return result;
+}
+
+/* Technique for conventional quad rendering (breaking quads into a
+   two-triangle strip). */
+technique ConventionalQuadRendering {
+  pass {
+    VertexProgram   = compile latest vertexPassThru();
+    GeometryProgram = compile latest quadToTrianglePair();    
+    FragmentProgram = compile latest interpolateColor();
+  }
+}
+
+/* Technique for mean value coordinate-based quad rendering (interpolating
+   attributes and testing ownership with mean value coordinates). */
+technique ImprovedQuadRendering {
+  pass {
+    VertexProgram   = compile latest vertexPassThru();
+    GeometryProgram = compile latest gs_interp_quad();                                           
+    FragmentProgram = compile latest fs_interp_quad();
+  }
+}

@@ -1,0 +1,23 @@
+// This is C8E3v_specWall from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 208.
+
+void C8E3v_specWall(float4 position : POSITION,
+                    float2 texCoord : TEXCOORD0,
+
+                out float4 oPosition      : POSITION,
+                out float2 oTexCoord      : TEXCOORD0,
+                out float3 lightDirection : TEXCOORD1,
+                out float3 halfAngle      : TEXCOORD2,
+
+            uniform float3   lightPosition,  // Object-space
+            uniform float3   eyePosition,    // Object-space
+            uniform float4x4 modelViewProj)
+{
+  oPosition = mul(modelViewProj, position);
+  oTexCoord = texCoord;
+  lightDirection = lightPosition - position.xyz;
+  // Add the computation of a per-vertex half-angle vector
+  float3 eyeDirection = eyePosition - position.xyz;
+  halfAngle = normalize(normalize(lightDirection) +
+                        normalize(eyeDirection));
+}

@@ -1,0 +1,22 @@
+// This is based on C2E2f_passthru from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 53.
+
+// This was added so the shader signatures between the vertex and
+// fragment program match. A requirement in D3D10 and D3D11.
+// NOTE: This can probably be removed later once the signature issue
+// is solved between the compiler and runtime.
+struct C2E1v_Output {
+  float4 position : POSITION;
+  float3 color    : COLOR;
+};
+
+struct C2E2f_Output {  
+  float4 color : COLOR;
+};
+
+C2E2f_Output C2E2f_passthru( C2E1v_Output input )
+{
+  C2E2f_Output OUT;
+  OUT.color = float4( input.color, 1.0 );
+  return OUT;
+}

@@ -1,0 +1,25 @@
+// This is C3E5v_twoTextures from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 83.
+
+struct C3E5v_Output
+{
+    float4 position : POSITION;
+    float2 leftTexCoord : TEXCOORD0;
+    float2 rightTexCoord : TEXCOORD1;
+};
+
+// NOTE:  The version below corrects an editing error in the book's version.
+
+C3E5v_Output C3E5v_twoTextures(float2 position : POSITION,
+                               float2 texCoord : TEXCOORD0,                  
+
+                               uniform float2 leftSeparation,
+                               uniform float2 rightSeparation)
+{
+  C3E5v_Output output;
+  output.position     = float4(position, 0, 1);
+  output.leftTexCoord  = texCoord + leftSeparation;
+  output.rightTexCoord = texCoord + rightSeparation;
+  
+  return output;
+}

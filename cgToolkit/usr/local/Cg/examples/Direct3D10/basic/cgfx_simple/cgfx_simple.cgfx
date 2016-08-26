@@ -1,0 +1,41 @@
+struct VOutput 
+{
+  float4 position : POSITION;
+  float3 color    : COLOR;
+};
+
+VOutput vs( float2 position : POSITION )
+{	
+  VOutput OUT;
+
+  OUT.position = float4( position, 0, 1 );
+  OUT.color = float3( 0, 1, 0 );
+
+  return OUT;
+}
+
+struct POutput
+{
+  float4 color : COLOR;
+};
+
+POutput ps( VOutput input )
+{
+  POutput OUT;
+  OUT.color = float4( input.color, 1.0 );
+  return OUT;
+}
+
+technique cgfx_simple
+{
+  pass
+  {
+      AlphaBlendEnable = false;
+      CullMode = None;
+      FillMode = Solid;
+      
+      VertexProgram = compile vs_4_0 vs();
+      FragmentProgram = compile ps_4_0 ps();
+  }
+}
+

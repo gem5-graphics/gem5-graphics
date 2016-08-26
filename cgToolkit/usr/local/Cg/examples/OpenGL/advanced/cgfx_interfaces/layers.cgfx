@@ -1,0 +1,345 @@
+
+/* CgFX 1.4 file for layers effect intended for cgfx_interfaces.c. */
+
+/* This effect demonstrates how interfaces can be used to
+   combine multiple abstract implementations of a shading
+   concept.  In this example, a layer returns a color given
+   a texture coordinate set, object-space light vector,
+   and object-space view vector.  The implementation of a
+   layer return the appropriate color of its layer.
+   
+   Several layers implementations and an example instance of
+   each are provided:
+   
+   checkBoardLayer - red and transparent checkerboard
+   triangleLayer - green and transparent triangle pattern
+   constantLayer - thick yellow constant color
+   diffuseLayer - based on diffuse lighting
+   specularLayer - based on specular lighting
+   fresnelLayer - view-dependent blue-ing of edges
+   
+   The "layers" effect parameter is an unsized (run-time
+   sized and specified) array of Layer interfaces.  The
+   "LayerOrderList" annotation on the layers effect parameter
+   is a string listing the layer instance in a given order.
+   
+   The application can read this annotation to determine
+   how the layers should be applied. */
+
+// Abstract interface for a layer
+interface Layer {
+  float4 evaluate(float2 uv, float3 L, float3 V);
+};
+
+// Implement a Layer defining a checkerboard pattern
+struct CheckerBoardLayer : Layer {
+  float2 scale;
+  float4 color1, color2;
+
+  float4 evaluate(float2 uv, float3 L, float3 V) {
+    uv = frac(scale * uv);
+    float4 color = uv.x >= 0.5 ? (uv.y >= 0.5 ? color1 : color2) :
+                                 (uv.y >= 0.5 ? color2 : color1);
+    // Pre-multiply by alpha for later over compositing.
+    color.rgb = color.rgb * color.a;
+    return color;
+  }
+};
+
+// Parameterized instance the checkerboard layer
+CheckerBoardLayer checkerBoardLayer = {
+  float2(4,4),  // scale
+  float4(1,0,0,0.5),  // color1 = 50% red
+  float4(0,0,0,0.0),  // color2 = transparent
+};
+
+// Implement a Layer defining a triangle pattern
+struct TriangleLayer : Layer {
+  float2 scale;
+  float4 color1, color2;
+
+  float4 evaluate(float2 uv, float3 L, float3 V) {
+    uv = frac(scale * uv);
+    float4 color = frac(0.5*(uv.x+uv.y)) >= 0.5 ? color1 : color2;
+    // Pre-multiply by alpha for later over compositing.
+    color.rgb = color.rgb * color.a;
+    return color;
+  }
+};
+
+// Parameterized instance the triangle pattern layer
+TriangleLayer triangleLayer = {
+  float2(7,3),
+  float4(0,1,0,0.8),  // color1 = 30% green
+  float4(1,1,1,0.1),  // color2 = 10% white
+};
+
+// Implement a Layer defining a constant color
+struct ConstantLayer : Layer {
+  float4 constant;
+
+  float4 evaluate(float2 uv, float3 L, float3 V) {
+    // Pre-multiply by alpha for later over compositing.
+    return float4(constant.rgb * constant.a, constant.a);
+  }
+};
+
+// Parameterized instance the constant color layer
+ConstantLayer thickYellowLayer = {
+  float4(0.8, 0.8, 0.2, 0.7), // 70% yellow
+};
+
+// Implement a Layer defining by diffuse shading
+struct DiffuseLayer : Layer {
+  float opacity;
+
+  float4 evaluate(float2 uv, float3 L, float3 V) {
+    const float3 N = float3(0,0,1);
+
+    L = normalize(L);
+    float diffuse = dot(L,N);
+    // Pre-multiply by alpha for later over compositing.
+    return float4(diffuse * opacity);
+  }
+};
+
+// Parameterized instance the diffuse layer
+DiffuseLayer diffuseLayer = {
+  0.2, // opacity
+};
+
+// Implement a Layer defining by specular shading
+struct SpecularLayer : Layer {
+  float opacity;
+  float shininess;
+
+  float4 evaluate(float2 uv, float3 L, float3 V) {
+    const float3 N = float3(0,0,1);
+
+    L = normalize(L);
+    V = normalize(V);
+    float3 H = normalize(L+V);
+    float diffuse = dot(L,N);
+    float specular = diffuse > 0 ? pow(max(0, dot(H,N)), shininess) : 0;
+    // Pre-multiply by alpha for later over compositing.
+    return float4(specular * opacity);
+  }
+};
+
+// Parameterized instance the specular layer
+SpecularLayer specularLayer = {
+  0.8, // opacity
+  31.5, // shininess
+};
+
+// Implement a Layer defining by fresnel shading
+struct FresnelLayer : Layer {
+  float power;
+  float3 color;
+
+  float4 evaluate(float2 uv, float3 L, float3 V) {
+    const float3 N = float3(0,0,1);
+
+    V = normalize(V);
+    float fresnel = 1-pow(dot(V,N), power);
+    return float4(fresnel * color, fresnel);
+  }
+};
+
+// Parameterized instance the fresnel layer
+FresnelLayer fresnelLayer = {
+  1.7,
+  float3(0.7,0,1),
+};
+
+// Effect parameter for an unsized (run-time sized and
+// specified) array of layers
+Layer layers[] <string LayerOrderList = "thickYellowLayer,"
+                                        "checkerBoardLayer,"
+                                        "diffuseLayer,"
+                                        "fresnelLayer,"
+                                        "specularLayer,"
+                                        "triangleLayer,";>;
+
+// Fragment program to "over" composite the array of layers
+void RenderLayers(float2 texCoord       : TEXCOORD0,
+                  float3 lightDirection : TEXCOORD1,
+                  float3 eyeDirection   : TEXCOORD2,
+
+              out float4 color : COLOR)
+{
+  float4 result = float4(0,0,0,1);
+  int i;
+
+  for (i=0; i<layers.length; i++) {
+    float4 layerRGBA = layers[i].evaluate(texCoord,
+                                          lightDirection,
+                                          eyeDirection);
+
+    // "over" compositing operator.
+    result = layerRGBA + (1-layerRGBA.a)*result;
+  }
+  color = result;
+}
+
+// Fragment program to "over" composite the array of layers
+void RenderReversedLayers(float2 texCoord       : TEXCOORD0,
+                          float3 lightDirection : TEXCOORD1,
+                          float3 eyeDirection   : TEXCOORD2,
+
+                      out float4 color : COLOR)
+{
+  float4 result = float4(0,0,0,1);
+  int i;
+
+  for (i=layers.length-1; i>=0; i--) {
+    float4 layerRGBA = layers[i].evaluate(texCoord,
+                                          lightDirection,
+                                          eyeDirection);
+
+    // "over" compositing operator.
+    result = layerRGBA + (1-layerRGBA.a)*result;
+  }
+  color = result;
+}
+
+// RollTorus is based on C8E6v_torus from "The Cg Tutorial"
+// (Addison-Wesley, ISBN 0321194969) by Randima Fernando and
+// Mark J. Kilgard
+void RollTorus(float2 parametric : POSITION,
+
+           out float4 position       : POSITION,
+           out float2 oTexCoord      : TEXCOORD0,
+           out float3 lightDirection : TEXCOORD1,
+           out float3 eyeDirection   : TEXCOORD2,
+
+       uniform float3 lightPosition,  // Object-space
+       uniform float3 eyePosition,    // Object-space
+       uniform float4x4 modelViewProj,
+       uniform float2 torusInfo)
+{
+  const float pi2 = 6.28318530;  // 2 times Pi
+  // Stetch texture coordinates counterclockwise
+  // over torus to repeat normal map in 6 by 2 pattern
+  float M = torusInfo[0];
+  float N = torusInfo[1];
+  oTexCoord = parametric * float2(-6, 2);
+  // Compute torus position from its parameteric equation
+  float cosS, sinS;
+  sincos(pi2 * parametric.x, sinS, cosS);
+  float cosT, sinT;
+  sincos(pi2 * parametric.y, sinT, cosT);
+  float3 torusPosition = float3((M + N * cosT) * cosS,
+                                (M + N * cosT) * sinS,
+                                N * sinT);
+  position = mul(modelViewProj, float4(torusPosition, 1));
+  // Compute per-vertex rotation matrix
+  float3 dPds = float3(-sinS*(M+N*cosT), cosS*(M+N*cosT), 0);
+  float3 norm_dPds = normalize(dPds);
+  float3 normal = float3(cosS * cosT, sinS * cosT, sinT);
+  float3 dPdt = cross(normal, norm_dPds);
+  float3x3 rotation = float3x3(norm_dPds,
+                               dPdt,
+                               normal);
+  // Rotate object-space vectors to texture space
+  eyeDirection = eyePosition - torusPosition;
+  lightDirection = lightPosition - torusPosition;
+  lightDirection = mul(rotation, lightDirection);
+  eyeDirection = mul(rotation, eyeDirection);
+  eyeDirection = normalize(eyeDirection);
+}
+
+// Effect parameters passed as vertex program parameters
+float4x4 ModelViewProj : ModelViewProjection;
+float OuterRadius = 6;
+float InnerRadius = 2;
+float3 LightPosition = { -8, 0, 15 };
+float3 EyePosition = { 0, 0, 18 };
+
+// Technique with best profiles for GeForce 6x00, 7x00, and higher GPUs
+technique RenderLayers_nv40 {
+  pass forward {
+    VertexProgram =
+      compile vp40 RollTorus(LightPosition,
+                             EyePosition,
+                             ModelViewProj,
+                             float2(OuterRadius, InnerRadius));
+    FragmentProgram =
+      compile fp40 RenderLayers();
+  }
+  pass reverse {
+    VertexProgram =
+      compile vp40 RollTorus(LightPosition,
+                             EyePosition,
+                             ModelViewProj,
+                             float2(OuterRadius, InnerRadius));
+    FragmentProgram =
+      compile fp40 RenderReversedLayers();
+  }  
+}
+
+// Technique with best profiles for GeForce 5x00 GPUs
+technique RenderLayers_nv30 {
+  pass forward {
+    VertexProgram =
+      compile vp30 RollTorus(LightPosition,
+                             EyePosition,
+                             ModelViewProj,
+                             float2(OuterRadius, InnerRadius));
+    FragmentProgram =
+      compile fp30 RenderLayers();
+  }
+  pass reverse {
+    VertexProgram =
+      compile vp30 RollTorus(LightPosition,
+                             EyePosition,
+                             ModelViewProj,
+                             float2(OuterRadius, InnerRadius));
+    FragmentProgram =
+      compile fp30 RenderReversedLayers();
+  }  
+}
+
+// Technique using OpenGL Shading Language (GLSL) profiles
+technique RenderLayers_glsl {
+  pass forward {
+    VertexProgram =
+      compile glslv RollTorus(LightPosition,
+                               EyePosition,
+                               ModelViewProj,
+                               float2(OuterRadius, InnerRadius));
+    FragmentProgram =
+      compile glslf RenderLayers();
+  }
+  pass reverse {
+    VertexProgram =
+      compile glslv RollTorus(LightPosition,
+                               EyePosition,
+                               ModelViewProj,
+                               float2(OuterRadius, InnerRadius));
+    FragmentProgram =
+      compile glslf RenderReversedLayers();
+  }  
+}
+
+// Technique using multi-vendor ARB assembly profiles
+technique RenderLayers_arb {
+  pass forward {
+    VertexProgram =
+      compile arbvp1 RollTorus(LightPosition,
+                               EyePosition,
+                               ModelViewProj,
+                               float2(OuterRadius, InnerRadius));
+    FragmentProgram =
+      compile arbfp1 RenderLayers();
+  }
+  pass reverse {
+    VertexProgram =
+      compile arbvp1 RollTorus(LightPosition,
+                               EyePosition,
+                               ModelViewProj,
+                               float2(OuterRadius, InnerRadius));
+    FragmentProgram =
+      compile arbfp1 RenderReversedLayers();
+  }  
+}

@@ -1,0 +1,183 @@
+.de Sh \" Subsection heading
+.br
+.if t .Sp
+.ne 5
+.PP
+\fB\\$1\fR
+.PP
+..
+.de Sp \" Vertical space (when we can't use .PP)
+.if t .sp .5v
+.if n .sp
+..
+.de Vb \" Begin verbatim text
+.ft CW
+.nf
+.ne \\$1
+..
+.de Ve \" End verbatim text
+.ft R
+.fi
+..
+.tr \(*W-
+.ds C+ C\v'-.1v'\h'-1p'\s-2+\h'-1p'+\s0\v'.1v'\h'-1p'
+.ie n \{\
+.    ds -- \(*W-
+.    ds PI pi
+.    if (\n(.H=4u)&(1m=24u) .ds -- \(*W\h'-12u'\(*W\h'-12u'-\" diablo 10 pitch
+.    if (\n(.H=4u)&(1m=20u) .ds -- \(*W\h'-12u'\(*W\h'-8u'-\"  diablo 12 pitch
+.    ds L" ""
+.    ds R" ""
+.    ds C` ""
+.    ds C' ""
+'br\}
+.el\{\
+.    ds -- \|\(em\|
+.    ds PI \(*p
+.    ds L" ``
+.    ds R" ''
+'br\}
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.ie \nF \{\
+.    de IX
+.    tm Index:\\$1\t\\n%\t"\\$2"
+..
+.    nr % 0
+.    rr F
+.\}
+.el \{\
+.    de IX
+..
+.\}
+.    \" fudge factors for nroff and troff
+.if n \{\
+.    ds #H 0
+.    ds #V .8m
+.    ds #F .3m
+.    ds #[ \f1
+.    ds #] \fP
+.\}
+.if t \{\
+.    ds #H ((1u-(\\\\n(.fu%2u))*.13m)
+.    ds #V .6m
+.    ds #F 0
+.    ds #[ \&
+.    ds #] \&
+.\}
+.    \" simple accents for nroff and troff
+.if n \{\
+.    ds ' \&
+.    ds ` \&
+.    ds ^ \&
+.    ds , \&
+.    ds ~ ~
+.    ds /
+.\}
+.if t \{\
+.    ds ' \\k:\h'-(\\n(.wu*8/10-\*(#H)'\'\h"|\\n:u"
+.    ds ` \\k:\h'-(\\n(.wu*8/10-\*(#H)'\`\h'|\\n:u'
+.    ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'^\h'|\\n:u'
+.    ds , \\k:\h'-(\\n(.wu*8/10)',\h'|\\n:u'
+.    ds ~ \\k:\h'-(\\n(.wu-\*(#H-.1m)'~\h'|\\n:u'
+.    ds / \\k:\h'-(\\n(.wu*8/10-\*(#H)'\z\(sl\h'|\\n:u'
+.\}
+.    \" troff and (daisy-wheel) nroff accents
+.ds : \\k:\h'-(\\n(.wu*8/10-\*(#H+.1m+\*(#F)'\v'-\*(#V'\z.\h'.2m+\*(#F'.\h'|\\n:u'\v'\*(#V'
+.ds 8 \h'\*(#H'\(*b\h'-\*(#H'
+.ds o \\k:\h'-(\\n(.wu+\w'\(de'u-\*(#H)/2u'\v'-.3n'\*(#[\z\(de\v'.3n'\h'|\\n:u'\*(#]
+.ds d- \h'\*(#H'\(pd\h'-\w'~'u'\v'-.25m'\f2\(hy\fP\v'.25m'\h'-\*(#H'
+.ds D- D\\k:\h'-\w'D'u'\v'-.11m'\z\(hy\v'.11m'\h'|\\n:u'
+.ds th \*(#[\v'.3m'\s+1I\s-1\v'-.3m'\h'-(\w'I'u*2/3)'\s-1o\s+1\*(#]
+.ds Th \*(#[\s+2I\s-2\h'-\w'I'u*3/5'\v'-.3m'o\v'.3m'\*(#]
+.ds ae a\h'-(\w'a'u*4/10)'e
+.ds Ae A\h'-(\w'A'u*4/10)'E
+.    \" corrections for vroff
+.if v .ds ~ \\k:\h'-(\\n(.wu*9/10-\*(#H)'\s-2\u~\d\s+2\h'|\\n:u'
+.if v .ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'\v'-.4m'^\v'.4m'\h'|\\n:u'
+.    \" for low resolution devices (crt and lpr)
+.if \n(.H>23 .if \n(.V>19 \
+\{\
+.    ds : e
+.    ds 8 ss
+.    ds o a
+.    ds d- d\h'-1'\(ga
+.    ds D- D\h'-1'\(hy
+.    ds th \o'bp'
+.    ds Th \o'LP'
+.    ds ae ae
+.    ds Ae AE
+.\}
+.rm #[ #] #H #V #F C
+.IX Title "FREXP Cg"
+.TH FREXP Cg "Cg Toolkit 3.0" "perl v5.10.0" "Cg Standard Library"
+.if n .ad l
+.nh
+.SH "NAME"
+\&\fBfrexp\fR \- splits scalars and vectors into normalized fraction and a power of 2
+.SH "SYNOPSIS"
+.IX Header "SYNOPSIS"
+.Vb 5
+\&  float  frexp(float x, out float e);
+\&  float1 frexp(float1 x, out float1 e);
+\&  float2 frexp(float2 x, out float2 e);
+\&  float3 frexp(float3 x, out float3 e);
+\&  float4 frexp(float4 x, out float4 e);
+\& 
+\&  half   frexp(half x, out half e);
+\&  half1  frexp(half1 x, out half1 e);
+\&  half2  frexp(half2 x, out half2 e);
+\&  half3  frexp(half3 x, out half3 e);
+\&  half4  frexp(half4 x, out half4 e);
+\& 
+\&  fixed  frexp(fixed x, out fixed e);
+\&  fixed1 frexp(fixed1 x, out fixed1 e);
+\&  fixed2 frexp(fixed2 x, out fixed2 e);
+\&  fixed3 frexp(fixed3 x, out fixed3 e);
+\&  fixed4 frexp(fixed4 x, out fixed4 e);
+.Ve
+.SH "PARAMETERS"
+.IX Header "PARAMETERS"
+.IP "x" 8
+.IX Item "x"
+Vector or scalar of which to split.
+.IP "e" 8
+.IX Item "e"
+Vector or scalar where the exponent of \fIx\fR is output.
+.SH "DESCRIPTION"
+.IX Header "DESCRIPTION"
+This function decomposes \fIx\fR into two parts: a mantissa between 0.5 and 1 (returned by the function) and an exponent output as \fIe\fR.
+.PP
+If the value \fIx\fR is zero, both parts of the result are zero.
+.PP
+For vectors, the returned vector contains the mantissa of each element
+of the input vector and the output vector contains the exponent of each
+element of the input vector.
+.SH "REFERENCE IMPLEMENTATION"
+.IX Header "REFERENCE IMPLEMENTATION"
+The example below is not legal Cg because it uses the & address-of
+operator not supported by Cg in order to call the \s-1ANSI\s0 C frexp routine.
+.PP
+.Vb 4
+\&  float3 frexp(float3 x, out float3 e)
+\&  {
+\&    float3 rv;
+\&    int i;
+\&
+\&    for (i=0; i<3; i++) {
+\&      float eout;
+\&
+\&      rv[i] = frexp(a[i], &eout);  // this is the ANSI C standard library frexp()
+\&      e[i] = eout;
+\&    }
+\&    return rv;
+\&  }
+.Ve
+.SH "PROFILE SUPPORT"
+.IX Header "PROFILE SUPPORT"
+\&\fBfrexp\fR is fully supported in all profiles unless otherwise specified.
+.PP
+Support in the fp20 is limited to constant compile-time evaluation.
+.SH "SEE ALSO"
+.IX Header "SEE ALSO"
+exp2, log, pow

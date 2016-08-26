@@ -1,0 +1,35 @@
+
+// texture_array.cgfx - CgFX file demonstrating texture arrays
+
+void offset_layer(float2 position  : POSITION,
+                  float3 texcoord  : TEXCOORD0,
+                     
+                  out float4 oPosition : POSITION,
+                  out float3 oTexCoord : TEXCOORD0,
+          
+                  uniform float layerOffset)
+{
+  oPosition = float4(position,0,1);
+  oTexCoord = texcoord;
+  oTexCoord.z += layerOffset;
+}
+
+sampler2DARRAY decalArray = sampler_state {    
+    MinFilter = LinearMipMapLinear;
+};
+
+float4 choose_decal(float3 texcoord : TEXCOORD0) : COLOR
+{
+  return tex2DARRAY(decalArray, texcoord);
+}
+
+float LayerOffset;
+
+technique texture_array
+{
+    pass
+    {
+        VertexProgram   = compile gp4vp offset_layer( LayerOffset );
+        FragmentProgram = compile gp4fp choose_decal();
+    }
+}

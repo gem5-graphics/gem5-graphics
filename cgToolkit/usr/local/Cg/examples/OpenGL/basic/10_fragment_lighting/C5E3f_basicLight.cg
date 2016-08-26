@@ -1,0 +1,42 @@
+// This is C5E3f_basicLight from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 125.
+
+void C5E3f_basicLight(float4 position  : TEXCOORD0,                        
+                      float3 normal    : TEXCOORD1,
+
+                  out float4 color     : COLOR,
+
+              uniform float3 globalAmbient,
+              uniform float3 lightColor,
+              uniform float3 lightPosition,
+              uniform float3 eyePosition,
+              uniform float3 Ke,
+              uniform float3 Ka,
+              uniform float3 Kd,
+              uniform float3 Ks,
+              uniform float  shininess)
+{
+  float3 P = position.xyz;
+  float3 N = normalize(normal);
+
+  // Compute emissive term
+  float3 emissive = Ke;
+
+  // Compute ambient term
+  float3 ambient = Ka * globalAmbient;
+
+  // Compute the diffuse term
+  float3 L = normalize(lightPosition - P);
+  float diffuseLight = max(dot(L, N), 0);
+  float3 diffuse = Kd * lightColor * diffuseLight;
+
+  // Compute the specular term
+  float3 V = normalize(eyePosition - P);
+  float3 H = normalize(L + V);
+  float specularLight = pow(max(dot(H, N), 0), shininess);
+  if (diffuseLight <= 0) specularLight = 0;
+  float3 specular = Ks * lightColor * specularLight;
+
+  color.xyz = emissive + ambient + diffuse + specular;
+  color.w = 1;
+}

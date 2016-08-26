@@ -1,0 +1,1099 @@
+<HTML>
+
+<HEAD>
+<TITLE>gp4fp</TITLE>
+<STYLE TYPE="text/css" MEDIA=screen>
+<!--
+		
+BODY {
+ font-family: Arial,Helvetica;
+}
+
+BLOCKQUOTE { margin: 10pt;  }
+
+H1,A { color: #336699; }
+
+
+/*** Top menu style ****/
+.mmenuon { 
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #ff6600; font-size: 10pt;
+ }
+.mmenuoff { 
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #ffffff; font-size: 10pt;
+}	  
+.cpyright {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #ffffff; font-size: xx-small;
+}
+.cpyrightText {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #ffffff; font-size: xx-small;
+}
+.sections { 
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: 11pt;
+}	 
+.dsections { 
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: 12pt;
+}	
+.slink { 
+ font-family: Arial,Helvetica; font-weight: normal; text-decoration: none;
+ color: #336699; font-size: 9pt;
+}	 
+
+.slink2 { font-family: Arial,Helvetica; text-decoration: none; color: #336699; }	 
+
+.maintitle { 
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: 18pt;
+}	 
+.dblArrow {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: small;
+}
+.menuSec {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: small;
+}
+
+.newstext {
+ font-family: Arial,Helvetica; font-size: small;
+}
+
+.linkmenu {
+ font-family: Arial,Helvetica; color: #000000; font-weight: bold;
+ text-decoration: none;
+}
+
+P {
+ font-family: Arial,Helvetica;
+}
+
+PRE            { 
+																font-family: monospace;
+																white-space: pre; 
+																font-color: #333333; 
+																font-weight: 100;
+																background-color: #eeeeee; 
+																padding: 5px; 
+																width: 90%; 
+																border-style: solid;
+																border-width: 2px; 
+																border-color: #bebebe; 
+	              }
+.quote { 
+ font-family: Times; text-decoration: none;
+ color: #000000; font-size: 9pt; font-style: italic;
+}	
+.smstd { font-family: Arial,Helvetica; color: #000000; font-size: x-small; } 
+.std { font-family: Arial,Helvetica; color: #000000; } 
+.meerkatTitle { 
+ font-family: sans-serif; font-size: x-small;  color: black;    }
+
+.meerkatDescription { font-family: sans-serif; font-size: 10pt; color: black }
+.meerkatCategory { 
+ font-family: sans-serif; font-size: 9pt; font-weight: bold; font-style: italic; 
+ color: brown; }
+.meerkatChannel { 
+ font-family: sans-serif; font-size: 9pt; font-style: italic; color: brown; }
+.meerkatDate { font-family: sans-serif; font-size: xx-small; color: #336699; }
+
+.tocTitle {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #333333; font-size: 10pt;
+}
+
+.toc-item {
+ font-family: Arial,Helvetica; font-weight: bold; 
+ color: #336699; font-size: 10pt; text-decoration: underline;
+}
+
+.perlVersion {
+ font-family: Arial,Helvetica; font-weight: bold; 
+ color: #336699; font-size: 10pt; text-decoration: none;
+}
+
+.docTitle {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #000000; font-size: 10pt;
+}
+.dotDot {
+ font-family: Arial,Helvetica; font-weight: bold; 
+ color: #000000; font-size: 9pt;
+}
+
+.docSec {
+ font-family: Arial,Helvetica; font-weight: normal; 
+ color: #333333; font-size: 9pt;
+}
+.docVersion {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: 10pt;
+}
+
+.docSecs-on {
+ font-family: Arial,Helvetica; font-weight: normal; text-decoration: none;
+ color: #ff0000; font-size: 10pt;
+}
+.docSecs-off {
+ font-family: Arial,Helvetica; font-weight: normal; text-decoration: none;
+ color: #333333; font-size: 10pt;
+}
+
+h3 {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: small;
+}
+h2 {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: medium;
+}
+h1 {
+ font-family: Verdana,Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: large;
+}
+
+DL {
+ font-family: Arial,Helvetica; font-weight: normal; text-decoration: none;
+ color: #333333; font-size: 10pt;
+}
+
+UL > LI > A {
+ font-family: Arial,Helvetica; font-weight: bold;
+ color: #336699; font-size: 10pt;
+}
+
+.moduleInfo {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #333333; font-size: 11pt;
+}
+
+.moduleInfoSec {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: 10pt;
+}
+
+.moduleInfoVal {
+ font-family: Arial,Helvetica; font-weight: normal; text-decoration: underline;
+ color: #000000; font-size: 10pt;
+}
+
+.cpanNavTitle {
+ font-family: Arial,Helvetica; font-weight: bold; 
+ color: #ffffff; font-size: 10pt;
+}
+.cpanNavLetter {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none; 
+ color: #333333; font-size: 9pt;
+}
+.cpanCat {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none; 
+ color: #336699; font-size: 9pt;
+}
+
+
+-->
+</STYLE>
+
+</HEAD>
+
+<BODY>
+
+
+<object type="application/x-oleobject" classid="clsid:1e2a7bd0-dab9-11d0-b93a-00c04fc99f9e">
+</object>
+
+
+
+
+<BLOCKQUOTE>
+
+<H1><A NAME="NAME"><A NAME="1">NAME
+
+</A></A></H1>
+<P>
+<B>gp4fp</B> - OpenGL fragment profile for NVIDIA GeForce 8/9/100/200/300 Series, OpenGL 3.x Quadro
+
+
+</P>
+
+<H1><A NAME="SYNOPSIS"><A NAME="2">SYNOPSIS
+
+</A></A></H1>
+<PRE>  gp4fp
+</PRE>
+<H1><A NAME="DESCRIPTION"><A NAME="3">DESCRIPTION
+
+</A></A></H1>
+<P>
+This OpenGL profile corresponds to the per-fragment functionality
+introduced by NVIDIA's 4th generation of assembly instruction sets.
+
+
+</P>
+<P>
+The compiler output for this profile conforms to the assembly format
+defined by <B>NV_gpu_program4</B> and <B>ARB_fragment_program</B>.
+
+
+</P>
+<P>
+Note that the <B>NV_gpu_program4</B> extension has its fragment domain-specific
+aspects documented in the <B>NV_fragment_program4</B> specification.
+
+
+</P>
+<P>
+Data-dependent loops and branching <I>are</I> allowed.
+
+
+</P>
+<P>
+Relative indexing of uniform arrays <I>is</I> supported.
+
+
+</P>
+<P>
+Parameter buffer objects (also known as "constant buffers" in DirectX
+10 or "bindable uniform" in GLSL's <B>EXT_bindable_uniform</B> extension)
+provide a way to source uniform values from OpenGL buffer objects.
+
+
+</P>
+<P>
+Texture accesses include support for texture arrays (see the
+<B>EXT_texture_array</B> OpenGL extension for more details) and texture buffer
+objects (see the <B>EXT_texture_buffer_object</B> extension for details).
+Texture results can be either conventional floating-point vectors or
+integer vectors (see the <B>EXT_texture_integer</B> extension for details).
+
+
+</P>
+
+<H1><A NAME="3D_API_DEPENDENCIES"><A NAME="4">3D API DEPENDENCIES
+
+</A></A></H1>
+<P>
+Requires OpenGL support for the <B>NV_gpu_program4</B> extension.  This
+extension was introduced by the GeForce 6800 and other G8x-based GPUs.
+
+
+</P>
+
+<H2><A NAME="OPENGL_EXTENSION_SPECIFICATIONS"><A NAME="5">OpenGL Extension Specifications
+
+</A></A></H2>
+<P>
+Programmability:
+
+
+</P>
+<PRE> <A HREF="http://www.opengl.org/registry/specs/NV/gpu_program4.txt">www.opengl.org/registry/specs/NV/gpu_program4.txt</A> 
+ <A HREF="http://www.opengl.org/registry/specs/NV/fragment_program4.txt">www.opengl.org/registry/specs/NV/fragment_program4.txt</A> 
+</PRE><P>
+New texture samplers:
+
+
+</P>
+<PRE> <A HREF="http://www.opengl.org/registry/specs/EXT/texture_array.txt">www.opengl.org/registry/specs/EXT/texture_array.txt</A> 
+ <A HREF="http://www.opengl.org/registry/specs/EXT/texture_buffer_object.txt">www.opengl.org/registry/specs/EXT/texture_buffer_object.txt</A> 
+</PRE><P>
+New integer texture formats:
+
+
+</P>
+<PRE> <A HREF="http://www.opengl.org/registry/specs/EXT/texture_integer.txt">www.opengl.org/registry/specs/EXT/texture_integer.txt</A> 
+</PRE><P>
+Draw buffers:
+
+
+</P>
+<PRE>  <A HREF="http://www.opengl.org/registry/specs/ARB/draw_buffers.txt">www.opengl.org/registry/specs/ARB/draw_buffers.txt</A>
+  <A HREF="http://www.opengl.org/registry/specs/ATI/draw_buffers.txt">www.opengl.org/registry/specs/ATI/draw_buffers.txt</A>
+</PRE>
+<H1><A NAME="PROFILE_OPTIONS"><A NAME="6">PROFILE OPTIONS
+
+</A></A></H1>
+
+<H2><A NAME="COMMON_GP4_OPTIONS"><A NAME="7">Common GP4 Options
+
+</A></A></H2>
+<DL>
+<DT><STRONG>fastimul
+
+</STRONG></DT>
+<DD>
+
+<P>
+Assume integer multiply inputs have at most 24 significant bits.  Example: "-po fastimul"
+
+
+</P>
+</DD></DL>
+
+<H2><A NAME="FRAGMENT_DOMAIN-SPECIFIC_GP4_OPTIONS"><A NAME="8">Fragment Domain-specific GP4 Options
+
+</A></A></H2>
+<DL>
+<DT><STRONG>ARB_draw_buffers=<I>val</I>
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG>ATI_draw_buffers=<I>val</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Indicates that the <B>ARB_draw_buffers</B> or <B>ATI_draw_buffers</B> OpenGL extension
+is supported and what the extension's implementation dependent value of
+GL_MAX_DRAW_BUFFERS_ARB or GL_MAX_DRAW_BUFFERS_ATI is.
+
+
+</P>
+<P>
+When specified, the compiler generates the "OPTION ARB_draw_buffers;"
+or "OPTION ATI_draw_buffers;" in the compiled code to enable output
+to multiple draw buffers.  Output to multiple draw buffers is done by
+specifying output parameters with the COLOR1, COLOR2, etc. semantics.
+
+
+</P>
+<P>
+GPUs that support these extensions typically support up to 4 buffers.
+
+
+</P>
+<P>
+These options are useful in the rare situation you want to control the
+specific OPTION name used.  For example, Apple drivers support the
+<B>ARB_draw_buffers</B> extension but not the <B>ATI_draw_buffers</B> extension.
+
+
+</P>
+<P>
+The CgGL runtime routine <A HREF="cgGLSetOptimalOptions.html">cgGLSetOptimalOptions</A>
+will automatically add
+the appropriate option based on querying the current OpenGL context's
+extension support (prefering the ARB extension) and specify the proper
+limit.
+
+
+</P>
+</DD></DL>
+
+<H1><A NAME="DATA_TYPES"><A NAME="9">DATA TYPES
+
+</A></A></H1>
+
+<H2><A NAME="SAMPLERS"><A NAME="10">Samplers
+
+</A></A></H2>
+<P>
+This profile has additional samplers for texture arrays (1D and 2D)
+and texture buffers.
+
+
+</P>
+<P>
+Standard OpenGL textures formats (GL_RGBA8, etc.) return floating-point
+sampled results, but new signed and unsigned integer texture formats
+require samplers the return signed and unsigned integer vectors
+respectively.  Sampler variants for fetching signed and unsigned integer
+vectors are prefixed by <B>i</B> and <B>u</B> respectively.  Your application is
+required to make sure the bound textures have the appropriate texture
+format.  So a 3D texture specified with the GL_RGBA32UI_EXT internal
+format (see the <B>EXT_texture_integer</B> OpenGL extension) must be used with
+a <B>usampler3D</B> sampler.  Otherwise, texture sampling returns undefined
+results.
+
+
+</P>
+<DL>
+<DT><STRONG>sampler1D
+
+</STRONG></DT>
+<DD>
+
+<P>
+1D texture unit corresponding to OpenGL's <B>GL_TEXTURE_1D</B> target.
+Sampling returns <B>float</B> vectors.
+
+
+</P>
+<DT><STRONG>isampler1D
+
+</STRONG></DT>
+<DD>
+
+<P>
+1D texture unit corresponding to OpenGL's <B>GL_TEXTURE_1D</B> target.
+Sampling returns <B>int</B> vectors.
+
+
+</P>
+<DT><STRONG>usampler1D
+
+</STRONG></DT>
+<DD>
+
+<P>
+1D texture unit corresponding to OpenGL's <B>GL_TEXTURE_1D</B> target.
+Sampling returns <B>unsigned int</B> vectors.
+
+
+</P>
+<DT><STRONG>sampler1DARRAY
+
+</STRONG></DT>
+<DD>
+
+<P>
+1D array texture unit corresponding to OpenGL's <B>GL_TEXTURE_1D_ARRAY_EXT</B> target provided by the <B>EXT_texture_array</B> extension.
+Sampling returns <B>float</B> vectors.
+
+
+</P>
+<DT><STRONG>isampler1DARRAY
+
+</STRONG></DT>
+<DD>
+
+<P>
+1D array texture unit corresponding to OpenGL's <B>GL_TEXTURE_1D_ARRAY_EXT</B> target provided by the <B>EXT_texture_array</B> extension.
+Sampling returns <B>int</B> vectors.
+
+
+</P>
+<DT><STRONG>usampler1DARRAY
+
+</STRONG></DT>
+<DD>
+
+<P>
+1D array texture unit corresponding to OpenGL's <B>GL_TEXTURE_1D_ARRAY_EXT</B> target provided by the <B>EXT_texture_array</B> extension.
+Sampling returns <B>unsigned int</B> vectors.
+
+
+</P>
+<DT><STRONG>sampler2D
+
+</STRONG></DT>
+<DD>
+
+<P>
+2D texture unit corresponding to OpenGL's <B>GL_TEXTURE_2D</B> target.
+Sampling returns <B>float</B> vectors.
+
+
+</P>
+<DT><STRONG>isampler2D
+
+</STRONG></DT>
+<DD>
+
+<P>
+2D texture unit corresponding to OpenGL's <B>GL_TEXTURE_2D</B> target.
+Sampling returns <B>int</B> vectors.
+
+
+</P>
+<DT><STRONG>usampler2D
+
+</STRONG></DT>
+<DD>
+
+<P>
+2D texture unit corresponding to OpenGL's <B>GL_TEXTURE_2D</B> target.
+Sampling returns <B>unsigned int</B> vectors.
+
+
+</P>
+<DT><STRONG>sampler2DARRAY
+
+</STRONG></DT>
+<DD>
+
+<P>
+2D array texture unit corresponding to OpenGL's <B>GL_TEXTURE_2D_ARRAY_EXT</B> target provided by the <B>EXT_texture_array</B> extension.
+Sampling returns <B>float</B> vectors.
+
+
+</P>
+<DT><STRONG>isampler2DARRAY
+
+</STRONG></DT>
+<DD>
+
+<P>
+2D array texture unit corresponding to OpenGL's <B>GL_TEXTURE_2D_ARRAY_EXT</B> target provided by the <B>EXT_texture_array</B> extension.
+Sampling returns <B>int</B> vectors.
+
+
+</P>
+<DT><STRONG>usampler2DARRAY
+
+</STRONG></DT>
+<DD>
+
+<P>
+2D array texture unit corresponding to OpenGL's <B>GL_TEXTURE_2D_ARRAY_EXT</B> target provided by the <B>EXT_texture_array</B> extension.
+Sampling returns <B>unsigned int</B> vectors.
+
+
+</P>
+<DT><STRONG>sampler3D
+
+</STRONG></DT>
+<DD>
+
+<P>
+3D texture unit corresponding to OpenGL's <B>GL_TEXTURE_3D</B> target.
+Sampling returns <B>float</B> vectors.
+
+
+</P>
+<DT><STRONG>isampler3D
+
+</STRONG></DT>
+<DD>
+
+<P>
+3D texture unit corresponding to OpenGL's <B>GL_TEXTURE_3D</B> target.
+Sampling returns <B>int</B> vectors.
+
+
+</P>
+<DT><STRONG>usampler3D
+
+</STRONG></DT>
+<DD>
+
+<P>
+3D texture unit corresponding to OpenGL's <B>GL_TEXTURE_3D</B> target.
+Sampling returns <B>unsigned int</B> vectors.
+
+
+</P>
+<DT><STRONG>samplerCUBE
+
+</STRONG></DT>
+<DD>
+
+<P>
+Cube map texture unit corresponding to OpenGL's <B>GL_TEXTURE_CUBE_MAP</B> target.
+Sampling returns <B>float</B> vectors.
+
+
+</P>
+<DT><STRONG>isamplerCUBE
+
+</STRONG></DT>
+<DD>
+
+<P>
+Cube map texture unit corresponding to OpenGL's <B>GL_TEXTURE_CUBE_MAP</B> target.
+Sampling returns <B>int</B> vectors.
+
+
+</P>
+<DT><STRONG>usamplerCUBE
+
+</STRONG></DT>
+<DD>
+
+<P>
+Cube map texture unit corresponding to OpenGL's <B>GL_TEXTURE_CUBE_MAP</B> target.
+Sampling returns <B>unsigned int</B> vectors.
+
+
+</P>
+<DT><STRONG>samplerRECT
+
+</STRONG></DT>
+<DD>
+
+<P>
+Rectangle texture unit corresponding to OpenGL's <B>GL_TEXTURE_RECTANGLE_ARB</B> target.
+Sampling returns <B>float</B> vectors.
+
+
+</P>
+<DT><STRONG>isamplerRECT
+
+</STRONG></DT>
+<DD>
+
+<P>
+Rectangle texture unit corresponding to OpenGL's <B>GL_TEXTURE_RECTANGLE_ARB</B> target.
+Sampling returns <B>int</B> vectors.
+
+
+</P>
+<DT><STRONG>isamplerRECT
+
+</STRONG></DT>
+<DD>
+
+<P>
+Rectangle texture unit corresponding to OpenGL's <B>GL_TEXTURE_RECTANGLE_ARB</B> target.
+Sampling returns <B>unsigned int</B> vectors.
+
+
+</P>
+<DT><STRONG>samplerBUF
+
+</STRONG></DT>
+<DD>
+
+<P>
+Buffer texture unit corresponding to OpenGL's <B>GL_TEXTURE_BUFFER_EXT</B> target provided by the <B>EXT_texture_buffer_object</B> extension.
+Sampling returns <B>float</B> vectors.
+
+
+</P>
+<DT><STRONG>isamplerBUF
+
+</STRONG></DT>
+<DD>
+
+<P>
+Buffer texture unit corresponding to OpenGL's <B>GL_TEXTURE_BUFFER_EXT</B> target provided by the <B>EXT_texture_buffer_object</B> extension.
+Sampling returns <B>int</B> vectors.
+
+
+</P>
+<DT><STRONG>usamplerBUF
+
+</STRONG></DT>
+<DD>
+
+<P>
+Buffer texture unit corresponding to OpenGL's <B>GL_TEXTURE_BUFFER_EXT</B> target provided by the <B>EXT_texture_buffer_object</B> extension.
+Sampling returns <B>unsigned int</B> vectors.
+
+
+</P>
+</DD></DL>
+
+<H2><A NAME="FLOATING-POINT"><A NAME="11">Floating-point
+
+</A></A></H2>
+<DL>
+<DT><STRONG>float
+
+</STRONG></DT>
+<DD>
+
+<P>
+32-bit IEEE floating-point
+
+
+</P>
+<DT><STRONG>half
+
+</STRONG></DT>
+<DD>
+
+<P>
+32-bit IEEE floating-point
+
+
+</P>
+<DT><STRONG>double
+
+</STRONG></DT>
+<DD>
+
+<P>
+32-bit IEEE floating-point
+
+
+</P>
+<DT><STRONG>fixed
+
+</STRONG></DT>
+<DD>
+
+<P>
+Floating-point restricted to [-2,2) range.
+
+
+</P>
+</DD></DL>
+
+<H2><A NAME="INTEGER"><A NAME="12">Integer
+
+</A></A></H2>
+<P>
+This profile supports "true" integer data types.  Shifting and bitwise operators are supported for integer data types.
+
+
+</P>
+<DL>
+<DT><STRONG>int
+
+</STRONG></DT>
+<DD>
+
+<P>
+32-bit signed integer
+
+
+</P>
+<DT><STRONG>unsigned int
+
+</STRONG></DT>
+<DD>
+
+<P>
+32-bit unsigned integer
+
+
+</P>
+<DT><STRONG>short
+
+</STRONG></DT>
+<DD>
+
+<P>
+16-bit signed integer
+
+
+</P>
+<DT><STRONG>unsigned short
+
+</STRONG></DT>
+<DD>
+
+<P>
+16-bit unsigned integer
+
+
+</P>
+<DT><STRONG>char
+
+</STRONG></DT>
+<DD>
+
+<P>
+8-bit signed integer
+
+
+</P>
+<DT><STRONG>unsigned char
+
+</STRONG></DT>
+<DD>
+
+<P>
+8-bit unsigned integer
+
+
+</P>
+</DD></DL>
+
+<H1><A NAME="SEMANTICS"><A NAME="13">SEMANTICS
+
+</A></A></H1>
+
+<H2><A NAME="VARYING_INPUT_SEMANTICS"><A NAME="14">VARYING INPUT SEMANTICS
+
+</A></A></H2>
+
+<H3><A NAME="INTERPOLATED_INPUT_SEMANTICS"><A NAME="15">Interpolated Input Semantics
+
+</A></A></H3>
+<P>
+The varying input semantics in the <B>gp4fp</B> profile correspond to the
+respectively named varying output semantics of the <B>gp4vp</B> profile (or <B>gp4gp</B> if a geometry shader
+is present).
+
+
+</P>
+<PRE>  Binding Semantics Name           Corresponding Data
+  
+  COLOR                            Input primary color
+  COLOR0
+  COL
+  COL0
+  
+  COLOR1                           Input secondary color
+  COL1   
+
+  WPOS                             Window position (with lower-left origin)
+  
+  TEX0                             Input texture coordinate sets 0
+  TEXCOORD0
+ 
+  TEX1                             Input texture coordinate sets 1
+  TEXCOORD1
+ 
+  TEX2                             Input texture coordinate sets 2
+  TEXCOORD2
+ 
+  TEX3                             Input texture coordinate sets 3
+  TEXCOORD3
+  
+  TEX4                             Input texture coordinate sets 4
+  TEXCOORD4
+
+  TEX5                             Input texture coordinate sets 5
+  TEXCOORD5
+  
+  TEX6                             Input texture coordinate sets 6
+  TEXCOORD6
+ 
+  TEX7                             Input texture coordinate sets 7
+  TEXCOORD7
+  
+  FOGP                             Input fog color (XYZ) and factor (W)
+  FOG
+ </PRE>
+<H3><A NAME="INTERPOLATION_SEMANTIC_MODIFIERS"><A NAME="16">Interpolation Semantic Modifiers
+
+</A></A></H3>
+<P>
+A number of interpolation semantic modifiers control how interpolation happens
+for the interpolated input semantics above.  These modifiers are suffixed to
+the semantic name with a "." (period) seperator. Without a modifier, perspective-correct
+interpolation applies.
+
+
+</P>
+<PRE>  Semantic Modifier Name           Meaning
+
+  CENTROID                         Interpolate at the centroid of the covered samples
+                                   (only applies when rendering to multisampled surface)
+ 
+  FLAT                             Flat shading using provoking vertex's value
+  
+  NOPERSPECTIVE                    Interpolate without perspective correction
+</PRE><P>
+Examples:
+
+
+</P>
+<PRE>  float4 a : TEXCOORD0
+  float4 b : TEXCOORD1.CENTROID
+  float4 c : TEXCOORD2.FLAT
+  float4 d : TEXCOORD3.NOPERSPECTIVE
+</PRE>
+<H3><A NAME="PER-PRIMITIVE_INPUT_SEMANTICS"><A NAME="17">Per-primitive Input Semantics
+
+</A></A></H3>
+<PRE>  FACE                             Polygon facing.
+                                   +1 for front-facing polygon or line or point
+                                   -1 for back-facing polygon
+ 
+  PRIMITIVEID                      Primitive ID (int)
+</PRE><P>
+If a geometry program is active, parameters given the PRIMITIVEID
+semantic obtained their integer value from the primitive ID value
+emitted by the geometry program for the provoking vertex.  If no geometry
+program is active, the value is the number of primitives processed by the
+rasterizer since the last time glBegin was called (directly or indirectly
+via vertex array functions).  The first primitive generated after a
+glBegin is numbered zero, and the primitive ID counter is incremented
+after every individual point, line, or polygon primitive is processed.
+For polygons drawn in point or line mode, the primitive ID counter is
+incremented only once, even though multiple points or lines may be drawn.
+For QUADS and QUAD_STRIP primitives that are decomposed into triangles,
+the primitive ID is incremented after each complete quad is processed.
+For POLYGON primitives, the primitive ID counter is zero.  The primitive
+ID is zero for fragments generated by DrawPixels or Bitmap.  Restarting a
+primitive topology using the primitive restart index has no effect on
+the primitive ID counter.
+
+
+</P>
+
+<H2><A NAME="UNIFORM_INPUT_SEMANTICS"><A NAME="18">UNIFORM INPUT SEMANTICS
+
+</A></A></H2>
+
+<H3><A NAME="BUFFER_SEMANTICS"><A NAME="19">Buffer Semantics
+
+</A></A></H3>
+<P>
+<A HREF="gp4.html">gp4</A> profiles can specify that uniforms be specified to reside within
+binable buffers.
+
+
+</P>
+<P>
+Example of automatic, compiler-determined specification of a uniform's
+location within a buffer:
+
+
+</P>
+<PRE>  uniform float2 location   : BUFFER[3];  // compiler positions within buffer 3
+  uniform float4 brickColor : BUFFER[3];  // compiler positions within buffer 3
+</PRE><P>
+Example of absolute byte offset specification of a uniform's locaiton
+within a buffer:
+
+
+</P>
+<PRE>  uniform float4 mustBeHere : BUFFER[7][20];  // locate 20 bytes into buffer 7
+</PRE>
+<H3><A NAME="CONSTANT_REGISTER_SEMANTICS"><A NAME="20">Constant Register Semantics
+
+</A></A></H3>
+<PRE>  C0-C255           Constant register [0..255].
+                    The aliases c0-c255 (lowercase) are also accepted.
+</PRE><P>
+If used with a variable that requires more than one constant register
+(e.g. a matrix), the semantic specifies the first register that is used.
+
+
+</P>
+<P>
+Example:
+
+
+</P>
+<PRE>  uniform float4 array[20] : C14;  // uses c14 through c33
+</PRE>
+<H3><A NAME="TEXTURE_UNIT_SEMANTICS"><A NAME="21">Texture Unit Semantics
+
+</A></A></H3>
+<PRE>  TEXUNIT0-TEXUNIT31  Texture image unit
+</PRE><P>
+Example:
+
+
+</P>
+<PRE>  uniform sampler2DARRAY texArray : TEXUNIT7;
+</PRE>
+<H2><A NAME="OUTPUT_SEMANTICS"><A NAME="22">OUTPUT SEMANTICS
+
+</A></A></H2>
+<PRE>  COLOR                            Output color (float4 or int4)
+  COL
+
+  COLOR0-COLOR7                    Output color (float4 or int4) for draw buffers 0 to 7
+  COL0-COL7
+ 
+  DEPTH                            Output depth (float)
+  DEPR
+</PRE>
+<H1><A NAME="STANDARD_LIBRARY_ISSUES"><A NAME="23">STANDARD LIBRARY ISSUES
+
+</A></A></H1>
+
+<H2><A NAME="RAW_CAST_FROM_FLOATING-POINT_TO_INTEGER_FUNCTIONS"><A NAME="24">Raw Cast from Floating-point to Integer Functions
+
+</A></A></H2>
+<P>
+It is possible to convert the raw bit patterns of IEEE single-precision
+floating-point to 32-bit unsigned integer.
+
+
+</P>
+<P>
+<A HREF="floatToRawIntBits.html">floatToRawIntBits</A>,
+<A HREF="floatToIntBits.html">floatToIntBits</A>,
+<A HREF="intBitsToFloat.html">intBitsToFloat</A>
+
+
+</P>
+
+<H2><A NAME="TEXTURE_ARRAY_FUNCTIONS"><A NAME="25">Texture Array Functions
+
+</A></A></H2>
+<P>
+New sampler data types for texture arrays and texture buffers lead to
+new standard library routines to access these samplers.
+
+
+</P>
+<P>
+New standard library functions are used to access 1D texture array
+samplers (sampler1DARRAY).
+
+
+</P>
+<P>
+<A HREF="tex1DARRAY.html">tex1DARRAY</A>, 
+<A HREF="tex1DARRAYbias.html">tex1DARRAYbias</A>, 
+<A HREF="tex1DARRAYcmpbias.html">tex1DARRAYcmpbias</A>, 
+<A HREF="tex1DARRAYlod.html">tex1DARRAYlod</A>, 
+<A HREF="tex1DARRAYcmplod.html">tex1DARRAYcmplod</A>,
+<A HREF="tex1DARRAYproj.html">tex1DARRAYproj</A>
+
+
+</P>
+<P>
+The dimensions of a texture array level can be determined.
+
+
+</P>
+<P>
+<A HREF="tex1DARRAYsize.html">tex1DARRAYsize</A>
+
+
+</P>
+<P>
+New standard library functions are used to access 2D texture array
+samplers (sampler2DARRAY).
+
+
+</P>
+<P>
+<A HREF="tex2DARRAY.html">tex2DARRAY</A>, 
+<A HREF="tex2DARRAYbias.html">tex2DARRAYbias</A>, 
+<A HREF="tex2DARRAYlod.html">tex2DARRAYlod</A>, 
+<A HREF="tex2DARRAYproj.html">tex2DARRAYproj</A>
+
+
+</P>
+<P>
+The dimensions of a texture array level can be determined.
+
+
+</P>
+<P>
+<A HREF="tex2DARRAYsize.html">tex2DARRAYsize</A>
+
+
+</P>
+
+<H1><A NAME="SEE_ALSO"><A NAME="26">SEE ALSO
+
+</A></A></H1>
+<P>
+<A HREF="gp4.html">gp4</A>,
+<A HREF="gp4vp.html">gp4vp</A>,
+<A HREF="gp4gp.html">gp4gp</A>,
+<A HREF="gp4vp.html">gp4vp</A>,
+<A HREF="texBUF.html">texBUF</A>,
+<A HREF="texBUFsize.html">texBUFsize</A>,
+<A HREF="floatToRawIntBits.html">floatToRawIntBits</A>,
+<A HREF="floatToIntBits.html">floatToIntBits</A>,
+<A HREF="intBitsToFloat.html">intBitsToFloat</A>,
+<A HREF="tex1DARRAY.html">tex1DARRAY</A>, 
+<A HREF="tex1DARRAYbias.html">tex1DARRAYbias</A>, 
+<A HREF="tex1DARRAYcmpbias.html">tex1DARRAYcmpbias</A>, 
+<A HREF="tex1DARRAYlod.html">tex1DARRAYlod</A>, 
+<A HREF="tex1DARRAYcmplod.html">tex1DARRAYcmplod</A>, 
+<A HREF="tex1DARRAYproj.html">tex1DARRAYproj</A>,
+<A HREF="tex1DARRAYsize.html">tex1DARRAYsize</A>,
+<A HREF="tex2DARRAY.html">tex2DARRAY</A>, 
+<A HREF="tex2DARRAYbias.html">tex2DARRAYbias</A>, 
+<A HREF="tex2DARRAYlod.html">tex2DARRAYlod</A>, 
+<A HREF="tex2DARRAYproj.html">tex2DARRAYproj</A>,
+<A HREF="tex2DARRAYsize.html">tex2DARRAYsize</A>
+
+</P>
+
+</BLOCKQUOTE>
+
+
+
+</BODY>
+

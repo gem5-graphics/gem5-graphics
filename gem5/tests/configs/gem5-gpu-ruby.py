@@ -1,0 +1,1 @@
+../../../gem5-gpu/tests/configs/gem5-gpu-ruby.py

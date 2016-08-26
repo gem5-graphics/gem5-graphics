@@ -1,0 +1,68 @@
+#
+# Additional compilation flags may be passed via CFLAGS, CXXFLAGS and CLINKFLAGS
+#
+# Linux:
+#   make CFLAGS=-m32
+#   make CFLAGS=-m64
+#
+# Ubuntu 9.04 64-bit
+#   make CFLAGS=-m32 CXXFLAGS=-m32 CLINKFLAGS="-L/lib32 -L/usr/lib32 -Wl,-rpath-link,/lib32:/usr/lib32"
+#
+# OSX:
+#   make 'CFLAGS=-arch ppc'    'CXXFLAGS=-arch ppc'
+#   make 'CFLAGS=-arch i386'   'CXXFLAGS=-arch i386'
+#   make 'CFLAGS=-arch x86_64' 'CXXFLAGS=-arch x86_64'
+
+UNAME := $(shell uname)
+
+C_SOURCE   := src/glew.c
+OBJ        := $(C_SOURCE:.c=.o) 
+BIN        := libGLEW.so
+
+CC         =  gcc
+C_FLAGS    += -Wall
+C_FLAGS    += -I"include"
+C_FLAGS    += -DGLEW_EXPORTS
+C_FLAGS    += -DGLEW_BUILD
+
+ifeq ($(UNAME), Darwin)
+  BIN = libGLEW.dylib
+  LINKFLAGS  += -dynamiclib
+  LINKFLAGS  += -framework OpenGL
+else
+  LINKFLAGS  += -shared
+  ifeq ($(findstring CYGWIN, $(UNAME)), CYGWIN)
+    BIN = glew32.dll
+    C_FLAGS    += -D_WIN32
+    C_FLAGS    += -mno-cygwin
+    LINKFLAGS  += -mno-cygwin
+    LINKFLAGS  += -lglu32 -lopengl32 -lgdi32
+  else
+    ifeq ($(UNAME), SunOS)
+      C_FLAGS    += -fPIC
+      LINKFLAGS  += -lGLU -lGL
+    else
+      C_FLAGS    += -fPIC
+      LINKFLAGS  += -lGLU -lGL
+    endif
+  endif
+endif
+
+override CFLAGS := $(CFLAGS) $(C_FLAGS)
+
+all: glew
+
+glew: $(OBJ)
+	$(CC) $(CFLAGS) $(OBJ) -o $(BIN) $(LINKFLAGS) $(CLINKFLAGS)
+
+test:
+
+run: all
+
+clean:
+	$(RM) $(BIN) $(OBJ) 
+
+clobber: clean
+	$(RM) *.bak *.o *~
+
+.PHONY: all test run clean clobber

@@ -1,0 +1,295 @@
+
+// gs_md2shadowvol.cg
+
+// This shadow volume generation and visualization shader demonstrates the following:
+// * vertex program
+//   *  keyframe interpolate object-space position
+//   *  compute and output light-space position (assume light position is origin)
+//   *  output clip-space position and clip-space version of light-space direction
+// * geometry program
+//   *  compute facingness of central triangle with respect to the light
+//   *  compute facingness of central triangle's 3 adjacent triangles too
+//   *  based on facingess information, output triangle strip-optimized
+//      extruded shadow volume geometry
+//   *  for debuging, assign pseudo-color to polygons
+// * fragment program
+//   *  output the color
+
+void md2shadowvol_vertex(float3 positionA : POSITION,
+                         float3 positionB : TEXCOORD1,
+
+                     out float4 oPosition               : POSITION,
+                     out float4 oPositionProjectedtoInf : TEXCOORD0,
+                     out float3 oLightSpacePosition     : TEXCOORD1,
+
+                 uniform float     keyFrameBlend,
+                 uniform float3    lightPosition,  // in same coord. system as positionA/B
+                 uniform float4x4  modelViewProj)
+{
+  // Keyframe interpolate two positions and two normals based
+  // on keyFrameBlend weight
+  float3 blendPosition = lerp(positionA, positionB,
+                              keyFrameBlend);
+                            
+  // Transform weighted position to clip space
+  oPosition = mul(modelViewProj, float4(blendPosition, 1));
+  
+  // Direction of blended position projecting away from the light position
+  oLightSpacePosition = blendPosition - lightPosition;
+
+  oPositionProjectedtoInf = mul(modelViewProj, float4(oLightSpacePosition, 0));
+}
+
+// Helper function that returns a float4 with each component being the
+// signed volume of the tetrahderons formed by a light source, assumed
+// to be located at the origin (0,0,0), and the four triangles of a
+// triangle adjacency primitive, assuming these vertex positions are
+// in light space (a consistent coordinate system where the light is
+// at the origin).  The light-space vertex positions are passed as
+// an AttribArray.
+float4 makeFacesVector(AttribArray<float3> lightSpacePosition)
+{
+  return float4(determinant(float3x3(lightSpacePosition[0],
+                                     lightSpacePosition[1],
+                                     lightSpacePosition[2])),
+                determinant(float3x3(lightSpacePosition[2],
+                                     lightSpacePosition[3],
+                                     lightSpacePosition[4])),
+                determinant(float3x3(lightSpacePosition[4],
+                                     lightSpacePosition[5],
+                                     lightSpacePosition[0])),                                                                        
+                determinant(float3x3(lightSpacePosition[0],
+                                     lightSpacePosition[2],
+                                     lightSpacePosition[4])));
+}
+
+TRIANGLE_ADJ LINE_OUT void
+md2shadowvol_geometry_silhouette(AttribArray<float4> position                    : POSITION,
+                                 AttribArray<float4> positionProjectedToInfinity : TEXCOORD0,
+                                 AttribArray<float3> lightSpacePosition          : TEXCOORD1)
+{
+  // facesVector.x = <a0,t2,t0> facingness
+  // facesVector.y = <t2,a4,t4> facingness
+  // facesVector.z = <t0,t4,a4> facingness
+  // facesVector.w = <t0,t2,t4> facingness, the "central" triangle
+  float4 facesVector = makeFacesVector(lightSpacePosition);
+  
+  if ((facesVector.w < 0) && (facesVector.x >=0 )) {
+    emitVertex(position[0] : POSITION, float4(1,1,0,1) : COLOR);
+    emitVertex(position[2] : POSITION, float4(1,1,0,1) : COLOR);  
+  }
+  if ((facesVector.w < 0) && (facesVector.y >=0 )) {
+    restartStrip();  
+    emitVertex(position[2] : POSITION, float4(0,1,1,1) : COLOR);
+    emitVertex(position[4] : POSITION, float4(0,1,1,1) : COLOR);  
+  }
+  if ((facesVector.w < 0) && (facesVector.z >= 0)) {
+    restartStrip();  
+    emitVertex(position[4] : POSITION, float4(1,0,1,1) : COLOR);
+    emitVertex(position[0] : POSITION, float4(1,0,1,1) : COLOR);  
+  }
+}
+
+TRIANGLE_ADJ void
+md2shadowvol_geometry(AttribArray<float4> position                    : POSITION,
+                      AttribArray<float4> positionProjectedToInfinity : TEXCOORD0,
+                      AttribArray<float3> lightSpacePosition          : TEXCOORD1)
+{
+  // A long rationale for a small amount of code...
+  //
+  // The following explanation assumes the following:
+  //
+  // Input topology:
+  //  
+  //          v3
+  //         /  \
+  //        /    \
+  //       /      \
+  //      v2 ---- v4
+  //     /  \    /  \
+  //    /    \  /    \
+  //  v1 ---- v0 ---- v5
+  //
+  // v# vertices are the input vertex attribute sets
+  // <v0,v2,v4> is the "central" triangle; <v0,v1,v2>,
+  // <v2,v3,v4>, and <v4,v5,v0> are "adjacent" triangles.
+  //
+  // Output is one of two possible topologies:
+  //
+  //  A)      a2               B)      t2
+  //         /  \                     /  \
+  //        /    \                   /    \
+  //       /      \                 /      \
+  //      t2 ---- t4               a2 ---- a4
+  //     /  \    /  \             /  \    /  \
+  //    /    \  /    \           /    \  /    \
+  //  a0 ---- t0 ---- a4       t0 ---- a0 ---- t4
+  //
+  //  ^^ central triangle      ^^ central triangle
+  //     faces TOWARDS light      faces AWAY from light
+  //
+  // t# vertices are position[#] vectors
+  // a# vertices are positionProjectedToInfinity[#] vectors
+  //
+  // t# and a# are both clip-space positions
+  //
+  // When the central triangle faces TOWARDS the light (ie,
+  // is front-facing with respect to [wrt.] the light), output
+  // topology A is used; otherwise when the central triangle
+  // faces AWAY from the light (ie, is back-facing wrt. the
+  // light), output topology B is used.  Output topology A and
+  // B are the same except the use of a# and t# vertices is 
+  // swapped.
+  //
+  // While we always output the central triangle in the
+  // output topology, the adjacent triangles are output only
+  // if the input topology's adjacent triangle's light
+  // facingness is the opposite of the input topolgy's
+  // central triangle.
+  //
+  // For example, if the central triangle <v0,v2,v4> is
+  // front-facing wrt. the light, we emit the
+  // adjacent output triangle (either <a0,t2,t0> or
+  // <t0,a2,a0>) if the adjacent triangle <v0,v1,v2> is
+  // back-facing wrt. the light; otherwise, we simply
+  // skip generating this particular adjacent triangle
+  // in the output topology.
+  //
+  // Computing whether a triangle is front- or back-facing
+  // wrt. the light is equivalent to computing the
+  // determinant of the 3x3 matrix whose rows are formed
+  // by the three vertex positions in light-space.  Light-space
+  // is any coordinate system where the light position is
+  // the origin.  Mathematically, this 3x3 determinant is
+  // proportional (by a factor of 1/6) to the signed volume
+  // of the tetrahedron formed by the three triangle vertices
+  // and the origin.  The sign of the determinant indicates
+  // whether the triangle is front- or back-facing.
+  //
+  // Given the signed volumes of two tetrahedrons of two
+  // triangles that share an edge, if the product of the
+  // two signed volumes is negative, the volumes must have
+  // opposite signs and, hence, the shared edge is a possible
+  // silhouette edge, meaning one triangle on the edge faces
+  // the light while the other triangle faces away.
+  //
+  // With this mathematical framework, we can proceed to
+  // efficiently computing possible silhouette edges and
+  // then project half the quad (a triangle) of the shadow
+  // volume extrusion for the edge.
+  //
+  // The GPU runs geometry programs most efficiently when
+  // we can minimally bound the maximum number of vertices that
+  // the program will ever output by a particular geometry program.
+  // We also favor SIMD patterns of execution rather than
+  // divergent control flow.  For example, a conditional move
+  // to emit one of two possible vertex attribute values
+  // is preferable to if/the/else logic.
+  //
+  // To minimally bound the number of vertices output, we
+  // seek to emit the output topology exploit the vertex
+  // re-use provided by triangle strip output.
+  //
+  // Consider a given output topology broken into two
+  // triangle strips:
+  //
+  //          a2
+  //         /  \
+  //        /    \
+  //       /      \
+  //      t2 ---- t4
+  //
+  //      t2 ---- t4
+  //     /  \    /  \
+  //    /    \  /    \
+  //  a0 ---- t0 ---- a4
+  //
+  // The bottom strip is 5 vertices forming 3 triangles.  Then
+  // we must restart a new strip to form the final top triangle.
+  // If we output all 4 triangles in the worst case, this bounds
+  // the maximum number of output vertices to 8.
+  //
+  // Contrast this with outputing each triangle as an independent
+  // triangle requiring a strip restart after each triangle:
+  //
+  //               a2
+  //              /  \
+  //             /    \
+  //            /      \
+  //           t2 ---- t4
+  //
+  //      t2   t2 ---- t4   t4
+  //     /  \    \    /    /  \
+  //    /    \    \  /    /    \
+  //  a0 ---- t0   t0   t0 ---- a4  
+  //
+  // This would require outputing 12 vertices.
+  //
+  // Correct front- and back-facingness wrt. window space is
+  // required for stenciled shadow volume algorithms so we must
+  // preserve the consistent winding order of the output triangles.
+  //
+  // If we don't need to output the adjacent triangle <a0,t2,t0>,
+  // we cannot simply skip emiting a0 from the triangle strip
+  // <a0,t2,t0,t4,a4>.  Such a strip <t2,t0,t4,a4> would have the
+  // incorrect polygon winding.
+  //
+  // The solution is to avoid outputing triangle <a0,t2,t0> by
+  // instead outputing the degenerate triangle <t0,t2,t0> so the
+  // strip becomes <t0,t2,t0,t4,a4> which preserves correct
+  // polygon winding order.
+  //
+  // Generating the proper degenerate vertex to preseve the
+  // proper winding order is actually quite simple.  If the first
+  // adjacent triangle <a0,t2,t0> is front-facing wrt. the light,
+  // we emit t0 and otherwise emit a0 (forming the degenerate
+  // triangle <a0,t2,a0>).
+  //
+  // Droping the triangle <t0,t4,a4> is easier because it is at
+  // the end of the triangle strip and we can simply skip emiting
+  // vertex a4 to avoid assembling this last triangle in the strip.
+  
+#ifdef EMIT_COLORS
+// real usage for shadow volume requires no emited color, save effort
+#define EMIT_COLOR1
+#define EMIT_COLOR2
+#define EMIT_COLOR
+#else
+// for shadow volume visualization, emit coloration
+#define EMIT_COLOR1 ,float4(0,0.2,0.2,0):COLOR
+#define EMIT_COLOR2 ,float4(0,0.2,0.6,0):COLOR
+#define EMIT_COLOR ,color
+  float4 color : COLOR = 2*sin(position[0] * 0.1)-1;
+#endif
+  
+  // facesVector.x = <a0,t2,t0> facingness
+  // facesVector.y = <t2,a4,t4> facingness
+  // facesVector.z = <t0,t4,a4> facingness
+  // facesVector.w = <t0,t2,t4> facingness, the "central" triangle
+  float4 facesVector = makeFacesVector(lightSpacePosition);
+
+  bool facesLight = (facesVector.w < 0);
+
+  // Start triangle strip...
+  emitVertex((facesVector.x < 0) ? position[0] : positionProjectedToInfinity[0] : POSITION EMIT_COLOR);
+  emitVertex(facesLight ? position[2] : positionProjectedToInfinity[2] : POSITION EMIT_COLOR);
+  emitVertex(facesLight ? position[0] : positionProjectedToInfinity[0] : POSITION EMIT_COLOR);
+  emitVertex(facesLight ? position[4] : positionProjectedToInfinity[4] : POSITION EMIT_COLOR);    
+
+  if ((facesVector.w * facesVector.z) < 0) {
+    emitVertex(facesLight ? positionProjectedToInfinity[4] : position[4] : POSITION EMIT_COLOR2);
+  }
+
+  // If needed, start a second triangle strip to finish the remaining "top" adjacent triangle...
+  if ((facesVector.w * facesVector.y) < 0) {
+    restartStrip();  
+    emitVertex(facesLight ? position[2] : positionProjectedToInfinity[2] : POSITION EMIT_COLOR1);
+    emitVertex(facesLight ? positionProjectedToInfinity[2] : position[2] : POSITION EMIT_COLOR2);
+    emitVertex(facesLight ? position[4] : positionProjectedToInfinity[4] : POSITION EMIT_COLOR1);    
+  }
+}
+
+float4 md2shadowvol_fragment(float4 color : COLOR) : COLOR
+{
+  return color;
+}

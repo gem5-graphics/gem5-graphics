@@ -1,0 +1,26 @@
+// noBump does diffuse and specular lighting without bumpmapping
+
+void noBump(float3 lightDirection    : TEXCOORD1,
+            float3 halfAngle         : TEXCOORD2,
+
+        out float4 color : COLOR,
+
+    uniform float  ambient,
+    uniform float  shininessExponent,
+    uniform float  opacity,
+    uniform float3 LMd, // Light-material diffuse
+    uniform float3 LMs) // Light-material specular
+{
+  // Normalize interpolated vectors, half-precision is adequate
+  half3 normLightDir = normalize(lightDirection);
+  half3 normHalfAngle = normalize(halfAngle);
+ 
+  // Compute diffuse and specular lighting contributions
+  half NdotL = normLightDir.z;
+  half NdotH = normHalfAngle.z;
+  half diffuse = saturate(NdotL);
+  half specular = (NdotL >= 0) ? pow(saturate(NdotH), shininessExponent) : 0;
+
+  color.rgb = LMd*(ambient+diffuse) + LMs*specular;
+  color.a = opacity;
+}

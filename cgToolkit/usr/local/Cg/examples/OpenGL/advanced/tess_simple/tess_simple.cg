@@ -1,0 +1,90 @@
+// Vertex program
+
+void mainV
+(
+  in  float4 position  : POSITION,
+  out float4 oPosition : POSITION
+)
+{
+  oPosition = position;
+}
+
+// gp5tcp - Tessellation Control Program
+//
+// - Input and output 2x2 control point patch.
+// - Transform position by a uniform non-projective transformation.
+// - Copy per-control point texture co-ordinate.
+// - Copy outer tessellation from uniform parameter.
+// - Set inner tessellation to 5x5
+
+gp5tcp PATCH_4
+void main
+(
+  in int id                       : CONTROLPOINT_ID,
+  in AttribArray<float4> position : POSITION,
+
+  out float4 oPosition     : POSITION,
+  out float  oEdgeTess[4]  : EDGETESS,
+  out float  oInnerTess[2] : INNERTESS,
+
+  uniform int2     innerTess,
+  uniform float4   outerTess,
+  uniform float4x4 modelview
+)
+{
+  // Per control-point output
+  
+  oPosition = mul(modelview, position[id]);
+
+  // Per patch output
+
+  oEdgeTess[0] = outerTess.x;
+  oEdgeTess[1] = outerTess.y;
+  oEdgeTess[2] = outerTess.z;
+  oEdgeTess[3] = outerTess.w;
+  
+  oInnerTess[0] = innerTess.x;
+  oInnerTess[1] = innerTess.y;
+}
+
+// gp5tep - Tessellation Evaluation Program
+//
+// - Linearly interpolate 2x2 grid of 4 control points.
+// - Position and texture is (u,v) bilinear interpolation of 2x2 control point grid.
+// - Transform position by a uniform 4x4 projection matrix.
+
+gp5tep QUADS PATCH_4
+void main
+(
+  in float2              uv       : UV,
+  in AttribArray<float4> position : POSITION,
+
+  out float4 oPosition : POSITION,
+
+  uniform float4x4 projection
+)
+{
+  float u         = uv.x, v         = uv.y;
+  float oneMinusU = 1-u,  oneMinusV = 1-v;
+
+  // Carefully written so that computations are symmetric.
+  // The result is the same if u & oneMinusU are reversed
+  // or v & oneMinusV are reversed (or both)
+
+  float4 pos1 = u*v        *position[0] + oneMinusU*v        *position[1],
+         pos2 = u*oneMinusV*position[2] + oneMinusU*oneMinusV*position[3];
+
+  [precise] float4 pos = pos1 + pos2;
+
+  oPosition = mul(projection, pos);
+}
+
+// Fragment program
+
+void mainF
+(
+  out float4 oColor : COLOR
+)
+{
+  oColor = float4(0,0,0,0);
+}

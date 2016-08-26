@@ -1,0 +1,394 @@
+<HTML>
+
+<HEAD>
+<TITLE>hs_5_0</TITLE>
+<STYLE TYPE="text/css" MEDIA=screen>
+<!--
+		
+BODY {
+ font-family: Arial,Helvetica;
+}
+
+BLOCKQUOTE { margin: 10pt;  }
+
+H1,A { color: #336699; }
+
+
+/*** Top menu style ****/
+.mmenuon { 
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #ff6600; font-size: 10pt;
+ }
+.mmenuoff { 
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #ffffff; font-size: 10pt;
+}	  
+.cpyright {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #ffffff; font-size: xx-small;
+}
+.cpyrightText {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #ffffff; font-size: xx-small;
+}
+.sections { 
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: 11pt;
+}	 
+.dsections { 
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: 12pt;
+}	
+.slink { 
+ font-family: Arial,Helvetica; font-weight: normal; text-decoration: none;
+ color: #336699; font-size: 9pt;
+}	 
+
+.slink2 { font-family: Arial,Helvetica; text-decoration: none; color: #336699; }	 
+
+.maintitle { 
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: 18pt;
+}	 
+.dblArrow {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: small;
+}
+.menuSec {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: small;
+}
+
+.newstext {
+ font-family: Arial,Helvetica; font-size: small;
+}
+
+.linkmenu {
+ font-family: Arial,Helvetica; color: #000000; font-weight: bold;
+ text-decoration: none;
+}
+
+P {
+ font-family: Arial,Helvetica;
+}
+
+PRE            { 
+																font-family: monospace;
+																white-space: pre; 
+																font-color: #333333; 
+																font-weight: 100;
+																background-color: #eeeeee; 
+																padding: 5px; 
+																width: 90%; 
+																border-style: solid;
+																border-width: 2px; 
+																border-color: #bebebe; 
+	              }
+.quote { 
+ font-family: Times; text-decoration: none;
+ color: #000000; font-size: 9pt; font-style: italic;
+}	
+.smstd { font-family: Arial,Helvetica; color: #000000; font-size: x-small; } 
+.std { font-family: Arial,Helvetica; color: #000000; } 
+.meerkatTitle { 
+ font-family: sans-serif; font-size: x-small;  color: black;    }
+
+.meerkatDescription { font-family: sans-serif; font-size: 10pt; color: black }
+.meerkatCategory { 
+ font-family: sans-serif; font-size: 9pt; font-weight: bold; font-style: italic; 
+ color: brown; }
+.meerkatChannel { 
+ font-family: sans-serif; font-size: 9pt; font-style: italic; color: brown; }
+.meerkatDate { font-family: sans-serif; font-size: xx-small; color: #336699; }
+
+.tocTitle {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #333333; font-size: 10pt;
+}
+
+.toc-item {
+ font-family: Arial,Helvetica; font-weight: bold; 
+ color: #336699; font-size: 10pt; text-decoration: underline;
+}
+
+.perlVersion {
+ font-family: Arial,Helvetica; font-weight: bold; 
+ color: #336699; font-size: 10pt; text-decoration: none;
+}
+
+.docTitle {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #000000; font-size: 10pt;
+}
+.dotDot {
+ font-family: Arial,Helvetica; font-weight: bold; 
+ color: #000000; font-size: 9pt;
+}
+
+.docSec {
+ font-family: Arial,Helvetica; font-weight: normal; 
+ color: #333333; font-size: 9pt;
+}
+.docVersion {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: 10pt;
+}
+
+.docSecs-on {
+ font-family: Arial,Helvetica; font-weight: normal; text-decoration: none;
+ color: #ff0000; font-size: 10pt;
+}
+.docSecs-off {
+ font-family: Arial,Helvetica; font-weight: normal; text-decoration: none;
+ color: #333333; font-size: 10pt;
+}
+
+h3 {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: small;
+}
+h2 {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: medium;
+}
+h1 {
+ font-family: Verdana,Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: large;
+}
+
+DL {
+ font-family: Arial,Helvetica; font-weight: normal; text-decoration: none;
+ color: #333333; font-size: 10pt;
+}
+
+UL > LI > A {
+ font-family: Arial,Helvetica; font-weight: bold;
+ color: #336699; font-size: 10pt;
+}
+
+.moduleInfo {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #333333; font-size: 11pt;
+}
+
+.moduleInfoSec {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: 10pt;
+}
+
+.moduleInfoVal {
+ font-family: Arial,Helvetica; font-weight: normal; text-decoration: underline;
+ color: #000000; font-size: 10pt;
+}
+
+.cpanNavTitle {
+ font-family: Arial,Helvetica; font-weight: bold; 
+ color: #ffffff; font-size: 10pt;
+}
+.cpanNavLetter {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none; 
+ color: #333333; font-size: 9pt;
+}
+.cpanCat {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none; 
+ color: #336699; font-size: 9pt;
+}
+
+
+-->
+</STYLE>
+
+</HEAD>
+
+<BODY>
+
+
+<object type="application/x-oleobject" classid="clsid:1e2a7bd0-dab9-11d0-b93a-00c04fc99f9e">
+</object>
+
+
+
+
+<BLOCKQUOTE>
+
+<H1><A NAME="NAME"><A NAME="1">NAME
+
+</A></A></H1>
+<P>
+<B>hs_5_0</B> - Translation profile to DirectX 11's High Level Shader Language for hull shaders.
+
+
+</P>
+
+<H1><A NAME="SYNOPSIS"><A NAME="2">SYNOPSIS
+
+</A></A></H1>
+<PRE>  vs_5_0
+</PRE>
+<H1><A NAME="DESCRIPTION"><A NAME="3">DESCRIPTION
+
+</A></A></H1>
+<P>
+This Direct3D profile translates Cg into DirectX 11's High Level Shader
+Language (HLSL11) for hull shaders.
+
+
+</P>
+<P>
+The compiler output for this profile conforms to the textual high-level
+language defined by DirectX 11's High Level Shading Language.
+
+
+</P>
+<P>
+The limitations of the <B>vs_5_0</B> profile depend on what HLSL profile to
+which the translated HLSL code is compiled.
+
+
+</P>
+
+<H1><A NAME="3D_API_DEPENDENCIES"><A NAME="4">3D API DEPENDENCIES
+
+</A></A></H1>
+<P>
+Requires Direct3D 11 support.
+
+
+</P>
+<PRE>  <A HREF="http://msdn.microsoft.com/en-us/library/ff476340.aspx">msdn.microsoft.com/en-us/library/ff476340.aspx</A>
+  <A HREF="http://msdn.microsoft.com/en-us/library/ff471356.aspx">msdn.microsoft.com/en-us/library/ff471356.aspx</A>
+</PRE>
+<H1><A NAME="PROFILE_OPTIONS"><A NAME="5">PROFILE OPTIONS
+
+</A></A></H1>
+<P>
+-po pad16
+  This will add padding variables to the cbuffer declarations to match
+  the 16 byte padding the GP4 OpenGL profiles use. This makes sure
+  each variable in the cbuffer uses an entire float4 constant instead
+  of the tight packing HLSL11 normally uses.
+
+
+</P>
+
+<H1><A NAME="DATA_TYPES"><A NAME="6">DATA TYPES
+
+</A></A></H1>
+<P>
+In general, the Cg data types translate to the HLSL11 data types with the
+same name.
+
+
+</P>
+<DL>
+<DT><STRONG>float, half, fixed
+
+</STRONG></DT>
+<DD>
+
+<P>
+These numeric data types all correspond to standard IEEE 754 single-precision
+floating-point encoding with a sign bit, 23 mantissa bits, and 8 exponent
+bits (biased by 128), sometimes called <I>s10e5</I>.
+
+
+</P>
+<DT><STRONG>int
+
+</STRONG></DT>
+<DD>
+
+<P>
+This integral data type operates like an integer over the -2^24 to 2^24 range.
+The result of int by int division is an integer (rounding down) to match C.
+
+
+</P>
+</DD></DL>
+
+<H1><A NAME="SEMANTICS"><A NAME="7">SEMANTICS
+
+</A></A></H1>
+
+<H2><A NAME="INPUT_SEMANTICS"><A NAME="8">INPUT SEMANTICS
+
+</A></A></H2>
+<P>
+The varying input semantics in the <B>hs_5_0</B> profile correspond to the
+respectively named varying output semantics of the <B>vs_5_0</B> profile.
+
+
+</P>
+<PRE>  Binding Semantics Name           Corresponding Data
+  
+  POSITION                         Object-space position (SV_Position)
+  
+  NORMAL                           Object-space normal
+
+  COLOR                            Primary color (float4) (SV_Target)
+  COLOR0
+  DIFFUSE
+  
+  COLOR1                           Secondary color (float4)
+  SPECULAR
+  
+  FOGCOORD                         Fog coordinate
+
+  TEXCOORD#                        Texture coordinate set #
+</PRE>
+<H2><A NAME="UNIFORM_INPUT_SEMANTICS"><A NAME="9">UNIFORM INPUT SEMANTICS
+
+</A></A></H2>
+
+<H2><A NAME="OUTPUT_SEMANTICS"><A NAME="10">OUTPUT SEMANTICS
+
+</A></A></H2>
+<PRE>  Binding Semantics Name         Corresponding Data
+  
+  POSITION                       Clip-space position (SV_Position)
+  HPOS
+  
+  COLOR                          Front primary color (SV_Target)
+  COLOR0
+  COL0
+  COL
+  
+  COLOR1                         Front secondary color
+  COL1
+  
+  TEXCOORD#                      Texture coordinate set #
+  TEX#                           TEX# is translated to TEXCOORD#
+  
+  FOGC                           Fog coordinate
+  FOG
+  
+  PSIZE                          Point size
+  PSIZ
+</PRE>
+<H1><A NAME="STANDARD_LIBRARY_ISSUES"><A NAME="11">STANDARD LIBRARY ISSUES
+
+</A></A></H1>
+<P>
+This profile is limited to standard library support available in HLSL11 for hull shaders.
+In general, the Cg and HLSL11 standard libraries are very similar.
+
+
+</P>
+
+<H1><A NAME="SEE_ALSO"><A NAME="12">SEE ALSO
+
+</A></A></H1>
+<P>
+<A HREF="ps_5_0.html">ps_5_0</A>,
+<A HREF="vs_5_0.html">vs_5_0</A>,
+<A HREF="gs_5_0.html">gs_5_0</A>,
+<A HREF="ds_5_0.html">ds_5_0</A>
+
+</P>
+
+</BLOCKQUOTE>
+
+
+
+</BODY>
+

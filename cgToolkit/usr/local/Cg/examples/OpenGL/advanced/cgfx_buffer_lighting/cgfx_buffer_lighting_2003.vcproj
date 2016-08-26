@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="Windows-1252"?>
+<VisualStudioProject
+	ProjectType="Visual C++"
+	Version="7.10"
+	Name="cgfx_buffer_lighting"
+	ProjectGUID="{5EAF2EA7-95E6-CA25-1C0A-52F53D3422A6}">
+	<Platforms>
+		<Platform Name="Win32"/>
+	</Platforms>
+	<Configurations>
+		<Configuration
+			Name="Release|Win32"
+			OutputDirectory=".\Release"
+			IntermediateDirectory=".\Release\cgfx_buffer_lighting"
+			ConfigurationType="1"
+			UseOfMFC="0"
+			ATLMinimizesCRunTimeLibraryUsage="FALSE"
+			CharacterSet="2">
+			<Tool
+				Name="VCCLCompilerTool"
+				Optimization="2"
+				InlineFunctionExpansion="1"
+				AdditionalIncludeDirectories="../../glew/include;$(CG_INC_PATH);c:\Program Files\NVIDIA Corporation\Cg\include"
+				PreprocessorDefinitions="GLEW_STATIC;WIN32;_WIN32;NDEBUG;_CONSOLE"
+				StringPooling="TRUE"
+				RuntimeLibrary="0"
+				EnableFunctionLevelLinking="TRUE"
+				UsePrecompiledHeader="0"
+				AssemblerListingLocation=".\Release/"
+				ObjectFile=".\Release/"
+				ProgramDataBaseFileName=".\Release/"
+				WarningLevel="3"
+				SuppressStartupBanner="TRUE"
+				Detect64BitPortabilityProblems="TRUE"
+				CompileAs="0"/>
+			<Tool
+				Name="VCCustomBuildTool"/>
+			<Tool
+				Name="VCLinkerTool"
+				AdditionalDependencies="cg.lib cgGL.lib glut32.lib glu32.lib opengl32.lib gdi32.lib "
+				OutputFile=".\Release/cgfx_buffer_lighting.exe"
+				SuppressStartupBanner="TRUE"
+				AdditionalLibraryDirectories="$(CG_LIB_PATH);c:\Program Files\NVIDIA Corporation\Cg\lib"
+				ModuleDefinitionFile=""
+				ProgramDatabaseFile=".\Release/cgfx_buffer_lighting.pdb"
+				SubSystem="1"
+				TargetMachine="1"/>
+			<Tool
+				Name="VCMIDLTool"
+				HeaderFileName=""/>
+			<Tool
+				Name="VCPostBuildEventTool"/>
+			<Tool
+				Name="VCPreBuildEventTool"/>
+			<Tool
+				Name="VCPreLinkEventTool"/>
+			<Tool
+				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="NDEBUG"
+				Culture="1033"/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"/>
+			<Tool
+				Name="VCWebDeploymentTool"/>
+			<Tool
+				Name="VCManagedWrapperGeneratorTool"/>
+			<Tool
+				Name="VCAuxiliaryManagedWrapperGeneratorTool"/>
+		</Configuration>
+		<Configuration
+			Name="Debug|Win32"
+			OutputDirectory=".\Debug"
+			IntermediateDirectory=".\Debug\cgfx_buffer_lighting"
+			ConfigurationType="1"
+			UseOfMFC="0"
+			ATLMinimizesCRunTimeLibraryUsage="FALSE"
+			CharacterSet="2">
+			<Tool
+				Name="VCCLCompilerTool"
+				Optimization="0"
+				AdditionalIncludeDirectories="../../glew/include;$(CG_INC_PATH);c:\Program Files\NVIDIA Corporation\Cg\include"
+				PreprocessorDefinitions="GLEW_STATIC;WIN32;_WIN32;_DEBUG;_CONSOLE"
+				BasicRuntimeChecks="3"
+				RuntimeLibrary="1"
+				UsePrecompiledHeader="0"
+				AssemblerListingLocation=".\Debug/"
+				ObjectFile=".\Debug/"
+				ProgramDataBaseFileName=".\Debug/"
+				WarningLevel="3"
+				SuppressStartupBanner="TRUE"
+				Detect64BitPortabilityProblems="TRUE"
+				DebugInformationFormat="4"
+				CompileAs="0"/>
+			<Tool
+				Name="VCCustomBuildTool"/>
+			<Tool
+				Name="VCLinkerTool"
+				AdditionalDependencies="cg.lib cgGL.lib glut32.lib glu32.lib opengl32.lib gdi32.lib "
+				OutputFile=".\Debug/cgfx_buffer_lighting.exe"
+				SuppressStartupBanner="TRUE"
+				AdditionalLibraryDirectories="$(CG_LIB_PATH);c:\Program Files\NVIDIA Corporation\Cg\lib"
+				ModuleDefinitionFile=""
+				GenerateDebugInformation="TRUE"
+				ProgramDatabaseFile=".\Debug/cgfx_buffer_lighting.pdb"
+				SubSystem="1"
+				TargetMachine="1"/>
+			<Tool
+				Name="VCMIDLTool"
+				HeaderFileName=""/>
+			<Tool
+				Name="VCPostBuildEventTool"/>
+			<Tool
+				Name="VCPreBuildEventTool"/>
+			<Tool
+				Name="VCPreLinkEventTool"/>
+			<Tool
+				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="_DEBUG"
+				Culture="1033"/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"/>
+			<Tool
+				Name="VCWebDeploymentTool"/>
+			<Tool
+				Name="VCManagedWrapperGeneratorTool"/>
+			<Tool
+				Name="VCAuxiliaryManagedWrapperGeneratorTool"/>
+		</Configuration>
+	</Configurations>
+	<References>
+	</References>
+	<Files>
+	<Filter Name="Source Files" Filter="cpp;c;h">
+		<File RelativePath="cgfx_buffer_lighting.cpp"></File>
+		<File RelativePath="materials.cpp"></File>
+		<File RelativePath="materials.h"></File>
+		<File RelativePath="matrix.cpp"></File>
+		<File RelativePath="matrix.h"></File>
+		<File RelativePath="request_vsync.h"></File>
+	</Filter>
+	<Filter Name="Cg Files" Filter="cg;cgfx">
+		<File RelativePath="buffer_lighting.cgfx"></File>
+	</Filter>
+</Files>
+	<Globals>
+	</Globals>
+</VisualStudioProject>

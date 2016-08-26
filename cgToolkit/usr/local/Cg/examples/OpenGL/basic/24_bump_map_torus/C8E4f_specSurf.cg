@@ -1,0 +1,40 @@
+// This is C8E4f_specSurf from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 209.
+
+float3 expand(float3 v) { return (v-0.5)*2; }
+
+void C8E4f_specSurf(float2 normalMapTexCoord : TEXCOORD0,
+                   float3 lightDirection    : TEXCOORD1,
+                   float3 halfAngle         : TEXCOORD2,
+
+               out float4 color : COLOR,
+
+           uniform float  ambient,
+           uniform float4 LMd, // Light-material diffuse
+           uniform float4 LMs, // Light-material specular
+           uniform sampler2D   normalMap,
+           uniform samplerCUBE normalizeCube,
+           uniform samplerCUBE normalizeCube2)
+{
+  // Fetch and expand range-compressed normal
+  float3 normalTex = tex2D(normalMap, normalMapTexCoord).xyz;
+  float3 normal = expand(normalTex);
+  // Fetch and expand normalized light vector
+  float3 normLightDirTex = texCUBE(normalizeCube,
+                                   lightDirection).xyz;
+  float3 normLightDir = expand(normLightDirTex);
+  // Fetch and expand normalized half-angle vector
+  float3 normHalfAngleTex = texCUBE(normalizeCube2,
+                                    halfAngle).xyz;
+  float3 normHalfAngle = expand(normHalfAngleTex);
+ 
+  // Compute diffuse and specular lighting dot products
+  float diffuse = saturate(dot(normal, normLightDir));
+  float specular = saturate(dot(normal, normHalfAngle));
+  // Successive multiplies to raise specular to 8th power
+  float specular2 = specular*specular;
+  float specular4 = specular2*specular2;
+  float specular8 = specular4*specular4;
+
+  color = LMd*(ambient+diffuse) + LMs*specular8;
+}

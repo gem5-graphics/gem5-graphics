@@ -1,0 +1,70 @@
+#
+# Additional compilation flags may be passed via CFLAGS, CXXFLAGS and CLINKFLAGS
+#
+# Linux:
+#   make CFLAGS=-m32
+#   make CFLAGS=-m64
+#
+# Ubuntu 9.04 64-bit
+#   make CFLAGS=-m32 CXXFLAGS=-m32 CLINKFLAGS="-L/lib32 -L/usr/lib32 -Wl,-rpath-link,/lib32:/usr/lib32"
+#
+# OSX:
+#   make 'CFLAGS=-arch ppc'    'CXXFLAGS=-arch ppc'
+#   make 'CFLAGS=-arch i386'   'CXXFLAGS=-arch i386'
+#   make 'CFLAGS=-arch x86_64' 'CXXFLAGS=-arch x86_64'
+
+UNAME := $(shell uname)
+
+C_SOURCE   := traceGLUT.c
+OBJ        := $(C_SOURCE:.c=.o) 
+BIN        := libglut.so.3
+LINKFLAGS  += -L. -ltrace
+
+CC         =  gcc
+C_FLAGS    += -Wall
+
+ifdef CG_INC_PATH
+  C_FLAGS  += -I"$(CG_INC_PATH)"
+endif
+
+ifeq ($(UNAME), Darwin)
+  BIN = GLUT
+  LINKFLAGS  += -dynamiclib
+  LINKFLAGS  += -install_name GLUT -compatibility_version 1.0.0 -current_version 1.0.0
+else
+  LINKFLAGS  += -shared
+  ifeq ($(findstring CYGWIN, $(UNAME)), CYGWIN)
+    BIN = glut32.dll
+    LINKFLAGS  += traceGLUT.def
+    C_FLAGS    += -D_WIN32
+    C_FLAGS    += -mno-cygwin
+    C_FLAGS    += -I"C:\Program Files\NVIDIA Corporation\Cg\include"
+    LINKFLAGS  += -mno-cygwin
+  else
+    ifeq ($(UNAME), SunOS)
+      C_FLAGS    += -fPIC
+    else
+      C_FLAGS    += -fPIC
+      LINKFLAGS  += -ldl
+    endif
+  endif
+endif
+
+override CFLAGS := $(CFLAGS) $(C_FLAGS)
+
+all: traceGLUT
+
+traceGLUT: $(OBJ)
+	$(CC) $(CFLAGS) $(OBJ) -o $(BIN) $(LINKFLAGS) $(CLINKFLAGS)
+
+test:
+
+run: all
+
+clean:
+	$(RM) $(BIN) $(OBJ) 
+
+clobber: clean
+	$(RM) *.bak *.o *~
+
+.PHONY: all test run clean clobber

@@ -1,0 +1,512 @@
+.de Sh \" Subsection heading
+.br
+.if t .Sp
+.ne 5
+.PP
+\fB\\$1\fR
+.PP
+..
+.de Sp \" Vertical space (when we can't use .PP)
+.if t .sp .5v
+.if n .sp
+..
+.de Vb \" Begin verbatim text
+.ft CW
+.nf
+.ne \\$1
+..
+.de Ve \" End verbatim text
+.ft R
+.fi
+..
+.tr \(*W-
+.ds C+ C\v'-.1v'\h'-1p'\s-2+\h'-1p'+\s0\v'.1v'\h'-1p'
+.ie n \{\
+.    ds -- \(*W-
+.    ds PI pi
+.    if (\n(.H=4u)&(1m=24u) .ds -- \(*W\h'-12u'\(*W\h'-12u'-\" diablo 10 pitch
+.    if (\n(.H=4u)&(1m=20u) .ds -- \(*W\h'-12u'\(*W\h'-8u'-\"  diablo 12 pitch
+.    ds L" ""
+.    ds R" ""
+.    ds C` ""
+.    ds C' ""
+'br\}
+.el\{\
+.    ds -- \|\(em\|
+.    ds PI \(*p
+.    ds L" ``
+.    ds R" ''
+'br\}
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.ie \nF \{\
+.    de IX
+.    tm Index:\\$1\t\\n%\t"\\$2"
+..
+.    nr % 0
+.    rr F
+.\}
+.el \{\
+.    de IX
+..
+.\}
+.    \" fudge factors for nroff and troff
+.if n \{\
+.    ds #H 0
+.    ds #V .8m
+.    ds #F .3m
+.    ds #[ \f1
+.    ds #] \fP
+.\}
+.if t \{\
+.    ds #H ((1u-(\\\\n(.fu%2u))*.13m)
+.    ds #V .6m
+.    ds #F 0
+.    ds #[ \&
+.    ds #] \&
+.\}
+.    \" simple accents for nroff and troff
+.if n \{\
+.    ds ' \&
+.    ds ` \&
+.    ds ^ \&
+.    ds , \&
+.    ds ~ ~
+.    ds /
+.\}
+.if t \{\
+.    ds ' \\k:\h'-(\\n(.wu*8/10-\*(#H)'\'\h"|\\n:u"
+.    ds ` \\k:\h'-(\\n(.wu*8/10-\*(#H)'\`\h'|\\n:u'
+.    ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'^\h'|\\n:u'
+.    ds , \\k:\h'-(\\n(.wu*8/10)',\h'|\\n:u'
+.    ds ~ \\k:\h'-(\\n(.wu-\*(#H-.1m)'~\h'|\\n:u'
+.    ds / \\k:\h'-(\\n(.wu*8/10-\*(#H)'\z\(sl\h'|\\n:u'
+.\}
+.    \" troff and (daisy-wheel) nroff accents
+.ds : \\k:\h'-(\\n(.wu*8/10-\*(#H+.1m+\*(#F)'\v'-\*(#V'\z.\h'.2m+\*(#F'.\h'|\\n:u'\v'\*(#V'
+.ds 8 \h'\*(#H'\(*b\h'-\*(#H'
+.ds o \\k:\h'-(\\n(.wu+\w'\(de'u-\*(#H)/2u'\v'-.3n'\*(#[\z\(de\v'.3n'\h'|\\n:u'\*(#]
+.ds d- \h'\*(#H'\(pd\h'-\w'~'u'\v'-.25m'\f2\(hy\fP\v'.25m'\h'-\*(#H'
+.ds D- D\\k:\h'-\w'D'u'\v'-.11m'\z\(hy\v'.11m'\h'|\\n:u'
+.ds th \*(#[\v'.3m'\s+1I\s-1\v'-.3m'\h'-(\w'I'u*2/3)'\s-1o\s+1\*(#]
+.ds Th \*(#[\s+2I\s-2\h'-\w'I'u*3/5'\v'-.3m'o\v'.3m'\*(#]
+.ds ae a\h'-(\w'a'u*4/10)'e
+.ds Ae A\h'-(\w'A'u*4/10)'E
+.    \" corrections for vroff
+.if v .ds ~ \\k:\h'-(\\n(.wu*9/10-\*(#H)'\s-2\u~\d\s+2\h'|\\n:u'
+.if v .ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'\v'-.4m'^\v'.4m'\h'|\\n:u'
+.    \" for low resolution devices (crt and lpr)
+.if \n(.H>23 .if \n(.V>19 \
+\{\
+.    ds : e
+.    ds 8 ss
+.    ds o a
+.    ds d- d\h'-1'\(ga
+.    ds D- D\h'-1'\(hy
+.    ds th \o'bp'
+.    ds Th \o'LP'
+.    ds ae ae
+.    ds Ae AE
+.\}
+.rm #[ #] #H #V #F C
+.IX Title "CG1_2_RUNTIME_CHANGES Cg"
+.TH CG1_2_RUNTIME_CHANGES Cg "Cg Toolkit 3.0" "perl v5.10.0" "Cg Topics"
+.if n .ad l
+.nh
+.SH "Cg 1.2 RUNTIME API ADDITIONS"
+.IX Header "Cg 1.2 RUNTIME API ADDITIONS"
+Version 1.2 of the Cg runtime adds a number of new capabilities to the
+existing set of functionality from previous releases.  These new features
+include functionality that make it possible to write programs that can run
+more efficiently on the \s-1GPU\s0, techniques that help hide some of the inherent
+limitations of some Cg profiles on the \s-1GPU\s0, and entrypoints that support
+new language functionality in the Cg 1.2 release.
+.Sh "Parameter Literalization"
+.IX Subsection "Parameter Literalization"
+The 1.2 Cg runtime makes it possible to denote some of the parameters to a
+program as having a fixed constant value.  This feature can lead to
+substantially more efficient programs in a number of cases.  For example,
+a program might have a block of code that implements functionality that is
+only used some of the time:
+.PP
+.Vb 8
+\&    float4 main(uniform float enableDazzle, ...) : COLOR {
+\&      if (enableDazzle) {
+\&        // do lengthy computation
+\&      }
+\&      else {
+\&        // do basic computation
+\&      }
+\&    }
+.Ve
+.PP
+Some hardware profiles don't directly support branching (this includes all
+of the fragment program profiles supported in this release), and have to
+handle code like the program by effectively following both sides of the
+\&\fIif()\fR test.  (They still compute the correct result in the end, just not
+very efficiently.)
+.PP
+However, if the \*(L"enableDazzle\*(R" parameter is marked as a literal parameter
+and a value is provided for it, the compiler can generate an optimized
+version of the program with the knowledge of \*(L"enableDazzle\*(R"'s value, just
+generating \s-1GPU\s0 code for one of the two cases.  This can lead to substantial
+performance improvments.  This feature also makes it easier to write
+general purpose shaders with a wide variety of supported functionality,
+while only paying the runtime cost for the functionality provided.
+.PP
+This feature is also useful for parameters with numeric values.  For
+example, consider a shader that implements a diffuse reflection model:
+.PP
+.Vb 6
+\&    float4 main(uniform float3 lightPos, uniform float3 lightColor,
+\&                uniform float3 Kd, float3 pos : TEXCOORD0,
+\&                float3 normal : TEXCOORD1) : COLOR
+\&    {
+\&        return Kd*lightColor*max(0., dot(normalize(lightPos\-pos), normal));
+\&    }
+.Ve
+.PP
+If the \*(L"lightColor\*(R" and \*(L"Kd\*(R" parameters are set to literals, it is possible
+for the compiler to compute the product \*(L"Kd * lightColor\*(R" once, rather than
+once each time the program executes.
+.PP
+Given a parameter handle, the \fIcgSetParameterVariability()\fR entrypoint sets
+the variability of a parameter:
+.PP
+.Vb 1
+\&    void cgSetParameterVariability(CGparameter param, CGenum vary);
+.Ve
+.PP
+To set it to a literal parameter, the \s-1CG_LITERAL\s0 enumerant should be passed
+as the second parameter.
+.PP
+After a parameter has set to be a literal, the following routines should be
+used to set the parameter's value.
+.PP
+.Vb 10
+\&    void cgSetParameter1f(CGparameter param, float x);
+\&    void cgSetParameter2f(CGparameter param, float x, float y);
+\&    void cgSetParameter3f(CGparameter param, float x, float y, float z);
+\&    void cgSetParameter4f(CGparameter param, float x, float y, float z,
+\&                          float w);
+\&    void cgSetParameter1d(CGparameter param, double x);
+\&    void cgSetParameter2d(CGparameter param, double x, double y);
+\&    void cgSetParameter3d(CGparameter param, double x, double y, double z);
+\&    void cgSetParameter4d(CGparameter param, double x, double y, double z,
+\&                          double w);
+\&
+\&    void cgSetParameter1fv(CGparameter param, const float *v);
+\&    void cgSetParameter2fv(CGparameter param, const float *v);
+\&    void cgSetParameter3fv(CGparameter param, const float *v);
+\&    void cgSetParameter4fv(CGparameter param, const float *v);
+\&    void cgSetParameter1dv(CGparameter param, const double *v);
+\&    void cgSetParameter2dv(CGparameter param, const double *v);
+\&    void cgSetParameter3dv(CGparameter param, const double *v);
+\&    void cgSetParameter4dv(CGparameter param, const double *v);
+\&
+\&    void cgSetMatrixParameterdr(CGparameter param, const double *matrix);
+\&    void cgSetMatrixParameterfr(CGparameter param, const float *matrix);
+\&    void cgSetMatrixParameterdc(CGparameter param, const double *matrix);
+\&    void cgSetMatrixParameterfc(CGparameter param, const float *matrix);
+.Ve
+.PP
+After a parameter has been set to be a literal, or after the value of a
+literal parameter has been changed, the program must be compiled and loaded
+into the \s-1GPU\s0, regardless of whether it had already been compiled.  This
+issue is discussed further in the section on program recompilation below.
+.Sh "Array Size Specification"
+.IX Subsection "Array Size Specification"
+The Cg 1.2 language also adds support for ``unsized array'' variables;
+programs can be written to take parameters that are arrays with an
+indeterminate size.  The actual size of these arrays is then set via the Cg
+runtime.  This feature is useful for writing general-purpose shaders
+with a minimal performance penalty.
+.PP
+For example, consider a shader that computes shading given some number of
+light sources.  If the information about each light source is stored in a
+struct LightInfo, the shader might be written as:
+.PP
+.Vb 8
+\&    float4 main(LightInfo lights[], ...) : COLOR
+\&    {
+\&       float4 color = float4(0,0,0,1);
+\&       for (i = 0; i < lights.length; ++i) {
+\&          // add lights[i]\*(Aqs contribution to color
+\&       }
+\&       return color;
+\&    }
+.Ve
+.PP
+The runtime can then be used to set the length of the lights[] array (and
+then to initialize the values of the LightInfo structures.)  As with
+literal parameters, the program must be recompiled and reloaded after a
+parameter's array size is set or changes.
+.PP
+These two entrypoints set the size of an unsized array parameter referenced
+by the given parameter handle.  To set the size of a multidimensional
+unsized array, all of the dimensions' sizes must be set simultaneously, by
+providing them all via the pointer to an array of integer values.
+.PP
+.Vb 2
+\&    void cgSetArraySize(CGparameter param, int size);
+\&    void cgSetMultiDimArraySize(CGparameter param, const int *sizes);
+.Ve
+.PP
+\&\s-1XXX\s0 what happens if these are called with an already-sized array?? \s-1XXX\s0
+.PP
+To get the size of an array parameter, the \fIcgGetArraySize()\fR entrypoint can
+be used.
+.PP
+.Vb 1
+\&    int cgGetArraySize(CGparameter param, int dimension);
+.Ve
+.Sh "Program Recompilation at Runtime"
+.IX Subsection "Program Recompilation at Runtime"
+The Cg 1.2 runtime environment will allow automatic and manual recompilation
+of programs.  This functionality is useful for multiple reasons :
+.IP "\(bu" 4
+\&\fBChanging variability of parameters\fR
+.Sp
+Parameters may be changed from uniform variability to literal variability
+as described above.
+.IP "\(bu" 4
+\&\fBChanging value of literal parameters\fR
+.Sp
+Changing the value of a literal parameter will require recompilation since
+the value is used at compile time.
+.IP "\(bu" 4
+\&\fBResizing parameter arrays\fR
+.Sp
+Changing the length of a parameter array may require recompilation depending
+on the capabilities of the profile of the program.
+.IP "\(bu" 4
+\&\fBBinding sub-shader parameters\fR
+.Sp
+Sub-shader parameters are structures that overload methods that need to be
+provided at compile time; they are described below.  Binding such
+parameters to program parameters will require recompilation. See
+\&\*(L"Sub-Shaders\*(R" for more information.
+.PP
+Recompilation can be executed manually by the application using the runtime
+or automatically by the runtime.
+.PP
+The entry point:
+.PP
+.Vb 1
+\&    void cgCompileProgram(CGprogram program);
+.Ve
+.PP
+causes the given program to be recompiled, and the function:
+.PP
+.Vb 1
+\&    CGbool cgIsProgramCompiled(CGprogram program);
+.Ve
+.PP
+reurns a boolean value indicating whether the current program needs
+recompilation.
+.PP
+By default, programs are automatically compiled when \fIcgCreateProgram()\fR or
+\&\fIcgCreateProgramFromFile()\fR is called.  This behavior can be controled with the
+entry point :
+.PP
+.Vb 1
+\&    void cgSetAutoCompile(CGcontext ctx, CGenum flag);
+.Ve
+.PP
+Where flag is one of the following three enumerants :
+.IP "\(bu" 4
+\&\fB\s-1CG_COMPILE_MANUAL\s0\fR
+.Sp
+With this method the application is responsible for manually recompiling 
+a program.  It may check to see if a program requires recompilation with 
+the entry point \fIcgIsProgramCompiled()\fR.  
+\&\fIcgCompileProgram()\fR can then
+be used to force compilation.
+.IP "\(bu" 4
+\&\fB\s-1CG_COMPILE_IMMEDIATE\s0\fR
+.Sp
+\&\fB\s-1CG_COMPILE_IMMEDIATE\s0\fR will force recompilation automatically and
+immediately when a program enters an uncompiled state.
+.IP "\(bu" 4
+\&\fB\s-1CG_COMPILE_LAZY\s0\fR
+.Sp
+This method is similar to \fB\s-1CG_COMPILE_IMMEDIATE\s0\fR but will delay
+program recompilation until the program object code is needed.  The
+advantage of this method is the reduction of extraneous recompilations.
+The disadvantage is that compile time errors will not be encountered
+when the program is enters the uncompiled state but will instead be
+encountered at some later time.
+.PP
+For programs that use features like unsized arrays that can not be compiled until
+their array sizes are set, it is good practice to change the default behavior 
+of compilation to \s-1CG_COMPILE_MANUAL\s0 so that \fIcgCreateProgram()\fR or
+\&\fIcgCreateProgramFromFile()\fR do not unnecessarily encounter and report
+compilation errors.
+.Sh "Shared Parameters (context global parameters)"
+.IX Subsection "Shared Parameters (context global parameters)"
+Version 1.2 of the runtime introduces parameters that may be shared across
+programs in the same context via a new binding mechanism.  Once shared
+parameters are constructed and bound to program parameters, setting the
+value of the shared parameter will automatically set the value of all of
+the program parameters they are bound to.
+.PP
+
+Shared parameters belong to a \fBCGcontext\fR instead of a \fBCGprogram\fR.  
+They may be created with the following new entry points :
+.IX Xref "CreateParameter"
+.PP
+.Vb 5
+\&    CGparameter cgCreateParameter(CGcontext ctx, CGtype type);
+\&    CGparameter cgCreateParameterArray(CGcontext ctx, CGtype type,
+\&                                       int length);
+\&    CGparameter cgCreateParameterMultiDimArray(CGcontext ctx, CGtype type,
+\&                                               int dim, const int *lengths);
+.Ve
+.PP
+They may be deleted with :
+.PP
+.Vb 1
+\&    void cgDestroyParameter(CGparameter param);
+.Ve
+.PP
+After a parameter has been created, its value should be set with the
+cgSetParameter*() routines described in the literalization section above.
+.PP
+
+Once a shared parameter is created it may be associated with any number of program
+parameters with the call:
+.IX Xref "BindParameter"
+.PP
+.Vb 1
+\&    void cgConnectParameter(CGparameter from, CGparameter to);
+.Ve
+.PP
+where ``from'' is a parameter created with one of  the \fIcgCreateParameter()\fR
+calls, and ``to'' is a program parameter.
+.PP
+Given a program parameter, the handle to the shared parameter that is bound
+to it (if any) can be found with the call:
+.PP
+.Vb 1
+\&    CGparameter cgGetConnectedParameter(CGparameter param);
+.Ve
+.PP
+It returns \s-1NULL\s0 if no shared parameter has been connected to ``param''.
+.PP
+There are also calls that make it possible to find the set of program
+parameters to which a given shared parameter has been connected to.  The
+entry point:
+.PP
+.Vb 1
+\&    int cgGetNumConnectedToParameters(CGparameter param);
+.Ve
+.PP
+returns the total number of program parameters that ``param'' has been
+conencted to, and the entry point:
+.PP
+.Vb 1
+\&    CGparameter cgGetConnectedToParameter(CGparameter param, int index);
+.Ve
+.PP
+can be used to get CGparameter handles for each of the program parameters
+to which a shared parameter is connected.
+.PP
+A shared parameter can be unbound from a program parameter with :
+.PP
+.Vb 1
+\&    void cgDisconnectParameter(CGparameter param);
+.Ve
+.PP
+The context in which a shared parameter was created can be returned with:
+.PP
+.Vb 1
+\&    CGcontext cgGetParameterContext(CGparameter param);
+.Ve
+.PP
+And the entrypoint:
+.PP
+.Vb 1
+\&    CGbool cgIsParameterGlobal(CGparameter param);
+.Ve
+.PP
+can be used to determine if a parameter is a shared (global) parameter.
+.Sh "Shader Interface Support"
+.IX Subsection "Shader Interface Support"
+From the runtime's perspective, shader interfaces are simply struct parameters that have
+a \fBCGtype\fR associated with them.  For example, if the following Cg code is included
+in some program source compiled in the runtime :
+.PP
+.Vb 4
+\&    interface FooInterface
+\&    {
+\&      float SomeMethod(float x);
+\&    }
+\&
+\&    struct FooStruct : FooInterface
+\&    {
+\&      float SomeMethod(float x);
+\&      {
+\&        return(Scale * x);
+\&      }
+\&
+\&      float Scale;
+\&    };
+.Ve
+.PP
+The named types \fBFooInterface\fR and \fBFooStruct\fR will be added to the context.  
+Each one will have a unique \fBCGtype\fR associated with it.  The \fBCGtype\fR can
+be retrieved with :
+.PP
+.Vb 3
+\&    CGtype cgGetNamedUserType(CGprogram program, const char *name);
+\&    int cgGetNumUserTypes(CGprogram program);
+\&    CGtype cgGetUserType(CGprogram program, int index);
+\&
+\&    CGbool cgIsParentType(CGtype parent, CGtype child);
+\&    CGbool cgIsInterfaceType(CGtype type);
+.Ve
+.PP
+Once the \fBCGtype\fR has been retrieved, it may be used to construct an instance
+of the struct using \fIcgCreateParameter()\fR.  It may then 
+be bound to a program parameter of the parent type (in the above example this 
+would be FooInterface) using \fIcgBindParameter()\fR.
+.PP
+Calling \fIcgGetParameterType()\fR on such a parameter will
+return the \fB\s-1CG_STRUCT\s0\fR to keep backwards compatibility with code that recurses
+parameter trees.  In order to obtain the enumerant of the named type the 
+following entry point should be used :
+.PP
+.Vb 1
+\&    CGtype cgGetParameterNamedType(CGparameter param);
+.Ve
+.PP
+The parent types of a given named type may be obtained with the following 
+entry points :
+.PP
+.Vb 2
+\&    int cgGetNumParentTypes(CGtype type);
+\&    CGtype cgGetParentType(CGtype type, int index);
+.Ve
+.PP
+If Cg source modules with differing definitions of named types are added to the
+same context, an error will be thrown.
+.PP
+\&\s-1XXX\s0 update for new scoping/context/program local definitions stuff \s-1XXX\s0
+.Sh "Updated Parameter Management Routines"
+.IX Subsection "Updated Parameter Management Routines"
+\&\s-1XXX\s0 where should these go?
+.PP
+Some entrypoints from before have been updated in backwards compatible ways
+.PP
+.Vb 2
+\&    CGparameter cgGetFirstParameter(CGprogram program, CGenum name_space);
+\&    CGparameter cgGetFirstLeafParameter(CGprogram program, CGenum name_space);
+.Ve
+.PP
+like cgGetNamedParameter, but limits search to the given name_space
+(\s-1CG_PROGRAM\s0 or \s-1CG_GLOBAL\s0)...
+.PP
+.Vb 2
+\&    CGparameter cgGetNamedProgramParameter(CGprogram program, CGenum name_space,
+\&                                           const char *name);
+.Ve

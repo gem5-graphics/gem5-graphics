@@ -1,0 +1,34 @@
+// vertex_texture.cg - simple Cg vertex texturing example
+
+float centerFalloff(float v, float center)
+{
+  float vv = max(0.0, 1.0-abs(v-center));
+  return vv*vv;
+}
+
+void displace_mesh(float2 position  : POSITION,
+
+               out float4 oPosition : POSITION,
+               out float3 oColor    : COLOR,
+                
+           uniform float4x4 modelViewProj,
+           uniform sampler2D height_field)
+{
+  const float3 blue = float3(0,0.2,1),
+               green = float3(0,1,0),
+               white = float3(1,1,1);
+  
+  float height = tex2D(height_field, position.xy).x;
+  float3 displacedPosition = float3(3.5*(2*position-1), height);
+
+  // Compute a color that simulates the coloration of terrain:
+  // lowest terrain is blue as if water,
+  // middle terrain is green as if folage,
+  // highest terrain is white as if snow capped.
+  oColor = centerFalloff(height, 0.1) * blue +
+           centerFalloff(height, 0.5) * green +
+           centerFalloff(height, 0.9) * white;
+
+  oPosition = mul(modelViewProj,
+                  float4(displacedPosition, 1));
+}

@@ -1,0 +1,310 @@
+.de Sh \" Subsection heading
+.br
+.if t .Sp
+.ne 5
+.PP
+\fB\\$1\fR
+.PP
+..
+.de Sp \" Vertical space (when we can't use .PP)
+.if t .sp .5v
+.if n .sp
+..
+.de Vb \" Begin verbatim text
+.ft CW
+.nf
+.ne \\$1
+..
+.de Ve \" End verbatim text
+.ft R
+.fi
+..
+.tr \(*W-
+.ds C+ C\v'-.1v'\h'-1p'\s-2+\h'-1p'+\s0\v'.1v'\h'-1p'
+.ie n \{\
+.    ds -- \(*W-
+.    ds PI pi
+.    if (\n(.H=4u)&(1m=24u) .ds -- \(*W\h'-12u'\(*W\h'-12u'-\" diablo 10 pitch
+.    if (\n(.H=4u)&(1m=20u) .ds -- \(*W\h'-12u'\(*W\h'-8u'-\"  diablo 12 pitch
+.    ds L" ""
+.    ds R" ""
+.    ds C` ""
+.    ds C' ""
+'br\}
+.el\{\
+.    ds -- \|\(em\|
+.    ds PI \(*p
+.    ds L" ``
+.    ds R" ''
+'br\}
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.ie \nF \{\
+.    de IX
+.    tm Index:\\$1\t\\n%\t"\\$2"
+..
+.    nr % 0
+.    rr F
+.\}
+.el \{\
+.    de IX
+..
+.\}
+.    \" fudge factors for nroff and troff
+.if n \{\
+.    ds #H 0
+.    ds #V .8m
+.    ds #F .3m
+.    ds #[ \f1
+.    ds #] \fP
+.\}
+.if t \{\
+.    ds #H ((1u-(\\\\n(.fu%2u))*.13m)
+.    ds #V .6m
+.    ds #F 0
+.    ds #[ \&
+.    ds #] \&
+.\}
+.    \" simple accents for nroff and troff
+.if n \{\
+.    ds ' \&
+.    ds ` \&
+.    ds ^ \&
+.    ds , \&
+.    ds ~ ~
+.    ds /
+.\}
+.if t \{\
+.    ds ' \\k:\h'-(\\n(.wu*8/10-\*(#H)'\'\h"|\\n:u"
+.    ds ` \\k:\h'-(\\n(.wu*8/10-\*(#H)'\`\h'|\\n:u'
+.    ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'^\h'|\\n:u'
+.    ds , \\k:\h'-(\\n(.wu*8/10)',\h'|\\n:u'
+.    ds ~ \\k:\h'-(\\n(.wu-\*(#H-.1m)'~\h'|\\n:u'
+.    ds / \\k:\h'-(\\n(.wu*8/10-\*(#H)'\z\(sl\h'|\\n:u'
+.\}
+.    \" troff and (daisy-wheel) nroff accents
+.ds : \\k:\h'-(\\n(.wu*8/10-\*(#H+.1m+\*(#F)'\v'-\*(#V'\z.\h'.2m+\*(#F'.\h'|\\n:u'\v'\*(#V'
+.ds 8 \h'\*(#H'\(*b\h'-\*(#H'
+.ds o \\k:\h'-(\\n(.wu+\w'\(de'u-\*(#H)/2u'\v'-.3n'\*(#[\z\(de\v'.3n'\h'|\\n:u'\*(#]
+.ds d- \h'\*(#H'\(pd\h'-\w'~'u'\v'-.25m'\f2\(hy\fP\v'.25m'\h'-\*(#H'
+.ds D- D\\k:\h'-\w'D'u'\v'-.11m'\z\(hy\v'.11m'\h'|\\n:u'
+.ds th \*(#[\v'.3m'\s+1I\s-1\v'-.3m'\h'-(\w'I'u*2/3)'\s-1o\s+1\*(#]
+.ds Th \*(#[\s+2I\s-2\h'-\w'I'u*3/5'\v'-.3m'o\v'.3m'\*(#]
+.ds ae a\h'-(\w'a'u*4/10)'e
+.ds Ae A\h'-(\w'A'u*4/10)'E
+.    \" corrections for vroff
+.if v .ds ~ \\k:\h'-(\\n(.wu*9/10-\*(#H)'\s-2\u~\d\s+2\h'|\\n:u'
+.if v .ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'\v'-.4m'^\v'.4m'\h'|\\n:u'
+.    \" for low resolution devices (crt and lpr)
+.if \n(.H>23 .if \n(.V>19 \
+\{\
+.    ds : e
+.    ds 8 ss
+.    ds o a
+.    ds d- d\h'-1'\(ga
+.    ds D- D\h'-1'\(hy
+.    ds th \o'bp'
+.    ds Th \o'LP'
+.    ds ae ae
+.    ds Ae AE
+.\}
+.rm #[ #] #H #V #F C
+.IX Title "INDEX_RUNTIME_CGGL Cg"
+.TH INDEX_RUNTIME_CGGL Cg "Cg Toolkit 3.0" "perl v5.10.0" "Cg Documentation"
+.if n .ad l
+.nh
+.SH "Cg OpenGL Runtime API"
+.IX Header "Cg OpenGL Runtime API"
+Back to Top
+.IP "cgGLBindProgram" 2
+.IX Item "cgGLBindProgram"
+.PD 0
+.IP "cgGLCreateBuffer" 2
+.IX Item "cgGLCreateBuffer"
+.IP "cgGLDisableClientState" 2
+.IX Item "cgGLDisableClientState"
+.IP "cgGLDisableProfile" 2
+.IX Item "cgGLDisableProfile"
+.IP "cgGLDisableProgramProfiles" 2
+.IX Item "cgGLDisableProgramProfiles"
+.IP "cgGLDisableTextureParameter" 2
+.IX Item "cgGLDisableTextureParameter"
+.IP "cgGLEnableClientState" 2
+.IX Item "cgGLEnableClientState"
+.IP "cgGLEnableProfile" 2
+.IX Item "cgGLEnableProfile"
+.IP "cgGLEnableProgramProfiles" 2
+.IX Item "cgGLEnableProgramProfiles"
+.IP "cgGLEnableTextureParameter" 2
+.IX Item "cgGLEnableTextureParameter"
+.IP "cgGLGetBufferObject" 2
+.IX Item "cgGLGetBufferObject"
+.IP "cgGLGetLatestProfile" 2
+.IX Item "cgGLGetLatestProfile"
+.IP "cgGLGetManageTextureParameters" 2
+.IX Item "cgGLGetManageTextureParameters"
+.IP "cgGLGetMatrixParameter" 2
+.IX Item "cgGLGetMatrixParameter"
+.IP "cgGLGetMatrixParameterArray" 2
+.IX Item "cgGLGetMatrixParameterArray"
+.IP "cgGLGetMatrixParameterArraydc" 2
+.IX Item "cgGLGetMatrixParameterArraydc"
+.IP "cgGLGetMatrixParameterArraydr" 2
+.IX Item "cgGLGetMatrixParameterArraydr"
+.IP "cgGLGetMatrixParameterArrayfc" 2
+.IX Item "cgGLGetMatrixParameterArrayfc"
+.IP "cgGLGetMatrixParameterArrayfr" 2
+.IX Item "cgGLGetMatrixParameterArrayfr"
+.IP "cgGLGetMatrixParameterdc" 2
+.IX Item "cgGLGetMatrixParameterdc"
+.IP "cgGLGetMatrixParameterdr" 2
+.IX Item "cgGLGetMatrixParameterdr"
+.IP "cgGLGetMatrixParameterfc" 2
+.IX Item "cgGLGetMatrixParameterfc"
+.IP "cgGLGetMatrixParameterfr" 2
+.IX Item "cgGLGetMatrixParameterfr"
+.IP "cgGLGetOptimalOptions" 2
+.IX Item "cgGLGetOptimalOptions"
+.IP "cgGLGetParameter" 2
+.IX Item "cgGLGetParameter"
+.IP "cgGLGetParameter1d" 2
+.IX Item "cgGLGetParameter1d"
+.IP "cgGLGetParameter1f" 2
+.IX Item "cgGLGetParameter1f"
+.IP "cgGLGetParameter2d" 2
+.IX Item "cgGLGetParameter2d"
+.IP "cgGLGetParameter2f" 2
+.IX Item "cgGLGetParameter2f"
+.IP "cgGLGetParameter3d" 2
+.IX Item "cgGLGetParameter3d"
+.IP "cgGLGetParameter3f" 2
+.IX Item "cgGLGetParameter3f"
+.IP "cgGLGetParameter4d" 2
+.IX Item "cgGLGetParameter4d"
+.IP "cgGLGetParameter4f" 2
+.IX Item "cgGLGetParameter4f"
+.IP "cgGLGetParameterArray" 2
+.IX Item "cgGLGetParameterArray"
+.IP "cgGLGetParameterArray1d" 2
+.IX Item "cgGLGetParameterArray1d"
+.IP "cgGLGetParameterArray1f" 2
+.IX Item "cgGLGetParameterArray1f"
+.IP "cgGLGetParameterArray2d" 2
+.IX Item "cgGLGetParameterArray2d"
+.IP "cgGLGetParameterArray2f" 2
+.IX Item "cgGLGetParameterArray2f"
+.IP "cgGLGetParameterArray3d" 2
+.IX Item "cgGLGetParameterArray3d"
+.IP "cgGLGetParameterArray3f" 2
+.IX Item "cgGLGetParameterArray3f"
+.IP "cgGLGetParameterArray4d" 2
+.IX Item "cgGLGetParameterArray4d"
+.IP "cgGLGetParameterArray4f" 2
+.IX Item "cgGLGetParameterArray4f"
+.IP "cgGLGetProgramID" 2
+.IX Item "cgGLGetProgramID"
+.IP "cgGLGetTextureEnum" 2
+.IX Item "cgGLGetTextureEnum"
+.IP "cgGLGetTextureParameter" 2
+.IX Item "cgGLGetTextureParameter"
+.IP "cgGLIsProfileSupported" 2
+.IX Item "cgGLIsProfileSupported"
+.IP "cgGLIsProgramLoaded" 2
+.IX Item "cgGLIsProgramLoaded"
+.IP "cgGLLoadProgram" 2
+.IX Item "cgGLLoadProgram"
+.IP "cgGLRegisterStates" 2
+.IX Item "cgGLRegisterStates"
+.IP "cgGLSetDebugMode" 2
+.IX Item "cgGLSetDebugMode"
+.IP "cgGLSetManageTextureParameters" 2
+.IX Item "cgGLSetManageTextureParameters"
+.IP "cgGLSetMatrixParameter" 2
+.IX Item "cgGLSetMatrixParameter"
+.IP "cgGLSetMatrixParameterArray" 2
+.IX Item "cgGLSetMatrixParameterArray"
+.IP "cgGLSetMatrixParameterArraydc" 2
+.IX Item "cgGLSetMatrixParameterArraydc"
+.IP "cgGLSetMatrixParameterArraydr" 2
+.IX Item "cgGLSetMatrixParameterArraydr"
+.IP "cgGLSetMatrixParameterArrayfc" 2
+.IX Item "cgGLSetMatrixParameterArrayfc"
+.IP "cgGLSetMatrixParameterArrayfr" 2
+.IX Item "cgGLSetMatrixParameterArrayfr"
+.IP "cgGLSetMatrixParameterdc" 2
+.IX Item "cgGLSetMatrixParameterdc"
+.IP "cgGLSetMatrixParameterdr" 2
+.IX Item "cgGLSetMatrixParameterdr"
+.IP "cgGLSetMatrixParameterfc" 2
+.IX Item "cgGLSetMatrixParameterfc"
+.IP "cgGLSetMatrixParameterfr" 2
+.IX Item "cgGLSetMatrixParameterfr"
+.IP "cgGLSetOptimalOptions" 2
+.IX Item "cgGLSetOptimalOptions"
+.IP "cgGLSetParameter" 2
+.IX Item "cgGLSetParameter"
+.IP "cgGLSetParameter1d" 2
+.IX Item "cgGLSetParameter1d"
+.IP "cgGLSetParameter1dv" 2
+.IX Item "cgGLSetParameter1dv"
+.IP "cgGLSetParameter1f" 2
+.IX Item "cgGLSetParameter1f"
+.IP "cgGLSetParameter1fv" 2
+.IX Item "cgGLSetParameter1fv"
+.IP "cgGLSetParameter2d" 2
+.IX Item "cgGLSetParameter2d"
+.IP "cgGLSetParameter2dv" 2
+.IX Item "cgGLSetParameter2dv"
+.IP "cgGLSetParameter2f" 2
+.IX Item "cgGLSetParameter2f"
+.IP "cgGLSetParameter2fv" 2
+.IX Item "cgGLSetParameter2fv"
+.IP "cgGLSetParameter3d" 2
+.IX Item "cgGLSetParameter3d"
+.IP "cgGLSetParameter3dv" 2
+.IX Item "cgGLSetParameter3dv"
+.IP "cgGLSetParameter3f" 2
+.IX Item "cgGLSetParameter3f"
+.IP "cgGLSetParameter3fv" 2
+.IX Item "cgGLSetParameter3fv"
+.IP "cgGLSetParameter4d" 2
+.IX Item "cgGLSetParameter4d"
+.IP "cgGLSetParameter4dv" 2
+.IX Item "cgGLSetParameter4dv"
+.IP "cgGLSetParameter4f" 2
+.IX Item "cgGLSetParameter4f"
+.IP "cgGLSetParameter4fv" 2
+.IX Item "cgGLSetParameter4fv"
+.IP "cgGLSetParameterArray" 2
+.IX Item "cgGLSetParameterArray"
+.IP "cgGLSetParameterArray1d" 2
+.IX Item "cgGLSetParameterArray1d"
+.IP "cgGLSetParameterArray1f" 2
+.IX Item "cgGLSetParameterArray1f"
+.IP "cgGLSetParameterArray2d" 2
+.IX Item "cgGLSetParameterArray2d"
+.IP "cgGLSetParameterArray2f" 2
+.IX Item "cgGLSetParameterArray2f"
+.IP "cgGLSetParameterArray3d" 2
+.IX Item "cgGLSetParameterArray3d"
+.IP "cgGLSetParameterArray3f" 2
+.IX Item "cgGLSetParameterArray3f"
+.IP "cgGLSetParameterArray4d" 2
+.IX Item "cgGLSetParameterArray4d"
+.IP "cgGLSetParameterArray4f" 2
+.IX Item "cgGLSetParameterArray4f"
+.IP "cgGLSetParameterPointer" 2
+.IX Item "cgGLSetParameterPointer"
+.IP "cgGLSetStateMatrixParameter" 2
+.IX Item "cgGLSetStateMatrixParameter"
+.IP "cgGLSetTextureParameter" 2
+.IX Item "cgGLSetTextureParameter"
+.IP "cgGLSetupSampler" 2
+.IX Item "cgGLSetupSampler"
+.IP "cgGLUnbindProgram" 2
+.IX Item "cgGLUnbindProgram"
+.IP "cgGLUnloadProgram" 2
+.IX Item "cgGLUnloadProgram"
+.PD
+.PP
+Back to Top

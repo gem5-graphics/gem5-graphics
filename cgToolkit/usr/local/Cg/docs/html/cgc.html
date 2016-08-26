@@ -1,0 +1,2327 @@
+<HTML>
+
+<HEAD>
+<TITLE>cgc</TITLE>
+<STYLE TYPE="text/css" MEDIA=screen>
+<!--
+		
+BODY {
+ font-family: Arial,Helvetica;
+}
+
+BLOCKQUOTE { margin: 10pt;  }
+
+H1,A { color: #336699; }
+
+
+/*** Top menu style ****/
+.mmenuon { 
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #ff6600; font-size: 10pt;
+ }
+.mmenuoff { 
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #ffffff; font-size: 10pt;
+}	  
+.cpyright {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #ffffff; font-size: xx-small;
+}
+.cpyrightText {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #ffffff; font-size: xx-small;
+}
+.sections { 
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: 11pt;
+}	 
+.dsections { 
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: 12pt;
+}	
+.slink { 
+ font-family: Arial,Helvetica; font-weight: normal; text-decoration: none;
+ color: #336699; font-size: 9pt;
+}	 
+
+.slink2 { font-family: Arial,Helvetica; text-decoration: none; color: #336699; }	 
+
+.maintitle { 
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: 18pt;
+}	 
+.dblArrow {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: small;
+}
+.menuSec {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: small;
+}
+
+.newstext {
+ font-family: Arial,Helvetica; font-size: small;
+}
+
+.linkmenu {
+ font-family: Arial,Helvetica; color: #000000; font-weight: bold;
+ text-decoration: none;
+}
+
+P {
+ font-family: Arial,Helvetica;
+}
+
+PRE            { 
+																font-family: monospace;
+																white-space: pre; 
+																font-color: #333333; 
+																font-weight: 100;
+																background-color: #eeeeee; 
+																padding: 5px; 
+																width: 90%; 
+																border-style: solid;
+																border-width: 2px; 
+																border-color: #bebebe; 
+	              }
+.quote { 
+ font-family: Times; text-decoration: none;
+ color: #000000; font-size: 9pt; font-style: italic;
+}	
+.smstd { font-family: Arial,Helvetica; color: #000000; font-size: x-small; } 
+.std { font-family: Arial,Helvetica; color: #000000; } 
+.meerkatTitle { 
+ font-family: sans-serif; font-size: x-small;  color: black;    }
+
+.meerkatDescription { font-family: sans-serif; font-size: 10pt; color: black }
+.meerkatCategory { 
+ font-family: sans-serif; font-size: 9pt; font-weight: bold; font-style: italic; 
+ color: brown; }
+.meerkatChannel { 
+ font-family: sans-serif; font-size: 9pt; font-style: italic; color: brown; }
+.meerkatDate { font-family: sans-serif; font-size: xx-small; color: #336699; }
+
+.tocTitle {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #333333; font-size: 10pt;
+}
+
+.toc-item {
+ font-family: Arial,Helvetica; font-weight: bold; 
+ color: #336699; font-size: 10pt; text-decoration: underline;
+}
+
+.perlVersion {
+ font-family: Arial,Helvetica; font-weight: bold; 
+ color: #336699; font-size: 10pt; text-decoration: none;
+}
+
+.docTitle {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #000000; font-size: 10pt;
+}
+.dotDot {
+ font-family: Arial,Helvetica; font-weight: bold; 
+ color: #000000; font-size: 9pt;
+}
+
+.docSec {
+ font-family: Arial,Helvetica; font-weight: normal; 
+ color: #333333; font-size: 9pt;
+}
+.docVersion {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: 10pt;
+}
+
+.docSecs-on {
+ font-family: Arial,Helvetica; font-weight: normal; text-decoration: none;
+ color: #ff0000; font-size: 10pt;
+}
+.docSecs-off {
+ font-family: Arial,Helvetica; font-weight: normal; text-decoration: none;
+ color: #333333; font-size: 10pt;
+}
+
+h3 {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: small;
+}
+h2 {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: medium;
+}
+h1 {
+ font-family: Verdana,Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: large;
+}
+
+DL {
+ font-family: Arial,Helvetica; font-weight: normal; text-decoration: none;
+ color: #333333; font-size: 10pt;
+}
+
+UL > LI > A {
+ font-family: Arial,Helvetica; font-weight: bold;
+ color: #336699; font-size: 10pt;
+}
+
+.moduleInfo {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #333333; font-size: 11pt;
+}
+
+.moduleInfoSec {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none;
+ color: #336699; font-size: 10pt;
+}
+
+.moduleInfoVal {
+ font-family: Arial,Helvetica; font-weight: normal; text-decoration: underline;
+ color: #000000; font-size: 10pt;
+}
+
+.cpanNavTitle {
+ font-family: Arial,Helvetica; font-weight: bold; 
+ color: #ffffff; font-size: 10pt;
+}
+.cpanNavLetter {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none; 
+ color: #333333; font-size: 9pt;
+}
+.cpanCat {
+ font-family: Arial,Helvetica; font-weight: bold; text-decoration: none; 
+ color: #336699; font-size: 9pt;
+}
+
+
+-->
+</STYLE>
+
+</HEAD>
+
+<BODY>
+
+
+<object type="application/x-oleobject" classid="clsid:1e2a7bd0-dab9-11d0-b93a-00c04fc99f9e">
+</object>
+
+
+
+
+<BLOCKQUOTE>
+
+<H1><A NAME="NAME"><A NAME="1">NAME
+
+</A></A></H1>
+<P>
+<B>cgc</B> - cg compiler driver
+
+
+</P>
+
+<H1><A NAME="SYNOPSIS"><A NAME="2">SYNOPSIS
+
+</A></A></H1>
+<P>
+cgc [options] file ...
+
+
+</P>
+
+<H1><A NAME="DESCRIPTION"><A NAME="3">DESCRIPTION
+
+</A></A></H1>
+<P>
+<B>cgc</B> is the standalone Cg compiler which translates Cg or GLSL programs
+into OpenGL or DirectX shader assembly code, or OpenGL or DirectX shading
+language code.
+
+
+</P>
+
+<H1><A NAME="OPTIONS"><A NAME="4">OPTIONS
+
+</A></A></H1>
+
+<H2><A NAME="BASIC_OPTIONS"><A NAME="5">Basic options
+
+</A></A></H2>
+<DL>
+<DT><STRONG>-entry <I>name</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the entry function for the shader to compile.  Defaults to <CODE>main</CODE>.
+
+
+</P>
+<DT><STRONG>-o <I>file</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the output file to be written.  Default outputs to <CODE>stdout</CODE>.
+
+
+</P>
+<DT><STRONG>-l <I>file</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the listing file, where error and warning messages are written.
+Defaults to <CODE>stderr</CODE>.
+
+
+</P>
+<DT><STRONG>-profile <I>name</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Selects the target profile, specifying the shader language to be generated.
+
+
+</P>
+<DT><STRONG>-profileopts <I>opt1,opt2,...</I>
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG>-po <I>opt1,opt2,...</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets one or more profile specific options.
+
+
+</P>
+<DT><STRONG>-noentry
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets check only mode, where no shader is compiled, but all the code in
+the input file is checked for syntactic correctness.
+
+
+</P>
+</DD></DL>
+
+<H2><A NAME="LANGUAGE_OPTIONS"><A NAME="6">Language options
+
+</A></A></H2>
+<DL>
+<DT><STRONG>-oglsl
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the source language to GLSL.
+
+
+</P>
+<DT><STRONG>-ogles
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the source language to OpneGL/ES GLSL.
+
+
+</P>
+<DT><STRONG>-strict
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG>-nostrict
+
+</STRONG></DT>
+<DD>
+
+<P>
+Enable or disable strict typechecking, where most questionable constructs
+will be flagged as warnings.
+
+
+</P>
+<DT><STRONG>-glslWerror
+
+</STRONG></DT>
+<DD>
+
+<P>
+Like <CODE>-strict</CODE> but in addition, unportable GLSL constructs will be flagged
+as errors.
+
+
+</P>
+<DT><STRONG>-nowarn
+
+</STRONG></DT>
+<DD>
+
+<P>
+Disable all warnings.
+
+
+</P>
+<DT><STRONG>-nowarn=<I>N,N,...</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Disable one or more specific numbered warnings.
+
+
+</P>
+<DT><STRONG>-fx
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG>-nofx
+
+</STRONG></DT>
+<DD>
+
+<P>
+Enables or disables FX parsing mode, where FX keywords are recognized.
+Defaults to on in Cg mode and off in GLSL mode.
+
+
+</P>
+<DT><STRONG>-nostdlib
+
+</STRONG></DT>
+<DD>
+
+<P>
+Disable the standard library.
+
+
+</P>
+</DD></DL>
+
+<H2><A NAME="CODE_GENERATION_OPTIONS"><A NAME="7">Code Generation Options
+
+</A></A></H2>
+<DL>
+<DT><STRONG>-fastmath
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG>-nofastmath
+
+</STRONG></DT>
+<DD>
+
+<P>
+Enable or disable optimizations that may chage/lose precision in low order bits, such as assocative transforms like <CODE>(a + b) + c</CODE> instead of <CODE>a + (b + c)</CODE>.  Default is <CODE>-fastmath</CODE>.
+
+
+</P>
+<DT><STRONG>-fastprecision
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG>-nofastprecision
+
+</STRONG></DT>
+<DD>
+
+<P>
+Enable or disable optimzations doing operations at lower precision than is specified when the result is later converted to a lower precision or the operands were originally in lower precision.  Default is <CODE>-nofastprecision</CODE>.
+
+
+</P>
+<DT><STRONG>-bestprecision
+
+</STRONG></DT>
+<DD>
+
+<P>
+Always do things in the best possible precision; only use lower precision operations if there is no possibility of difference.  Implies <CODE>-nofastmath</CODE> and <CODE>-nofastprecision</CODE>.
+
+
+</P>
+<DT><STRONG>-unroll all|none|count=<I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Control loop unrolling.  <CODE>-unroll all</CODE> will force unrolling of all
+loops that can be unrolled, while <CODE>-unroll none</CODE> will prevent unrolling
+except if code cannot otherwise be generated in the current profiles
+(so it will have no effect in profiles that don't support looping).
+<CODE>unroll count=<I>N</I> </CODE> will unroll loops if the estimate of the resulting
+code is less than <I>N</I> instructions.  The estimate does not take into
+account further optimizations that may be done after unrolling, so it
+might be quite inaccurate.
+
+
+</P>
+<DT><STRONG>-inline all|none|count=<I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Control function inlining.  Setting <CODE>-inline none</CODE> will additionally
+disable inlining of functions with an explicit <CODE>inline</CODE> keyword, which
+are otherwise always inlined.  Setting <CODE>-inline count=0</CODE> will effectively
+disable inlining of all functions that do not have an explicit <CODE>inline</CODE> keyword.
+
+
+</P>
+<DT><STRONG>-ifcvt all|none|count=<I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+control if conversion (replacement of small if/else blocks with
+conditional assignments).
+
+
+</P>
+<DT><STRONG>-O<I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the optimization level of the compiler, from 0 (lowest) to 3 (highest).
+Higher values may produce better code and will cause compile time to increase.
+Default is <CODE>-O1</CODE>.
+
+
+</P>
+<DT><STRONG>-looplimit <I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Assume loops that the compiler cannot determine an upper bound on the
+number of iterations may loop as many as <I>N</I> iterations.  This may
+require generating extra code for such loops in some profiles.
+
+
+</P>
+<DT><STRONG>-d3d
+
+</STRONG></DT>
+<DD>
+
+<P>
+Generate code compatable with the Direct3D specification.
+
+
+</P>
+<DT><STRONG>-MaxInstInBasicBlock <I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+break basic blocks after <I>N</I> instructions.  This has an effect on local
+optimizations that don't cross basic block boundaries and may avoid bad
+compile time blowups in the presence of huge basic blocks due to algorithms
+that are non-linear in the basic block size.
+
+
+</P>
+<DT><STRONG>-maxunrollcount <I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Deprecated.  Don't unroll loops with more than <I>N</I> iterations.  Use the -unroll option instead, which provides better fine-grained control.
+
+
+</P>
+</DD></DL>
+
+<H2><A NAME="PREPROCESSOR_OPTIONS"><A NAME="8">Preprocessor Options
+
+</A></A></H2>
+<DL>
+<DT><STRONG>-D<I>MACRO</I>[=<I>VALUE</I>]
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets a preprocessor macro.  If <I>VALUE</I> is not specified it defaults to <CODE>1</CODE>.
+
+
+</P>
+<DT><STRONG>-I<I>directory</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Adds a directory to the end of the search path for <CODE>#include</CODE> files.  The
+default search path is empty.
+
+
+</P>
+<DT><STRONG>-E
+
+</STRONG></DT>
+<DD>
+
+<P>
+Don't compile, just prepocess the input.
+
+
+</P>
+<DT><STRONG>-P
+
+</STRONG></DT>
+<DD>
+
+<P>
+With <CODE>-E</CODE>, supresses the generation of <CODE>#line</CODE> directives in the output.
+
+
+</P>
+<DT><STRONG>-C
+
+</STRONG></DT>
+<DD>
+
+<P>
+With <CODE>-E</CODE>, preserves comments in the output.
+
+
+</P>
+<DT><STRONG>-MG
+
+</STRONG></DT>
+<DD>
+
+<P>
+Ignore <CODE>#include</CODE> files that can't be found, rather than issuing an error.
+
+
+</P>
+<DT><STRONG>-M
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG>-MM
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG>-MD
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG>-MMD
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG>-MP
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG>-MF <I>file</I>
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG>-MT <I>target</I>
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG>-MQ <I>target</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Generate dependency information about <CODE>#include</CODE>d files.  These options
+are intended to be compatible with the options to <CODE>gcc</CODE>.
+
+
+</P>
+</DD></DL>
+
+<H2><A NAME="MISCELLANEOUS_OPTIONS"><A NAME="9">Miscellaneous Options
+
+</A></A></H2>
+<DL>
+<DT><STRONG>-quiet
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG>-q
+
+</STRONG></DT>
+<DD>
+
+<P>
+Supress all 'noise' output (copyright notices, indications of which
+files are being compiled, etc).  With -o and -l, should result in no
+output being produced.
+
+
+</P>
+<DT><STRONG>-nocode
+
+</STRONG></DT>
+<DD>
+
+<P>
+Supress final code generation.  Will actually run all the way through the
+compiler (so any errors present should be diagnosed), but don't produce
+any actual output code.
+
+
+</P>
+<DT><STRONG>-v
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG>--version
+
+</STRONG></DT>
+<DD>
+
+<P>
+Print compiler version information to listing.
+
+
+</P>
+<DT><STRONG>-h
+
+</STRONG></DT>
+<DD>
+
+<P>
+Print short option help summary to stdout and exit.
+
+
+</P>
+<DT><STRONG>-help
+
+</STRONG></DT>
+<DD>
+
+<P>
+Print longer option help summary to stdout, including all supported
+profiles and profile options, and exit.
+
+
+</P>
+<DT><STRONG>-type <I>type_definition</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Set an override type binding for a variable.
+
+
+</P>
+<DT><STRONG>-typefile <I>file</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Read override type bindings for variables from a file.
+
+
+</P>
+<DT><STRONG>-dumpinputbind <I>file</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Dump type bindings for all variables to a file.  This file may be passed
+back to the compiler with <CODE>-typefile</CODE>.
+
+
+</P>
+</DD></DL>
+
+<H2><A NAME="DEBUGGING_OPTIONS"><A NAME="10">Debugging options
+
+</A></A></H2>
+<DL>
+<DT><STRONG>-debug
+
+</STRONG></DT>
+<DD>
+
+<P>
+Enable the <CODE>debug</CODE> builtin function to abort operation of a shader and
+immedaitely output a value.
+
+
+</P>
+<DT><STRONG>-debuglast
+
+</STRONG></DT>
+<DD>
+
+<P>
+Like <CODE>-debug</CODE>, except the shader does not abort; instead it continues and
+outputs the value of the last <CODE>debug</CODE> function called.
+
+
+</P>
+<DT><STRONG>-debugdefault=<I>value</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Like <CODE>-debug</CODE>, except if no <CODE>debug</CODE> call is reached, the output will be
+set to the specified value instead of what the shader normally computes.
+
+
+</P>
+<DT><STRONG>-deprecated
+
+</STRONG></DT>
+<DD>
+
+<P>
+Issue errors instead of warnings for any deprecated features used.
+
+
+</P>
+</DD></DL>
+
+<H1><A NAME="PROFILES"><A NAME="11">PROFILES
+
+</A></A></H1>
+<P>
+A <I>profile</I> specifies the output language of the cg compiler (either a
+shader assembly dialect, or a shading language).  Each profile has its own
+set of <I>profile options</I> that can be set for it, though many related
+profiles have similar or identical options.  Profiles can be grouped by
+program type, API, or GPU generation.
+
+
+</P>
+<DL>
+<DT><STRONG>DirectX profiles
+
+</STRONG></DT>
+<DD>
+
+<P>
+<A HREF="ds_5_0.html"><I>ds_5_0</I></A>,
+<A HREF="gs_4_0.html"><I>gs_4_0</I></A>,
+<A HREF="gs_5_0.html"><I>gs_5_0</I></A>,
+<A HREF="hlslf.html"><I>hlslf</I></A>,
+<A HREF="hlslv.html"><I>hlslv</I></A>,
+<A HREF="hs_5_0.html"><I>hs_5_0</I></A>,
+<A HREF="ps_1_1.html"><I>ps_1_1</I></A>,
+<A HREF="ps_1_2.html"><I>ps_1_2</I></A>,
+<A HREF="ps_1_3.html"><I>ps_1_3</I></A>, 
+<A HREF="ps_2_0.html"><I>ps_2_0</I></A>,
+<A HREF="ps_2_x.html"><I>ps_2_x</I></A>,
+<A HREF="ps_3_0.html"><I>ps_3_0</I></A>,
+<A HREF="ps_4_0.html"><I>ps_4_0</I></A>,
+<A HREF="ps_5_0.html"><I>ps_5_0</I></A>,
+<A HREF="vs_1_1.html"><I>vs_1_1</I></A>,
+<A HREF="vs_2_0.html"><I>vs_2_0</I></A>,
+<A HREF="vs_2_x.html"><I>vs_2_x</I></A>,
+<A HREF="vs_3_0.html"><I>vs_3_0</I></A>,
+<A HREF="vs_4_0.html"><I>vs_4_0</I></A>,
+<A HREF="vs_5_0.html"><I>vs_5_0</I></A>
+
+
+</P>
+<DT><STRONG>OpenGL profiles
+
+</STRONG></DT>
+<DD>
+
+<P>
+<A HREF="arbfp1.html"><I>arbfp1</I></A>,
+<A HREF="arbvp1.html"><I>arbvp1</I></A>,
+<A HREF="fp20.html"><I>fp20</I></A>,
+<A HREF="fp30.html"><I>fp30</I></A>,
+<CODE>fp30unlimited</CODE>,
+<A HREF="fp40.html"><I>fp40</I></A>,
+<CODE>fp40unlimited</CODE>,
+<A HREF="glslf.html"><I>glslf</I></A>,
+<A HREF="glslg.html"><I>glslg</I></A>,
+<A HREF="glslv.html"><I>glslv</I></A>,
+<A HREF="gp4fp.html"><I>gp4fp</I></A>,
+<A HREF="gp4gp.html"><I>gp4gp</I></A>,
+<A HREF="gp4vp.html"><I>gp4vp</I></A>,
+<A HREF="gp5fp.html"><I>gp5fp</I></A>,
+<A HREF="gp5gp.html"><I>gp5gp</I></A>,
+<A HREF="gp5tcp.html"><I>gp5tcp</I></A>,
+<A HREF="gp5tep.html"><I>gp5tep</I></A>,
+<A HREF="gp5vp.html"><I>gp5vp</I></A>,
+<A HREF="vp20.html"><I>vp20</I></A>,
+<A HREF="vp30.html"><I>vp30</I></A>,
+<A HREF="vp40.html"><I>vp40</I></A>
+
+
+</P>
+<DT><STRONG>Fragment profiles
+
+</STRONG></DT>
+<DD>
+
+<P>
+<A HREF="arbfp1.html"><I>arbfp1</I></A>,
+<A HREF="fp20.html"><I>fp20</I></A>,
+<A HREF="fp30.html"><I>fp30</I></A>,
+<CODE>fp30unlimited</CODE>,
+<A HREF="fp40.html"><I>fp40</I></A>,
+<CODE>fp40unlimited</CODE>,
+<A HREF="glslf.html"><I>glslf</I></A>,
+<A HREF="gp4fp.html"><I>gp4fp</I></A>,
+<A HREF="gp5fp.html"><I>gp5fp</I></A>,
+<A HREF="hlslf.html"><I>hlslf</I></A>,
+<A HREF="ps_1_1.html"><I>ps_1_1</I></A>,
+<A HREF="ps_1_2.html"><I>ps_1_2</I></A>,
+<A HREF="ps_1_3.html"><I>ps_1_3</I></A>, 
+<A HREF="ps_2_0.html"><I>ps_2_0</I></A>,
+<A HREF="ps_2_x.html"><I>ps_2_x</I></A>,
+<A HREF="ps_3_0.html"><I>ps_3_0</I></A>,
+<A HREF="ps_4_0.html"><I>ps_4_0</I></A>,
+<A HREF="ps_5_0.html"><I>ps_5_0</I></A>
+
+
+</P>
+<DT><STRONG>Geometry profiles
+
+</STRONG></DT>
+<DD>
+
+<P>
+<A HREF="glslg.html"><I>glslg</I></A>,
+<A HREF="gp4gp.html"><I>gp4gp</I></A>,
+<A HREF="gp5gp.html"><I>gp5gp</I></A>,
+<A HREF="gs_4_0.html"><I>gs_4_0</I></A>,
+<A HREF="gs_5_0.html"><I>gs_5_0</I></A>
+
+
+</P>
+<DT><STRONG>Vertex profiles
+
+</STRONG></DT>
+<DD>
+
+<P>
+<A HREF="arbvp1.html"><I>arbvp1</I></A>,
+<A HREF="glslv.html"><I>glslv</I></A>,
+<A HREF="gp4vp.html"><I>gp4vp</I></A>,
+<A HREF="gp5vp.html"><I>gp5vp</I></A>,
+<A HREF="hlslv.html"><I>hlslv</I></A>,
+<A HREF="vp20.html"><I>vp20</I></A>,
+<A HREF="vp30.html"><I>vp30</I></A>,
+<A HREF="vp40.html"><I>vp40</I></A>,
+<A HREF="vs_1_1.html"><I>vs_1_1</I></A>,
+<A HREF="vs_2_0.html"><I>vs_2_0</I></A>,
+<A HREF="vs_2_x.html"><I>vs_2_x</I></A>,
+<A HREF="vs_3_0.html"><I>vs_3_0</I></A>,
+<A HREF="vs_4_0.html"><I>vs_4_0</I></A>,
+<A HREF="vs_5_0.html"><I>vs_5_0</I></A>
+
+
+</P>
+<DT><STRONG>GeForce 3/4 Series profiles
+
+</STRONG></DT>
+<DD>
+
+<P>
+<A HREF="fp20.html"><I>fp20</I></A>, <A HREF="vp20.html"><I>vp20</I></A>
+
+
+</P>
+<DT><STRONG>GeForce 5 Series profiles
+
+</STRONG></DT>
+<DD>
+
+<P>
+<A HREF="fp30.html"><I>fp30</I></A>, <A HREF="vp30.html"><I>vp30</I></A>
+
+
+</P>
+<DT><STRONG>GeForce 6/7 Series profiles
+
+</STRONG></DT>
+<DD>
+
+<P>
+<A HREF="fp40.html"><I>fp40</I></A>, <A HREF="vp40.html"><I>vp40</I></A>
+
+
+</P>
+<LI>
+x Quadro profiles
+
+</LI>
+<P>
+<A HREF="gp4fp.html"><I>gp4fp</I></A>, <A HREF="gp4gp.html"><I>gp4gp</I></A>, <A HREF="gp4vp.html"><I>gp4vp</I></A>
+
+
+</P>
+<LI>
+x Quadro profiles
+
+</LI>
+<P>
+<A HREF="gp5fp.html"><I>gp5fp</I></A>, <A HREF="gp5gp.html"><I>gp5gp</I></A>, <A HREF="gp5tcp.html"><I>gp5tcp</I></A>, <A HREF="gp5tep.html"><I>gp5tep</I></A>, <A HREF="gp5vp.html"><I>gp5vp</I></A>
+
+
+</P>
+</DD></DL>
+
+<H2><A NAME="PROFILE_OPTIONS"><A NAME="12">Profile options
+
+</A></A></H2>
+<P>
+Here is a complete list of all profiles and their corresponding profile options
+
+
+</P>
+<DL>
+<DT><STRONG><A HREF="arbfp1.html"><I>arbfp1</I></A>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Targets the <B>ARB_fragment_program</B> OpenGL extension
+
+
+</P>
+<DL>
+<DT><STRONG><CODE>-po</CODE> <CODE>ARB_draw_buffers</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Use the <B>ARB_draw_buffers</B> option for multiple renderbuffer targets (MRT).  This is the default
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>ATI_draw_buffers</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Use the <B>ATI_draw_buffers</B> option for multiple renderbuffer targets (MRT).
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>MaxDrawBuffers=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Set the maximum number of renderbuffer targets.  Default is 1
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>MaxLocalParams=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Set the maximum number of uniform parameter slots available.  Default is 32
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>MaxTexIndirections=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of texture indirections allowed in the output program.  Default is 1024
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NumInstructionSlots=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of instructions in the output program.  Default is 1024
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NumMathInstructionSlots=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of non-texture instructions in the output program.  Default is 1024
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NumTemps=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of TEMP registers in the output program.  Default is 32
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NumTexInstructionSlots=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of texture instructions in the output program.  Default is 1024
+
+
+</P>
+</DD></DL>
+<DT><STRONG><A HREF="arbvp1.html"><I>arbvp1</I></A>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Targets the <B>ARB_vertex_program</B> OpenGL extension
+
+
+</P>
+<DL>
+<DT><STRONG><CODE>-po</CODE> <CODE>MaxAddressRegs=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of ADDRESS registers in the output program.  Default is 1
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>MaxInstructions=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of instructions in the output program.  Default is 1024
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>MaxLocalParams=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Set the maximum number of uniform parameter slots available.  Default is 96
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NumTemps=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of TEMP registers in the output program.  Default is 32
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>PosInv</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Generate position invariant code (same as fixed-function) for POSITION output
+
+
+</P>
+</DD></DL>
+<DT><STRONG><A HREF="fp20.html"><I>fp20</I></A>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Targets the <B>NV_register_combiners2</B> and <B>NV_texture_shader</B> OpenGL extensions
+
+
+</P>
+<DT><STRONG><A HREF="fp30.html"><I>fp30</I></A>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Targets the <B>NV_fragment_program</B> OpenGL extension
+
+
+</P>
+<DL>
+<DT><STRONG><CODE>-po</CODE> <CODE>NumInstructionSlots=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of instructions in the output program.  Default is 256
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NumTemps=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of temporaries in the output program.  Default is 32
+
+
+</P>
+</DD></DL>
+<DT><STRONG><CODE>fp30unlimited</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Same as <A HREF="fp30.html"><I>fp30</I></A> with various hardware limits on registers and instructions lifted
+
+
+</P>
+<DL>
+<DT><STRONG><CODE>-po</CODE> <CODE>NumInstructionSlots=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of instructions in the output program.  Default is 4194304
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NumTemps=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of temporaries in the output program.  Default is 512
+
+
+</P>
+</DD></DL>
+<DT><STRONG><A HREF="fp40.html"><I>fp40</I></A>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Targets the <B>NV_fragment_program2</B> OpenGL extension
+
+
+</P>
+<DL>
+<DT><STRONG><CODE>-po</CODE> <CODE>appleKilWAR</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Work around various bugs with KIL instructions in the OSX-tiger implementation of <B>NV_fragment_program2</B>
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>ARB_draw_buffers</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Use the <B>ARB_draw_buffers</B> option for multiple renderbuffer targets (MRT).  This is the default
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>ATI_draw_buffers</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Use the <B>ATI_draw_buffers</B> option for multiple renderbuffer targets (MRT).
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>MaxLocalParams=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Set the maximum number of uniform parameter slots available.  Default is infinite
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NumInstructionSlots=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of instructions in the output program.  Default is infinite
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NumTemps=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of TEMP registers in the output program.  Default is infinite
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>OutColorPrec=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+If <I>N</I> is 3 or 4, force output to fp16 precision.  If <I>N</I> is 2, force output to fp32 precision.
+
+
+</P>
+</DD></DL>
+<DT><STRONG><CODE>fp40unlimited</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Same as <A HREF="fp40.html"><I>fp40</I></A> with various hardware limits on registers and instructions lifted
+
+
+</P>
+<DL>
+<DT><STRONG><CODE>-po</CODE> <CODE>appleKilWAR</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Work around various bugs with KIL instructions in the OSX-tiger implementation of <B>NV_fragment_program2</B>
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>ARB_draw_buffers</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Use the <B>ARB_draw_buffers</B> option for multiple renderbuffer targets (MRT).  This is the default
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>ATI_draw_buffers</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Use the <B>ATI_draw_buffers</B> option for multiple renderbuffer targets (MRT).
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>MaxLocalParams=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Set the maximum number of uniform parameter slots available.  Default is 1024
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NumInstructionSlots=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of instructions in the output program.  Default is 4194304
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NumTemps=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of TEMP registers in the output program.  Default is 512
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>OutColorPrec=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+If <I>N</I> is 3 or 4, force output to fp16 precision.  If <I>N</I> is 2, force output to fp32 precision.
+
+
+</P>
+</DD></DL>
+<DT><STRONG><CODE>generic</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Produces a dump of the program in a non-executable format
+
+
+</P>
+<DT><STRONG><A HREF="glslf.html"><I>glslf</I></A>, <A HREF="glslg.html"><I>glslg</I></A> and <A HREF="glslv.html"><I>glslv</I></A>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Targets the OpenGL Shading language (GLSL) v1.10.
+<A HREF="glslf.html"><I>glslf</I></A> targets fragment programs while <A HREF="glslv.html"><I>glslv</I></A> targets vertex programs
+
+
+</P>
+<DL>
+<DT><STRONG>version=<I>val</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+GLSL version to target.  Supported versions are <B>100</B>, <B>110</B>, <B>120</B>, <B>130</B>, <B>140</B> and <B>150</B>.
+
+
+</P>
+<DT><STRONG>userTexCoord
+
+</STRONG></DT>
+<DD>
+
+<P>
+Use user-defined varying instead of <B>gl_TexCoord</B>.
+
+
+</P>
+<DT><STRONG>ATI_draw_buffers
+
+</STRONG></DT>
+<DD>
+
+<P>
+Use <B>ATI_draw_buffers</B> extension for MRT.
+
+
+</P>
+<DT><STRONG>EXT_gpu_shader4
+
+</STRONG></DT>
+<DD>
+
+<P>
+Use <B>EXT_gpu_shader4</B> extension where useful.
+
+
+</P>
+</DD></DL>
+<DT><STRONG><A HREF="gp4fp.html"><I>gp4fp</I></A>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Targets the <B>NV_gpu_program4</B> and <B>NV_fragment_program4</B> OpenGL extensions.
+
+
+</P>
+<DL>
+<DT><STRONG><CODE>-po</CODE> <CODE>fastimul</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Assume integer multiply inputs have at most 24 significant bits.
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NV_shader_buffer_load</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Use the <B>NV_shader_buffer_load</B> OpenGL extension.
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NV_parameter_buffer_object2</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Use the <B>NV_parameter_buffer_object2</B> OpenGL extension.
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>PaBO2</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Use the <B>NV_parameter_buffer_object2</B> OpenGL extension.
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>ARB_draw_buffers</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Use the <B>ARB_draw_buffers</B> option for multiple renderbuffer targets (MRT).  This is the default
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>ATI_draw_buffers</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Use the <B>ATI_draw_buffers</B> option for multiple renderbuffer targets (MRT).
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>pixel_center_integer</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Use integer pixel centers.
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>origin_upper_left</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Use upper left pixel origin.
+
+
+</P>
+</DD></DL>
+<DT><STRONG><A HREF="gp4gp.html"><I>gp4gp</I></A>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Targets the <B>NV_gpu_program4</B> and <B>NV_geometry_program4</B> OpenGL extensions.
+
+
+</P>
+<DL>
+<DT><STRONG><CODE>-po</CODE> <CODE>POINT</CODE>
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG><CODE>-po</CODE> <CODE>LINE</CODE>
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG><CODE>-po</CODE> <CODE>LINE_ADJ</CODE>
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG><CODE>-po</CODE> <CODE>TRIANGLE</CODE>
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG><CODE>-po</CODE> <CODE>TRIANGLE_ADJ</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Set the input primitive type for the geometry program
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>POINT_OUT</CODE>
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG><CODE>-po</CODE> <CODE>LINE_OUT</CODE>
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG><CODE>-po</CODE> <CODE>TRIANGLE_OUT</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Set the output primitive type for the geometry program
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>Vertices=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Set the number of vertices output by the geometry program
+
+
+</P>
+</DD></DL>
+<DT><STRONG><A HREF="gp4vp.html"><I>gp4vp</I></A>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Targets the <B>NV_gpu_program4</B> and <B>NV_vertex_program4</B> OpenGL extensions.
+
+
+</P>
+<DL>
+<DT><STRONG><CODE>-po</CODE> <CODE>PosInv</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Generate position invariant code (same as fixed-function) for POSITION output
+
+
+</P>
+</DD></DL>
+<DT><STRONG><A HREF="gp5fp.html"><I>gp5fp</I></A>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Targets the <B>NV_gpu_program5</B> OpenGL extension.
+
+
+</P>
+<DL>
+<DT><STRONG><CODE>-po</CODE> <CODE>fastimul</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Assume integer multiply inputs have at most 24 significant bits.
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NV_shader_buffer_load</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Use the <B>NV_shader_buffer_load</B> OpenGL extension.
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NV_parameter_buffer_object2</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Use the <B>NV_parameter_buffer_object2</B> OpenGL extension.
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>PaBO2</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Use the <B>NV_parameter_buffer_object2</B> OpenGL extension.
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>ARB_draw_buffers</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Use the <B>ARB_draw_buffers</B> option for multiple renderbuffer targets (MRT).  This is the default
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>ATI_draw_buffers</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Use the <B>ATI_draw_buffers</B> option for multiple renderbuffer targets (MRT).
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>pixel_center_integer</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Use the <B>ARB_fragment_coord_conventions</B> OpenGL extension to specify integer pixel centers.
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>origin_upper_left</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Use the <B>ARB_fragment_coord_conventions</B> OpenGL extension to specify upper left pixel origin.
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NV_early_fragment_tests</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Perform depth and stencil tests prior to fragment program invocation.
+
+
+</P>
+</DD></DL>
+<DT><STRONG><A HREF="gp5gp.html"><I>gp5gp</I></A>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Targets the <B>NV_gpu_program5</B> OpenGL extension.
+
+
+</P>
+<DL>
+<DT><STRONG><CODE>-po</CODE> <CODE>POINT</CODE>
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG><CODE>-po</CODE> <CODE>LINE</CODE>
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG><CODE>-po</CODE> <CODE>LINE_ADJ</CODE>
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG><CODE>-po</CODE> <CODE>TRIANGLE</CODE>
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG><CODE>-po</CODE> <CODE>TRIANGLE_ADJ</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Set the input primitive type for the geometry program
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>POINT_OUT</CODE>
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG><CODE>-po</CODE> <CODE>LINE_OUT</CODE>
+
+</STRONG></DT>
+<DD>
+
+<DT><STRONG><CODE>-po</CODE> <CODE>TRIANGLE_OUT</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Set the output primitive type for the geometry program
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>Vertices=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Set the number of vertices output by the geometry program
+
+
+</P>
+</DD></DL>
+<DT><STRONG><A HREF="gp5tcp.html"><I>gp5tcp</I></A>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Targets the <B>NV_tessellation_program</B> and <B>NV_gpu_program5</B> OpenGL extensions.
+
+
+</P>
+<DT><STRONG><A HREF="gp5tep.html"><I>gp5tep</I></A>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Targets the <B>NV_tessellation_program</B> and <B>NV_gpu_program5</B> OpenGL extensions.
+
+
+</P>
+<DT><STRONG><A HREF="gp5vp.html"><I>gp5vp</I></A>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Targets the <B>NV_gpu_program5</B> OpenGL extension.
+
+
+</P>
+<DL>
+<DT><STRONG><CODE>-po</CODE> <CODE>PosInv</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Generate position invariant code (same as fixed-function) for POSITION output
+
+
+</P>
+</DD></DL>
+<DT><STRONG><A HREF="hlslf.html"><I>hlslf</I></A> <A HREF="hlslv.html"><I>hlslv</I></A>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Targets Microsoft High-Level Shading Language (HLSL).
+<A HREF="hlslf.html"><I>hlslf</I></A> targets pixel programs while <A HREF="hlslv.html"><I>hlslv</I></A> targets vertex programs
+
+
+</P>
+<DT><STRONG><A HREF="ps_1_1.html"><I>ps_1_1</I></A> <A HREF="ps_1_2.html"><I>ps_1_2</I></A> <A HREF="ps_1_3.html"><I>ps_1_3</I></A>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Targets DirectX pixel programs
+
+
+</P>
+<DL>
+<DT><STRONG><CODE>-po</CODE> <CODE>MaxPixelShaderValue=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Maximum absolute value representable in a pixel shader.  Default is 1.
+
+
+</P>
+</DD></DL>
+<DT><STRONG><A HREF="ps_2_0.html"><I>ps_2_0</I></A> <A HREF="ps_2_x.html"><I>ps_2_x</I></A>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Targets DirectX pixel programs
+
+
+</P>
+<DL>
+<DT><STRONG><CODE>-po</CODE> <CODE>MaxDrawBuffers=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Set the maximum number of renderbuffer targets.  Default is 1
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NumInstructionSlots=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of instructions in the output program.  Default is 96 or 512
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NumTemps=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of temporaries in the output program.  Default is 12 or 32
+
+
+</P>
+</DD></DL>
+<DT><STRONG><A HREF="ps_3_0.html"><I>ps_3_0</I></A>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Targets DirectX pixel programs
+
+
+</P>
+<DL>
+<DT><STRONG><CODE>-po</CODE> <CODE>MaxDrawBuffers=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Set the maximum number of renderbuffer targets.  Default is 1
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>MaxLocalParams=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Set the maximum number of uniform parameter slots available.  Default is 224
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NumInstructionSlots=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of instructions in the output program.  Default is 32768
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NumTemps=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of temporaries in the output program.  Default is 32
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>OutColorPrec=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+If <I>N</I> is 3 or 4, force output to fp16 precision.  If <I>N</I> is 2, force output to fp32 precision.
+
+
+</P>
+</DD></DL>
+<DT><STRONG><A HREF="vp20.html"><I>vp20</I></A>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Targets the <B>NV_vertex_program</B> OpenGL extension
+
+
+</P>
+<DL>
+<DT><STRONG><CODE>-po</CODE> <CODE>MaxLocalParams=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Set the maximum number of uniform parameter slots available.  Default is 96
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>PosInv</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Generate position invariant code (same as fixed-function) for POSITION output
+
+
+</P>
+</DD></DL>
+<DT><STRONG><A HREF="vp30.html"><I>vp30</I></A>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Targets the <B>NV_vertex_program2</B> OpenGL extension
+
+
+</P>
+<DL>
+<DT><STRONG><CODE>-po</CODE> <CODE>MaxLocalParams=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Set the maximum number of uniform parameter slots available.  Default is 256
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>PosInv</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Generate position invariant code (same as fixed-function) for POSITION output
+
+
+</P>
+</DD></DL>
+<DT><STRONG><A HREF="vp40.html"><I>vp40</I></A>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Targets the <B>NV_vertex_program3</B> OpenGL extension
+
+
+</P>
+<DL>
+<DT><STRONG><CODE>-po</CODE> <CODE>MaxAddressRegs=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of ADDRESS registers in the output program.  Default is 2
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>MaxInstructions=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of instructions in the output program.  Default is 2048
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>MaxLocalParams=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Set the maximum number of uniform parameter slots available.  Default is 544
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NumTemps=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of TEMP registers in the output program.  Default is 32
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>PosInv</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Generate position invariant code (same as fixed-function) for POSITION output
+
+
+</P>
+</DD></DL>
+<DT><STRONG><A HREF="vs_1_1.html"><I>vs_1_1</I></A>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Targets DirectX vertex programs
+
+
+</P>
+<DL>
+<DT><STRONG><CODE>-po</CODE> <CODE>dcls</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Output dx9-style dcls statements
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>MaxLocalParams=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Set the maximum number of uniform parameter slots available.  Default is 96
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NumInstructionSlots=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of instructions in the output program.  Default is 128
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NumTemps=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of temporaries in the output program.  Default is 12
+
+
+</P>
+</DD></DL>
+<DT><STRONG><A HREF="vs_2_0.html"><I>vs_2_0</I></A> <A HREF="vs_2_x.html"><I>vs_2_x</I></A>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Targets DirectX vertex programs
+
+
+</P>
+<DL>
+<DT><STRONG><CODE>-po</CODE> <CODE>dcls</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Output dx9-style dcls statements
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>MaxLocalParams=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Set the maximum number of uniform parameter slots available.  Default is 256
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NumInstructionSlots=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of instructions in the output program.  Default is 256
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NumTemps=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of temporaries in the output program.  Default is 12
+
+
+</P>
+</DD></DL>
+<DT><STRONG><A HREF="vs_3_0.html"><I>vs_3_0</I></A>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Targets DirectX vertex programs
+
+
+</P>
+<DL>
+<DT><STRONG><CODE>-po</CODE> <CODE>dcls</CODE>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Output dx9-style dcls statements
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>MaxLocalParams=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Set the maximum number of uniform parameter slots available.  Default is 256
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NumInstructionSlots=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of instructions in the output program.  Default is 32768
+
+
+</P>
+<DT><STRONG><CODE>-po</CODE> <CODE>NumTemps=</CODE><I>N</I>
+
+</STRONG></DT>
+<DD>
+
+<P>
+Sets the maximum number of temporaries in the output program.  Default is 32
+
+
+</P>
+</DD></DL>
+</DD></DL>
+
+<H1><A NAME="ENVIRONMENT"><A NAME="13">ENVIRONMENT
+
+</A></A></H1>
+
+<H1><A NAME="SEE_ALSO"><A NAME="14">SEE ALSO
+
+</A></A></H1>
+<P>
+<A HREF="Cg_language.html"><I>Cg_language</I></A>, <A HREF="arbfp1.html"><I>arbfp1</I></A>, <A HREF="arbvp1.html"><I>arbvp1</I></A>, <A HREF="fp20.html"><I>fp20</I></A>, <A HREF="fp30.html"><I>fp30</I></A>, <A HREF="fp40.html"><I>fp40</I></A>, <A HREF="glslf.html"><I>glslf</I></A>, <A HREF="glslv.html"><I>glslv</I></A>, <A HREF="gp4fp.html"><I>gp4fp</I></A>, <A HREF="gp4gp.html"><I>gp4gp</I></A>, <A HREF="gp4vp.html"><I>gp4vp</I></A>, <A HREF="hlslf.html"><I>hlslf</I></A>, <A HREF="hlslv.html"><I>hlslv</I></A>, <A HREF="vp20.html"><I>vp20</I></A>, <A HREF="vp30.html"><I>vp30</I></A>, <A HREF="vp40.html"><I>vp40</I></A>
+
+</P>
+
+</BLOCKQUOTE>
+
+
+
+</BODY>
+

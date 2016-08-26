@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="Windows-1252"?>
+<VisualStudioProject
+	ProjectType="Visual C++"
+	Version="7.10"
+	Name="generic_attribs"
+	ProjectGUID="{1429C4CC-70B1-8434-733C-7ABE6CE2F5F0}">
+	<Platforms>
+		<Platform Name="Win32"/>
+	</Platforms>
+	<Configurations>
+		<Configuration
+			Name="Release|Win32"
+			OutputDirectory=".\Release"
+			IntermediateDirectory=".\Release\generic_attribs"
+			ConfigurationType="1"
+			UseOfMFC="0"
+			ATLMinimizesCRunTimeLibraryUsage="FALSE"
+			CharacterSet="2">
+			<Tool
+				Name="VCCLCompilerTool"
+				Optimization="2"
+				InlineFunctionExpansion="1"
+				AdditionalIncludeDirectories="../../glew/include;$(CG_INC_PATH);c:\Program Files\NVIDIA Corporation\Cg\include"
+				PreprocessorDefinitions="GLEW_STATIC;WIN32;_WIN32;NDEBUG;_CONSOLE"
+				StringPooling="TRUE"
+				RuntimeLibrary="0"
+				EnableFunctionLevelLinking="TRUE"
+				UsePrecompiledHeader="0"
+				AssemblerListingLocation=".\Release/"
+				ObjectFile=".\Release/"
+				ProgramDataBaseFileName=".\Release/"
+				WarningLevel="3"
+				SuppressStartupBanner="TRUE"
+				Detect64BitPortabilityProblems="TRUE"
+				CompileAs="0"/>
+			<Tool
+				Name="VCCustomBuildTool"/>
+			<Tool
+				Name="VCLinkerTool"
+				AdditionalDependencies="cg.lib cgGL.lib glut32.lib glu32.lib opengl32.lib gdi32.lib "
+				OutputFile=".\Release/generic_attribs.exe"
+				SuppressStartupBanner="TRUE"
+				AdditionalLibraryDirectories="$(CG_LIB_PATH);c:\Program Files\NVIDIA Corporation\Cg\lib"
+				ModuleDefinitionFile=""
+				ProgramDatabaseFile=".\Release/generic_attribs.pdb"
+				SubSystem="1"
+				TargetMachine="1"/>
+			<Tool
+				Name="VCMIDLTool"
+				HeaderFileName=""/>
+			<Tool
+				Name="VCPostBuildEventTool"/>
+			<Tool
+				Name="VCPreBuildEventTool"/>
+			<Tool
+				Name="VCPreLinkEventTool"/>
+			<Tool
+				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="NDEBUG"
+				Culture="1033"/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"/>
+			<Tool
+				Name="VCWebDeploymentTool"/>
+			<Tool
+				Name="VCManagedWrapperGeneratorTool"/>
+			<Tool
+				Name="VCAuxiliaryManagedWrapperGeneratorTool"/>
+		</Configuration>
+		<Configuration
+			Name="Debug|Win32"
+			OutputDirectory=".\Debug"
+			IntermediateDirectory=".\Debug\generic_attribs"
+			ConfigurationType="1"
+			UseOfMFC="0"
+			ATLMinimizesCRunTimeLibraryUsage="FALSE"
+			CharacterSet="2">
+			<Tool
+				Name="VCCLCompilerTool"
+				Optimization="0"
+				AdditionalIncludeDirectories="../../glew/include;$(CG_INC_PATH);c:\Program Files\NVIDIA Corporation\Cg\include"
+				PreprocessorDefinitions="GLEW_STATIC;WIN32;_WIN32;_DEBUG;_CONSOLE"
+				BasicRuntimeChecks="3"
+				RuntimeLibrary="1"
+				UsePrecompiledHeader="0"
+				AssemblerListingLocation=".\Debug/"
+				ObjectFile=".\Debug/"
+				ProgramDataBaseFileName=".\Debug/"
+				WarningLevel="3"
+				SuppressStartupBanner="TRUE"
+				Detect64BitPortabilityProblems="TRUE"
+				DebugInformationFormat="4"
+				CompileAs="0"/>
+			<Tool
+				Name="VCCustomBuildTool"/>
+			<Tool
+				Name="VCLinkerTool"
+				AdditionalDependencies="cg.lib cgGL.lib glut32.lib glu32.lib opengl32.lib gdi32.lib "
+				OutputFile=".\Debug/generic_attribs.exe"
+				SuppressStartupBanner="TRUE"
+				AdditionalLibraryDirectories="$(CG_LIB_PATH);c:\Program Files\NVIDIA Corporation\Cg\lib"
+				ModuleDefinitionFile=""
+				GenerateDebugInformation="TRUE"
+				ProgramDatabaseFile=".\Debug/generic_attribs.pdb"
+				SubSystem="1"
+				TargetMachine="1"/>
+			<Tool
+				Name="VCMIDLTool"
+				HeaderFileName=""/>
+			<Tool
+				Name="VCPostBuildEventTool"/>
+			<Tool
+				Name="VCPreBuildEventTool"/>
+			<Tool
+				Name="VCPreLinkEventTool"/>
+			<Tool
+				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="_DEBUG"
+				Culture="1033"/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"/>
+			<Tool
+				Name="VCWebDeploymentTool"/>
+			<Tool
+				Name="VCManagedWrapperGeneratorTool"/>
+			<Tool
+				Name="VCAuxiliaryManagedWrapperGeneratorTool"/>
+		</Configuration>
+	</Configurations>
+	<References>
+	</References>
+	<Files>
+	<Filter Name="Source Files" Filter="cpp;c;h">
+		<File RelativePath="generic_attribs.c"></File>
+		<File RelativePath="gli.h"></File>
+		<File RelativePath="gli_convert.c"></File>
+		<File RelativePath="gli_misc.c"></File>
+		<File RelativePath="gli_scale.c"></File>
+		<File RelativePath="gli_tga.c"></File>
+		<File RelativePath="gli_tga.h"></File>
+		<File RelativePath="loadtex.c"></File>
+		<File RelativePath="loadtex.h"></File>
+		<File RelativePath="md2.h"></File>
+		<File RelativePath="md2file.c"></File>
+		<File RelativePath="md2file.h"></File>
+		<File RelativePath="md2normals.c"></File>
+		<File RelativePath="md2render.cpp"></File>
+		<File RelativePath="md2render.h"></File>
+	</Filter>
+	<Filter Name="Cg Files" Filter="cg;cgfx">
+		<File RelativePath="C6E3v_keyFrame.cg"></File>
+		<File RelativePath="C6E4v_litKeyFrame.cg"></File>
+		<File RelativePath="colorinterp.cg"></File>
+		<File RelativePath="texmodulate.cg"></File>
+	</Filter>
+</Files>
+	<Globals>
+	</Globals>
+</VisualStudioProject>

@@ -1,0 +1,36 @@
+// This is C8E5v_bumpAny from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 216.
+
+// NOTE:  The version below corrects the book's version by computing
+// the binormal using the formula B = N cross T (page 215) rather
+// than T cross B.
+
+void C8E5v_bumpAny(float3 position : POSITION,
+                   float3 normal   : NORMAL,
+                   float3 tangent  : TEXCOORD1,
+                   float2 texCoord : TEXCOORD0,
+
+               out float4 oPosition      : POSITION,
+               out float2 normalMapCoord : TEXCOORD0,
+               out float3 lightDirection : TEXCOORD1,
+
+           uniform float3   lightPosition,  // Object-space
+           uniform float3   eyePosition,    // Object-space
+           uniform float4x4 modelViewProj)
+{
+  oPosition = mul(modelViewProj, float4(position, 1));
+
+  // Compute the object-space light vector
+  lightDirection = lightPosition - position;
+
+  // Construct object space to texture space 3x3 matrix
+  float3 binormal = cross(normal, tangent);
+  float3x3 rotation = float3x3(tangent,
+                               binormal,
+                               normal);
+  // Rotate the light vector using the matrix
+  lightDirection = mul(rotation, lightDirection);
+
+  normalMapCoord = texCoord;
+}
+

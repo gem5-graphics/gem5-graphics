@@ -1,0 +1,26 @@
+// This is C8E2f_bumpSurf from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 206.
+
+float3 expand(float3 v)
+{
+  return (v-0.5)*2;  // Expand a range-compressed vector
+}
+
+void C8E2f_bumpSurf(float2 normalMapTexCoord : TEXCOORD0,
+                    float3 lightDir          : TEXCOORD1,
+
+                out float4 color : COLOR,
+
+            uniform sampler2D   normalMap,
+            uniform samplerCUBE normalizeCube)
+{
+  // Normalizes light vector with normalization cube map
+  float3 lightTex = texCUBE(normalizeCube, lightDir).xyz;
+  float3 light = expand(lightTex);
+  // Sample and expand the normal map texture	
+  float3 normalTex = tex2D(normalMap, normalMapTexCoord).xyz;
+  float3 normal = expand(normalTex);
+  // Diffuse lighting
+  color = dot(normal,light);
+}
+

@@ -1,0 +1,43 @@
+// specSurfNormalize is a modified version of C8E4f_specSurf from "The
+// Cg Tutorial" (Addison-Wesley, ISBN 0321194969) by Randima Fernando
+// and Mark J. Kilgard
+
+#ifndef EXPAND_DEFINED  // Expecting C8E4f_specSurf.cg to define expand
+float3 expand(float3 v) { return (v-0.5)*2; }
+#define EXPAND_DEFINED
+#endif
+
+void specSurfSelfShadow(float2 normalMapTexCoord : TEXCOORD0,
+                        float3 lightDirection    : TEXCOORD1,
+                        float3 halfAngle         : TEXCOORD2,
+
+                    out float4 color : COLOR,
+
+                uniform float     ambient,
+                uniform float     shininessExponent,
+                uniform float     opacity,
+                uniform float3    LMd, // Light-material diffuse
+                uniform float3    LMs, // Light-material specular
+                uniform sampler2D normalMap)
+{
+  // Fetch and expand range-compressed normal
+  half3 normalTex = tex2D(normalMap, normalMapTexCoord).xyz;
+  half3 normal = expand(normalTex);
+
+  // Normalize interpolated vectors, half-precision is adequate
+  if (lightDirection.z > 0) {
+    half3 normLightDir = normalize(lightDirection);
+    half3 normHalfAngle = normalize(halfAngle);
+ 
+    // Compute diffuse and specular lighting contributions
+    half NdotL = dot(normal, normLightDir);
+    half NdotH = dot(normal, normHalfAngle);
+    half diffuse = saturate(NdotL);
+    half specular = (NdotL >= 0) ? pow(saturate(NdotH), shininessExponent) : 0;
+
+    color.rgb = LMd*(ambient+diffuse) + LMs*specular;
+  } else {
+    color.rgb = LMd*ambient;
+  }
+  color.a = opacity;
+}

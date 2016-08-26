@@ -1,0 +1,137 @@
+
+/* CgFX 1.4 file for bumpdemo effect. */
+
+// specSurf is a version of C8E4f_specSurf from "The Cg Tutorial"
+// (Addison-Wesley, ISBN 0321194969) by Randima Fernando and Mark
+// J. Kilgard
+
+float3 expand(float3 v) { return (v-0.5)*2; }
+
+void dx_specSurf( float2 normalMapTexCoord : TEXCOORD0,
+                  float3 lightDirection    : TEXCOORD1,
+                  float3 halfAngle         : TEXCOORD2,
+
+                  out float4 color : COLOR,
+
+                  uniform float  ambient,
+                  uniform float4 LMd, // Light-material diffuse
+                  uniform float4 LMs, // Light-material specular
+                  uniform sampler2D   normalMap
+               )
+{
+      float3 normalTex = tex2D(normalMap, normalMapTexCoord).xyz;
+      float3 normal = expand(normalTex) * float3( 1.0f, 1.0f, -1.0f ); // Make the bricks stick out by negating the Z
+     
+      float3 normLightDir = normalize( lightDirection );
+      float3 normHalfAngle = normalize( halfAngle );
+
+      float diffuse = saturate(dot(normal, normLightDir));
+      float specular = saturate(dot(normal, normHalfAngle));
+      
+      color = LMd * (ambient + diffuse) + LMs * pow( specular, 8 );
+}
+
+// torus is a version of C8E6v_torus from "The Cg Tutorial"
+// (Addison-Wesley, ISBN 0321194969) by Randima Fernando and Mark
+// J. Kilgard
+
+void torus(float2 parametric : POSITION,
+
+       out float4 position       : POSITION,
+       out float2 oTexCoord      : TEXCOORD0,
+       out float3 lightDirection : TEXCOORD1,
+       out float3 halfAngle      : TEXCOORD2,
+
+   uniform float3 lightPosition,  // Object-space
+   uniform float3 eyePosition,    // Object-space
+   uniform float4x4 modelViewProj,
+   uniform float2 torusInfo)
+{
+  const float pi2 = 6.28318530;  // 2 times Pi
+  // Stetch texture coordinates counterclockwise
+  // over torus to repeat normal map in 6 by 2 pattern
+  float M = torusInfo[0];
+  float N = torusInfo[1];
+  oTexCoord = parametric * float2(-6, 2);
+  // Compute torus position from its parameteric equation
+  float cosS, sinS;
+  sincos(pi2 * parametric.x, sinS, cosS);
+  float cosT, sinT;
+  sincos(pi2 * parametric.y, sinT, cosT);
+  float3 torusPosition = float3((M + N * cosT) * cosS,
+                                (M + N * cosT) * sinS,
+                                N * sinT);
+  position = mul(modelViewProj, float4(torusPosition, 1));
+  // Compute per-vertex rotation matrix
+  float3 dPds = float3(-sinS*(M+N*cosT), cosS*(M+N*cosT), 0);
+  float3 norm_dPds = normalize(dPds);
+  float3 normal = float3(cosS * cosT, sinS * cosT, sinT);
+  float3 dPdt = cross(normal, norm_dPds);
+  float3x3 rotation = float3x3(norm_dPds,
+                               dPdt,
+                               normal);
+  // Rotate object-space vectors to texture space
+  float3 eyeDirection = eyePosition - torusPosition;
+  lightDirection = lightPosition - torusPosition;
+  lightDirection = mul(rotation, lightDirection);
+  eyeDirection = mul(rotation, eyeDirection);
+  halfAngle = normalize(normalize(lightDirection) +
+                        normalize(eyeDirection));
+}
+
+float4x4 ModelViewProj : ModelViewProjection;
+float OuterRadius = 6;
+float InnerRadius = 2;
+float3 LightPosition = { -8, 0, 15 };
+float3 EyePosition = { 0, 0, 18 };
+
+float Ambient<
+  string type = "ambient";
+  float minValue = 0.0;
+  float maxValue = 1.0;
+> = 0.3;
+
+float3 DiffuseMaterial<
+  string type = "color";
+  float3 minValue = float3(0,0,0);
+  float3 maxValue = float3(1,1,1);
+> = { 0.9, 0.6, 0.3 };
+
+float3 SpecularMaterial<
+  string type = "color";
+  float3 minValue = float3(0,0,0);
+  float3 maxValue = float3(1,1,1);
+> = { 1, 1, 1 };
+
+float3 LightColor<
+  string type = "color";
+  float3 minValue = float3(0,0,0);
+  float3 maxValue = float3(1,1,1);
+> = { 1.0, 0.9, 0.9 };
+
+sampler2D normalMap = sampler_state {
+  minFilter = LinearMipMapLinear;
+  magFilter = Linear;
+  
+  AddressU = Mirror;
+  AddressV = Mirror;
+};
+
+// Because bumpdemo.c picks the first valid technique, list techniques
+// in relative order of preference...
+
+technique bumpdemo {
+  pass {
+    FragmentProgram =
+      compile latest dx_specSurf(Ambient,
+                              float4(DiffuseMaterial  * LightColor, 1),
+                              float4(SpecularMaterial * LightColor, 1),
+                              normalMap);
+    VertexProgram =
+      compile latest torus(LightPosition,
+                           EyePosition,
+                           ModelViewProj,
+                           float2(OuterRadius, InnerRadius));
+  }
+}
+

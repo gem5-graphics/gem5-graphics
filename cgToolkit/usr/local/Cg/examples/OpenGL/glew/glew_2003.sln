@@ -1,0 +1,45 @@
+Microsoft Visual Studio Solution File, Format Version 8.00
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "glew", ".\glew_2003.vcproj", "{5DEDFF28-5896-995B-3FC5-3A0907F797DB}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "glewlib", ".\glewlib_2003.vcproj", "{05FFADE4-2B93-C899-00CA-AA717CA7A077}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "visualinfo", ".\visualinfo_2003.vcproj", "{0D2B42D5-BD06-2780-4005-3745FDCC160F}"
+	ProjectSection(ProjectDependencies) = postProject
+		{05FFADE4-2B93-C899-00CA-AA717CA7A077} = {05FFADE4-2B93-C899-00CA-AA717CA7A077}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "glewinfo", ".\glewinfo_2003.vcproj", "{71A7E3A7-68AA-BC17-5CB8-260C288D788B}"
+	ProjectSection(ProjectDependencies) = postProject
+		{05FFADE4-2B93-C899-00CA-AA717CA7A077} = {05FFADE4-2B93-C899-00CA-AA717CA7A077}
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfiguration) = preSolution
+		Debug = Debug
+		Release = Release
+	EndGlobalSection
+	GlobalSection(ProjectDependencies) = postSolution
+	EndGlobalSection
+	GlobalSection(ProjectConfiguration) = postSolution
+		{5DEDFF28-5896-995B-3FC5-3A0907F797DB}.Debug.Build.0 = Debug|Win32
+		{5DEDFF28-5896-995B-3FC5-3A0907F797DB}.Debug.ActiveCfg = Debug|Win32
+		{5DEDFF28-5896-995B-3FC5-3A0907F797DB}.Release.Build.0 = Release|Win32
+		{5DEDFF28-5896-995B-3FC5-3A0907F797DB}.Release.ActiveCfg = Release|Win32
+		{05FFADE4-2B93-C899-00CA-AA717CA7A077}.Debug.Build.0 = Debug|Win32
+		{05FFADE4-2B93-C899-00CA-AA717CA7A077}.Debug.ActiveCfg = Debug|Win32
+		{05FFADE4-2B93-C899-00CA-AA717CA7A077}.Release.Build.0 = Release|Win32
+		{05FFADE4-2B93-C899-00CA-AA717CA7A077}.Release.ActiveCfg = Release|Win32
+		{0D2B42D5-BD06-2780-4005-3745FDCC160F}.Debug.Build.0 = Debug|Win32
+		{0D2B42D5-BD06-2780-4005-3745FDCC160F}.Debug.ActiveCfg = Debug|Win32
+		{0D2B42D5-BD06-2780-4005-3745FDCC160F}.Release.Build.0 = Release|Win32
+		{0D2B42D5-BD06-2780-4005-3745FDCC160F}.Release.ActiveCfg = Release|Win32
+		{71A7E3A7-68AA-BC17-5CB8-260C288D788B}.Debug.Build.0 = Debug|Win32
+		{71A7E3A7-68AA-BC17-5CB8-260C288D788B}.Debug.ActiveCfg = Debug|Win32
+		{71A7E3A7-68AA-BC17-5CB8-260C288D788B}.Release.Build.0 = Release|Win32
+		{71A7E3A7-68AA-BC17-5CB8-260C288D788B}.Release.ActiveCfg = Release|Win32
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+	EndGlobalSection
+	GlobalSection(ExtensibilityAddIns) = postSolution
+	EndGlobalSection
+EndGlobal

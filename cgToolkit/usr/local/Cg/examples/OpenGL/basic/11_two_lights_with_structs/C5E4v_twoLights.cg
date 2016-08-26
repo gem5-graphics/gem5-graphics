@@ -1,0 +1,81 @@
+// This is C5E4v_twoLights from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See pages 128-132.
+
+// From page 128
+struct Material {
+  float3 Ke;
+  float3 Ka;
+  float3 Kd;
+  float3 Ks;
+  float shininess;
+};
+
+// From page 129
+struct Light {
+  float3 position;
+  float3 color;
+};
+
+// From page 131
+void C5E5_computeLighting(Light  light, 
+                          float3 P,
+                          float3 N,
+                          float3 eyePosition,
+                          float  shininess,
+
+                      out float3 diffuseResult,
+                      out float3 specularResult) 
+{
+  // Compute the diffuse lighting
+  float3 L = normalize(light.position - P);
+  float diffuseLight = max(dot(N, L), 0);
+  diffuseResult = light.color * diffuseLight;
+
+  // Compute the specular lighting
+  float3 V = normalize(eyePosition - P);
+  float3 H = normalize(L + V);
+  float specularLight = pow(max(dot(N, H), 0), 
+                            shininess);
+  if (diffuseLight <= 0) specularLight = 0;
+  specularResult = light.color * specularLight;
+}
+
+// From page 132 (corrected)
+void C5E4v_twoLights(float4 position : POSITION,
+                     float3 normal   : NORMAL,
+
+                 out float4 oPosition : POSITION,
+                 out float4 color     : COLOR,
+
+             uniform float4x4 modelViewProj,
+             uniform float3   eyePosition,
+             uniform float3   globalAmbient,
+             uniform Light    lights[2],
+             uniform Material material)
+{
+  oPosition = mul(modelViewProj, position);
+
+  // Calculate emissive and ambient terms
+  float3 emissive = material.Ke;
+  float3 ambient = material.Ka * globalAmbient;
+
+  // Loop over diffuse and specular contributions for each light
+  float3 diffuseLight;
+  float3 specularLight;
+  float3 diffuseSum  = 0;
+  float3 specularSum = 0;
+  for (int i = 0; i < 2; i++) {
+    C5E5_computeLighting(lights[i], position.xyz, normal, 
+                         eyePosition, material.shininess,
+                         diffuseLight, specularLight);
+    diffuseSum += diffuseLight;
+    specularSum += specularLight;
+  }
+
+  // Now modulate diffuse and specular by material color
+  float3 diffuse = material.Kd * diffuseSum;
+  float3 specular = material.Ks * specularSum;
+
+  color.xyz = emissive + ambient + diffuse + specular;
+  color.w = 1;
+}

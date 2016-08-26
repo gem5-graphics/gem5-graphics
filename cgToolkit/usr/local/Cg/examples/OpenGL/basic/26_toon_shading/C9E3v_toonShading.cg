@@ -1,0 +1,32 @@
+// This is C9E3v_toonShading from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 247.
+
+void C9E3v_toonShading(float4 position : POSITION,
+                       float3 normal   : NORMAL,
+
+                   out float4 oPosition   : POSITION,
+                   out float diffuseLight : TEXCOORD0,
+                   out float specularLight: TEXCOORD1,
+                   out float edge         : TEXCOORD2,
+   
+               uniform float3 lightPosition,
+               uniform float3 eyePosition,
+               uniform float  shininess,
+               uniform float4x4 modelViewProj)
+{
+  oPosition = mul(modelViewProj, position);
+    
+  // Calculate diffuse lighting
+  float3 N = normalize(normal);
+  float3 L = normalize(lightPosition - position.xyz);
+  diffuseLight = max(dot(N, L), 0);
+ 
+  // Calculate specular lighting
+  float3 V = normalize(eyePosition - position.xyz);
+  float3 H = normalize(L + V);
+  specularLight = pow(max(dot(N, H), 0), shininess);
+  if (diffuseLight<=0) specularLight = 0;
+
+  // Perform edge detection
+  edge = max(dot(N, V), 0);
+}

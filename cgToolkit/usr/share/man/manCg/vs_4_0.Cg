@@ -1,0 +1,225 @@
+.de Sh \" Subsection heading
+.br
+.if t .Sp
+.ne 5
+.PP
+\fB\\$1\fR
+.PP
+..
+.de Sp \" Vertical space (when we can't use .PP)
+.if t .sp .5v
+.if n .sp
+..
+.de Vb \" Begin verbatim text
+.ft CW
+.nf
+.ne \\$1
+..
+.de Ve \" End verbatim text
+.ft R
+.fi
+..
+.tr \(*W-
+.ds C+ C\v'-.1v'\h'-1p'\s-2+\h'-1p'+\s0\v'.1v'\h'-1p'
+.ie n \{\
+.    ds -- \(*W-
+.    ds PI pi
+.    if (\n(.H=4u)&(1m=24u) .ds -- \(*W\h'-12u'\(*W\h'-12u'-\" diablo 10 pitch
+.    if (\n(.H=4u)&(1m=20u) .ds -- \(*W\h'-12u'\(*W\h'-8u'-\"  diablo 12 pitch
+.    ds L" ""
+.    ds R" ""
+.    ds C` ""
+.    ds C' ""
+'br\}
+.el\{\
+.    ds -- \|\(em\|
+.    ds PI \(*p
+.    ds L" ``
+.    ds R" ''
+'br\}
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.ie \nF \{\
+.    de IX
+.    tm Index:\\$1\t\\n%\t"\\$2"
+..
+.    nr % 0
+.    rr F
+.\}
+.el \{\
+.    de IX
+..
+.\}
+.    \" fudge factors for nroff and troff
+.if n \{\
+.    ds #H 0
+.    ds #V .8m
+.    ds #F .3m
+.    ds #[ \f1
+.    ds #] \fP
+.\}
+.if t \{\
+.    ds #H ((1u-(\\\\n(.fu%2u))*.13m)
+.    ds #V .6m
+.    ds #F 0
+.    ds #[ \&
+.    ds #] \&
+.\}
+.    \" simple accents for nroff and troff
+.if n \{\
+.    ds ' \&
+.    ds ` \&
+.    ds ^ \&
+.    ds , \&
+.    ds ~ ~
+.    ds /
+.\}
+.if t \{\
+.    ds ' \\k:\h'-(\\n(.wu*8/10-\*(#H)'\'\h"|\\n:u"
+.    ds ` \\k:\h'-(\\n(.wu*8/10-\*(#H)'\`\h'|\\n:u'
+.    ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'^\h'|\\n:u'
+.    ds , \\k:\h'-(\\n(.wu*8/10)',\h'|\\n:u'
+.    ds ~ \\k:\h'-(\\n(.wu-\*(#H-.1m)'~\h'|\\n:u'
+.    ds / \\k:\h'-(\\n(.wu*8/10-\*(#H)'\z\(sl\h'|\\n:u'
+.\}
+.    \" troff and (daisy-wheel) nroff accents
+.ds : \\k:\h'-(\\n(.wu*8/10-\*(#H+.1m+\*(#F)'\v'-\*(#V'\z.\h'.2m+\*(#F'.\h'|\\n:u'\v'\*(#V'
+.ds 8 \h'\*(#H'\(*b\h'-\*(#H'
+.ds o \\k:\h'-(\\n(.wu+\w'\(de'u-\*(#H)/2u'\v'-.3n'\*(#[\z\(de\v'.3n'\h'|\\n:u'\*(#]
+.ds d- \h'\*(#H'\(pd\h'-\w'~'u'\v'-.25m'\f2\(hy\fP\v'.25m'\h'-\*(#H'
+.ds D- D\\k:\h'-\w'D'u'\v'-.11m'\z\(hy\v'.11m'\h'|\\n:u'
+.ds th \*(#[\v'.3m'\s+1I\s-1\v'-.3m'\h'-(\w'I'u*2/3)'\s-1o\s+1\*(#]
+.ds Th \*(#[\s+2I\s-2\h'-\w'I'u*3/5'\v'-.3m'o\v'.3m'\*(#]
+.ds ae a\h'-(\w'a'u*4/10)'e
+.ds Ae A\h'-(\w'A'u*4/10)'E
+.    \" corrections for vroff
+.if v .ds ~ \\k:\h'-(\\n(.wu*9/10-\*(#H)'\s-2\u~\d\s+2\h'|\\n:u'
+.if v .ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'\v'-.4m'^\v'.4m'\h'|\\n:u'
+.    \" for low resolution devices (crt and lpr)
+.if \n(.H>23 .if \n(.V>19 \
+\{\
+.    ds : e
+.    ds 8 ss
+.    ds o a
+.    ds d- d\h'-1'\(ga
+.    ds D- D\h'-1'\(hy
+.    ds th \o'bp'
+.    ds Th \o'LP'
+.    ds ae ae
+.    ds Ae AE
+.\}
+.rm #[ #] #H #V #F C
+.IX Title "VS_4_0 Cg"
+.TH VS_4_0 Cg "Cg Toolkit 3.0" "perl v5.10.0" "Cg Profiles"
+.if n .ad l
+.nh
+.SH "NAME"
+\&\fBvs_4_0\fR \- Translation profile to DirectX 10's High Level Shader Language for vertex shaders.
+.SH "SYNOPSIS"
+.IX Header "SYNOPSIS"
+.Vb 1
+\&  vs_4_0
+.Ve
+.SH "DESCRIPTION"
+.IX Header "DESCRIPTION"
+This Direct3D profile translates Cg into DirectX 10's High Level Shader
+Language (\s-1HLSL10\s0) for vertex shaders.
+.PP
+The compiler output for this profile conforms to the textual high-level
+language defined by DirectX 10's High Level Shading Language.
+.PP
+The limitations of the \fBvs_4_0\fR profile depend on what \s-1HLSL\s0 profile to
+which the translated \s-1HLSL\s0 code is compiled.
+.SH "3D API DEPENDENCIES"
+.IX Header "3D API DEPENDENCIES"
+Requires Direct3D 10 support.
+.PP
+.Vb 1
+\&  http://msdn.microsoft.com/en\-us/library/bb509657.aspx
+.Ve
+.SH "PROFILE OPTIONS"
+.IX Header "PROFILE OPTIONS"
+\&\-po pad16
+  This will add padding variables to the cbuffer declarations to match
+  the 16 byte padding the \s-1GP4\s0 OpenGL profiles use. This makes sure
+  each variable in the cbuffer uses an entire float4 constant instead
+  of the tight packing \s-1HLSL10\s0 normally uses.
+.SH "DATA TYPES"
+.IX Header "DATA TYPES"
+In general, the Cg data types translate to the \s-1HLSL10\s0 data types with the
+same name.
+.IP "float, half, fixed" 8
+.IX Item "float, half, fixed"
+These numeric data types all correspond to standard \s-1IEEE\s0 754 single-precision
+floating-point encoding with a sign bit, 23 mantissa bits, and 8 exponent
+bits (biased by 128), sometimes called \fIs10e5\fR.
+.IP "int" 8
+.IX Item "int"
+This integral data type operates like an integer over the \-2^24 to 2^24 range.
+The result of int by int division is an integer (rounding down) to match C.
+.SH "SEMANTICS"
+.IX Header "SEMANTICS"
+.Sh "\s-1INPUT\s0 \s-1SEMANTICS\s0"
+.IX Subsection "INPUT SEMANTICS"
+.Vb 1
+\&  Binding Semantics Name           Corresponding Data
+\&  
+\&  POSITION                         Object\-space position (SV_Position)
+\&  
+\&  NORMAL                           Object\-space normal
+\&
+\&  COLOR                            Primary color (float4) (SV_Target)
+\&  COLOR0
+\&  DIFFUSE
+\&  
+\&  COLOR1                           Secondary color (float4)
+\&  SPECULAR
+\&  
+\&  FOGCOORD                         Fog coordinate
+\&
+\&  TEXCOORD#                        Texture coordinate set #
+.Ve
+.Sh "\s-1UNIFORM\s0 \s-1INPUT\s0 \s-1SEMANTICS\s0"
+.IX Subsection "UNIFORM INPUT SEMANTICS"
+Sixteen texture units are supported:
+.PP
+.Vb 1
+\&  Binding Semantic Name            Corresponding Data
+\&
+\&  TEXUNIT0                         Texture unit 0
+\&  TEXUNIT1                         Texture unit 1
+\&  ...
+\&  TEXUNIT15                        Texture unit 15
+.Ve
+.Sh "\s-1OUTPUT\s0 \s-1SEMANTICS\s0"
+.IX Subsection "OUTPUT SEMANTICS"
+.Vb 1
+\&  Binding Semantics Name        Corresponding Data
+\&    
+\&  POSITION, HPOS                Output position
+\&        
+\&  PSIZE, PSIZ                   Output point size
+\&         
+\&  FOG, FOGC                     Output fog coordinate
+\&             
+\&  COLOR0, COL0                  Output primary color 
+\&                    
+\&  COLOR1, COL1                  Output secondary color
+\&                        
+\&  BCOL0                         Output backface primary color
+\&                            
+\&  BCOL1                         Output backface secondary color
+\&                                
+\&  TEXCOORD0\-TEXCOORD7,          Output texture coordinates
+\&  TEX0\-TEX7
+\&                                      
+\&  CLP0\-CL5                      Output Clip distances
+.Ve
+.SH "STANDARD LIBRARY ISSUES"
+.IX Header "STANDARD LIBRARY ISSUES"
+This profile is limited to standard library support available in \s-1HLSL10\s0 for vertex shaders.
+In general, the Cg and \s-1HLSL10\s0 standard libraries are very similar.
+.SH "SEE ALSO"
+.IX Header "SEE ALSO"
+gs_4_0,
+ps_4_0

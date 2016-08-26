@@ -1,0 +1,99 @@
+
+/* CgFX 1.4 file for bumpdemo effect. */
+
+/* Includes verbatim shaders from The Cg Tutorial (ISBN: 0321194969). */
+#include "C8E4f_specSurf.cg"  /* page 209 */
+#include "C8E6v_torus.cg"     /* page 223 */
+
+float4x4 ModelViewProj : ModelViewProjection;
+float OuterRadius = 6;
+float InnerRadius = 2;
+float3 LightPosition = { -8, 0, 15 };
+float3 EyePosition = { 0, 0, 18 };
+
+float Ambient<
+  string type = "ambient";
+  float minValue = 0.0;
+  float maxValue = 1.0;
+> = 0.3;
+
+float3 DiffuseMaterial<
+  string type = "color";
+  float3 minValue = float3(0,0,0);
+  float3 maxValue = float3(1,1,1);
+> = { 0.9, 0.6, 0.3 };
+
+float3 SpecularMaterial<
+  string type = "color";
+  float3 minValue = float3(0,0,0);
+  float3 maxValue = float3(1,1,1);
+> = { 1, 1, 1 };
+
+float3 LightColor<
+  string type = "color";
+  float3 minValue = float3(0,0,0);
+  float3 maxValue = float3(1,1,1);
+> = { 1.0, 0.9, 0.9 };
+
+sampler2D normalMap = sampler_state {
+  generateMipMap = true;
+  minFilter = LinearMipMapLinear;
+  magFilter = Linear;
+};
+
+samplerCUBE normalizeCube = sampler_state {
+  minFilter = Linear;
+  magFilter = Linear;
+  wrapS = ClampToEdge;
+  wrapT = ClampToEdge;
+};
+
+// Because bumpdemo.c picks the first valid technique, list techniques
+// in relative order of preference...
+
+vertexshader Torus[6] =
+{
+    compile gp5vp  C8E6v_torus( LightPosition, EyePosition, ModelViewProj, float2( OuterRadius, InnerRadius ) ),
+
+    compile gp4vp  C8E6v_torus( LightPosition, EyePosition, ModelViewProj, float2( OuterRadius, InnerRadius ) ),
+
+    compile vp40   C8E6v_torus( LightPosition, EyePosition, ModelViewProj, float2( OuterRadius, InnerRadius ) ),
+
+    compile vp30   C8E6v_torus( LightPosition, EyePosition, ModelViewProj, float2( OuterRadius, InnerRadius ) ),
+
+    compile arbvp1 C8E6v_torus( LightPosition, EyePosition, ModelViewProj, float2( OuterRadius, InnerRadius ) ),
+
+    compile vp20   C8E6v_torus( LightPosition, EyePosition, ModelViewProj, float2( OuterRadius, InnerRadius ) )
+};
+
+pixelshader SpecSurf[6] =
+{
+    compile gp5fp  C8E4f_specSurf( Ambient, float4(DiffuseMaterial  * LightColor, 1), float4(SpecularMaterial * LightColor, 1),
+                                   normalMap, normalizeCube, normalizeCube ),
+
+    compile gp4fp  C8E4f_specSurf( Ambient, float4(DiffuseMaterial  * LightColor, 1), float4(SpecularMaterial * LightColor, 1),
+                                   normalMap, normalizeCube, normalizeCube ),
+
+    compile fp40   C8E4f_specSurf( Ambient, float4(DiffuseMaterial  * LightColor, 1), float4(SpecularMaterial * LightColor, 1),
+                                   normalMap, normalizeCube, normalizeCube ),
+
+    compile fp30   C8E4f_specSurf( Ambient, float4(DiffuseMaterial  * LightColor, 1), float4(SpecularMaterial * LightColor, 1),
+                                   normalMap, normalizeCube, normalizeCube ),
+
+    compile arbfp1 C8E4f_specSurf( Ambient, float4(DiffuseMaterial  * LightColor, 1), float4(SpecularMaterial * LightColor, 1),
+                                   normalMap, normalizeCube, normalizeCube ),
+
+    compile fp20   C8E4f_specSurf( Ambient, float4(DiffuseMaterial  * LightColor, 1), float4(SpecularMaterial * LightColor, 1),
+                                   normalMap, normalizeCube, normalizeCube )
+};
+
+int select = 0;
+
+technique bumpdemo
+{
+    pass
+    {
+        VertexProgram   = (Torus[select]);
+        FragmentProgram = (SpecSurf[select]);
+    }
+}

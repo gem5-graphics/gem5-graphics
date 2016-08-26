@@ -1,0 +1,75 @@
+#
+# Additional compilation flags may be passed via CFLAGS, CXXFLAGS and CLINKFLAGS
+#
+# Linux:
+#   make CFLAGS=-m32
+#   make CFLAGS=-m64
+#
+# Ubuntu 9.04 64-bit
+#   make CFLAGS=-m32 CXXFLAGS=-m32 CLINKFLAGS="-L/lib32 -L/usr/lib32 -Wl,-rpath-link,/lib32:/usr/lib32"
+#
+# OSX:
+#   make 'CFLAGS=-arch ppc'    'CXXFLAGS=-arch ppc'
+#   make 'CFLAGS=-arch i386'   'CXXFLAGS=-arch i386'
+#   make 'CFLAGS=-arch x86_64' 'CXXFLAGS=-arch x86_64'
+
+UNAME := $(shell uname)
+
+C_SOURCE   := traceGL.c
+OBJ        := $(C_SOURCE:.c=.o) 
+BIN        := libGL.so.1
+LINKFLAGS  += -L. -ltrace
+
+CC         =  gcc
+C_FLAGS    += -Wall
+
+ifdef CG_INC_PATH
+  C_FLAGS  += -I"$(CG_INC_PATH)"
+endif
+
+ifeq ($(UNAME), Darwin)
+  BIN = libGL.dylib
+  LINKFLAGS  += -dynamiclib
+else
+  LINKFLAGS  += -shared
+  ifeq ($(findstring CYGWIN, $(UNAME)), CYGWIN)
+    BIN = opengl32.dll
+    LINKFLAGS  += traceGL.def
+    C_FLAGS    += -D_WIN32
+    C_FLAGS    += -mno-cygwin
+    C_FLAGS    += -I"C:\Program Files\NVIDIA Corporation\Cg\include"
+    LINKFLAGS  += -mno-cygwin
+    C_SOURCE   += traceWGL.c
+    OBJ        := $(C_SOURCE:.c=.o)
+  else
+    ifeq ($(UNAME), SunOS)
+      C_FLAGS    += -fPIC
+      C_SOURCE   += traceGLX.c
+      OBJ        := $(C_SOURCE:.c=.o)
+    else
+      C_FLAGS    += -fPIC
+      LINKFLAGS  += -ldl
+      C_SOURCE   += traceGLX.c
+      OBJ        := $(C_SOURCE:.c=.o)
+    endif
+  endif
+endif
+
+override CFLAGS := $(CFLAGS) $(C_FLAGS)
+
+all: traceGL
+
+traceGL: $(OBJ)
+	$(CC) $(CFLAGS) $(OBJ) -o $(BIN) $(LINKFLAGS) $(CLINKFLAGS)
+
+test:
+
+run: all
+
+clean:
+	$(RM) $(BIN) $(OBJ) 
+
+clobber: clean
+	$(RM) *.bak *.o *~
+
+.PHONY: all test run clean clobber

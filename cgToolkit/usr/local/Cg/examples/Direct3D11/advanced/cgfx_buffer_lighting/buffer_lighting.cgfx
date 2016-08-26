@@ -1,0 +1,166 @@
+
+#define MAX_LIGHTS 2
+
+struct VS_INPUT
+{
+    float3 posObj  : POSITION;
+};
+
+struct VS_OUTPUT
+{
+    float4 oPos       : POSITION;
+    float3 surfNormal : COLOR;
+    float3 eyePos     : TEXCOORD0;
+};
+
+struct Material
+{
+    float4 ambient;
+    float4 diffuse;
+    float4 specular;
+    float4 shine;
+} cbuffer0_Material : BUFFER[0];
+
+struct Transform
+{
+    float4x4 modelview;
+    float4x4 inverse_modelview;
+    float4x4 modelview_projection;
+} cbuffer1_Transform : BUFFER[1];
+
+struct LightSourceStatic
+{      
+    bool enabled;
+    float3 ambient;
+    float3 diffuse;
+    float3 specular;
+    float k0, k1, k2;    
+};
+
+// Light data that is mostly static
+struct LightSetStatic
+{
+    float3 global_ambient;    
+    LightSourceStatic source[MAX_LIGHTS];
+} cbuffer2_LightSetStatic : BUFFER[2];
+
+struct LightSourcePerView
+{
+    float4 position;
+};
+
+// Light data that changes as the view changes
+struct LightSetPerView
+{
+    LightSourcePerView source[MAX_LIGHTS];
+} cbuffer3_LightSetPerView : BUFFER[3];
+
+
+
+// cbuffer Material : register(b0)
+#define Ambient                 cbuffer0_Material.ambient
+#define Diffuse                 cbuffer0_Material.diffuse
+#define Specular                cbuffer0_Material.specular
+#define Shine                   cbuffer0_Material.shine
+
+// cbuffer Transform : register(b1)
+#define Modelview               cbuffer1_Transform.modelview
+#define InverseModelview        cbuffer1_Transform.inverse_modelview
+#define ModelviewProjection     cbuffer1_Transform.modelview_projection
+
+// cbuffer LightSetStatic : register(b2)
+#define GlobalAmbient           cbuffer2_LightSetStatic.global_ambient
+#define LightStaticSource       cbuffer2_LightSetStatic.source
+
+// cbuffer LightSetPerView : register(b3)
+#define LightViewSource         cbuffer3_LightSetPerView.source
+
+
+
+// Compute the squared distance a direction vector covers.
+float lengthSquared( float3 v )
+{
+    return dot( v, v );
+}
+
+VS_OUTPUT vmain( VS_INPUT vInput )
+{
+    VS_OUTPUT vOutput;
+
+    float4 vertex_eye = mul( Modelview, float4( vInput.posObj, 1.0f ) );
+    float3 position_eye = vertex_eye.xyz / vertex_eye.w;
+    float3 normObj = vInput.posObj;
+    float3 surface_normal = normalize( mul( float3x3( InverseModelview ), normObj ) );
+    
+    vOutput.oPos = mul( ModelviewProjection, float4( vInput.posObj, 1.0f ) );
+    vOutput.surfNormal = surface_normal;
+    vOutput.eyePos = position_eye;
+   
+    return vOutput;
+}
+
+float4 pmain( VS_OUTPUT pInput ) : COLOR
+{
+    float3 totalRadiance = GlobalAmbient;
+
+    for( int i = 0; i < MAX_LIGHTS; ++i )
+    {
+        const LightSourceStatic source = LightStaticSource[i];
+        const float4 light_position    = LightViewSource[i].position;
+        
+        if( source.enabled )
+        {
+            float3 light_vector;
+            float attenuation;
+
+            if( light_position.w != 0.0 )
+            {
+                // Positional (finite) light
+                light_vector = light_position.xyz / light_position.w - pInput.eyePos;
+                
+                attenuation = 1.0 / ( source.k0.x +
+                                      source.k1.x * length( light_vector ) +
+                                      source.k2.x * lengthSquared( light_vector ) );                
+            }
+            else
+            {
+                // Direction (infinite) light
+                light_vector = light_position.xyz;
+                attenuation = 1.0;
+            }
+                    
+            float3 light_direction = normalize( light_vector.xyz );
+            float3 view_direction  = normalize( -pInput.eyePos.xyz );
+            float3 half_angle_direction = normalize( view_direction + light_direction );
+
+            float LdotN   = dot( light_direction, pInput.surfNormal );
+            float diffuse = max( 0.0, LdotN );
+            
+            float HdotN    = dot( half_angle_direction, pInput.surfNormal );
+            float specular = ( LdotN > 0 ) ? pow( max( 0.0, HdotN ), Shine.x ) : 0;
+
+            float3 lighting = Ambient.rgb * source.ambient.rgb +
+                              Diffuse.rgb * diffuse.rrr * source.diffuse.rgb +
+                              Specular.rgb * specular.rrr * source.specular.rgb;
+
+            float3 radiance = attenuation * lighting;
+            
+            totalRadiance += radiance;
+        }
+    }
+    
+    return float4( totalRadiance, Diffuse.a );
+}
+
+technique cgfx_buffer_lighting
+{
+    pass
+    {
+        AlphaBlendEnable = false;
+        CullMode         = None;
+        FillMode         = Solid;
+      
+        VertexProgram   = compile vs_5_0 vmain();
+        FragmentProgram = compile ps_5_0 pmain();
+    }
+}

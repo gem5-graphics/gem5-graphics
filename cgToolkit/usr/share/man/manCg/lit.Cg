@@ -1,0 +1,182 @@
+.de Sh \" Subsection heading
+.br
+.if t .Sp
+.ne 5
+.PP
+\fB\\$1\fR
+.PP
+..
+.de Sp \" Vertical space (when we can't use .PP)
+.if t .sp .5v
+.if n .sp
+..
+.de Vb \" Begin verbatim text
+.ft CW
+.nf
+.ne \\$1
+..
+.de Ve \" End verbatim text
+.ft R
+.fi
+..
+.tr \(*W-
+.ds C+ C\v'-.1v'\h'-1p'\s-2+\h'-1p'+\s0\v'.1v'\h'-1p'
+.ie n \{\
+.    ds -- \(*W-
+.    ds PI pi
+.    if (\n(.H=4u)&(1m=24u) .ds -- \(*W\h'-12u'\(*W\h'-12u'-\" diablo 10 pitch
+.    if (\n(.H=4u)&(1m=20u) .ds -- \(*W\h'-12u'\(*W\h'-8u'-\"  diablo 12 pitch
+.    ds L" ""
+.    ds R" ""
+.    ds C` ""
+.    ds C' ""
+'br\}
+.el\{\
+.    ds -- \|\(em\|
+.    ds PI \(*p
+.    ds L" ``
+.    ds R" ''
+'br\}
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.ie \nF \{\
+.    de IX
+.    tm Index:\\$1\t\\n%\t"\\$2"
+..
+.    nr % 0
+.    rr F
+.\}
+.el \{\
+.    de IX
+..
+.\}
+.    \" fudge factors for nroff and troff
+.if n \{\
+.    ds #H 0
+.    ds #V .8m
+.    ds #F .3m
+.    ds #[ \f1
+.    ds #] \fP
+.\}
+.if t \{\
+.    ds #H ((1u-(\\\\n(.fu%2u))*.13m)
+.    ds #V .6m
+.    ds #F 0
+.    ds #[ \&
+.    ds #] \&
+.\}
+.    \" simple accents for nroff and troff
+.if n \{\
+.    ds ' \&
+.    ds ` \&
+.    ds ^ \&
+.    ds , \&
+.    ds ~ ~
+.    ds /
+.\}
+.if t \{\
+.    ds ' \\k:\h'-(\\n(.wu*8/10-\*(#H)'\'\h"|\\n:u"
+.    ds ` \\k:\h'-(\\n(.wu*8/10-\*(#H)'\`\h'|\\n:u'
+.    ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'^\h'|\\n:u'
+.    ds , \\k:\h'-(\\n(.wu*8/10)',\h'|\\n:u'
+.    ds ~ \\k:\h'-(\\n(.wu-\*(#H-.1m)'~\h'|\\n:u'
+.    ds / \\k:\h'-(\\n(.wu*8/10-\*(#H)'\z\(sl\h'|\\n:u'
+.\}
+.    \" troff and (daisy-wheel) nroff accents
+.ds : \\k:\h'-(\\n(.wu*8/10-\*(#H+.1m+\*(#F)'\v'-\*(#V'\z.\h'.2m+\*(#F'.\h'|\\n:u'\v'\*(#V'
+.ds 8 \h'\*(#H'\(*b\h'-\*(#H'
+.ds o \\k:\h'-(\\n(.wu+\w'\(de'u-\*(#H)/2u'\v'-.3n'\*(#[\z\(de\v'.3n'\h'|\\n:u'\*(#]
+.ds d- \h'\*(#H'\(pd\h'-\w'~'u'\v'-.25m'\f2\(hy\fP\v'.25m'\h'-\*(#H'
+.ds D- D\\k:\h'-\w'D'u'\v'-.11m'\z\(hy\v'.11m'\h'|\\n:u'
+.ds th \*(#[\v'.3m'\s+1I\s-1\v'-.3m'\h'-(\w'I'u*2/3)'\s-1o\s+1\*(#]
+.ds Th \*(#[\s+2I\s-2\h'-\w'I'u*3/5'\v'-.3m'o\v'.3m'\*(#]
+.ds ae a\h'-(\w'a'u*4/10)'e
+.ds Ae A\h'-(\w'A'u*4/10)'E
+.    \" corrections for vroff
+.if v .ds ~ \\k:\h'-(\\n(.wu*9/10-\*(#H)'\s-2\u~\d\s+2\h'|\\n:u'
+.if v .ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'\v'-.4m'^\v'.4m'\h'|\\n:u'
+.    \" for low resolution devices (crt and lpr)
+.if \n(.H>23 .if \n(.V>19 \
+\{\
+.    ds : e
+.    ds 8 ss
+.    ds o a
+.    ds d- d\h'-1'\(ga
+.    ds D- D\h'-1'\(hy
+.    ds th \o'bp'
+.    ds Th \o'LP'
+.    ds ae ae
+.    ds Ae AE
+.\}
+.rm #[ #] #H #V #F C
+.IX Title "LIT Cg"
+.TH LIT Cg "Cg Toolkit 3.0" "perl v5.10.0" "Cg Standard Library"
+.if n .ad l
+.nh
+.SH "NAME"
+\&\fBlit\fR \- computes lighting coefficients for ambient, diffuse, and specular lighting contributions
+.SH "SYNOPSIS"
+.IX Header "SYNOPSIS"
+.Vb 1
+\&  float4 lit(float NdotL, float NdotH, float m);
+\&
+\&  half4 lit(half NdotL, half NdotH, half m);
+\&
+\&  fixed4 lit(fixed NdotL, fixed NdotH, fixed m);
+.Ve
+.SH "PARAMETERS"
+.IX Header "PARAMETERS"
+.IP "NdotL" 8
+.IX Item "NdotL"
+The dot product of a normalized surface normal and a normalized light
+vector.
+.IP "NdotH" 8
+.IX Item "NdotH"
+The dot product of a normalized surface normal and a normalized half-angle
+vector (for Blinn-style specular) where the half-angle vector is the sum
+of the normalized view vector and normalized light vector.  Alternatively,
+the dot product of a normlized light vector and a normalized view vector
+reflected by a normalized surface normal could be used (for Phong-style
+specular).
+.IP "m" 8
+.IX Item "m"
+A specular exponent, typically described as a measure of shininess.
+The larger the exponent, the shinier the specular highlight, the smaller
+the exponent, the duller the specular highlight.
+.SH "DESCRIPTION"
+.IX Header "DESCRIPTION"
+The \fBlit\fR function is a helper function useful to compute lighting
+coefficients for ambient, diffuse, and specular lighting contributions.
+The function efficiently maps to a native instruction for most GPUs.
+.PP
+\&\fBlit\fR returns a 4\-component vector arranged as follows:
+.IP "x" 8
+.IX Item "x"
+The ambient coefficient that is always 1.0.
+.IP "y" 8
+.IX Item "y"
+The diffuse coefficient that is zero if \fINdotL\fR is less than zero, and \fINdotL\fR otherwise.
+.IP "z" 8
+.IX Item "z"
+The specular coefficient that is zero if either \fINdotL\fR or \fINdotH\fR are less than zero, and 
+otherwise \fINdotH\fR raised to the power \fIm\fR.
+.IP "w" 8
+.IX Item "w"
+Always 1.0.
+.SH "REFERENCE IMPLEMENTATION"
+.IX Header "REFERENCE IMPLEMENTATION"
+\&\fBlit\fR accepting <float> parameters could be implemented this way:
+.PP
+.Vb 5
+\&  float4 lit(float NdotL, float NdotH, float m)
+\&  {
+\&    float specular = (NdotL > 0) ? pow(max(0.0, NdotH), m);
+\&    return float4(1.0, max(0.0, NdotL), specular, 1.0);
+\&  }
+.Ve
+.SH "PROFILE SUPPORT"
+.IX Header "PROFILE SUPPORT"
+\&\fBlit\fR is supported in all profiles.
+.SH "SEE ALSO"
+.IX Header "SEE ALSO"
+dot, max, normalize, pow

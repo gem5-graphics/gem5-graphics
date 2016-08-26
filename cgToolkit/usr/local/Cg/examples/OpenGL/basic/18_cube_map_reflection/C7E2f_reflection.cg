@@ -1,0 +1,20 @@
+// This is C7E2f_reflection from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 180.
+
+void C7E2f_reflection(float2 texCoord : TEXCOORD0,
+                      float3 R        : TEXCOORD1,
+
+                  out float4 color : COLOR,
+
+              uniform float reflectivity,
+              uniform sampler2D decalMap,
+              uniform samplerCUBE environmentMap)
+{
+  // Fetch reflected environment color
+  float4 reflectedColor = texCUBE(environmentMap, R);
+
+  // Fetch the decal base color
+  float4 decalColor = tex2D(decalMap, texCoord);
+
+  color = lerp(decalColor, reflectedColor, reflectivity);
+}

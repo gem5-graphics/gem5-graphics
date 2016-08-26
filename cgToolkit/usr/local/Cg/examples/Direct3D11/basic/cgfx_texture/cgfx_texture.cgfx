@@ -1,0 +1,48 @@
+
+sampler2D Decal = sampler_state
+{
+    AddressU = Mirror;
+    AddressV = Mirror;
+};
+
+struct VOutput 
+{
+  float4 position : POSITION;
+  float2 tex0 : TEXCOORD0;
+};
+
+VOutput vs( float3 position : POSITION, float2 tex0 : TEXCOORD0 )
+{	
+  VOutput OUT;
+
+  OUT.position = float4( position, 1.0 );
+  OUT.tex0 = tex0;
+
+  return OUT;
+}
+
+struct POutput
+{
+  float4 color : COLOR;
+};
+
+POutput ps( VOutput input, uniform sampler2D decal : TEX0 )
+{
+  POutput OUT;
+  OUT.color = tex2D( decal, input.tex0 );
+  return OUT;
+}
+
+technique cgfx_texture
+{
+  pass
+  {
+      AlphaBlendEnable = false;
+      CullMode = None;
+      FillMode = Solid;
+      
+      VertexProgram = compile vs_5_0 vs();
+      FragmentProgram = compile ps_5_0 ps( Decal );
+  }
+}
+

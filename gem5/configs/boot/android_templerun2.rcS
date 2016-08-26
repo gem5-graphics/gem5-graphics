@@ -1,0 +1,4 @@
+#!/system/bin/sh
+echo "Starting Temple Run 2..."
+am start -n com.imangi.templerun2/com.prime31.UnityPlayerProxyActivity
+sleep 1000

@@ -1,0 +1,21 @@
+// This is C7E4f_refraction from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 188.
+
+void C7E4f_refraction(float2 texCoord : TEXCOORD0,
+                      float3 T        : TEXCOORD1,
+
+                  out float4 color : COLOR,
+
+              uniform float       transmittance,
+              uniform sampler2D   decalMap,
+              uniform samplerCUBE environmentMap)
+{
+  // Fetch the decal base color
+  float4 decalColor = tex2D(decalMap, texCoord);
+
+  // Fetch refracted environment color
+  float4 refractedColor = texCUBE(environmentMap, T);
+
+  // Compute the final color
+  color = lerp(decalColor, refractedColor, transmittance);
+}

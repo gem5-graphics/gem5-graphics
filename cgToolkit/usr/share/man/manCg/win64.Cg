@@ -1,0 +1,180 @@
+.de Sh \" Subsection heading
+.br
+.if t .Sp
+.ne 5
+.PP
+\fB\\$1\fR
+.PP
+..
+.de Sp \" Vertical space (when we can't use .PP)
+.if t .sp .5v
+.if n .sp
+..
+.de Vb \" Begin verbatim text
+.ft CW
+.nf
+.ne \\$1
+..
+.de Ve \" End verbatim text
+.ft R
+.fi
+..
+.tr \(*W-
+.ds C+ C\v'-.1v'\h'-1p'\s-2+\h'-1p'+\s0\v'.1v'\h'-1p'
+.ie n \{\
+.    ds -- \(*W-
+.    ds PI pi
+.    if (\n(.H=4u)&(1m=24u) .ds -- \(*W\h'-12u'\(*W\h'-12u'-\" diablo 10 pitch
+.    if (\n(.H=4u)&(1m=20u) .ds -- \(*W\h'-12u'\(*W\h'-8u'-\"  diablo 12 pitch
+.    ds L" ""
+.    ds R" ""
+.    ds C` ""
+.    ds C' ""
+'br\}
+.el\{\
+.    ds -- \|\(em\|
+.    ds PI \(*p
+.    ds L" ``
+.    ds R" ''
+'br\}
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.ie \nF \{\
+.    de IX
+.    tm Index:\\$1\t\\n%\t"\\$2"
+..
+.    nr % 0
+.    rr F
+.\}
+.el \{\
+.    de IX
+..
+.\}
+.    \" fudge factors for nroff and troff
+.if n \{\
+.    ds #H 0
+.    ds #V .8m
+.    ds #F .3m
+.    ds #[ \f1
+.    ds #] \fP
+.\}
+.if t \{\
+.    ds #H ((1u-(\\\\n(.fu%2u))*.13m)
+.    ds #V .6m
+.    ds #F 0
+.    ds #[ \&
+.    ds #] \&
+.\}
+.    \" simple accents for nroff and troff
+.if n \{\
+.    ds ' \&
+.    ds ` \&
+.    ds ^ \&
+.    ds , \&
+.    ds ~ ~
+.    ds /
+.\}
+.if t \{\
+.    ds ' \\k:\h'-(\\n(.wu*8/10-\*(#H)'\'\h"|\\n:u"
+.    ds ` \\k:\h'-(\\n(.wu*8/10-\*(#H)'\`\h'|\\n:u'
+.    ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'^\h'|\\n:u'
+.    ds , \\k:\h'-(\\n(.wu*8/10)',\h'|\\n:u'
+.    ds ~ \\k:\h'-(\\n(.wu-\*(#H-.1m)'~\h'|\\n:u'
+.    ds / \\k:\h'-(\\n(.wu*8/10-\*(#H)'\z\(sl\h'|\\n:u'
+.\}
+.    \" troff and (daisy-wheel) nroff accents
+.ds : \\k:\h'-(\\n(.wu*8/10-\*(#H+.1m+\*(#F)'\v'-\*(#V'\z.\h'.2m+\*(#F'.\h'|\\n:u'\v'\*(#V'
+.ds 8 \h'\*(#H'\(*b\h'-\*(#H'
+.ds o \\k:\h'-(\\n(.wu+\w'\(de'u-\*(#H)/2u'\v'-.3n'\*(#[\z\(de\v'.3n'\h'|\\n:u'\*(#]
+.ds d- \h'\*(#H'\(pd\h'-\w'~'u'\v'-.25m'\f2\(hy\fP\v'.25m'\h'-\*(#H'
+.ds D- D\\k:\h'-\w'D'u'\v'-.11m'\z\(hy\v'.11m'\h'|\\n:u'
+.ds th \*(#[\v'.3m'\s+1I\s-1\v'-.3m'\h'-(\w'I'u*2/3)'\s-1o\s+1\*(#]
+.ds Th \*(#[\s+2I\s-2\h'-\w'I'u*3/5'\v'-.3m'o\v'.3m'\*(#]
+.ds ae a\h'-(\w'a'u*4/10)'e
+.ds Ae A\h'-(\w'A'u*4/10)'E
+.    \" corrections for vroff
+.if v .ds ~ \\k:\h'-(\\n(.wu*9/10-\*(#H)'\s-2\u~\d\s+2\h'|\\n:u'
+.if v .ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'\v'-.4m'^\v'.4m'\h'|\\n:u'
+.    \" for low resolution devices (crt and lpr)
+.if \n(.H>23 .if \n(.V>19 \
+\{\
+.    ds : e
+.    ds 8 ss
+.    ds o a
+.    ds d- d\h'-1'\(ga
+.    ds D- D\h'-1'\(hy
+.    ds th \o'bp'
+.    ds Th \o'LP'
+.    ds ae ae
+.    ds Ae AE
+.\}
+.rm #[ #] #H #V #F C
+.IX Title "WIN64 Cg"
+.TH WIN64 Cg "Cg Toolkit 3.0" "perl v5.10.0" "Cg Topics"
+.if n .ad l
+.nh
+.SH "TOPIC"
+.IX Header "TOPIC"
+\&\fBwin64\fR \- using Cg with 64\-bit Windows
+.SH "ABSTRACT"
+.IX Header "ABSTRACT"
+The Cg Toolkit for Windows installs versions of the Cg compiler and
+runtime libraries for both 32\-bit (x86) and 64\-bit (x64) compilation.
+This topic documents how to use Cg for 64\-bit Windows.
+.SH "64\-BIT INSTALLATION"
+.IX Header "64-BIT INSTALLATION"
+The Cg Toolkit installer (CgSetup.exe) installs the 32\-bit version of
+the Cg compiler and the Cg runtime libraries by default.  To install
+the 64\-bit support, you must check the component labeled \*(L"Files to run
+and link 64\-bit (x64) Cg-based applications\*(R" during your installation.
+.PP
+If you've forgotten to install the 64\-bit component, you can re-run the
+Cg Toolkit installer and check the 64\-bit component.
+.SH "EXAMPLES"
+.IX Header "EXAMPLES"
+The Cg Toolkit includes Visual Studio .NET 2003 projects intended to
+compile 64\-bit versions of the Cg Toolkit examples.
+.PP
+These project files match the pattern *_x64.vcproj
+.PP
+The solution files that collect these projects matches the pattern
+*_x64.sln
+.PP
+To use these project files with Visual Studio .NET 2003, you \fImust\fR
+also install the latest Windows Platform \s-1SDK\s0 to obtain 64\-bit compiler
+tools and libraries.
+.PP
+Once the Platform \s-1SDK\s0 is installed, from the Start menu navigate to start
+a Windows shell for the 64\-bit Windows Build Environment.  This shell is
+started with the correct environment variables (Path, Include, and Lib)
+for the 64\-bit compiler tools and libraries.
+.PP
+Now run devenv.exe with the /useenv command line option that forces
+Visual Studio to pick up Path, Include, and Lib settings from the
+shell's environment.  When the Visual Studio \s-1IDE\s0 appears, select
+File\->Open\->Project... and locate one of the *_x64.sln files for
+the Cg examples.  These are usually under:
+.PP
+.Vb 1
+\&  c:\eProgram Files\eNVIDIA Corporation\eCg\eexamples
+.Ve
+.PP
+When you open a *_x64.vcproj solution, it references a number of
+*_x64.vcproj projects.  These have a \*(L"Debug x64\*(R" and \*(L"Release x64\*(R"
+configuration to build.
+.SH "HINTS"
+.IX Header "HINTS"
+Remember to link with BufferOverflowU.lib because of the /GS option to
+help detect string overflow runtime errors because Microsoft has enabled
+this option by default in its 64\-bit compilers.  See:
+.PP
+.Vb 1
+\&  http://support.microsoft.com/?id=894573
+.Ve
+.SH "IA64 SUPPORT"
+.IX Header "IA64 SUPPORT"
+The Cg Toolkit does not provide 64\-bit support for Intel's Itanium
+architecture.
+.SH "SEE ALSO"
+.IX Header "SEE ALSO"
+\&\s-1TBD\s0

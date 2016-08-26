@@ -1,0 +1,348 @@
+// The shader writes a uniform parameter to the inner and edge tessellation factors.
+
+gp5tcp PATCH_16
+void main
+(
+  in int ndx                      : CONTROLPOINT_ID,
+  in AttribArray<float3> position : POSITION,
+  in AttribArray<float2> texCoord : TEXCOORD0,
+
+  out float4 oPosition     : POSITION,
+  out float2 oTexCoord     : TEXCOORD0,
+  out float  oEdgeTess[4]  : EDGETESS,
+  out float  oInnerTess[2] : INNERTESS,
+
+  uniform float2   innerTess,
+  uniform float4   outerTess,
+
+  uniform float4x4 modelView
+)
+{
+  oPosition = float4(position[ndx], 1);
+  oPosition = mul(modelView,oPosition);
+  oTexCoord = texCoord[ndx];
+
+  oEdgeTess[0] = outerTess.x;
+  oEdgeTess[1] = outerTess.y;
+  oEdgeTess[2] = outerTess.z;
+  oEdgeTess[3] = outerTess.w;
+
+  oInnerTess[0] = innerTess.x;
+  oInnerTess[1] = innerTess.y;
+}
+
+gp5tep PATCH_16 QUADS ORDER_CCW
+void main
+(
+  in float2 uv                    : UV,
+  in AttribArray<float3> position : POSITION,
+  in AttribArray<float2> texcoord : TEXCOORD0,
+
+  out float4 oPosition : POSITION,
+  out float3 oNormal   : TEXCOORD1,
+  out float2 oUV       : TEXCOORD2,
+  out float3 oGradU    : TEXCOORD3,
+  out float3 oGradV    : TEXCOORD4,
+  out float4 oTexCoord : TEXCOORD5,
+
+  uniform float4x4 projection
+)
+{
+  // Compute Bernstein weights for U (1 ADD, 8 MULs)
+  float  u          = uv.x;
+  float  uu         = u*u;
+  float  oneMinusU  = 1-u;
+  float  oneMinusUU = oneMinusU*oneMinusU;
+  float3 Bu[4] =
+  {
+    (oneMinusU*oneMinusUU).xxx, // (1-u)^3
+    (3*u*oneMinusUU).xxx,       // 3u(1-u)^2
+    (3*uu*oneMinusU).xxx,       // 3u^2(1-u)
+    (u*uu).xxx                  // u^3
+  };
+  float3 dBu[4] =
+  {
+    (-3*oneMinusUU).xxx,                 // -3(1-u)^2
+    (-6*u*oneMinusU + 3*oneMinusUU).xxx, // -6u(1-u)+3(1-u)^2
+    (-3*uu + 6*u*oneMinusU).xxx,         // -3u^2+6u(1-u)
+    (3*uu).xxx                           // 3u^2
+  };
+
+  // Compute Bernstein weights for V (1 ADD, 8 MULs)
+  float  v          = uv.y;
+  float  vv         = v*v;
+  float  oneMinusV  = 1-v;
+  float  oneMinusVV = oneMinusV*oneMinusV;
+  float3 Bv[4] =
+  {
+    (oneMinusV*oneMinusVV).xxx, // (1-v)^3
+    (3*v*oneMinusVV).xxx,       // 3v(1-v)^2
+    (3*vv*oneMinusV).xxx,       // 3v^2(1-v)
+    (v*vv).xxx                  // v^3
+  };
+  float3 dBv[4] =
+  {
+    (-3*oneMinusVV).xxx,                 // -3(1-v)^2
+    (-6*v*oneMinusV + 3*oneMinusVV).xxx, // -6v(1-v)+3(1-v)^2
+    (-3*vv + 6*v*oneMinusV).xxx,         // -3v^2+6v(1-v)
+    (3*vv).xxx                           // 3v^2
+  };
+
+  // Four horizontally symmetric sum-of-products with Bu weights (3*8 MULs, 3*8 MADs, 3*4 ADDs)
+  [precise] float3 w0 = fma(Bu[0], position[0], Bu[1]*position[4]) + fma(Bu[3], position[12], Bu[2]*position[8]),
+                   w1 = fma(Bu[0], position[1], Bu[1]*position[5]) + fma(Bu[3], position[13], Bu[2]*position[9]),
+                   w2 = fma(Bu[0], position[2], Bu[1]*position[6]) + fma(Bu[3], position[14], Bu[2]*position[10]),
+                   w3 = fma(Bu[0], position[3], Bu[1]*position[7]) + fma(Bu[3], position[15], Bu[2]*position[11]);
+
+  oPosition = float4(fma(Bv[0],w0,Bv[1]*w1) + fma(Bv[3],w3,Bv[2]*w2),1);
+
+  // Compute gradients in U and V
+
+  [precise] float3 uw0 = fma(dBu[0], position[0], dBu[1]*position[4]) + fma(dBu[3], position[12], dBu[2]*position[8]),
+                   uw1 = fma(dBu[0], position[1], dBu[1]*position[5]) + fma(dBu[3], position[13], dBu[2]*position[9]),
+                   uw2 = fma(dBu[0], position[2], dBu[1]*position[6]) + fma(dBu[3], position[14], dBu[2]*position[10]),
+                   uw3 = fma(dBu[0], position[3], dBu[1]*position[7]) + fma(dBu[3], position[15], dBu[2]*position[11]);
+
+  oGradU = fma(Bv[0],uw0,Bv[1]*uw1) + fma(Bv[3],uw3,Bv[2]*uw2);
+
+  [precise] float3 vw0 = fma(dBv[0], position[0], dBv[1]*position[1]) + fma(dBv[3], position[3], dBv[2]*position[2]),
+                   vw1 = fma(dBv[0], position[4], dBv[1]*position[5]) + fma(dBv[3], position[7], dBv[2]*position[6]),
+                   vw2 = fma(dBv[0], position[8], dBv[1]*position[9]) + fma(dBv[3], position[11], dBv[2]*position[10]),
+                   vw3 = fma(dBv[0], position[12], dBv[1]*position[13]) + fma(dBv[3], position[15], dBv[2]*position[14]);
+
+  oGradV = fma(Bu[0],vw0,Bu[1]*vw1) + fma(Bu[3],vw3,Bu[2]*vw2);
+
+  oTexCoord = float4(1,1,0,0);
+
+  oUV = uv;
+  oPosition = mul(projection,oPosition);
+  oNormal = cross(oGradV,oGradU);
+}
+
+float3 visualizeUV(float2 uv)
+{
+  // [0,0] black
+  // [1,0] red
+  // [0,1] green
+  // [1,1] yellow
+
+  float uvSum = uv.x + uv.y;
+  float uvMax = max(uv.x,uv.y);
+  float t     = saturate((uvSum-1)/2);
+  return lerp(float3(uv,0),float3(uvMax.xx,0),t);
+}
+
+float3 visualizeTangent(float3 v)
+{
+  return abs(normalize(v));
+}
+
+////////////////////////////////////////////
+
+void vertexTransform
+(
+  in float4 position : POSITION,
+  in float4 normal   : NORMAL,
+
+  out float4 oPosition : POSITION,
+  out float4 oNormal   : TEXCOORD1,
+
+  uniform float4x4 modelView,
+  uniform float4x4 projection
+)
+{
+  oPosition = position;
+  oPosition = mul(projection,oPosition);
+  oPosition = mul(modelView,oPosition);
+  oNormal = normal;
+}
+
+float3 fragmentUV      (float2 uv     : TEXCOORD2) : COLOR { return visualizeUV(uv); }
+float3 fragmentTangentU(float3 gradU  : TEXCOORD3) : COLOR { return visualizeTangent(gradU); }
+float3 fragmentTangentV(float3 gradV  : TEXCOORD4) : COLOR { return visualizeTangent(gradV); }
+float3 fragmentNormal  (float3 normal : TEXCOORD1) : COLOR { return visualizeTangent(normal); }
+
+float3 fragmentTextureUV
+(
+  uniform sampler2D texture : TEX0,
+  float2 uv                 : TEXCOORD2
+) : COLOR
+{
+  return tex2D(texture,uv);
+}
+
+float4 fragmentFlat
+(
+  uniform float4 color
+) : COLOR
+{
+  return color;
+}
+
+float3 fragmentLighting
+(
+  float4 position : TEXCOORD0,
+  float3 normal   : TEXCOORD1,
+
+  uniform float3 Kd
+
+) : COLOR
+{
+  float3 globalAmbient = float3(0.1,0.1,0.1);
+  float3 lightColor    = float3(0.95, 0.95, 0.95);
+  float3 lightPosition = float3(2,2,2);
+  float3 eyePosition   = float3(0,0,1);
+  float3 Ke            = float3(0,0,0);
+  float3 Ka            = float3(0,0,0);
+  float3 Ks            = float3(0.7, 0.6, 0.6);
+  float  shininess     = 32.0;
+
+  float3 P = position.xyz;
+  float3 N = normalize(normal);
+
+  // Compute emissive term
+  float3 emissive = Ke;
+
+  // Compute ambient term
+  float3 ambient = Ka * globalAmbient;
+
+  // Compute the diffuse term
+  float3 L = normalize(lightPosition - P);
+  float diffuseLight = max(dot(L, N), 0);
+  float3 diffuse = Kd * lightColor * diffuseLight;
+
+  // Compute the specular term
+  float3 V = normalize(eyePosition - P);
+  float3 H = normalize(L + V);
+  float specularLight = pow(max(dot(H, N), 0), shininess);
+  if (diffuseLight <= 0) specularLight = 0;
+  float3 specular = Ks * lightColor * specularLight;
+
+  float3 color = emissive + ambient + diffuse + specular;
+  return color;
+}
+
+float4   outerTess;
+float2   innerTess;
+float4x4 modelView;
+float4x4 projection;
+
+float4   diffuse   = float4(0.5,0,0,1);
+float4   highlight = float4(1,1,1,1);
+
+sampler2D texture = sampler_state {
+  minFilter = Linear;
+  magFilter = Linear;
+};
+
+technique Lighting
+{
+    pass <string geometry = "drawBezierPatch4x4";>
+    {
+        TessellationControlProgram    = compile gp5tcp main(innerTess, outerTess, modelView);
+        TessellationEvaluationProgram = compile gp5tep main(projection);
+        FragmentProgram               = compile gp4fp  fragmentLighting(diffuse);
+    }
+}
+
+technique ControlPoints
+{
+    pass <string geometry = "drawBezierPatch4x4Points";>
+    {
+        PointSize = 3;
+        DepthTestEnable = false;
+        VertexProgram                 = compile gp4vp vertexTransform(projection,modelView);
+        FragmentProgram               = compile gp4fp fragmentFlat(highlight);
+    }
+
+    pass <string geometry = "drawBezierPatch4x4LineLoop";>
+    {
+        VertexProgram                 = compile gp4vp vertexTransform(projection,modelView);
+        FragmentProgram               = compile gp4fp fragmentFlat(highlight);
+    }
+}
+
+technique All
+{
+    pass <string geometry = "drawBezierPatch4x4";>
+    {
+        TessellationControlProgram    = compile gp5tcp main(innerTess, outerTess, modelView);
+        TessellationEvaluationProgram = compile gp5tep main(projection);
+        FragmentProgram               = compile gp4fp  fragmentLighting(diffuse);
+    }
+
+    pass <string geometry = "drawBezierPatch4x4Points";>
+    {
+        PointSize = 3;
+        DepthTestEnable = false;
+        VertexProgram                 = compile gp4vp vertexTransform(projection,modelView);
+        FragmentProgram               = compile gp4fp fragmentFlat(highlight);
+    }
+
+    pass <string geometry = "drawBezierPatch4x4LineLoop";>
+    {
+        VertexProgram                 = compile gp4vp vertexTransform(projection,modelView);
+        FragmentProgram               = compile gp4fp fragmentFlat(highlight);
+    }
+}
+
+technique TextureUV
+{
+    pass <string geometry = "drawBezierPatch4x4";>
+    {
+        TessellationControlProgram    = compile gp5tcp main(innerTess, outerTess, modelView);
+        TessellationEvaluationProgram = compile gp5tep main(projection);
+        FragmentProgram               = compile gp4fp  fragmentTextureUV(texture);
+    }
+}
+
+technique Wireframe
+{
+    pass <string geometry = "drawBezierPatch4x4";>
+    {
+        PolygonMode = { FrontAndBack, Line };
+        TessellationControlProgram    = compile gp5tcp main(innerTess, outerTess, modelView);
+        TessellationEvaluationProgram = compile gp5tep main(projection);
+        FragmentProgram               = compile gp4fp  fragmentFlat(diffuse);
+    }
+}
+
+technique UV
+{
+    pass <string geometry = "drawBezierPatch4x4";>
+    {
+        TessellationControlProgram    = compile gp5tcp main(innerTess, outerTess, modelView);
+        TessellationEvaluationProgram = compile gp5tep main(projection);
+        FragmentProgram               = compile gp4fp  fragmentUV();
+    }
+}
+
+technique TangentU
+{
+    pass <string geometry = "drawBezierPatch4x4";>
+    {
+        TessellationControlProgram    = compile gp5tcp main(innerTess, outerTess, modelView);
+        TessellationEvaluationProgram = compile gp5tep main(projection);
+        FragmentProgram               = compile gp4fp  fragmentTangentU();
+    }
+}
+
+technique TangentV
+{
+    pass <string geometry = "drawBezierPatch4x4";>
+    {
+        TessellationControlProgram    = compile gp5tcp main(innerTess, outerTess, modelView);
+        TessellationEvaluationProgram = compile gp5tep main(projection);
+        FragmentProgram               = compile gp4fp  fragmentTangentV();
+    }
+}
+
+technique Normal
+{
+    pass <string geometry = "drawBezierPatch4x4";>
+    {
+        TessellationControlProgram    = compile gp5tcp main(innerTess, outerTess, modelView);
+        TessellationEvaluationProgram = compile gp5tep main(projection);
+        FragmentProgram               = compile gp4fp  fragmentNormal();
+    }
+}

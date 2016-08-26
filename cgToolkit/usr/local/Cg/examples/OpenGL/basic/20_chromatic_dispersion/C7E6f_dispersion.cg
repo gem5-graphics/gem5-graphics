@@ -1,0 +1,31 @@
+// This is C7E6f_dispersion from "The Cg Tutorial" (Addison-Wesley, ISBN
+// 0321194969) by Randima Fernando and Mark J. Kilgard.  See page 195.
+
+void C7E6f_dispersion(float  reflectionFactor : COLOR,
+                      float3 R                : TEXCOORD0,
+                      float3 TRed             : TEXCOORD1,
+                      float3 TGreen           : TEXCOORD2,
+                      float3 TBlue            : TEXCOORD3,
+
+                  out float4 color : COLOR,
+
+              uniform samplerCUBE environmentMap0,
+              uniform samplerCUBE environmentMap1,
+              uniform samplerCUBE environmentMap2,
+              uniform samplerCUBE environmentMap3)
+{
+  // Fetch the reflected environment color
+  float4 reflectedColor = texCUBE(environmentMap0, R);
+
+  // Compute the refracted environment color
+  float4 refractedColor;
+  refractedColor.x = texCUBE(environmentMap1, TRed).x;
+  refractedColor.y = texCUBE(environmentMap2, TGreen).y;
+  refractedColor.z = texCUBE(environmentMap3, TBlue).z;
+  refractedColor.w = 1;
+
+  // Compute the final color
+  color = lerp(refractedColor, 
+               reflectedColor, 
+               reflectionFactor);
+}

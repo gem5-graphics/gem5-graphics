@@ -1,0 +1,46 @@
+struct VOutput 
+{
+  float4 position : POSITION;
+  float3 color    : COLOR;
+};
+
+struct Buffer0
+{
+    float4 VertexColor;
+} CBuffer0 : BUFFER[0];
+
+VOutput vs( float2 position : POSITION )
+{	
+  VOutput OUT;
+
+  OUT.position = float4( position, 0, 1 );
+  OUT.color = CBuffer0.VertexColor.xyz;
+
+  return OUT;
+}
+
+struct POutput
+{
+  float4 color : COLOR;
+};
+
+POutput ps( VOutput input )
+{
+  POutput OUT;
+  OUT.color = float4( input.color, 1.0 );
+  return OUT;
+}
+
+technique cgfx_buffer
+{
+  pass
+  {
+      AlphaBlendEnable = false;
+      CullMode = None;
+      FillMode = Solid;
+      
+      VertexProgram = compile vs_5_0 vs();
+      FragmentProgram = compile ps_5_0 ps();
+  }
+}
+
