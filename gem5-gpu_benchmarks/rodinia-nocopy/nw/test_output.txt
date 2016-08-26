@@ -1,0 +1,5 @@
+Start Needleman-Wunsch
+Processing top-left matrix
+Processing bottom-right matrix
+print traceback value GPU:
+5 10 1 6 11 6 11 3 6 4 -2 0 5 5 10 1 6 4 6 1 3 -1 -6 -3 2 2 1 4 -5 -6 -14 -9 -4 -9 -9 -5 0 0 

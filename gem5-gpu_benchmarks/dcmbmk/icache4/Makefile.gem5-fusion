@@ -1,0 +1,19 @@
+################################################################################
+#
+# Build script for project
+#
+################################################################################
+
+# Add source files here
+EXECUTABLE	:= icache4
+# CUDA source files (compiled with cudacc)
+CUFILES		:= icache4.cu icache4_L1.cu
+# CUDA dependency files
+CU_DEPS		:= 
+# C/C++ source files (compiled with gcc / c++)
+CFILES          := 
+
+################################################################################
+# Rules and targets
+
+include ../common/common.mk

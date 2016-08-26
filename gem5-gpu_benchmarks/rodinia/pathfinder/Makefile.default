@@ -1,0 +1,24 @@
+CSRC = 
+CUSRC = pathfinder.cu
+EXECUTABLE = pathfinder
+OPTS = -O3
+CUOPTS = -arch sm_20
+INC = -I$(NVIDIA_CUDA_SDK_LOCATION)/common/inc -I$(CUDAHOME)/include
+LIBS = -L$(NVIDIA_CUDA_SDK_LOCATION)/lib -lcutil_x86_64
+
+OBJS = $(notdir $(CSRC:.c=.o))
+
+all: $(OBJS)
+	nvcc -cuda $(OPTS) $(CUOPTS) $(CUSRC) $(INC) $(LIBS)
+	g++ -c *.cpp $(INC) $(OPTS)
+	nvcc $(OPTS) $(CUOPTS) -o $(EXECUTABLE) *.o $(LIBS)
+
+$(OBJS): $(CSRC)
+	g++ -c $(CSRC) $(OPTS)
+	
+
+clean:
+	rm -f *.o *.cu.cpp $(EXECUTABLE)
+
+cleancucpp:
+	rm -f *.cu.cpp

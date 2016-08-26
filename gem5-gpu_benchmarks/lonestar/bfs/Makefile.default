@@ -1,0 +1,49 @@
+CSRC =
+CUSRC = main.cu
+BASEEXE = bfs
+OPTS = -O3
+CUOPTS = -arch sm_20
+INC = -I$(NVIDIA_CUDA_SDK_LOCATION)/common/inc -I$(CUDAHOME)/include -I../include
+LIBS = -L$(NVIDIA_CUDA_SDK_LOCATION)/lib -lcutil_x86_64
+
+OBJS = $(notdir $(CSRC:.c=.o))
+
+VARIANT ?= LS
+
+ifeq ($(VARIANT),LS)
+	EXECUTABLE = $(BASEEXE)_ls
+	OPTS += -DVARIANT=BFS_LS
+else ifeq ($(VARIANT),ATOMIC)
+	EXECUTABLE = $(BASEEXE)_atomic
+	OPTS += -DVARIANT=BFS_ATOMIC
+else ifeq ($(VARIANT),MERRILL)
+	EXECUTABLE = $(BASEEXE)_merrill
+	OPTS += -DVARIANT=BFS_MERRILL
+else ifeq ($(VARIANT),WLA)
+	EXECUTABLE = $(BASEEXE)_wla
+	OPTS += -DVARIANT=BFS_WORKLISTA
+else ifeq ($(VARIANT),WLC_GB)
+	EXECUTABLE = $(BASEEXE)_wlc_gb
+	OPTS += -DVARIANT=BFS_WORKLISTC
+else ifeq ($(VARIANT),WLC)
+	EXECUTABLE = $(BASEEXE)_wlc
+	OPTS += -DVARIANT=BFS_WORKLISTC -DIN_CORE=0
+else ifeq ($(VARIANT),WLG)
+	EXECUTABLE = $(BASEEXE)_wlg
+	OPTS += -DVARIANT=BFS_WORKLISTG
+else ifeq ($(VARIANT),WLW)
+	EXECUTABLE = $(BASEEXE)_wlw
+	OPTS += -DVARIANT=BFS_WORKLISTW
+endif
+
+all: $(OBJS)
+	nvcc $(NVOPTS) $(OPTS) $(CUOPTS) $(CUSRC) $(INC) -o $(EXECUTABLE) $(LIBS)
+
+$(OBJS):
+	gcc -c $(CSRC) $(OPTS)
+
+clean:
+	rm -f *.o *.cu.cpp $(EXECUTABLE)
+
+cleancucpp:
+	rm -f *.cu.cpp

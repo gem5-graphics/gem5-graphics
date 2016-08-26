@@ -1,0 +1,25 @@
+CSRC = 
+CUSRC = hotspot.cu
+EXECUTABLE = hotspot
+OPTS =
+INC = -I$(NVIDIA_CUDA_SDK_LOCATION)/common/inc -I$(CUDAHOME)/include
+LIBS = -L$(NVIDIA_CUDA_SDK_LOCATION)/lib -lcutil_x86_64
+
+ifeq ($(BUILD_OCELOT),true)
+	BUILD_EXE = $(EXECUTABLE).ocelot
+	OPTS = -arch=sm_20
+	LIBS += `OcelotConfig -l`
+else
+	BUILD_EXE = $(EXECUTABLE)
+endif
+
+all:
+	nvcc -cuda $(OPTS) $(CUSRC) $(INC) $(LIBS)
+	g++ -c *.cpp $(INC) $(OPTS)
+	nvcc $(OPTS) -o $(BUILD_EXE) *.o $(LIBS)
+
+clean:
+	rm -f *.o *.cu.cpp $(BUILD_EXE)
+
+cleancucpp:
+	rm -f *.cu.cpp

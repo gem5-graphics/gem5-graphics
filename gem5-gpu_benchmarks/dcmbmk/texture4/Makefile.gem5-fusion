@@ -1,0 +1,19 @@
+################################################################################
+#
+# Build script for project
+#
+################################################################################
+
+# Add source files here
+EXECUTABLE	:= texture4
+# CUDA source files (compiled with cudacc)
+CUFILES		:= texture4.cu
+# CUDA dependency files
+CU_DEPS		:= 
+# C/C++ source files (compiled with gcc / c++)
+CFILES          := 
+
+################################################################################
+# Rules and targets
+
+include ../common/common.mk

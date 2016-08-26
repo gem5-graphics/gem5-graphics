@@ -1,0 +1,31 @@
+################################################################################
+#
+# Build script for project
+#
+################################################################################
+
+# Add source files here
+BASEEXE		:= pagerank
+VARIANT ?= DEFAULT
+# CUDA source files (compiled with cudacc)
+CUFILES		:= 
+CU_DEPS		:= 
+# C/C++ source files (compiled with gcc / c++)
+CCFILES    := ../graph_parser/util.cpp ../graph_parser/parse.cpp
+ifeq ($(VARIANT),DEFAULT)
+	EXECUTABLE = $(BASEEXE)
+	CUFILES += pagerank.cu
+	CU_DEPS += kernel.cu
+else ifeq ($(VARIANT),SPMV)
+	EXECUTABLE = $(BASEEXE)_spmv
+	CUFILES += pagerank_spmv.cu
+	CU_DEPS += kernel_spmv.cu
+endif
+
+INCFLAGEXTRA	:= -I../graph_parser
+
+
+################################################################################
+# Rules and targets
+
+include ../common/common.mk

@@ -1,0 +1,14 @@
+CUSRC = global_reads.cu
+EXECUTABLE = global_reads
+OPTS = -O3
+CUOPTS = -arch sm_50
+INC = -I$(NVIDIA_CUDA_SDK_LOCATION)/common/inc -I$(CUDAHOME)/include
+LIBS = -L$(NVIDIA_CUDA_SDK_LOCATION)/lib -lcutil_x86_64
+
+all:
+	nvcc -cuda $(OPTS) $(CUOPTS) $(CUSRC) $(INC) $(LIBS)
+	g++ -c *.cpp $(INC)
+	nvcc $(OPTS) $(CUOPTS) -o $(EXECUTABLE) *.o $(LIBS)
+
+clean:
+	rm -f $(EXECUTABLE) *.o

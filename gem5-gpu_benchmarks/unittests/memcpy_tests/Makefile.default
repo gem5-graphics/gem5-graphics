@@ -1,0 +1,13 @@
+CUSRC = memcpy_tests.cu
+OPTS = -O3
+CUOPTS = -arch sm_20
+EXECUTABLE = memcpy_tests
+
+all: $(CSRC)
+	nvcc $(CUSRC) $(OPTS) $(CUOPTS) -o $(EXECUTABLE)
+
+%.c:
+	g++ -c $(CSRC) $(OPTS)
+
+clean:
+	rm -f *.o *.cu.cpp $(EXECUTABLE)

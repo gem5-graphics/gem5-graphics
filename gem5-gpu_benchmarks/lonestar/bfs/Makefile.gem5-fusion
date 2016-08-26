@@ -1,0 +1,51 @@
+################################################################################
+#
+# Build script for project
+#
+################################################################################
+
+# Add source files here
+BASEEXE		:= bfs
+CUFLAGS		:= -I../include
+VARIANT ?= LS
+ifeq ($(VARIANT),LS)
+	EXECUTABLE = $(BASEEXE)_ls
+	CUFLAGS += -DVARIANT=BFS_LS
+else ifeq ($(VARIANT),ATOMIC)
+	EXECUTABLE = $(BASEEXE)_atomic
+	CUFLAGS += -DVARIANT=BFS_ATOMIC
+else ifeq ($(VARIANT),MERRILL)
+	EXECUTABLE = $(BASEEXE)_merrill
+	CUFLAGS += -DVARIANT=BFS_MERRILL
+else ifeq ($(VARIANT),WLA)
+	EXECUTABLE = $(BASEEXE)_wla
+	CUFLAGS += -DVARIANT=BFS_WORKLISTA
+else ifeq ($(VARIANT),WLC_GB)
+	EXECUTABLE = $(BASEEXE)_wlc_gb
+	CUFLAGS += -DVARIANT=BFS_WORKLISTC
+else ifeq ($(VARIANT),WLC)
+	EXECUTABLE = $(BASEEXE)_wlc
+	CUFLAGS += -DVARIANT=BFS_WORKLISTC -DIN_CORE=0
+else ifeq ($(VARIANT),WLG)
+	EXECUTABLE = $(BASEEXE)_wlg
+	CUFLAGS += -DVARIANT=BFS_WORKLISTG
+else ifeq ($(VARIANT),WLW)
+	EXECUTABLE = $(BASEEXE)_wlw
+	CUFLAGS += -DVARIANT=BFS_WORKLISTW
+endif
+
+# CUDA source files (compiled with cudacc)
+CUFILES		:= main.cu
+# CUDA dependency files
+CU_DEPS		:=
+# C/C++ source files (compiled with gcc / c++)
+CFILES		:=
+
+CFLAGS		:= -O3
+
+################################################################################
+# Rules and targets
+
+include ../../common/common.mk
+
+

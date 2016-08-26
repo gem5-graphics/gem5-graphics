@@ -1,0 +1,21 @@
+################################################################################
+#
+# Build script for project
+#
+################################################################################
+
+# Add source files here
+EXECUTABLE	:= streamcluster
+# CUDA source files (compiled with cudacc)
+CUFILES		:= streamcluster_cuda.cu
+# CUDA dependency files
+CU_DEPS		:= streamcluster_header.cu
+# C/C++ source files (compiled with gcc / c++)
+CCFILES		:= streamcluster_cuda_cpu.cpp
+CCFLAGS		:= -DGEM5_FUSION
+
+
+################################################################################
+# Rules and targets
+
+include ../common/common.mk

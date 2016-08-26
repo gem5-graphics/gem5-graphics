@@ -1,0 +1,21 @@
+################################################################################
+#
+# Build script for project
+#
+################################################################################
+
+# Add source files here
+EXECUTABLE	:= hotspot
+# CUDA source files (compiled with cudacc)
+CUFILES		:= hotspot.cu
+# CUDA dependency files
+# CU_DEPS		:= needle_kernel.cu
+# C/C++ source files (compiled with gcc / c++)
+# CCFILES		:= 
+
+
+
+################################################################################
+# Rules and targets
+
+include ../common/common.mk

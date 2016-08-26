@@ -1,0 +1,21 @@
+################################################################################
+#
+# Build script for project
+#
+################################################################################
+
+# Add source files here
+EXECUTABLE	:= leukocyte
+# CUDA source files (compiled with cudacc)
+CUFILES		:= find_ellipse_kernel.cu track_ellipse_kernel.cu
+# CUDA dependency files
+CU_DEPS		:=
+# C/C++ source files (compiled with gcc / c++)
+CCFILES		:= detect_main.c avilib.c find_ellipse.c misc_math.c
+CFLAGS		:= -Imeschach_lib
+CUFLAGS		:= -Imeschach_lib
+
+################################################################################
+# Rules and targets
+
+include ../common/common.mk

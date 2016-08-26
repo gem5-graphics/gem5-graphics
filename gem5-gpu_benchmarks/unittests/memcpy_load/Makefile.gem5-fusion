@@ -1,0 +1,20 @@
+################################################################################
+#
+# Build script for project
+#
+################################################################################
+
+# Add source files here
+EXECUTABLE	:= memcpy_load
+# CUDA source files (compiled with cudacc)
+CUFILES		:= memcpy_load.cu
+# CUDA dependency files
+CU_DEPS		:= 
+# C/C++ source files (compiled with gcc / c++)
+CFILES		:=
+LDUFLAGS	:= -u log2 -u log2f
+
+################################################################################
+# Rules and targets
+
+include ../../common/common.mk

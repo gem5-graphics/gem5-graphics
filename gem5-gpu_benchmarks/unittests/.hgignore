@@ -1,0 +1,24 @@
+syntax: glob
+# Binaries and GPGPU-Sim configs
+./*/gem5_fusion_*
+./*/gpgpu_sim_*
+./*/gpgpusim.config
+./*/icnt_config_quadro_islip.txt
+./*/icnt_config_fermi_islip.txt
+./*/gpgpu_inst_stats.txt
+./*/gpgpu-sim.out
+.*
+*~
+
+# Intermediate build files
+./*/*.cpp?.i
+./*/*.cpp?.ii
+./*/*.cu.cpp
+./*/*.cu_o
+./*/*.cudafe?.*
+./*/*.fatbin.c
+./*/*.hash
+./*/*.ptx
+./*/*.sm_20.cubin
+
+

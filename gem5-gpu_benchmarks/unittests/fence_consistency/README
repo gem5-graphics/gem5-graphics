@@ -1,0 +1,8 @@
+This unit test can be used to exercise GPU consistency bugs on a per-thread
+basis. The GPU writes data to separate cache lines and CPU threads
+continually read the results to see if it can find reorderings of the data
+produced by the GPU. By compiling with different FENCE_TYPE flags, different
+fences can be tested. The default contains no fences, so if a GPU LSQ/cache
+hierarchy does not maintain store ordering, this default-compiled tester should
+be able to show memory access races from GPU threads.
+

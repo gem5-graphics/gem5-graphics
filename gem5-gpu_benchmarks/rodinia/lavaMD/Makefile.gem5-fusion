@@ -1,0 +1,21 @@
+################################################################################
+#
+# Build script for project
+#
+################################################################################
+
+# Add source files here
+EXECUTABLE	:= lavaMD
+# CUDA source files (compiled with cudacc)
+CUFILES		:= device.cu kernel_gpu_cuda_wrapper.cu
+# CUDA dependency files
+CU_DEPS		:=
+# C/C++ source files (compiled with gcc / c++)
+CFILES		:= num.c timer.c main.c
+
+
+
+################################################################################
+# Rules and targets
+
+include ../common/common.mk

@@ -1,0 +1,6 @@
+./*/gem5_fusion_*
+./*/gpgpu_sim_*
+./*/gpgpusim.config
+./*/icnt_config_quadro_islip.txt
+./*/gpgpu_inst_stats.txt
+./*/gpgpu-sim.out

@@ -1,0 +1,31 @@
+################################################################################
+#
+# Build script for project
+#
+################################################################################
+
+# Add source files here
+BASEEXE		:= color
+VARIANT ?= MAX
+# CUDA source files (compiled with cudacc)
+CUFILES		:= 
+CU_DEPS		:= 
+ifeq ($(VARIANT),MAX)
+	EXECUTABLE = $(BASEEXE)_max
+	CUFILES += coloring_max.cu
+	CU_DEPS += kernel_max.cu
+else ifeq ($(VARIANT),MAXMIN)
+	EXECUTABLE = $(BASEEXE)_maxmin
+	CUFILES += coloring_maxmin.cu
+	CU_DEPS += kernel_maxmin.cu
+endif
+
+# C/C++ source files (compiled with gcc / c++)
+CCFILES	:= ../graph_parser/util.cpp ../graph_parser/parse.cpp
+INCFLAGEXTRA	:= -I../graph_parser
+
+
+################################################################################
+# Rules and targets
+
+include ../common/common.mk

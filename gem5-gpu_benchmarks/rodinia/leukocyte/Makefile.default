@@ -1,0 +1,24 @@
+CSRC = find_ellipse.c detect_main.c avilib.c misc_math.c
+CUSRC = find_ellipse_kernel.cu track_ellipse_kernel.cu
+EXECUTABLE = leukocyte
+OPTS = -O3
+CUOPTS = -arch sm_20
+INC = -I$(NVIDIA_CUDA_SDK_LOCATION)/common/inc -I$(CUDAHOME)/include
+LIBS = -L$(NVIDIA_CUDA_SDK_LOCATION)/lib -lcutil_x86_64 meschach_lib/meschach.a
+
+OBJS = $(notdir $(CSRC:.c=.o))
+
+all: $(OBJS)
+	nvcc -cuda $(OPTS) $(CUOPTS) $(CUSRC) $(INC) $(LIBS)
+	g++ -c *.cpp $(INC) $(OPTS)
+	nvcc $(OPTS) $(CUOPTS) -o $(EXECUTABLE) *.o $(LIBS)
+
+%.o: $(CSRC)
+	g++ -c $(CSRC) $(OPTS)
+	
+
+clean:
+	rm -f *.o *.cu.cpp $(EXECUTABLE)
+
+cleancucpp:
+	rm -f *.cu.cpp

@@ -1,0 +1,29 @@
+CSRC = avimod.c avilib.c
+CUSRC = main.cu
+EXECUTABLE = heartwall
+OPTS = -g
+INC = -I$(NVIDIA_CUDA_SDK_LOCATION)/common/inc -I$(CUDAHOME)/include
+LIBS = -L$(NVIDIA_CUDA_SDK_LOCATION)/lib -lcutil_x86_64
+
+ifeq ($(BUILD_OCELOT),true)
+	BUILD_EXE = $(EXECUTABLE).ocelot
+	OPTS = -arch=sm_20
+	LIBS += `OcelotConfig -l`
+else
+	BUILD_EXE = $(EXECUTABLE)
+endif
+
+all: %.o
+	nvcc -cuda $(OPTS) $(CUSRC) $(INC) $(LIBS)
+	g++ -c *.cpp $(INC) $(OPTS)
+	nvcc $(OPTS) -o $(BUILD_EXE) *.o $(LIBS)
+
+%.o: $(CSRC)
+	g++ -c $(CSRC) $(OPTS)
+	
+
+clean:
+	rm -f *.o *.cu.cpp $(BUILD_EXE)
+
+cleancucpp:
+	rm -f *.cu.cpp

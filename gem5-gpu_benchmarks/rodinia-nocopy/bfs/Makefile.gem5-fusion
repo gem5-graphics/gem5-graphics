@@ -1,0 +1,18 @@
+################################################################################
+#
+# Build script for project
+#
+################################################################################
+
+# Add source files here
+EXECUTABLE	:= bfs
+# CUDA source files (compiled with cudacc)
+CUFILES		:= bfs.cu
+# CUDA dependency files
+CU_DEPS		:= kernel2.cu kernel.cu
+LDUFLAGS        := -u pow -u log2 -u log1p -u remquo -u exp -u sin -u exp2 -u cos -u floor -u ceil -u sqrt -u log
+
+################################################################################
+# Rules and targets
+
+include ../common/common.mk

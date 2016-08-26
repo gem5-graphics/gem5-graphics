@@ -1,0 +1,20 @@
+################################################################################
+#
+# Build script for project
+#
+################################################################################
+
+# Add source files here
+EXECUTABLE	:= bc
+# CUDA source files (compiled with cudacc)
+CUFILES		:= BC.cu
+# CUDA dependency files
+CU_DEPS		:= kernel.cu
+# C/C++ source files (compiled with gcc / c++)
+CCFILES	:= ../graph_parser/util.cpp
+INCFLAGEXTRA	:= -I../graph_parser
+
+################################################################################
+# Rules and targets
+
+include ../common/common.mk

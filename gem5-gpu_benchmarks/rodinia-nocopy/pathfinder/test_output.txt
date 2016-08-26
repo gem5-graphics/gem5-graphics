@@ -1,0 +1,10 @@
+5 4 5 7 0 3 0 8 
+2 2 6 3 8 9 7 5 
+pyramidHeight: 1
+gridSize: [8]
+border:[1]
+blockSize: 256
+blockGrid:[1]
+targetBlock:[254]
+5 4 5 7 0 3 0 8 
+6 6 10 3 8 9 7 5

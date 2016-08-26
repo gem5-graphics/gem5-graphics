@@ -1,0 +1,21 @@
+################################################################################
+#
+# Build script for project
+#
+################################################################################
+
+# Add source files here
+EXECUTABLE	:= kmeans
+# CUDA source files (compiled with cudacc)
+CUFILES		:= kmeans_cuda.cu
+# CUDA dependency files
+CU_DEPS		:= kmeans_cuda_kernel.cu
+# C/C++ source files (compiled with gcc / c++)
+CFILES		:= cluster.c getopt.c kmeans.c kmeans_clustering.c rmse.c
+CFLAGS 		:= -DGEM5_FUSION
+
+
+################################################################################
+# Rules and targets
+
+include ../common/common.mk

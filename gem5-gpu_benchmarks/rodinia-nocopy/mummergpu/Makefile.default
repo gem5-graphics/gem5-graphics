@@ -1,0 +1,32 @@
+CSRC =
+CPPSRC = PoolMalloc.cpp smith-waterman.cpp suffix-tree.cpp mummergpu_main.cpp
+CUSRC = mummergpu.cu
+EXECUTABLE = mummer
+OPTS = -Xcompiler -fopenmp
+INC = -I$(NVIDIA_CUDA_SDK_LOCATION)/common/inc -I$(CUDAHOME)/include
+LIBS = -L$(NVIDIA_CUDA_SDK_LOCATION)/lib -lcutil_x86_64
+
+OBJS = $(notdir $(CPPSRC:.cpp=.o))
+
+ifeq ($(BUILD_OCELOT),true)
+	BUILD_EXE = $(EXECUTABLE).ocelot
+	OPTS = -arch=sm_20
+	LIBS += `OcelotConfig -l`
+else
+	BUILD_EXE = $(EXECUTABLE)
+endif
+
+all: $(OBJS)
+	nvcc -cuda $(OPTS) $(CUSRC) $(INC) $(LIBS)
+	g++ -c *.cpp $(INC)
+	nvcc $(OPTS) -o $(BUILD_EXE) *.o $(LIBS)
+
+$(OBJS): $(CPPSRC)
+	g++ -c -fopenmp $(CPPSRC)
+	
+
+clean:
+	rm -f *.o *.cu.cpp $(BUILD_EXE)
+
+cleancucpp:
+	rm -f *.cu.cpp

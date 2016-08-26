@@ -1,0 +1,22 @@
+################################################################################
+#
+# Build script for project
+#
+################################################################################
+
+# Add source files here
+EXECUTABLE	:= dmr
+# CUDA source files (compiled with cudacc)
+CUFILES		:= dmr.cu
+# CUDA dependency files
+CU_DEPS		:=
+# C/C++ source files (compiled with gcc / c++)
+CFILES		:=
+
+CFLAGS		:= -O3
+CUFLAGS		:= -I../include
+
+################################################################################
+# Rules and targets
+
+include ../../common/common.mk

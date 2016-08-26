@@ -1,0 +1,31 @@
+CSRC = 
+CUSRC = texture4.cu
+EXECUTABLE = texture4
+OPTS = 
+INC = -I/home/joel/bin/NVIDIA_GPU_Computing_SDK/C/common/inc -I/usr/local/cuda/include
+LIBS = -L/home/joel/bin/NVIDIA_GPU_Computing_SDK/C/lib -lcutil_x86_64
+
+OBJS = $(notdir $(CSRC:.c=.o))
+
+ifeq ($(BUILD_OCELOT),true)
+	BUILD_EXE = $(EXECUTABLE).ocelot
+	OPTS += -arch=sm_20
+	LIBS += `OcelotConfig -l`
+else
+	BUILD_EXE = $(EXECUTABLE)
+endif
+
+all: $(OBJS)
+	nvcc -cuda $(OPTS) $(CUSRC) $(INC) $(LIBS)
+	g++ -c *.cpp $(INC) $(OPTS)
+	nvcc $(OPTS) -o $(BUILD_EXE) *.o $(LIBS)
+
+$(OBJS): $(CSRC)
+	g++ -c $(CSRC) $(OPTS)
+	
+
+clean:
+	rm -f *.o *.cu.cpp $(BUILD_EXE)
+
+cleancucpp:
+	rm -f *.cu.cpp

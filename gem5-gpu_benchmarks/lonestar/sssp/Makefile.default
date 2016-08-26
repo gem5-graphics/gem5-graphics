@@ -1,0 +1,36 @@
+CSRC =
+CUSRC = main.cu
+BASEEXE = sssp
+OPTS = -O3
+VARIANT ?= LS
+CUOPTS = -arch sm_20
+INC = -I$(NVIDIA_CUDA_SDK_LOCATION)/common/inc -I$(CUDAHOME)/include -I../include
+LIBS = -L$(NVIDIA_CUDA_SDK_LOCATION)/lib -lcutil_x86_64
+
+ifeq ($(VARIANT),LS)
+	EXECUTABLE = $(BASEEXE)_ls
+	OPTS += -DVARIANT=SSSP_LS
+else ifeq ($(VARIANT),WLN)
+	EXECUTABLE = $(BASEEXE)_wln
+	OPTS += -DVARIANT=SSSP_WLN
+else ifeq ($(VARIANT),WLC)
+	EXECUTABLE = $(BASEEXE)_wlc
+	OPTS += -DVARIANT=SSSP_WLC
+else ifeq ($(VARIANT),TPATM)
+	EXECUTABLE = $(BASEEXE)_tpatm
+	OPTS += -DVARIANT=SSSP_TPATM
+endif
+
+OBJS = $(notdir $(CSRC:.c=.o))
+
+all: $(OBJS)
+	nvcc $(NVOPTS) $(OPTS) $(CUOPTS) $(CUSRC) $(INC) -o $(EXECUTABLE) $(LIBS)
+
+$(OBJS):
+	gcc -c $(CSRC) $(OPTS)
+
+clean:
+	rm -f *.o *.cu.cpp $(EXECUTABLE)
+
+cleancucpp:
+	rm -f *.cu.cpp

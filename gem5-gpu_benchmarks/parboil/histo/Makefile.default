@@ -1,0 +1,25 @@
+CSRC = 
+CUSRC = main.cu histo_final.cu histo_intermediates.cu histo_main.cu histo_prescan.cu util.cu
+EXECUTABLE = histo
+OPTS = -O3
+CUOPTS = -arch sm_20
+PARBOIL_ROOT ?= ..
+INC = -I$(NVIDIA_CUDA_SDK_LOCATION)/common/inc -I/usr/local/cuda/include -I$(PARBOIL_ROOT)/common
+LIBS = -L$(NVIDIA_CUDA_SDK_LOCATION)/lib -lcutil_x86_64 -L$(PARBOIL_ROOT)/common -lparboil
+
+OBJS = $(notdir $(CSRC:.c=.o))
+
+all: $(OBJS)
+	nvcc -cuda $(OPTS) $(CUOPTS) $(CUSRC) $(INC) $(LIBS)
+	g++ -c *.cpp $(INC) $(OPTS)
+	nvcc $(OPTS) $(CUOPTS) -o $(EXECUTABLE) *.o $(LIBS)
+
+%.c:
+	g++ -c $(CSRC) $(OPTS)
+	
+
+clean:
+	rm -f *.o *.cu.cpp $(EXECUTABLE)
+
+cleancucpp:
+	rm -f *.cu.cpp

@@ -1,0 +1,14 @@
+CUSRC = bandwidth_demand.cu
+EXECUTABLE = bandwidth_demand
+
+all: $(CSRC)
+	nvcc $(CUSRC) -o $(EXECUTABLE)
+
+%.c:
+	g++ -c $(CSRC)
+
+clean:
+	rm -f *.o *.cu.cpp $(BUILD_EXE)
+
+cleancucpp:
+	rm -f *.cu.cpp

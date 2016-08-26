@@ -1,0 +1,6 @@
+To compile the program:
+
+nvcc -cuda cell.cu
+nvcc -o cell cell.cu.cpp 
+
+Usage: cell dim3 dim2 dim1 timesteps pyramid_height

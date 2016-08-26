@@ -1,0 +1,19 @@
+CUSRC = fencetests.cu
+EXECUTABLE = fencetests
+CUFLAGS ?=
+OPTS = $(CUFLAGS) -arch=sm_20
+INC = -I$(NVIDIA_CUDA_SDK_LOCATION)/common/inc -I$(CUDAHOME)/include
+LIBS = -L$(NVIDIA_CUDA_SDK_LOCATION)/lib -lcutil_x86_64
+
+ifeq ($(BUILD_OCELOT),true)
+	BUILD_EXE = $(EXECUTABLE).ocelot
+	LIBS += `OcelotConfig -l`
+else
+	BUILD_EXE = $(EXECUTABLE)
+endif
+
+all:
+	nvcc $(OPTS) $(CUSRC) -o $(BUILD_EXE) $(LIBS)
+
+clean:
+	rm -f $(BUILD_EXE)_*

@@ -1,0 +1,23 @@
+CSRC =
+CUSRC = srad.cu
+EXECUTABLE = srad
+# OPTS = -DOUTPUT -O3
+OPTS = -O3
+CUOPTS = -arch sm_20
+INC = -I$(NVIDIA_CUDA_SDK_LOCATION)/common/inc -I$(CUDAHOME)/include
+LIBS = -L$(NVIDIA_CUDA_SDK_LOCATION)/lib -lcutil_x86_64
+
+all: $(CSRC)
+	nvcc -cuda $(OPTS) $(CUOPTS) $(CUSRC) $(INC) $(LIBS)
+	g++ -c *.cpp $(OPTS) $(INC)
+	nvcc $(OPTS) $(CUOPTS) -o $(EXECUTABLE) *.o $(LIBS)
+
+%.c:
+	g++ -c $(CSRC) $(OPTS)
+	
+
+clean:
+	rm -f *.o *.cu.cpp $(EXECUTABLE)
+
+cleancucpp:
+	rm -f *.cu.cpp
