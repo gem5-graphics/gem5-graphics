@@ -1,12 +1,15 @@
 * To build the system you will need: Nvidia CUDA Toolkit 3.1 or higher (tested under 3.1). Once installed please set the CUDAHOME env variable in setMesa_GPGPU.
 
 * Please check the prerequisites for gem5, gpgpusim and Mesa3D: 
-   * gem5: http://gem5.org/Dependencies; 
-   * gpgpusim: https://github.com/gpgpu-sim/gpgpu-sim_distribution/blob/master/README; 
+   * gem5: http://gem5.org/Dependencies.
+   * gpgpusim: https://github.com/gpgpu-sim/gpgpu-sim_distribution/blob/master/README.
    * and Mesa 3D: http://www.mesa3d.org/install.html. For Mesa you can use the following under Ubuntu:
     sudo apt-get build-dep mesa
     sudo apt-get install libx11-dev libxt-dev libxmu-dev libxi-dev libgl1-mesa-dev
-   * also you need the SDL library: http://www.libsdl.org/download-1.2.php
+   * also you need: the SDL library: http://www.libsdl.org/download-1.2.php and imagemagick.
+ 
+   Under Ubuntu to install gem5, gpgpusim and Mesa 3D dependencies and imagemagick you may use the following command:
+   sudo apt-get install git g++ python build-essential checkinstall libreadline-gplv2-dev libncursesw5-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev scons swig zlib m4 autoconf automake libtool curl make g++ unzip python-pydot flex bison xutils makedepend mesa libx11-dev libxt-dev libxmu-dev libxi-dev libgl1-mesa-dev python-dev imagemagick
 
 * To build the simulator:
    1. Uncomment and set CUDAHOME in setMesa_GPGPU.
@@ -22,7 +25,9 @@ scons build/ARM_VI_hammer_GPU/gem5.debug --default=ARM EXTRAS=../gem5-gpu/src:..
 
    6. You will need to run an Android image that was modified to work with our simulator, you may download it from [here](http://www.ece.ubc.ca/~ayoubg/files/android_images.tar.xz). Also you will need Android emulator libraries, you can download the binary from [here](http://www.ece.ubc.ca/~ayoubg/files/android_libs.tar.gz).
    
-   You can use an already made checkpiont,  taken after Android booted, available [here](http://www.ece.ubc.ca/~ayoubg/files/android_test_cp.tar.gz). Untar android_images.tar.xz and android_test_cp.tar.gz and place anroid_images and android_test_cp in  ./gem5-graphics.
+   You can use an already made checkpiont,  taken after Android booted, available [here](http://www.ece.ubc.ca/~ayoubg/files/android_test_cp.tar.gz).
+   
+   Untar android_images.tar.xz, android_libs.tar.gz and android_test_cp.tar.gz and place anroid_images, android_libs and android_test_cp under ./gem5-graphics.
 
    7. Run the following command under ./android_test_cp: ../../../gem5-gpu/configs/soc_arm.py -b android --kernel=vmlinux.smp.mouse.arm --frame-capture -r 1 --restore-with-cpu=timing --cpu-type=timing --max-checkpoints=0 --kernel_stats --g_start_frame=455 --g_end_frame=455 --num-dirs=1 --total-mem-size=2112MB --g_skip_cp_frames=1 --g_depth_shader=1
 
