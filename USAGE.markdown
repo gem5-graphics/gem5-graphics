@@ -3,14 +3,12 @@
 * Please check the prerequisites for gem5, gpgpusim and Mesa3D: 
    * gem5: http://gem5.org/Dependencies.
    * gpgpusim: https://github.com/gpgpu-sim/gpgpu-sim_distribution/blob/master/README.
-   * and Mesa 3D: http://www.mesa3d.org/install.html. For Mesa you can use the following under Ubuntu:
-    apt-get build-dep mesa
-    apt-get install libx11-dev libxt-dev libxmu-dev libxi-dev libgl1-mesa-dev
+   * and Mesa 3D: http://www.mesa3d.org/install.html.
    * also you need: the SDL library: http://www.libsdl.org/download-1.2.php and imagemagick.
  
-   Under Ubuntu to install gem5, gpgpusim and Mesa 3D dependencies and imagemagick you may use the following command:
+   Under Ubuntu to install gem5, gpgpusim and Mesa 3D dependencies and imagemagick you may use the following command to install most dependencies:
 
-   apt-get install git g++ python build-essential checkinstall libreadline-gplv2-dev libncursesw5-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev scons swig zlib m4 autoconf automake libtool curl make g++ unzip python-pydot flex bison xutils makedepend mesa libx11-dev libxt-dev libxmu-dev libxi-dev libgl1-mesa-dev python-dev imagemagick
+   apt-get install git g++ python build-essential checkinstall libreadline-gplv2-dev libncursesw5-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev scons swig m4 autoconf automake libtool curl make g++ unzip python-pydot flex bison xutils libx11-dev libxt-dev libxmu-dev libxi-dev libgl1-mesa-dev python-dev imagemagick
 
 * To build the simulator:
    1. Uncomment and set CUDAHOME in setMesa_GPGPU.
