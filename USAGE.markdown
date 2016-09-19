@@ -19,8 +19,8 @@
 
    4. Go to ./shader_to_ptx/arb_to_ptx and run make to build the arbToPtx binary.
 
-   5. Now to build gem5 run the following command in ./gem5: 
-scons build/ARM_VI_hammer_GPU/gem5.debug --default=ARM EXTRAS=../gem5-gpu/src:../gpgpu-sim/ PROTOCOL=VI_hammer GPGPU_SIM=True -j8
+   5. Now to build gem5 run the following command in ./gem5 (NOTE: an update will be pushed soon for the .opt and .fast builds):
+   scons build/ARM_VI_hammer_GPU/gem5.debug --default=ARM EXTRAS=../gem5-gpu/src:../gpgpu-sim/ PROTOCOL=VI_hammer GPGPU_SIM=True -j8
 
    6. You will need to run an Android image that was modified to work with our simulator, you may download it from [here](http://www.ece.ubc.ca/~ayoubg/files/android_images.tar.xz). Also you will need Android emulator libraries, you can download the binary from [here](http://www.ece.ubc.ca/~ayoubg/files/android_libs.tar.gz).
    
