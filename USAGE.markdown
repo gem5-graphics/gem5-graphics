@@ -24,9 +24,10 @@
 
    6. You will need to run an Android image that was modified to work with our simulator, you may download it from [here](http://www.ece.ubc.ca/~ayoubg/files/android_images.tar.xz). Also you will need Android emulator libraries, you can download the binary from [here](http://www.ece.ubc.ca/~ayoubg/files/android_libs.tar.gz).
    
-   You can use an already made checkpiont,  taken after Android booted, available [here](http://www.ece.ubc.ca/~ayoubg/files/android_test_cp.tar.gz).
+   You can use an already made checkpoint,  taken after Android booted, available [here](http://www.ece.ubc.ca/~ayoubg/files/android_test_cp.tar.gz).
    
    Untar android_images.tar.xz, android_libs.tar.gz and android_test_cp.tar.gz and place anroid_images, android_libs and android_test_cp under ./gem5-graphics.
+   NOTE: we will add instructions soon to for how to create a system image, the code has been already been posted [here](https://github.com/ayoubg)
 
    7. Run the following command under ./android_test_cp: ../../../gem5-gpu/configs/soc_arm.py -b android --kernel=vmlinux.smp.mouse.arm --frame-capture -r 1 --restore-with-cpu=timing --cpu-type=timing --max-checkpoints=0 --kernel_stats --g_start_frame=455 --g_end_frame=455 --num-dirs=1 --total-mem-size=2112MB --g_skip_cp_frames=1 --g_depth_shader=1
 
