@@ -86,6 +86,7 @@ Ruby.define_options(parser)
 (options, args) = parser.parse_args()
 
 options.ruby = True
+options.g_depth_shader=1 #z-unit not used
 
 if not args or len(args) != 1:
     print "Error: script expects a single positional argument"

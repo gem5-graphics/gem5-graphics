@@ -78,7 +78,8 @@ CudaGPU::CudaGPU(const Params *p) :
     gpgpusimConfigPath(p->config_path), unblockNeeded(false), ruby(p->ruby),
     system_cacheline_size(p->system_cacheline_size),
     runningTC(NULL), runningStream(NULL), runningTID(-1), clearTick(0),
-    dumpKernelStats(p->dump_kernel_stats), pageTable(),
+    dumpKernelStats(p->dump_kernel_stats),
+    dumpGpgpusimStats(p->dump_gpgpusim_stats), pageTable(),
     manageGPUMemory(p->manage_gpu_memory),
     gpuMemoryRange(p->gpu_memory_range), shaderMMU(p->shader_mmu)
 {
@@ -361,10 +362,13 @@ void CudaGPU::beginRunning(Tick stream_queued_time, struct CUstream_st *_stream)
     DPRINTF(CudaGPU, "Beginning kernel execution at %llu\n", curTick());
     kernelTimes.push_back(curTick());
     if (dumpKernelStats) {
-        theGPU->print_stats();
-        theGPU->update_stats();
         Stats::dump();
         Stats::reset();
+    }
+
+    if(dumpGpgpusimStats){
+       theGPU->print_stats();
+       theGPU->update_stats();
     }
     numKernelsStarted++;
     if (running) {
@@ -427,8 +431,10 @@ CudaGPU *CudaGPUParams::create() {
 }
 
 void CudaGPU::gpuPrintStats(std::ostream& out) {
-    theGPU->print_stats();
-    theGPU->update_stats();
+    if(dumpGpgpusimStats){
+       theGPU->print_stats();
+       theGPU->update_stats();
+    }
     // Print kernel statistics
     Tick total_kernel_ticks = 0;
     Tick last_kernel_time = 0;

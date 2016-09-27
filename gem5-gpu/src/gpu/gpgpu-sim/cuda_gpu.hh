@@ -373,6 +373,7 @@ class CudaGPU : public ClockedObject
     std::vector<Tick> kernelTimes;
     Tick clearTick;
     bool dumpKernelStats;
+    bool dumpGpgpusimStats;
 
     /// Pointers to GPGPU-Sim objects
     gpgpu_sim *theGPU;

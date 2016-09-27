@@ -322,8 +322,8 @@ RasterTiles* primitiveFragmentsData_t::sortFragmentsInTiles(unsigned frameHeight
 
     for (unsigned tile = 0; tile < tilesCount; tile++) {
         //std::vector<fragmentData_t>* aSet = new std::vector<fragmentData_t>();
-        RasterTile * tile = new RasterTile();
-        fragmentTiles->push_back(tile);
+        RasterTile * rtile = new RasterTile();
+        fragmentTiles->push_back(rtile);
     }
 
     assert(fragmentTiles->size() == tilesCount);
@@ -504,8 +504,8 @@ void renderData_t::initParams(unsigned int startFrame, unsigned int endFrame, in
     system(std::string("mkdir -p " + m_intFolder).c_str());
     system(std::string("mkdir -p " + m_fbFolder).c_str());
     //clear older files if any
-    system(std::string("rm "+ m_intFolder + "/*").c_str());
-    system(std::string("rm " + m_fbFolder + "/*").c_str());
+    system(std::string("rm -f "+ m_intFolder + "/*").c_str());
+    system(std::string("rm -f " + m_fbFolder + "/*").c_str());
 
     vGlslPrfx = m_intFolder+"/vertex_glsl";
     vARBPrfx = m_intFolder+"/vertex_arb";

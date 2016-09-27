@@ -3956,7 +3956,7 @@ void tex_impl( const ptx_instruction *pI, ptx_thread_info *thread )
    float y_f32=0;
    unsigned int texture_width = cuArray->width;
    unsigned int texture_height = cuArray->height;
-   unsigned tex_array_base = cuArray->devPtr32;
+   new_addr_type tex_array_base = (new_addr_type) cuArray->devPtr;
    //------------------------------------------
    
    switch ( coords_type ) {

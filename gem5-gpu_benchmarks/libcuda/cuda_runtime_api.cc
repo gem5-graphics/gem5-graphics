@@ -196,6 +196,59 @@ extern "C" {
 *                                                                              *
 *******************************************************************************/
 
+typedef struct texture_list_t{
+   texture_list_t* next;
+   const struct textureReference *hostVar;
+   const char* deviceName;
+   int dim, norm, ext;
+} texture_list_t;
+
+//used to store all texture used to update their registeration info before each cudaLaunch call
+texture_list_t* textures_list = NULL;
+
+void registerTextures(){
+    DPRINTF("textures_list = %llx\n", textures_list);
+    texture_list_t* lastTexture = textures_list;
+    while(lastTexture!=NULL){
+       gpusyscall_t call_params;
+       call_params.num_args = 6;
+       call_params.arg_lengths = new int[call_params.num_args];
+
+       call_params.arg_lengths[0] = sizeof(const struct textureReference*);
+       call_params.arg_lengths[1] = sizeof(const char*); 
+       call_params.arg_lengths[2] = sizeof(int);
+       call_params.arg_lengths[3] = sizeof(int);
+       call_params.arg_lengths[4] = sizeof(int);
+       call_params.arg_lengths[5] = sizeof(const struct textureReference);
+
+       call_params.total_bytes = 
+               call_params.arg_lengths[0] + call_params.arg_lengths[1] +
+               call_params.arg_lengths[2] + call_params.arg_lengths[3] +
+               call_params.arg_lengths[4] + call_params.arg_lengths[5];
+
+       call_params.args = new char[call_params.total_bytes];
+
+       int bytes_off = 0;
+       int lengths_off = 0;
+
+       touchPages((unsigned char*)lastTexture->deviceName, strlen(lastTexture->deviceName));
+       pack(call_params.args, bytes_off, call_params.arg_lengths, lengths_off, (char *)&lastTexture->hostVar, call_params.arg_lengths[0]);
+       pack(call_params.args, bytes_off, call_params.arg_lengths, lengths_off, (char *)&lastTexture->deviceName, call_params.arg_lengths[1]);
+       pack(call_params.args, bytes_off, call_params.arg_lengths, lengths_off, (char *)&lastTexture->dim, call_params.arg_lengths[2]);
+       pack(call_params.args, bytes_off, call_params.arg_lengths, lengths_off, (char *)&lastTexture->norm, call_params.arg_lengths[3]);
+       pack(call_params.args, bytes_off, call_params.arg_lengths, lengths_off, (char *)&lastTexture->ext, call_params.arg_lengths[4]);
+       pack(call_params.args, bytes_off, call_params.arg_lengths, lengths_off, (char *)lastTexture->hostVar, call_params.arg_lengths[5]);
+
+       DPRINTF("lastTexture = %llx, deviceName=%s, dim=%d, norm=%d, ext=%d\n",
+             lastTexture, lastTexture->deviceName, lastTexture->dim, lastTexture->norm, lastTexture->ext);
+       m5_gpu(63, (uint64_t)&call_params);
+
+       delete call_params.args;
+       delete call_params.arg_lengths;
+       lastTexture = lastTexture->next;
+    }
+}
+
 __host__ cudaError_t CUDARTAPI cudaMallocHelper(void **ptr, size_t size, unsigned type)
 {
     gpusyscall_t call_params;
@@ -297,9 +350,6 @@ __host__ cudaError_t CUDARTAPI cudaMallocPitch(void **devPtr, size_t *pitch, siz
 
 __host__ cudaError_t CUDARTAPI cudaMallocArray(struct cudaArray **array, const struct cudaChannelFormatDesc *desc, size_t width, size_t height, unsigned int flags)
 {
-    //cuda_not_implemented(__FILE__, __my_func__, __LINE__);
-    //return g_last_cudaError = cudaErrorUnknown;
-
     unsigned size = width * height * ((desc->x + desc->y + desc->z + desc->w)/8);
     int dims = (desc->x > 0? 1 : 0) + (desc->y > 0? 1 : 0) + (desc->z > 0? 1 : 0); //TODO: correct?
     (*array) = (struct cudaArray*) malloc(sizeof(cudaArray));
@@ -313,8 +363,28 @@ __host__ cudaError_t CUDARTAPI cudaMallocArray(struct cudaArray **array, const s
     #ifdef ENVIRONMENT32
     ((*array)->devPtr32) = (uint32_t)(*array)->devPtr;
     #else 
-    ((*array)->devPtr32) = NULL;
+    ((*array)->devPtr32) = (int)NULL;
     #endif
+
+    DPRINTF("array=%llx, size=%d, dims=%d, width=%d, height=%d, devPtr=%llx\n", *array, size, dims, width, height, (*array)->devPtr);
+
+    //allocating 
+    gpusyscall_t call_params;
+    call_params.num_args = 2;
+    call_params.arg_lengths = new int[call_params.num_args];
+
+    call_params.arg_lengths[0] = sizeof(void*);
+    call_params.arg_lengths[1] = sizeof(int32_t);
+    call_params.total_bytes = call_params.arg_lengths[0] + call_params.arg_lengths[1];
+
+    call_params.args = new char[call_params.total_bytes];
+
+    int bytes_off = 0;
+    int lengths_off = 0;
+
+    pack(call_params.args, bytes_off, call_params.arg_lengths, lengths_off, (char *)&((*array)->devPtr), call_params.arg_lengths[0]);
+    pack(call_params.args, bytes_off, call_params.arg_lengths, lengths_off, (char *)&((*array)->size), call_params.arg_lengths[1]);
+    m5_gpu(3, (uint64_t)&call_params);
 
     return ret;
 }
@@ -403,8 +473,23 @@ blockThread()
 
 __host__ cudaError_t CUDARTAPI cudaFreeArray(struct cudaArray *array)
 {
-    //cuda_not_implemented(__FILE__, __my_func__, __LINE__);
-    //return g_last_cudaError = cudaErrorUnknown;
+    DPRINTF("array=%llx, devPtr=%llx, size=%d\n", (uint64_t)array, (uint64_t)array->devPtr, array->size);
+    gpusyscall_t call_params;
+    call_params.num_args = 2;
+    call_params.arg_lengths = new int[call_params.num_args];
+
+    call_params.arg_lengths[0] = sizeof(void*);
+    call_params.arg_lengths[1] = sizeof(int32_t);
+    call_params.total_bytes = call_params.arg_lengths[0] + call_params.arg_lengths[1];
+
+    call_params.args = new char[call_params.total_bytes];
+
+    int bytes_off = 0;
+    int lengths_off = 0;
+
+    pack(call_params.args, bytes_off, call_params.arg_lengths, lengths_off, (char *)&(array->devPtr), call_params.arg_lengths[0]);
+    pack(call_params.args, bytes_off, call_params.arg_lengths, lengths_off, (char *)&(array->size), call_params.arg_lengths[1]);
+    m5_gpu(6, (uint64_t)&call_params);
     cudaError_t ret = cudaFreeHelper(array->devPtr, CUDA_FREE_DEVICE);
     free(array);
     return ret;
@@ -468,24 +553,10 @@ __host__ cudaError_t CUDARTAPI cudaMemcpy(void *dst, const void *src, size_t cou
 
 __host__ cudaError_t CUDARTAPI cudaMemcpyToArray(struct cudaArray *dst, size_t wOffset, size_t hOffset, const void *src, size_t count, enum cudaMemcpyKind kind)
 {
-     cuda_not_implemented(__FILE__, __my_func__, __LINE__);
-     return g_last_cudaError = cudaErrorUnknown;
-//   CUctx_st *context = GPGPUSim_Context();
-//   gpgpu_t *gpu = context->get_device()->get_gpgpu();
-//   size_t size = count;
-//   printf("GPGPU-Sim PTX: cudaMemcpyToArray\n");
-//   if( kind == cudaMemcpyHostToDevice )
-//      gpu->memcpy_to_gpu( (size_t)(dst->devPtr), src, size);
-//   else if( kind == cudaMemcpyDeviceToHost )
-//      gpu->memcpy_from_gpu( dst->devPtr, (size_t)src, size);
-//   else if( kind == cudaMemcpyDeviceToDevice )
-//      gpu->memcpy_gpu_to_gpu( (size_t)(dst->devPtr), (size_t)src, size);
-//   else {
-//      printf("GPGPU-Sim PTX: cudaMemcpyToArray - ERROR : unsupported cudaMemcpyKind\n");
-//      abort();
-//   }
-//   dst->devPtr32 = (unsigned) (size_t)(dst->devPtr);
-//   return g_last_cudaError = cudaSuccess;
+     printf("dst cudaArray = %llx, src=%llx, count=%d\n", dst, src, count);
+     g_last_cudaError = cudaMemcpy(dst->devPtr, src, count, kind);
+     dst->devPtr32 = (unsigned) (size_t)(dst->devPtr);
+     return g_last_cudaError;
 }
 
 __host__ cudaError_t CUDARTAPI cudaMemcpyFromArray(void *dst, const struct cudaArray *src, size_t wOffset, size_t hOffset, size_t count, enum cudaMemcpyKind kind)
@@ -531,7 +602,7 @@ __host__ cudaError_t CUDARTAPI cudaMemcpy2DToArray(struct cudaArray *dst, size_t
    size_t size = spitch*height;
    size_t channel_size = dst->desc.w+dst->desc.x+dst->desc.y+dst->desc.z;
    unsigned elem_size = channel_size/8;
-
+   
    if(
          (channel_size%8) 
          or (dst->dimensions!=2) //copy to none 2D array not supported
@@ -539,8 +610,26 @@ __host__ cudaError_t CUDARTAPI cudaMemcpy2DToArray(struct cudaArray *dst, size_t
          or (hOffset!=0) //non-zero hOffset not yet supported
          or (dst->height != ((int)height)) //partial copy not supported
          or (elem_size*dst->width != width) //partial copy not supported
-         or (spitch == width) //spitch != width not supported 
+         or (spitch != width) //spitch != width not supported 
       ){
+      DPRINTF("channel_size = %d,\
+              dst->dimenstions=%d,\
+              wOffset=%d, \
+              hOffset=%d, \
+              dst->height=%d, height=%d, \
+              dst->with=%d, width=%d, \
+              elm_size=%d, \
+              spitch=%d\n",
+              channel_size,
+              dst->dimensions,
+              wOffset,
+              hOffset,
+              dst->height, height,
+              dst->width, width,
+              elem_size,
+              spitch
+            );
+      printf("Error on cudaMemcpy2DToArray, unsupported args\n");
       return g_last_cudaError = cudaErrorUnknown;
    }
 
@@ -963,13 +1052,14 @@ __host__ cudaError_t CUDARTAPI cudaBindTextureToArray(const struct textureRefere
 {
     //cuda_not_implemented(__FILE__, __my_func__, __LINE__);
     //return g_last_cudaError = cudaErrorUnknown;
+    registerTextures();
     gpusyscall_t call_params;
     call_params.num_args = 3;
     call_params.arg_lengths = new int[call_params.num_args];
 
     call_params.arg_lengths[0] = sizeof(const struct textureReference*);
-    call_params.arg_lengths[1] = sizeof(const struct cudaArray *);
-    call_params.arg_lengths[2] = sizeof(const struct cudaChannelFormatDesc*);
+    call_params.arg_lengths[1] = sizeof(const struct cudaArray );
+    call_params.arg_lengths[2] = sizeof(const struct cudaChannelFormatDesc);
 
     call_params.total_bytes = call_params.arg_lengths[0] +
             call_params.arg_lengths[1] + call_params.arg_lengths[2];
@@ -979,11 +1069,12 @@ __host__ cudaError_t CUDARTAPI cudaBindTextureToArray(const struct textureRefere
     cudaError_t* ret_spot = (cudaError_t*)call_params.ret;
     *ret_spot = cudaSuccess;
 
+    touchPages((unsigned char*)array->devPtr, array->size);
     int bytes_off = 0;
     int lengths_off = 0;
     pack(call_params.args, bytes_off, call_params.arg_lengths, lengths_off, (char *)&texref, call_params.arg_lengths[0]);
-    pack(call_params.args, bytes_off, call_params.arg_lengths, lengths_off, (char *)&array, call_params.arg_lengths[1]);
-    pack(call_params.args, bytes_off, call_params.arg_lengths, lengths_off, (char *)&desc, call_params.arg_lengths[2]);
+    pack(call_params.args, bytes_off, call_params.arg_lengths, lengths_off, (char *)array, call_params.arg_lengths[1]);
+    pack(call_params.args, bytes_off, call_params.arg_lengths, lengths_off, (char *)desc, call_params.arg_lengths[2]);
 
     m5_gpu(33, (uint64_t)&call_params);
     cudaError_t ret = *((cudaError_t*)call_params.ret);
@@ -1141,6 +1232,7 @@ __host__ cudaError_t CUDARTAPI cudaFuncSetCacheConfig(const char *func, enum cud
 
 __host__ cudaError_t CUDARTAPI cudaLaunch(const char *hostFun)
 {
+    registerTextures();
     gpusyscall_t call_params;
     call_params.num_args = 1;
     call_params.arg_lengths = new int[call_params.num_args];
@@ -1668,39 +1760,23 @@ void __cudaRegisterTexture(void **fatCubinHandle,
         const struct textureReference *hostVar, const void **deviceAddress,
         const char *deviceName, int dim, int norm, int ext)
 {
-    gpusyscall_t call_params;
-    call_params.num_args = 7;
-    call_params.arg_lengths = new int[call_params.num_args];
+    
+    texture_list_t** lastTexture = &textures_list;
+    while((*lastTexture)!=NULL){
+       lastTexture = &((*lastTexture)->next);
+    }
 
-    call_params.arg_lengths[0] = sizeof(void**);
-    call_params.arg_lengths[1] = sizeof(const struct textureReference*);
-    call_params.arg_lengths[2] = sizeof(const void**);
-    call_params.arg_lengths[3] = sizeof(const char*);
-    call_params.arg_lengths[4] = sizeof(int);
-    call_params.arg_lengths[5] = sizeof(int);
-    call_params.arg_lengths[6] = sizeof(int);
-    call_params.total_bytes = call_params.arg_lengths[0] +
-            call_params.arg_lengths[1] + call_params.arg_lengths[2] +
-            call_params.arg_lengths[3] + call_params.arg_lengths[4] +
-            call_params.arg_lengths[5] + call_params.arg_lengths[6];
-
-    call_params.args = new char[call_params.total_bytes];
-
-    int bytes_off = 0;
-    int lengths_off = 0;
-
-    pack(call_params.args, bytes_off, call_params.arg_lengths, lengths_off, (char *)&fatCubinHandle, call_params.arg_lengths[0]);
-    pack(call_params.args, bytes_off, call_params.arg_lengths, lengths_off, (char *)&hostVar, call_params.arg_lengths[1]);
-    pack(call_params.args, bytes_off, call_params.arg_lengths, lengths_off, (char *)&deviceAddress, call_params.arg_lengths[2]);
-    pack(call_params.args, bytes_off, call_params.arg_lengths, lengths_off, (char *)&deviceName, call_params.arg_lengths[3]);
-    pack(call_params.args, bytes_off, call_params.arg_lengths, lengths_off, (char *)&dim, call_params.arg_lengths[4]);
-    pack(call_params.args, bytes_off, call_params.arg_lengths, lengths_off, (char *)&norm, call_params.arg_lengths[5]);
-    pack(call_params.args, bytes_off, call_params.arg_lengths, lengths_off, (char *)&ext, call_params.arg_lengths[6]);
-
-    m5_gpu(63, (uint64_t)&call_params);
-
-    delete call_params.args;
-    delete call_params.arg_lengths;
+    (*lastTexture) = (texture_list_t*)malloc(sizeof(texture_list_t));
+    (*lastTexture)->next = NULL;
+    (*lastTexture)->hostVar = hostVar;
+    //(*lastTexture)->deviceName = (char*)malloc(strlen(deviceName)+1);
+    //strcpy((*lastTexture)->deviceName, deviceName);
+    (*lastTexture)->deviceName = deviceName;
+    (*lastTexture)->dim = dim;
+    (*lastTexture)->norm = norm;
+    (*lastTexture)->ext = ext;
+    DPRINTF("adding texture %s, newTextureP=0x%llx\n", deviceName, *lastTexture);
+    return;
 }
 
 #ifndef OPENGL_SUPPORT

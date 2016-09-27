@@ -389,6 +389,12 @@ std::list<kernel_config> g_cuda_launch_stack;
 *                                                                              *
 *******************************************************************************/
 
+//mapping guest texture to host texture references
+std::map<Addr, struct textureReference*> gTexTohTexMap;
+
+//mapping guest arrays to host arrays
+std::map<void*, cudaArray*> gArrayTohArray;
+
 void
 cudaMalloc(ThreadContext *tc, gpusyscall_t *call_params)
 {
@@ -467,51 +473,14 @@ cudaMallocPitch(ThreadContext *tc, gpusyscall_t *call_params)
 //__host__ cudaError_t CUDARTAPI cudaMallocArray(struct cudaArray **array, const struct cudaChannelFormatDesc *desc, size_t width, size_t height __dv(1)) {
 void
 cudaMallocArray(ThreadContext *tc, gpusyscall_t *call_params) {
-    cuda_not_implemented(__my_func__,__LINE__);
-    /*GPUSyscallHelper helper(tc, call_params);
-
-    Addr arrayPtrAddr = *((Addr*)helper.getParam(0, true));
-    struct cudaChannelFormatDesc desc = *((struct cudaChannelFormatDesc*)helper.getParam(1));
-    size_t width = *((size_t*)helper.getParam(2));
-    size_t height = *((size_t*)helper.getParam(3));
-    unsigned int flags = *((size_t*)helper.getParam(4));
-    unsigned texSize = width * height * ((desc.x + desc.y + desc.z + desc.w)/8);
-
-    CudaGPU *cudaGPU = CudaGPU::getCudaGPU(g_active_device);
-
-    DPRINTF(GPUSyscalls, "gem5 GPU Syscall: cudaMallocArray(arrayAddr = %x, format = (%d, %d, %d, %s), width = %d, height=%d, flags = %x)\n",
-            arrayPtrAddr, desc.x, desc.y, desc.z, desc.w, cudaChannelFormatKindStrings[desc.f], width, height, flags);
-
-
-    g_last_cudaError = cudaSuccess;
-
-    if (!cudaGPU->isManagingGPUMemory()) {
-        // Tell CUDA runtime to allocate memory
-        //FIXME: here we followed the behaviour of cudaMalloc, not sure if another action is needed
-        cudaError_t to_return = cudaErrorApiFailureBase;
-        helper.setReturn((uint8_t*)&to_return, sizeof(cudaError_t));
-        return;
-    } else {
-        struct cudaArray array;
-        array.desc = desc;
-        array.width = width;
-        array.height = height;
-        array.size = texSize;
-        //array->dimensions = ?
-        Addr arrayAddr = cudaGPU->allocateGPUMemory(sizeof(struct cudaArray));
-        Addr texPtr = cudaGPU->allocateGPUMemory(texSize);
-        array.devPtr = (void*)texPtr;
-        array.devPtr32 = (uint32_t) ((uint64_t)array.devPtr); //for ARM 32-bit should be OK
-        //array->texData ==> shouldn't be used in this case
-        helper.writeBlob(arrayAddr, (uint8_t*)(&array), sizeof(struct cudaArray), true);
-        helper.writeBlob(arrayPtrAddr, (uint8_t*)(arrayAddr), sizeof(Addr), true);
-        if (texPtr & arrayAddr) {
-            g_last_cudaError = cudaSuccess;
-        } else {
-            g_last_cudaError = cudaErrorMemoryAllocation;
-        }
-        helper.setReturn((uint8_t*)&g_last_cudaError, sizeof(cudaError_t));
-    }*/
+    GPUSyscallHelper helper(tc, call_params);
+    void* devPtr = *((void**)helper.getParam(0, true));
+    uint32_t size = *((uint32_t*)helper.getParam(1));
+    DPRINTF(GPUSyscalls, "gem5 GPU Syscall: cudaMallocArray(cudaArray->devPtr = 0x%llx, size=%d)\n", (uint64_t)devPtr, size);
+   
+    struct cudaArray* array = new cudaArray();
+    array->texData = (unsigned char*) malloc(size);
+    gArrayTohArray[devPtr] = array;
 }
 
 cudaError_t
@@ -586,7 +555,16 @@ cudaFreeHost(ThreadContext *tc, gpusyscall_t *call_params) {
 //__host__ cudaError_t CUDARTAPI cudaFreeArray(struct cudaArray *array){
 void
 cudaFreeArray(ThreadContext *tc, gpusyscall_t *call_params) {
-    cuda_not_implemented(__my_func__,__LINE__);
+    GPUSyscallHelper helper(tc, call_params);
+    void* devPtr = *((void**)helper.getParam(0, true));
+    uint32_t size = *((uint32_t*)helper.getParam(1));
+    DPRINTF(GPUSyscalls, "gem5 GPU Syscall: cudaFreeArray(cudaArray->devPtr = 0x%llx, size=%d)\n", (uint64_t)devPtr, size);
+  
+    assert(gArrayTohArray.find(devPtr) != gArrayTohArray.end());
+    struct cudaArray* array = gArrayTohArray[devPtr];
+    free(array->texData);
+    delete array;
+    gArrayTohArray.erase(devPtr);
 };
 
 
@@ -983,14 +961,25 @@ cudaBindTextureToArray(ThreadContext *tc, gpusyscall_t *call_params)
     //cuda_not_implemented(__my_func__,__LINE__);
     GPUSyscallHelper helper(tc, call_params);
 
-    const struct textureReference* texref = *((const struct textureReference**)helper.getParam(0, true));
-    const struct cudaArray* array = *((const struct cudaArray**)helper.getParam(1, true));
-    const struct cudaChannelFormatDesc* desc= *((const struct cudaChannelFormatDesc**)helper.getParam(2, true));
+    Addr texref = *((Addr*)helper.getParam(0));
+    struct cudaChannelFormatDesc* desc= new cudaChannelFormatDesc();
+    (*desc) = *((struct cudaChannelFormatDesc*)helper.getParam(2));
 
-    DPRINTF(GPUSyscalls, "gem5 GPU Syscall: cudaBindTextureToArray(texref = 0x%x, array = 0x%x)\n", texref, array);
+
+    struct cudaArray gArray = *((struct cudaArray*)helper.getParam(1));
+    assert(gArrayTohArray.find(gArray.devPtr)!= gArrayTohArray.end());
+    struct cudaArray* array = gArrayTohArray[gArray.devPtr];
+    uint8_t* texData = array->texData;
+    //probably not necessary to update cudaArray data since cudaMalloc?
+    (*array) = gArray;
+    array->texData = texData;
+
+    helper.readBlob((Addr) array->devPtr, array->texData, array->size);
+
+    DPRINTF(GPUSyscalls, "gem5 GPU Syscall: cudaBindTextureToArray\n");
     CudaGPU *cudaGPU = CudaGPU::getCudaGPU(g_active_device);
     gpgpu_t *gpu = cudaGPU->getTheGPU();
-    gpu->gpgpu_ptx_sim_bindTextureToArray(texref,array);
+    gpu->gpgpu_ptx_sim_bindTextureToArray(gTexTohTexMap[texref], array);
 }
 
 cudaError_t
@@ -1913,24 +1902,31 @@ __cudaRegisterTexture(ThreadContext *tc, gpusyscall_t *call_params)
 {
     GPUSyscallHelper helper(tc, call_params);
 
-    // Addr sim_fatCubinHandle = *((Addr*)helper.getParam(0, true));
-    Addr sim_hostVar = *((Addr*)helper.getParam(1));
-    // Addr sim_deviceAddress = *((Addr*)helper.getParam(2, true));
-    Addr sim_deviceName = *((Addr*)helper.getParam(3, true));
-    int sim_dim = *((int*)helper.getParam(4));
-    int sim_norm = *((int*)helper.getParam(5));
-    int sim_ext = *((int*)helper.getParam(6));
-    DPRINTF(GPUSyscalls, "gem5 GPU Syscall: __cudaRegisterTexture(fatCubinHandle** = %x, hostVar* = %x, deviceAddress* = %x, deviceName* = %x, dim = %d, norm = %d, ext = %d)\n",
+    Addr sim_hostVar = *((Addr*)helper.getParam(0));
+    Addr sim_deviceName = *((Addr*)helper.getParam(1, true));
+    int sim_dim = *((int*)helper.getParam(2));
+    int sim_norm = *((int*)helper.getParam(3));
+    int sim_ext = *((int*)helper.getParam(4));
+    struct textureReference* hostTexRef;
+   
+    if(gTexTohTexMap.find(sim_hostVar) == gTexTohTexMap.end())
+       hostTexRef= new textureReference();
+    else
+       hostTexRef = gTexTohTexMap[sim_hostVar];
+
+    (*hostTexRef) = *((textureReference*) helper.getParam(5));
+    gTexTohTexMap[sim_hostVar] = hostTexRef;
+
+    DPRINTF(GPUSyscalls, "gem5 GPU Syscall: __cudaRegisterTexture(fatCubinHandle** = %x, hostVar* = %x, deviceAddress* = %x, deviceName = %s, dim = %d, norm = %d, ext = %d)\n",
             /*sim_fatCubinHandle*/ 0, sim_hostVar, /*sim_deviceAddress*/ 0,
             sim_deviceName, sim_dim, sim_norm, sim_ext);
 
-    const char* deviceName = new char[MAX_STRING_LEN];
     CudaGPU *cudaGPU = CudaGPU::getCudaGPU(g_active_device);
     gpgpu_t *gpu = cudaGPU->getTheGPU();
+    char* deviceName = new char[MAX_STRING_LEN];
     helper.readString(sim_deviceName, (uint8_t*)deviceName, MAX_STRING_LEN);
 
-    gpu->gpgpu_ptx_sim_bindNameToTexture(deviceName, (const struct textureReference*)sim_hostVar, sim_dim, sim_norm, sim_ext);
-    warn("__cudaRegisterTexture implementation is not complete!");
+    gpu->gpgpu_ptx_sim_bindNameToTexture(deviceName, hostTexRef, sim_dim, sim_norm, sim_ext);
 }
 
 void graphicsRegisterTexture(

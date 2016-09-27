@@ -291,11 +291,12 @@ void ZUnit::finishTranslation(WholeTranslationState *state) {
 
    pendingTranslations--;
    checkAndReleaseTickEvent();
-   DepthFragmentTile::DepthFragment* df = (DepthFragmentTile::DepthFragment *) state->mainReq->getExtraData();
 
+#if TRACING_ON
+   DepthFragmentTile::DepthFragment* df = (DepthFragmentTile::DepthFragment *) state->mainReq->getExtraData();
    DPRINTF(ZUnit, "Finished translation for fragment(%d,%d), vaddr=%llx ==> paddr=%llx\n", df->getX(), df->getY(), 
          state->mainReq->getVaddr(), state->mainReq->getPaddr());
-
+#endif
    assert(state->mode == BaseTLB::Read);
    PacketPtr pkt = new Packet(state->mainReq, MemCmd::ReadReq);
    pkt->allocate();
@@ -397,7 +398,7 @@ void ZUnit::startEarlyZ(uint64_t depthBuffStart, uint64_t depthBuffEnd, unsigned
       for(int j=0; j< (*tiles)[i]->size();  j++){
          unsigned xPos = (*(*tiles)[i])[j].intPos[0];
          unsigned yPos = (*(*tiles)[i])[j].intPos[1];
-         unsigned zPos = (*(*tiles)[i])[j].intPos[3];
+         unsigned zPos = (*(*tiles)[i])[j].intPos[2];
          Addr addr = depthAddrEnd - (yPos * bufWidth * (unsigned)depthSize) + (xPos * (unsigned)depthSize);
          assert((addr >= depthAddrStart) and (addr < depthAddrEnd));
          fragmentData_t * rasterFrag =  &((*(*tiles)[i])[j]);

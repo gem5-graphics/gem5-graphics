@@ -244,6 +244,8 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
     size *= inst.vectorLength;
     assert(size <= 16);
     if (inst.op == BARRIER_OP || inst.op == MEMORY_BARRIER_OP) {
+        string type = inst.op==BARRIER_OP? "BARRIER_OP" : "MEMORY_BARRIER_OP";
+        DPRINTF(CudaCoreAccess, "executing %s\n", type);
         if (inst.active_count() != inst.warp_size()) {
             warn_once("ShaderLSQ received partial-warp fence: Assuming you know what you're doing");
         }
@@ -292,11 +294,16 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
     for (int lane = 0; lane < warpSize; lane++) {
         if (inst.active(lane)) {
            int reqsCount = inst.get_mem_reqs_count(lane);
-           assert((reqsCount==1) or !(inst.isatomic() or inst.is_store()));
+           //BARRIER ops may report no requests but we still have to execute them
+           //TODO: find a better way to do it
+           if(reqsCount == 0) {
+              assert(inst.op == BARRIER_OP || inst.op == MEMORY_BARRIER_OP);
+              reqsCount =1; 
+           }
            for(int reqNum = 0; reqNum < reqsCount; reqNum++){
-               Addr addr = inst.get_addr(lane, reqNum);
                PacketPtr pkt;
                if (inst.is_load()) {
+                   Addr addr = inst.get_addr(lane, reqNum);
                    // Not all cache operators are currently supported in gem5-gpu.
                    // Verify that a supported cache operator is specified for this
                    // load instruction.
@@ -348,6 +355,7 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
                        panic("Unhandled cache operator (%d) on store\n",
                              inst.cache_op);
                    }
+                   Addr addr = inst.get_addr(lane, reqNum);
                    RequestPtr req = new Request(asid, addr, size, flags,
                            dataMasterId, inst.pc, id, inst.warp_id());
                    pkt = new Packet(req, MemCmd::WriteReq);

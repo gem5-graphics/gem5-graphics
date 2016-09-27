@@ -38,6 +38,7 @@ def addGPUOptions(parser):
     parser.add_option("--access-host-pagetable", action="store_true", default=False)
     parser.add_option("--split", default=False, action="store_true", help="Use split CPU and GPU cache hierarchies instead of fusion")
     parser.add_option("--kernel_stats", default=False, action="store_true", help="Dump statistics on GPU kernel boundaries")
+    parser.add_option("--gpgpusim_stats", default=False, action="store_true", help="Dump statistics of GPGPU-Sim on GPU kernel boundaries")
     
    #gpu cores, note: these 3 configs will be loaded from the gpgpusim config file when specified
     parser.add_option("--clusters", default=16, help="Number of shader core clusters in the gpu that GPGPU-sim is simulating", type="int")
@@ -323,15 +324,20 @@ def createGPU(options, gpu_mem_range):
     gpu.shared_mem_delay = options.shMemDelay
     gpu.config_path = gpgpusimOptions
     gpu.dump_kernel_stats = options.kernel_stats
+    gpu.dump_gpgpusim_stats = options.gpgpusim_stats
 
     return gpu
 
 def connectGPUPorts(gpu, ruby, options):
+
+    # for now only VI_fusion has tex and z caches added
     mp = 1
     if(buildEnv['PROTOCOL'].lower().count("vi")):
       mp = 2
-      
-    gpu.zunit.z_port = ruby._cpu_ports[options.num_cpus+len(gpu.shader_cores)*mp+2].slave
+      gpu.zunit.z_port = ruby._cpu_ports[options.num_cpus+len(gpu.shader_cores)*mp+2].slave
+    else:
+      #if not VI assert the g_depth_shader option is used
+      assert(options.g_depth_shader==1), "No z-cache, g_depth_shader has to be enabled"
 
     for i,sc in enumerate(gpu.shader_cores):
         sc.inst_port = ruby._cpu_ports[options.num_cpus+i*mp].slave
@@ -352,7 +358,7 @@ def connectGPUPorts(gpu, ruby, options):
     # is indexed first, then the CE then the Z. 
     #For split address space architectures, there are 2 copy
     # engine caches, and the host-side cache is indexed before the device-side.
-    assert(len(ruby._cpu_ports) == options.num_cpus + options.num_sc*mp + 3)
+    assert(len(ruby._cpu_ports) == options.num_cpus + options.num_sc*mp + mp +1)
 
     # Initialize the MMU, connecting it to either the pagewalk cache port for
     # unified address space, or the copy engine's host-side sequencer port for

@@ -99,12 +99,6 @@ const char* cudaErrorStrings[] =
  *
  ******************************************************************************/
 
-#ifdef __DEBUG__
-#define DPRINTF(...) do { fprintf(stderr, "gem5-gpu CUDA Syscalls: "); fprintf(stderr, __VA_ARGS__); } while(0);
-#else
-#define DPRINTF(...) do {} while(0);
-#endif
-
 #if defined __APPLE__
 #   define __my_func__ __PRETTY_FUNCTION__
 #else
@@ -117,6 +111,12 @@ const char* cudaErrorStrings[] =
 #   define __my_func__ ((__const char *) 0)
 #  endif
 # endif
+#endif
+
+#ifdef __DEBUG__
+#define DPRINTF(...) do { fprintf(stderr, "gem5-gpu CUDA Syscalls (%s)", __my_func__); fprintf(stderr, __VA_ARGS__); } while(0);
+#else
+#define DPRINTF(...) do {} while(0);
 #endif
 
 inline void cuda_not_implemented(const char* file, const char* func, unsigned line)
