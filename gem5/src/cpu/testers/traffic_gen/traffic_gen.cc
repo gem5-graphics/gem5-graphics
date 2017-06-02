@@ -59,11 +59,11 @@ TrafficGen::TrafficGen(const TrafficGenParams* p)
       elasticReq(p->elastic_req),
       nextTransitionTick(0),
       nextPacketTick(0),
+      currState(0),
       port(name() + ".port", *this),
       retryPkt(NULL),
       retryPktTick(0),
-      updateEvent(this),
-      drainManager(NULL)
+      updateEvent(this)
 {
 }
 
@@ -117,12 +117,12 @@ TrafficGen::initState()
     }
 }
 
-unsigned int
-TrafficGen::drain(DrainManager *dm)
+DrainState
+TrafficGen::drain()
 {
     if (!updateEvent.scheduled()) {
         // no event has been scheduled yet (e.g. switched from atomic mode)
-        return 0;
+        return DrainState::Drained;
     }
 
     if (retryPkt == NULL) {
@@ -130,15 +130,14 @@ TrafficGen::drain(DrainManager *dm)
         nextPacketTick = MaxTick;
         nextTransitionTick = MaxTick;
         deschedule(updateEvent);
-        return 0;
+        return DrainState::Drained;
     } else {
-        drainManager = dm;
-        return 1;
+        return DrainState::Draining;
     }
 }
 
 void
-TrafficGen::serialize(ostream &os)
+TrafficGen::serialize(CheckpointOut &cp) const
 {
     DPRINTF(Checkpoint, "Serializing TrafficGen\n");
 
@@ -157,7 +156,7 @@ TrafficGen::serialize(ostream &os)
 }
 
 void
-TrafficGen::unserialize(Checkpoint* cp, const string& section)
+TrafficGen::unserialize(CheckpointIn &cp)
 {
     // restore scheduled events
     Tick nextEvent;
@@ -187,10 +186,18 @@ TrafficGen::update()
         assert(curTick() >= nextPacketTick);
         // get the next packet and try to send it
         PacketPtr pkt = states[currState]->getNextPacket();
-        numPackets++;
-        if (!port.sendTimingReq(pkt)) {
-            retryPkt = pkt;
-            retryPktTick = curTick();
+
+        // suppress packets that are not destined for a memory, such as
+        // device accesses that could be part of a trace
+        if (system->isMemAddr(pkt->getAddr())) {
+            numPackets++;
+            if (!port.sendTimingReq(pkt)) {
+                retryPkt = pkt;
+                retryPktTick = curTick();
+            }
+        } else {
+            DPRINTF(TrafficGen, "Suppressed packet %s 0x%x\n",
+                    pkt->cmdString(), pkt->getAddr());
         }
     }
 
@@ -259,7 +266,7 @@ TrafficGen::parseConfig()
                     states[id] = new IdleGen(name(), masterID, duration);
                     DPRINTF(TrafficGen, "State: %d IdleGen\n", id);
                 } else if (mode == "LINEAR" || mode == "RANDOM" ||
-                           mode == "DRAM") {
+                           mode == "DRAM"   || mode == "DRAM_ROTATE") {
                     uint32_t read_percent;
                     Addr start_addr;
                     Addr end_addr;
@@ -302,7 +309,7 @@ TrafficGen::parseConfig()
                                                    min_period, max_period,
                                                    read_percent, data_limit);
                         DPRINTF(TrafficGen, "State: %d RandomGen\n", id);
-                    } else if (mode == "DRAM") {
+                    } else if (mode == "DRAM" || mode == "DRAM_ROTATE") {
                         // stride size (bytes) of the request for achieving
                         // required hit length
                         unsigned int stride_size;
@@ -310,9 +317,11 @@ TrafficGen::parseConfig()
                         unsigned int nbr_of_banks_DRAM;
                         unsigned int nbr_of_banks_util;
                         unsigned int addr_mapping;
+                        unsigned int nbr_of_ranks;
 
                         is >> stride_size >> page_size >> nbr_of_banks_DRAM >>
-                            nbr_of_banks_util >> addr_mapping;
+                            nbr_of_banks_util >> addr_mapping >>
+                            nbr_of_ranks;
 
                         if (stride_size > page_size)
                             warn("DRAM generator stride size (%d) is greater "
@@ -320,13 +329,8 @@ TrafficGen::parseConfig()
                                  blocksize, page_size);
 
                         if (nbr_of_banks_util > nbr_of_banks_DRAM)
-                            fatal("Attempting to use more banks (%) than "
-                                  "what is available (%)\n",
-                                  nbr_of_banks_util, nbr_of_banks_DRAM);
-
-                        if (nbr_of_banks_util > nbr_of_banks_DRAM)
-                            fatal("Attempting to use more banks (%) than "
-                                  "what is available (%)\n",
+                            fatal("Attempting to use more banks (%d) than "
+                                  "what is available (%d)\n",
                                   nbr_of_banks_util, nbr_of_banks_DRAM);
 
                         // count the number of sequential packets to
@@ -340,16 +344,40 @@ TrafficGen::parseConfig()
                                     stride_size, blocksize, num_seq_pkts);
                         }
 
-                        states[id] = new DramGen(name(), masterID,
-                                                 duration, start_addr,
-                                                 end_addr, blocksize,
-                                                 min_period, max_period,
-                                                 read_percent, data_limit,
-                                                 num_seq_pkts, page_size,
-                                                 nbr_of_banks_DRAM,
-                                                 nbr_of_banks_util,
-                                                 addr_mapping);
-                        DPRINTF(TrafficGen, "State: %d DramGen\n", id);
+                        if (mode == "DRAM") {
+                            states[id] = new DramGen(name(), masterID,
+                                                     duration, start_addr,
+                                                     end_addr, blocksize,
+                                                     min_period, max_period,
+                                                     read_percent, data_limit,
+                                                     num_seq_pkts, page_size,
+                                                     nbr_of_banks_DRAM,
+                                                     nbr_of_banks_util,
+                                                     addr_mapping,
+                                                     nbr_of_ranks);
+                            DPRINTF(TrafficGen, "State: %d DramGen\n", id);
+                        } else {
+                            // Will rotate to the next rank after rotating
+                            // through all banks, for each command type.
+                            // In the 50% read case, series will be issued
+                            // for both RD & WR before the rank in incremented
+                            unsigned int max_seq_count_per_rank =
+                                (read_percent == 50) ? nbr_of_banks_util * 2
+                                                     : nbr_of_banks_util;
+
+                            states[id] = new DramRotGen(name(), masterID,
+                                                     duration, start_addr,
+                                                     end_addr, blocksize,
+                                                     min_period, max_period,
+                                                     read_percent, data_limit,
+                                                     num_seq_pkts, page_size,
+                                                     nbr_of_banks_DRAM,
+                                                     nbr_of_banks_util,
+                                                     addr_mapping,
+                                                     nbr_of_ranks,
+                                                     max_seq_count_per_rank);
+                            DPRINTF(TrafficGen, "State: %d DramRotGen\n", id);
+                        }
                     }
                 } else {
                     fatal("%s: Unknown traffic generator mode: %s",
@@ -415,7 +443,7 @@ TrafficGen::transition()
     states[currState]->exit();
 
     // determine next state
-    double p = random_mt.gen_real1();
+    double p = random_mt.random<double>();
     assert(currState < transitionMatrix.size());
     double cumulative = 0.0;
     size_t i = 0;
@@ -441,7 +469,7 @@ TrafficGen::enterState(uint32_t newState)
 }
 
 void
-TrafficGen::recvRetry()
+TrafficGen::recvReqRetry()
 {
     assert(retryPkt != NULL);
 
@@ -458,7 +486,7 @@ TrafficGen::recvRetry()
         retryPktTick = 0;
         retryTicks += delay;
 
-        if (drainManager == NULL) {
+        if (drainState() != DrainState::Draining) {
             // packet is sent, so find out when the next one is due
             nextPacketTick = states[currState]->nextPacketTick(elasticReq,
                                                                delay);
@@ -468,9 +496,7 @@ TrafficGen::recvRetry()
             // shut things down
             nextPacketTick = MaxTick;
             nextTransitionTick = MaxTick;
-            drainManager->signalDrainDone();
-            // Clear the drain event once we're done with it.
-            drainManager = NULL;
+            signalDrainDone();
         }
     }
 }

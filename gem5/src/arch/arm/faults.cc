@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2012-2013 ARM Limited
+ * Copyright (c) 2010, 2012-2014 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -414,7 +414,7 @@ ArmFault::setSyndrome(ThreadContext *tc, MiscRegIndex syndrome_reg)
             ConditionCode condCode = (ConditionCode) (uint32_t) machInst.condCode;
             // If its on unconditional instruction report with a cond code of
             // 0xE, ie the unconditional code
-            cond  = (condCode == COND_UC) ? COND_AL : condCode;
+            cond  = (condCode == ARM_COND_UC) ? ARM_COND_AL : condCode;
             value |= cond << 20;
             value |= 1    << 24;
         }
@@ -426,7 +426,7 @@ ArmFault::setSyndrome(ThreadContext *tc, MiscRegIndex syndrome_reg)
 }
 
 void
-ArmFault::invoke(ThreadContext *tc, StaticInstPtr inst)
+ArmFault::invoke(ThreadContext *tc, const StaticInstPtr &inst)
 {
     CPSR cpsr = tc->readMiscReg(MISCREG_CPSR);
 
@@ -466,10 +466,10 @@ ArmFault::invoke(ThreadContext *tc, StaticInstPtr inst)
     SCTLR sctlr = tc->readMiscReg(MISCREG_SCTLR);
     SCR scr = tc->readMiscReg(MISCREG_SCR);
     CPSR saved_cpsr = tc->readMiscReg(MISCREG_CPSR);
-    saved_cpsr.nz = tc->readIntReg(INTREG_CONDCODES_NZ);
-    saved_cpsr.c = tc->readIntReg(INTREG_CONDCODES_C);
-    saved_cpsr.v = tc->readIntReg(INTREG_CONDCODES_V);
-    saved_cpsr.ge = tc->readIntReg(INTREG_CONDCODES_GE);
+    saved_cpsr.nz = tc->readCCReg(CCREG_NZ);
+    saved_cpsr.c = tc->readCCReg(CCREG_C);
+    saved_cpsr.v = tc->readCCReg(CCREG_V);
+    saved_cpsr.ge = tc->readCCReg(CCREG_GE);
 
     Addr curPc M5_VAR_USED = tc->pcState().pc();
     ITSTATE it = tc->pcState().itstate();
@@ -587,7 +587,7 @@ ArmFault::invoke(ThreadContext *tc, StaticInstPtr inst)
 }
 
 void
-ArmFault::invoke64(ThreadContext *tc, StaticInstPtr inst)
+ArmFault::invoke64(ThreadContext *tc, const StaticInstPtr &inst)
 {
     // Determine actual misc. register indices for ELR_ELx and SPSR_ELx
     MiscRegIndex elr_idx, spsr_idx;
@@ -615,9 +615,9 @@ ArmFault::invoke64(ThreadContext *tc, StaticInstPtr inst)
     // Save process state into SPSR_ELx
     CPSR cpsr = tc->readMiscReg(MISCREG_CPSR);
     CPSR spsr = cpsr;
-    spsr.nz = tc->readIntReg(INTREG_CONDCODES_NZ);
-    spsr.c = tc->readIntReg(INTREG_CONDCODES_C);
-    spsr.v = tc->readIntReg(INTREG_CONDCODES_V);
+    spsr.nz = tc->readCCReg(CCREG_NZ);
+    spsr.c = tc->readCCReg(CCREG_C);
+    spsr.v = tc->readCCReg(CCREG_V);
     if (from64) {
         // Force some bitfields to 0
         spsr.q = 0;
@@ -628,7 +628,7 @@ ArmFault::invoke64(ThreadContext *tc, StaticInstPtr inst)
         spsr.it2 = 0;
         spsr.t = 0;
     } else {
-        spsr.ge = tc->readIntReg(INTREG_CONDCODES_GE);
+        spsr.ge = tc->readCCReg(CCREG_GE);
         ITSTATE it = tc->pcState().itstate();
         spsr.it2 = it.top6;
         spsr.it1 = it.bottom2;
@@ -678,7 +678,7 @@ ArmFault::invoke64(ThreadContext *tc, StaticInstPtr inst)
 }
 
 void
-Reset::invoke(ThreadContext *tc, StaticInstPtr inst)
+Reset::invoke(ThreadContext *tc, const StaticInstPtr &inst)
 {
     if (FullSystem) {
         tc->getCpuPtr()->clearInterrupts();
@@ -706,7 +706,7 @@ Reset::invoke(ThreadContext *tc, StaticInstPtr inst)
 }
 
 void
-UndefinedInstruction::invoke(ThreadContext *tc, StaticInstPtr inst)
+UndefinedInstruction::invoke(ThreadContext *tc, const StaticInstPtr &inst)
 {
     if (FullSystem) {
         ArmFault::invoke(tc, inst);
@@ -767,7 +767,7 @@ UndefinedInstruction::iss() const
 }
 
 void
-SupervisorCall::invoke(ThreadContext *tc, StaticInstPtr inst)
+SupervisorCall::invoke(ThreadContext *tc, const StaticInstPtr &inst)
 {
     if (FullSystem) {
         ArmFault::invoke(tc, inst);
@@ -884,7 +884,7 @@ ArmFaultVals<T>::offset(ThreadContext *tc)
 // }
 
 void
-SecureMonitorCall::invoke(ThreadContext *tc, StaticInstPtr inst)
+SecureMonitorCall::invoke(ThreadContext *tc, const StaticInstPtr &inst)
 {
     if (FullSystem) {
         ArmFault::invoke(tc, inst);
@@ -913,7 +913,7 @@ SecureMonitorTrap::ec(ThreadContext *tc) const
 
 template<class T>
 void
-AbortFault<T>::invoke(ThreadContext *tc, StaticInstPtr inst)
+AbortFault<T>::invoke(ThreadContext *tc, const StaticInstPtr &inst)
 {
     if (tranMethod == ArmFault::UnknownTran) {
         tranMethod = longDescFormatInUse(tc) ? ArmFault::LpaeTran
@@ -1120,8 +1120,8 @@ DataAbort::ec(ThreadContext *tc) const
     if (to64) {
         // AArch64
         if (source == ArmFault::AsynchronousExternalAbort) {
-            panic("Asynchronous External Abort should be handled with \
-                    SystemErrors (SErrors)!");
+            panic("Asynchronous External Abort should be handled with "
+                    "SystemErrors (SErrors)!");
         }
         if (toEL == fromEL)
             return EC_DATA_ABORT_CURR_EL;
@@ -1237,7 +1237,7 @@ DataAbort::annotate(AnnotationIDs id, uint64_t val)
 }
 
 void
-VirtualDataAbort::invoke(ThreadContext *tc, StaticInstPtr inst)
+VirtualDataAbort::invoke(ThreadContext *tc, const StaticInstPtr &inst)
 {
     AbortFault<VirtualDataAbort>::invoke(tc, inst);
     HCR hcr = tc->readMiscRegNoEffect(MISCREG_HCR);
@@ -1336,7 +1336,7 @@ VirtualFastInterrupt::VirtualFastInterrupt()
 {}
 
 void
-PCAlignmentFault::invoke(ThreadContext *tc, StaticInstPtr inst)
+PCAlignmentFault::invoke(ThreadContext *tc, const StaticInstPtr &inst)
 {
     ArmFaultVals<PCAlignmentFault>::invoke(tc, inst);
     assert(from64);
@@ -1351,7 +1351,7 @@ SystemError::SystemError()
 {}
 
 void
-SystemError::invoke(ThreadContext *tc, StaticInstPtr inst)
+SystemError::invoke(ThreadContext *tc, const StaticInstPtr &inst)
 {
     tc->getCpuPtr()->clearInterrupt(INT_ABT, 0);
     ArmFault::invoke(tc, inst);
@@ -1382,7 +1382,7 @@ SystemError::routeToHyp(ThreadContext *tc) const
 }
 
 void
-FlushPipe::invoke(ThreadContext *tc, StaticInstPtr inst) {
+FlushPipe::invoke(ThreadContext *tc, const StaticInstPtr &inst) {
     DPRINTF(Faults, "Invoking FlushPipe Fault\n");
 
     // Set the PC to the next instruction of the faulting instruction.
@@ -1395,7 +1395,7 @@ FlushPipe::invoke(ThreadContext *tc, StaticInstPtr inst) {
 }
 
 void
-ArmSev::invoke(ThreadContext *tc, StaticInstPtr inst) {
+ArmSev::invoke(ThreadContext *tc, const StaticInstPtr &inst) {
     DPRINTF(Faults, "Invoking ArmSev Fault\n");
     if (!FullSystem)
         return;

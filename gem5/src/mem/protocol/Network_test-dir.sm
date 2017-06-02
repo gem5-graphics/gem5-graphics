@@ -32,13 +32,13 @@
 
 
 machine(Directory, "Network_test Directory")
-:
+    : MessageBuffer * requestToDir, network="From", virtual_network="0",
+            vnet_type = "request";
+      MessageBuffer * forwardToDir, network="From", virtual_network="1",
+            vnet_type = "forward";
+      MessageBuffer * responseToDir, network="From", virtual_network="2",
+            vnet_type = "response";
 {
-
-  MessageBuffer requestToDir, network="From", virtual_network="0", ordered="false", vnet_type = "request";
-  MessageBuffer forwardToDir, network="From", virtual_network="1", ordered="false", vnet_type = "forward";
-  MessageBuffer responseToDir, network="From", virtual_network="2", ordered="false", vnet_type = "response";
-
   // STATES
   state_declaration(State, desc="Directory states", default="Directory_State_I") {
     // Base states
@@ -61,23 +61,27 @@ machine(Directory, "Network_test Directory")
   }
 
   // ** OBJECTS **
-  State getState(Address addr) {
+  State getState(Addr addr) {
     return State:I;
   }
 
-  void setState(Address addr, State state) {
+  void setState(Addr addr, State state) {
 
   }
 
-  AccessPermission getAccessPermission(Address addr) {
+  AccessPermission getAccessPermission(Addr addr) {
     return AccessPermission:NotPresent;
   }
 
-  void setAccessPermission(Address addr, State state) {
+  void setAccessPermission(Addr addr, State state) {
   }
 
-  DataBlock getDataBlock(Address addr), return_by_ref="yes" {
-    error("Network Test does not support get data block.");
+  void functionalRead(Addr addr, Packet *pkt) {
+    error("Network test does not support functional read.");
+  }
+
+  int functionalWrite(Addr addr, Packet *pkt) {
+    error("Network test does not support functional write.");
   }
 
   // ** IN_PORTS **
@@ -86,7 +90,7 @@ machine(Directory, "Network_test Directory")
     if (requestQueue_in.isReady()) {
       peek(requestQueue_in, RequestMsg) {
         if (in_msg.Type == CoherenceRequestType:MSG) {
-          trigger(Event:Receive_Request, in_msg.Addr);
+          trigger(Event:Receive_Request, in_msg.addr);
         } else {
           error("Invalid message");
         }
@@ -97,7 +101,7 @@ machine(Directory, "Network_test Directory")
     if (forwardQueue_in.isReady()) {
       peek(forwardQueue_in, RequestMsg) {
         if (in_msg.Type == CoherenceRequestType:MSG) {
-          trigger(Event:Receive_Forward, in_msg.Addr);
+          trigger(Event:Receive_Forward, in_msg.addr);
         } else {
           error("Invalid message");
         }
@@ -108,7 +112,7 @@ machine(Directory, "Network_test Directory")
     if (responseQueue_in.isReady()) {
       peek(responseQueue_in, RequestMsg) {
         if (in_msg.Type == CoherenceRequestType:MSG) {
-          trigger(Event:Receive_Response, in_msg.Addr);
+          trigger(Event:Receive_Response, in_msg.addr);
         } else {
           error("Invalid message");
         }

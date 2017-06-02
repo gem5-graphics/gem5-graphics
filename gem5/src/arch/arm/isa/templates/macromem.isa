@@ -1,6 +1,6 @@
 // -*- mode:c++ -*-
 
-// Copyright (c) 2010-2013 ARM Limited
+// Copyright (c) 2010-2014 ARM Limited
 // All rights reserved
 //
 // The license below extends only to copyright in the software and shall
@@ -69,7 +69,40 @@ def template MicroMemConstructor {{
                          _ura, _urb, _up, _imm)
     {
         %(constructor)s;
-        if (!(condCode == COND_AL || condCode == COND_UC)) {
+        if (!(condCode == ARM_COND_AL || condCode == ARM_COND_UC)) {
+            for (int x = 0; x < _numDestRegs; x++) {
+                _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
+            }
+        }
+    }
+}};
+
+
+def template MicroMemPairDeclare {{
+    class %(class_name)s : public %(base_class)s
+    {
+      public:
+        %(class_name)s(ExtMachInst machInst,
+                       RegIndex _dreg1, RegIndex _dreg2, RegIndex _base,
+                       bool _up, uint8_t _imm);
+        %(BasicExecDeclare)s
+        %(InitiateAccDeclare)s
+        %(CompleteAccDeclare)s
+    };
+}};
+
+def template MicroMemPairConstructor {{
+    %(class_name)s::%(class_name)s(ExtMachInst machInst,
+                                   RegIndex _dreg1,
+                                   RegIndex _dreg2,
+                                   RegIndex _base,
+                                   bool _up,
+                                   uint8_t _imm)
+        : %(base_class)s("%(mnemonic)s", machInst, %(op_class)s,
+                         _dreg1, _dreg2, _base, _up, _imm)
+    {
+        %(constructor)s;
+        if (!(condCode == ARM_COND_AL || condCode == ARM_COND_UC)) {
             for (int x = 0; x < _numDestRegs; x++) {
                 _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
             }
@@ -94,7 +127,7 @@ def template MicroNeonMemDeclare {{
         {
             memAccessFlags |= extraMemFlags;
             %(constructor)s;
-            if (!(condCode == COND_AL || condCode == COND_UC)) {
+            if (!(condCode == ARM_COND_AL || condCode == ARM_COND_UC)) {
                 for (int x = 0; x < _numDestRegs; x++) {
                     _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
                 }
@@ -134,7 +167,7 @@ def template MicroSetPCCPSRConstructor {{
                            _ura, _urb, _urc)
     {
         %(constructor)s;
-        if (!(condCode == COND_AL || condCode == COND_UC)) {
+        if (!(condCode == ARM_COND_AL || condCode == ARM_COND_UC)) {
             flags[IsCondControl] = true;
             for (int x = 0; x < _numDestRegs; x++) {
                 _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
@@ -169,7 +202,7 @@ def template MicroIntConstructor {{
                          _ura, _urb, _urc)
     {
         %(constructor)s;
-        if (!(condCode == COND_AL || condCode == COND_UC)) {
+        if (!(condCode == ARM_COND_AL || condCode == ARM_COND_UC)) {
             for (int x = 0; x < _numDestRegs; x++) {
                 _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
             }
@@ -211,7 +244,7 @@ def template MicroNeonMixDeclare {{
                            _dest, _op1, _step)
         {
             %(constructor)s;
-            if (!(condCode == COND_AL || condCode == COND_UC)) {
+            if (!(condCode == ARM_COND_AL || condCode == ARM_COND_UC)) {
                 for (int x = 0; x < _numDestRegs; x++) {
                     _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
                 }
@@ -264,7 +297,7 @@ def template MicroNeonMixLaneDeclare {{
                            _dest, _op1, _step, _lane)
         {
             %(constructor)s;
-            if (!(condCode == COND_AL || condCode == COND_UC)) {
+            if (!(condCode == ARM_COND_AL || condCode == ARM_COND_UC)) {
                 for (int x = 0; x < _numDestRegs; x++) {
                     _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
                 }
@@ -297,7 +330,7 @@ def template MicroIntMovConstructor {{
                          _ura, _urb)
     {
         %(constructor)s;
-        if (!(condCode == COND_AL || condCode == COND_UC)) {
+        if (!(condCode == ARM_COND_AL || condCode == ARM_COND_UC)) {
             for (int x = 0; x < _numDestRegs; x++) {
                 _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
             }
@@ -330,7 +363,7 @@ def template MicroIntImmConstructor {{
                          _ura, _urb, _imm)
     {
         %(constructor)s;
-        if (!(condCode == COND_AL || condCode == COND_UC)) {
+        if (!(condCode == ARM_COND_AL || condCode == ARM_COND_UC)) {
             for (int x = 0; x < _numDestRegs; x++) {
                 _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
             }
@@ -391,7 +424,7 @@ def template MicroIntRegConstructor {{
                          _ura, _urb, _urc, _shiftAmt, _shiftType)
     {
         %(constructor)s;
-        if (!(condCode == COND_AL || condCode == COND_UC)) {
+        if (!(condCode == ARM_COND_AL || condCode == ARM_COND_UC)) {
             for (int x = 0; x < _numDestRegs; x++) {
                 _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
             }
@@ -427,7 +460,7 @@ def template MacroMemConstructor {{
                      index, up, user, writeback, load, reglist)
 {
     %(constructor)s;
-    if (!(condCode == COND_AL || condCode == COND_UC)) {
+    if (!(condCode == ARM_COND_AL || condCode == ARM_COND_UC)) {
         for (int x = 0; x < _numDestRegs; x++) {
             _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
         }
@@ -546,7 +579,7 @@ def template VMemMultConstructor {{
                      rn, vd, regs, inc, size, align, rm)
 {
     %(constructor)s;
-    if (!(condCode == COND_AL || condCode == COND_UC)) {
+    if (!(condCode == ARM_COND_AL || condCode == ARM_COND_UC)) {
         for (int x = 0; x < _numDestRegs; x++) {
             _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
         }
@@ -574,7 +607,7 @@ def template VMemSingleConstructor {{
                      rn, vd, regs, inc, size, align, rm, lane)
 {
     %(constructor)s;
-    if (!(condCode == COND_AL || condCode == COND_UC)) {
+    if (!(condCode == ARM_COND_AL || condCode == ARM_COND_UC)) {
         for (int x = 0; x < _numDestRegs; x++) {
             _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
         }
@@ -605,7 +638,7 @@ def template MacroVFPMemConstructor {{
                      vd, single, up, writeback, load, offset)
 {
     %(constructor)s;
-    if (!(condCode == COND_AL || condCode == COND_UC)) {
+    if (!(condCode == ARM_COND_AL || condCode == ARM_COND_UC)) {
         for (int x = 0; x < _numDestRegs; x++) {
             _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
         }

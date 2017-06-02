@@ -52,7 +52,7 @@ extern unsigned g_active_device;
 #define READ_STRUCT(ptr, type) \
 { \
     bool not_null; \
-    paramIn(cp, section, name, not_null); \
+    paramIn(cp, name, not_null); \
     if(!not_null) \
         return; \
     if(ptr==NULL){ \
@@ -92,27 +92,27 @@ callSerializeArray(std::ostream &os, std::string &baseName, const std::string &n
 
 template <class T>
 void
-callUnserializeScalar(Checkpoint *cp, const std::string &section, const std::string &baseName, 
+callUnserializeScalar(CheckpointIn& cp, const std::string &section, const std::string &baseName, 
         const std::string &name, T &param)
 {
     std::string fullName = getVarFullName(baseName, name);
-    paramIn(cp, section, fullName, param);
+    paramIn(cp, fullName, param);
 }
 
 template <class T>
 void
-callUnserializeArray(Checkpoint *cp, const std::string &section, const std::string &baseName, const std::string &name,
+callUnserializeArray(CheckpointIn& cp, const std::string &section, const std::string &baseName, const std::string &name,
              T *param, unsigned size)
 {
     std::string fullName = getVarFullName(baseName, name);
     std::string status = fullName +".status";
     bool isSerialized;
-    paramIn(cp, section, status, isSerialized);
+    paramIn(cp, status, isSerialized);
     if(isSerialized){
         if(param==NULL){
             param = new T[size];
         }
-        arrayParamIn(cp, section, fullName, param, size);
+        arrayParamIn(cp, fullName, param, size);
     }
 }
 
@@ -190,13 +190,13 @@ checkpointGraphics::~checkpointGraphics(){
     }
 }
 
-void checkpointGraphics::unserializeGraphicsState(Checkpoint * cp){
+void checkpointGraphics::unserializeGraphicsState(CheckpointIn& cp){
     //initialize translation library and screen 
     init_gem5_graphics(); 
     mSerializeObject.unserializeAll(cp);
 }
 
-void checkpointGraphics::unserializeAll(Checkpoint * cp){
+void checkpointGraphics::unserializeAll(CheckpointIn& cp){
     //todo: map the created contexts to the older ones?
     std::string name = "cmdCount";
     int cmdCount;
@@ -209,7 +209,7 @@ void checkpointGraphics::unserializeAll(Checkpoint * cp){
     invokeAll();
 }
 
-void checkpointGraphics::unserializeCommand(std::string name, Checkpoint* cp){
+void checkpointGraphics::unserializeCommand(std::string name, CheckpointIn& cp){
     GraphicsCommand_t newCmd;
     UNSERIALIZE_SCALAR(newCmd.pid);
     UNSERIALIZE_SCALAR(newCmd.tid);
@@ -243,9 +243,15 @@ void checkpointGraphics::invokeCommand(GraphicsCommand_t * cmd){
         return;
 
     graphicsStream * stream = graphicsStream::get(cmd->tid, cmd->pid);
-    
+
     if (isWriteCommand(cmd->commandCode)) {
+       assert(SocketStream::bytesSentFromMain == 0);
+       assert(SocketStream::currentMainWriteSocket == -1);
+       SocketStream::bytesSentFromMain = cmd->bufferLen;
+       SocketStream::currentMainWriteSocket = stream->getSocketNum();
        stream->writeFully(cmd->buffer, cmd->bufferLen);
+       SocketStream::lockMainThread();
+       while(!SocketStream::allRenderSocketsReady()); //wait till all other threads are waiting
     } else if(isMemCommand(cmd->commandCode)){        
         CudaGPU *cudaGPU = CudaGPU::getCudaGPU(g_active_device);
         if(cmd->buffer != NULL){
@@ -256,7 +262,23 @@ void checkpointGraphics::invokeCommand(GraphicsCommand_t * cmd){
         uint8_t *temp = new uint8_t[cmd->bufferLen];
         switch (cmd->commandCode) {
             case gem5_readFully:
-                stream->readFully(temp, cmd->bufferLen);
+               {
+                  if(cmd->bufferLen > 0){
+                     SocketStream::currentMainReadSocket = stream->getSocketNum();
+                     stream->readFully(temp, cmd->bufferLen);
+                     SocketStream::currentMainReadSocket = -1;
+
+                     int newByteCount = SocketStream::bytesSentToMain - cmd->bufferLen;
+                     assert(newByteCount >= 0);
+                     bool cond = (SocketStream::bytesSentToMain == SocketStream::totalBytesSentToMain) and (cmd->bufferLen > 0);
+                     if(cond){
+                        SocketStream::readUnlock();
+                        SocketStream::lockMainThread();
+                     }
+                     while(!SocketStream::allRenderSocketsReady());
+                     SocketStream::bytesSentToMain = newByteCount;
+                  }
+               }
                 break;
             default:
                 //should be one of the above 
@@ -265,7 +287,6 @@ void checkpointGraphics::invokeCommand(GraphicsCommand_t * cmd){
         }
         delete [] temp;
     }
-    while(!SocketStream::allRenderSocketsReady());
 }
 
 bool checkpointGraphics::isWriteCommand(uint64_t commandCode){

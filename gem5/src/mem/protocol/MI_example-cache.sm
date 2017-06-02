@@ -28,20 +28,23 @@
  */
 
 machine(L1Cache, "MI Example L1 Cache")
-: Sequencer * sequencer,
-  CacheMemory * cacheMemory,
-  Cycles cache_response_latency = 12,
-  Cycles issue_latency = 2,
-  bool send_evictions
+    : Sequencer * sequencer;
+      CacheMemory * cacheMemory;
+      Cycles cache_response_latency := 12;
+      Cycles issue_latency := 2;
+      bool send_evictions;
+
+      // NETWORK BUFFERS
+      MessageBuffer * requestFromCache, network="To", virtual_network="2",
+            vnet_type="request";
+      MessageBuffer * responseFromCache, network="To", virtual_network="4",
+            vnet_type="response";
+
+      MessageBuffer * forwardToCache, network="From", virtual_network="3",
+            vnet_type="forward";
+      MessageBuffer * responseToCache, network="From", virtual_network="4",
+            vnet_type="response";
 {
-
-  // NETWORK BUFFERS
-  MessageBuffer requestFromCache, network="To", virtual_network="2", ordered="true", vnet_type="request";
-  MessageBuffer responseFromCache, network="To", virtual_network="4", ordered="true", vnet_type="response";
-
-  MessageBuffer forwardToCache, network="From", virtual_network="3", ordered="true", vnet_type="forward";
-  MessageBuffer responseToCache, network="From", virtual_network="4", ordered="true", vnet_type="response";
-
   // STATES
   state_declaration(State, desc="Cache states") {
     I, AccessPermission:Invalid, desc="Not Present/Invalid";
@@ -74,7 +77,7 @@ machine(L1Cache, "MI Example L1 Cache")
 
   // STRUCTURE DEFINITIONS
 
-  MessageBuffer mandatoryQueue, ordered="false";
+  MessageBuffer mandatoryQueue;
 
   // CacheEntry
   structure(Entry, desc="...", interface="AbstractCacheEntry") {
@@ -90,10 +93,10 @@ machine(L1Cache, "MI Example L1 Cache")
   }
 
   structure(TBETable, external="yes") {
-    TBE lookup(Address);
-    void allocate(Address);
-    void deallocate(Address);
-    bool isPresent(Address);
+    TBE lookup(Addr);
+    void allocate(Addr);
+    void deallocate(Addr);
+    bool isPresent(Addr);
   }
 
 
@@ -107,7 +110,7 @@ machine(L1Cache, "MI Example L1 Cache")
   void unset_tbe();
   void profileMsgDelay(int virtualNetworkType, Cycles b);
 
-  Entry getCacheEntry(Address address), return_by_pointer="yes" {
+  Entry getCacheEntry(Addr address), return_by_pointer="yes" {
     return static_cast(Entry, "pointer", cacheMemory.lookup(address));
   }
 
@@ -124,7 +127,7 @@ machine(L1Cache, "MI Example L1 Cache")
     }
   }
 
-  State getState(TBE tbe, Entry cache_entry, Address addr) {
+  State getState(TBE tbe, Entry cache_entry, Addr addr) {
 
     if (is_valid(tbe)) {
       return tbe.TBEState;
@@ -137,7 +140,7 @@ machine(L1Cache, "MI Example L1 Cache")
     }
   }
 
-  void setState(TBE tbe, Entry cache_entry, Address addr, State state) {
+  void setState(TBE tbe, Entry cache_entry, Addr addr, State state) {
 
     if (is_valid(tbe)) {
       tbe.TBEState := state;
@@ -148,7 +151,7 @@ machine(L1Cache, "MI Example L1 Cache")
     }
   }
 
-  AccessPermission getAccessPermission(Address addr) {
+  AccessPermission getAccessPermission(Addr addr) {
     TBE tbe := TBEs[addr];
     if(is_valid(tbe)) {
       return L1Cache_State_to_permission(tbe.TBEState);
@@ -162,19 +165,34 @@ machine(L1Cache, "MI Example L1 Cache")
     return AccessPermission:NotPresent;
   }
 
-  void setAccessPermission(Entry cache_entry, Address addr, State state) {
+  void setAccessPermission(Entry cache_entry, Addr addr, State state) {
     if (is_valid(cache_entry)) {
       cache_entry.changePermission(L1Cache_State_to_permission(state));
     }
   }
 
-  DataBlock getDataBlock(Address addr), return_by_ref="yes" {
+  void functionalRead(Addr addr, Packet *pkt) {
     TBE tbe := TBEs[addr];
     if(is_valid(tbe)) {
-      return tbe.DataBlk;
+      testAndRead(addr, tbe.DataBlk, pkt);
+    } else {
+      testAndRead(addr, getCacheEntry(addr).DataBlk, pkt);
+    }
+  }
+
+  int functionalWrite(Addr addr, Packet *pkt) {
+    int num_functional_writes := 0;
+
+    TBE tbe := TBEs[addr];
+    if(is_valid(tbe)) {
+      num_functional_writes := num_functional_writes +
+        testAndWrite(addr, tbe.DataBlk, pkt);
+      return num_functional_writes;
     }
 
-    return getCacheEntry(addr).DataBlk;
+    num_functional_writes := num_functional_writes +
+        testAndWrite(addr, getCacheEntry(addr).DataBlk, pkt);
+    return num_functional_writes;
   }
 
   // NETWORK PORTS
@@ -184,22 +202,22 @@ machine(L1Cache, "MI Example L1 Cache")
 
   in_port(forwardRequestNetwork_in, RequestMsg, forwardToCache) {
     if (forwardRequestNetwork_in.isReady()) {
-      peek(forwardRequestNetwork_in, RequestMsg, block_on="Addr") {
+      peek(forwardRequestNetwork_in, RequestMsg, block_on="addr") {
 
-        Entry cache_entry := getCacheEntry(in_msg.Addr);
-        TBE tbe := TBEs[in_msg.Addr];
+        Entry cache_entry := getCacheEntry(in_msg.addr);
+        TBE tbe := TBEs[in_msg.addr];
 
         if (in_msg.Type == CoherenceRequestType:GETX) {
-          trigger(Event:Fwd_GETX, in_msg.Addr, cache_entry, tbe);
+          trigger(Event:Fwd_GETX, in_msg.addr, cache_entry, tbe);
         }
         else if (in_msg.Type == CoherenceRequestType:WB_ACK) {
-          trigger(Event:Writeback_Ack, in_msg.Addr, cache_entry, tbe);
+          trigger(Event:Writeback_Ack, in_msg.addr, cache_entry, tbe);
         }
         else if (in_msg.Type == CoherenceRequestType:WB_NACK) {
-          trigger(Event:Writeback_Nack, in_msg.Addr, cache_entry, tbe);
+          trigger(Event:Writeback_Nack, in_msg.addr, cache_entry, tbe);
         }
         else if (in_msg.Type == CoherenceRequestType:INV) {
-          trigger(Event:Inv, in_msg.Addr, cache_entry, tbe);
+          trigger(Event:Inv, in_msg.addr, cache_entry, tbe);
         }
         else {
           error("Unexpected message");
@@ -210,13 +228,13 @@ machine(L1Cache, "MI Example L1 Cache")
 
   in_port(responseNetwork_in, ResponseMsg, responseToCache) {
     if (responseNetwork_in.isReady()) {
-      peek(responseNetwork_in, ResponseMsg, block_on="Addr") {
+      peek(responseNetwork_in, ResponseMsg, block_on="addr") {
 
-        Entry cache_entry := getCacheEntry(in_msg.Addr);
-        TBE tbe := TBEs[in_msg.Addr];
+        Entry cache_entry := getCacheEntry(in_msg.addr);
+        TBE tbe := TBEs[in_msg.addr];
 
         if (in_msg.Type == CoherenceResponseType:DATA) {
-          trigger(Event:Data, in_msg.Addr, cache_entry, tbe);
+          trigger(Event:Data, in_msg.addr, cache_entry, tbe);
         }
         else {
           error("Unexpected message");
@@ -250,7 +268,7 @@ machine(L1Cache, "MI Example L1 Cache")
 
   action(a_issueRequest, "a", desc="Issue a request") {
     enqueue(requestNetwork_out, RequestMsg, issue_latency) {
-    out_msg.Addr := address;
+    out_msg.addr := address;
       out_msg.Type := CoherenceRequestType:GETX;
       out_msg.Requestor := machineID;
       out_msg.Destination.add(map_Address_to_Directory(address));
@@ -261,7 +279,7 @@ machine(L1Cache, "MI Example L1 Cache")
   action(b_issuePUT, "b", desc="Issue a PUT request") {
     enqueue(requestNetwork_out, RequestMsg, issue_latency) {
       assert(is_valid(cache_entry));
-      out_msg.Addr := address;
+      out_msg.addr := address;
       out_msg.Type := CoherenceRequestType:PUTX;
       out_msg.Requestor := machineID;
       out_msg.Destination.add(map_Address_to_Directory(address));
@@ -274,7 +292,7 @@ machine(L1Cache, "MI Example L1 Cache")
     peek(forwardRequestNetwork_in, RequestMsg) {
       enqueue(responseNetwork_out, ResponseMsg, cache_response_latency) {
         assert(is_valid(cache_entry));
-        out_msg.Addr := address;
+        out_msg.addr := address;
         out_msg.Type := CoherenceResponseType:DATA;
         out_msg.Sender := machineID;
         out_msg.Destination.add(in_msg.Requestor);
@@ -288,7 +306,7 @@ machine(L1Cache, "MI Example L1 Cache")
     peek(forwardRequestNetwork_in, RequestMsg) {
       enqueue(responseNetwork_out, ResponseMsg, cache_response_latency) {
         assert(is_valid(tbe));
-        out_msg.Addr := address;
+        out_msg.addr := address;
         out_msg.Type := CoherenceResponseType:DATA;
         out_msg.Sender := machineID;
         out_msg.Destination.add(in_msg.Requestor);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 ARM Limited
+ * Copyright (c) 2010-2014 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -115,11 +115,6 @@ enum IntRegIndex
     INTREG_UREG0,
     INTREG_UREG1,
     INTREG_UREG2,
-    INTREG_CONDCODES_NZ,
-    INTREG_CONDCODES_C,
-    INTREG_CONDCODES_V,
-    INTREG_CONDCODES_GE,
-    INTREG_FPCONDCODES,
     INTREG_DUMMY, // Dummy reg used to throw away int reg results
 
     INTREG_SP0,
@@ -510,6 +505,13 @@ makeSP(IntRegIndex reg)
     return reg;
 }
 
+static inline IntRegIndex
+makeZero(IntRegIndex reg)
+{
+    if (reg == INTREG_X31)
+        reg = INTREG_ZERO;
+    return reg;
+}
 
 static inline bool
 isSP(IntRegIndex reg)

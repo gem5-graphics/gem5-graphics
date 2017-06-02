@@ -52,13 +52,10 @@ class GarnetNetwork_d : public BaseGarnetNetwork
     GarnetNetwork_d(const Params *p);
 
     ~GarnetNetwork_d();
-
     void init();
 
-    int getNumNodes() { return m_nodes; }
-
-    int getBuffersPerDataVC() {return m_buffers_per_data_vc; }
-    int getBuffersPerCtrlVC() {return m_buffers_per_ctrl_vc; }
+    int getBuffersPerDataVC() { return m_buffers_per_data_vc; }
+    int getBuffersPerCtrlVC() { return m_buffers_per_ctrl_vc; }
 
     void collateStats();
     void regStats();
@@ -72,7 +69,7 @@ class GarnetNetwork_d : public BaseGarnetNetwork
     }
 
     // Methods used by Topology to setup the network
-    void makeOutLink(SwitchID src, NodeID dest, BasicLink* link, 
+    void makeOutLink(SwitchID src, NodeID dest, BasicLink* link,
                      LinkDirection direction,
                      const NetDest& routing_table_entry);
     void makeInLink(NodeID src, SwitchID dest, BasicLink* link,
@@ -93,13 +90,7 @@ class GarnetNetwork_d : public BaseGarnetNetwork
     GarnetNetwork_d(const GarnetNetwork_d& obj);
     GarnetNetwork_d& operator=(const GarnetNetwork_d& obj);
 
-    void collateLinkStats();
-    void collatePowerStats();
-    void regLinkStats();
-    void regPowerStats();
-
     std::vector<VNET_type > m_vnet_type;
-
     std::vector<Router_d *> m_routers;   // All Routers in Network
     std::vector<NetworkLink_d *> m_links; // All links in the network
     std::vector<CreditLink_d *> m_creditlinks; // All links in net
@@ -107,16 +98,6 @@ class GarnetNetwork_d : public BaseGarnetNetwork
 
     int m_buffers_per_data_vc;
     int m_buffers_per_ctrl_vc;
-
-    // Statistical variables for power
-    Stats::Scalar m_dynamic_link_power;
-    Stats::Scalar m_static_link_power;
-    Stats::Formula m_total_link_power;
-
-    Stats::Scalar m_dynamic_router_power;
-    Stats::Scalar m_static_router_power;
-    Stats::Scalar m_clk_power;
-    Stats::Formula m_total_router_power;
 
     // Statistical variables for performance
     Stats::Scalar m_average_link_utilization;

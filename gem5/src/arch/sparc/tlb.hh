@@ -31,13 +31,12 @@
 #ifndef __ARCH_SPARC_TLB_HH__
 #define __ARCH_SPARC_TLB_HH__
 
+#include "arch/generic/tlb.hh"
 #include "arch/sparc/asi.hh"
 #include "arch/sparc/tlb_map.hh"
 #include "base/misc.hh"
 #include "mem/request.hh"
 #include "params/SparcTLB.hh"
-#include "sim/fault_fwd.hh"
-#include "sim/tlb.hh"
 
 class ThreadContext;
 class Packet;
@@ -177,8 +176,8 @@ class TLB : public BaseTLB
     void GetTsbPtr(ThreadContext *tc, Addr addr, int ctx, Addr *ptrs);
 
     // Checkpointing
-    virtual void serialize(std::ostream &os);
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
+    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
+    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
 
     /** Give an entry id, read that tlb entries' tte */
     uint64_t TteRead(int entry);

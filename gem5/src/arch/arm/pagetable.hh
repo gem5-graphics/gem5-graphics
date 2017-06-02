@@ -61,12 +61,12 @@ struct VAddr
 // ITB/DTB page table entry
 struct PTE
 {
-    void serialize(std::ostream &os)
+    void serialize(CheckpointOut &cp) const
     {
         panic("Need to implement PTE serialization\n");
     }
 
-    void unserialize(Checkpoint *cp, const std::string &section)
+    void unserialize(CheckpointIn &cp)
     {
         panic("Need to implement PTE serialization\n");
     }
@@ -83,7 +83,7 @@ enum LookupLevel {
 };
 
 // ITB/DTB table entry
-struct TlbEntry
+struct TlbEntry : public Serializable
 {
   public:
     enum class MemoryType : std::uint8_t {
@@ -147,18 +147,21 @@ struct TlbEntry
     bool pxn;               // Privileged Execute Never (LPAE only)
 
     //Construct an entry that maps to physical address addr for SE mode
-    TlbEntry(Addr _asn, Addr _vaddr, Addr _paddr) :
+    TlbEntry(Addr _asn, Addr _vaddr, Addr _paddr,
+             bool uncacheable, bool read_only) :
          pfn(_paddr >> PageShift), size(PageBytes - 1), vpn(_vaddr >> PageShift),
          attributes(0), lookupLevel(L1), asid(_asn), vmid(0), N(0),
-         innerAttrs(0), outerAttrs(0), ap(0), hap(0x3),
+         innerAttrs(0), outerAttrs(0), ap(read_only ? 0x3 : 0), hap(0x3),
          domain(DomainType::Client),  mtype(MemoryType::StronglyOrdered),
          longDescFormat(false), isHyp(false), global(false), valid(true),
-         ns(true), nstid(true), el(0), nonCacheable(false), shareable(false),
-         outerShareable(false), xn(0), pxn(0)
+         ns(true), nstid(true), el(0), nonCacheable(uncacheable),
+         shareable(false), outerShareable(false), xn(0), pxn(0)
     {
         // no restrictions by default, hap = 0x3
 
         // @todo Check the memory type
+        if (read_only)
+            warn("ARM TlbEntry does not support read-only mappings\n");
     }
 
     TlbEntry() :
@@ -281,7 +284,7 @@ struct TlbEntry
     }
 
     void
-    serialize(std::ostream &os)
+    serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE
     {
         SERIALIZE_SCALAR(longDescFormat);
         SERIALIZE_SCALAR(pfn);
@@ -308,10 +311,10 @@ struct TlbEntry
         SERIALIZE_SCALAR(ap);
         SERIALIZE_SCALAR(hap);
         uint8_t domain_ = static_cast<uint8_t>(domain);
-        paramOut(os, "domain", domain_);
+        paramOut(cp, "domain", domain_);
     }
     void
-    unserialize(Checkpoint *cp, const std::string &section)
+    unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE
     {
         UNSERIALIZE_SCALAR(longDescFormat);
         UNSERIALIZE_SCALAR(pfn);
@@ -338,7 +341,7 @@ struct TlbEntry
         UNSERIALIZE_SCALAR(ap);
         UNSERIALIZE_SCALAR(hap);
         uint8_t domain_;
-        paramIn(cp, section, "domain", domain_);
+        paramIn(cp, "domain", domain_);
         domain = static_cast<DomainType>(domain_);
     }
 

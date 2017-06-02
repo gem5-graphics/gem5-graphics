@@ -55,12 +55,14 @@
 #include "base/misc.hh"
 #include "base/output.hh"
 #include "base/trace.hh"
-#include "cpu/base.hh"
 #include "cpu/checker/cpu.hh"
+#include "cpu/base.hh"
 #include "cpu/cpuevent.hh"
 #include "cpu/profile.hh"
 #include "cpu/thread_context.hh"
+#include "debug/Mwait.hh"
 #include "debug/SyscallVerbose.hh"
+#include "mem/page_table.hh"
 #include "params/BaseCPU.hh"
 #include "sim/full_system.hh"
 #include "sim/process.hh"
@@ -92,6 +94,14 @@ void
 CPUProgressEvent::process()
 {
     Counter temp = cpu->totalOps();
+
+    if (_repeatEvent)
+      cpu->schedule(this, curTick() + _interval);
+
+    if(cpu->switchedOut()) {
+      return;
+    }
+
 #ifndef NDEBUG
     double ipc = double(temp - lastNumInst) / (_interval / cpu->clockPeriod());
 
@@ -105,9 +115,6 @@ CPUProgressEvent::process()
             temp - lastNumInst);
 #endif
     lastNumInst = temp;
-
-    if (_repeatEvent)
-        cpu->schedule(this, curTick() + _interval);
 }
 
 const char *
@@ -120,10 +127,13 @@ BaseCPU::BaseCPU(Params *p, bool is_checker)
     : MemObject(p), instCnt(0), _cpuId(p->cpu_id), _socketId(p->socket_id),
       _instMasterId(p->system->getMasterId(name() + ".inst")),
       _dataMasterId(p->system->getMasterId(name() + ".data")),
-      _taskId(ContextSwitchTaskId::Unknown), _pid(Request::invldPid),
+      _taskId(ContextSwitchTaskId::Unknown), _pid(invldPid),
       _switchedOut(p->switched_out), _cacheLineSize(p->system->cacheLineSize()),
       interrupts(p->interrupts), profileEvent(NULL),
-      numThreads(p->numThreads), system(p->system)
+      numThreads(p->numThreads), system(p->system),
+      functionTraceStream(nullptr), currentFunctionStart(0),
+      currentFunctionEnd(0), functionEntryTick(0),
+      addressMonitor()
 {
     // if Python did not provide a valid ID, do it here
     if (_cpuId == -1 ) {
@@ -261,6 +271,63 @@ BaseCPU::~BaseCPU()
 }
 
 void
+BaseCPU::armMonitor(Addr address)
+{
+    addressMonitor.armed = true;
+    addressMonitor.vAddr = address;
+    addressMonitor.pAddr = 0x0;
+    DPRINTF(Mwait,"Armed monitor (vAddr=0x%lx)\n", address);
+}
+
+bool
+BaseCPU::mwait(PacketPtr pkt)
+{
+    if(addressMonitor.gotWakeup == false) {
+        int block_size = cacheLineSize();
+        uint64_t mask = ~((uint64_t)(block_size - 1));
+
+        assert(pkt->req->hasPaddr());
+        addressMonitor.pAddr = pkt->getAddr() & mask;
+        addressMonitor.waiting = true;
+
+        DPRINTF(Mwait,"mwait called (vAddr=0x%lx, line's paddr=0x%lx)\n",
+                addressMonitor.vAddr, addressMonitor.pAddr);
+        return true;
+    } else {
+        addressMonitor.gotWakeup = false;
+        return false;
+    }
+}
+
+void
+BaseCPU::mwaitAtomic(ThreadContext *tc, TheISA::TLB *dtb)
+{
+    Request req;
+    Addr addr = addressMonitor.vAddr;
+    int block_size = cacheLineSize();
+    uint64_t mask = ~((uint64_t)(block_size - 1));
+    int size = block_size;
+
+    //The address of the next line if it crosses a cache line boundary.
+    Addr secondAddr = roundDown(addr + size - 1, block_size);
+
+    if (secondAddr > addr)
+        size = secondAddr - addr;
+
+    req.setVirt(0, addr, size, 0x0, dataMasterId(), tc->instAddr());
+
+    // translate to physical address
+    Fault fault = dtb->translateAtomic(&req, tc, BaseTLB::Read);
+    assert(fault == NoFault);
+
+    addressMonitor.pAddr = req.getPaddr() & mask;
+    addressMonitor.waiting = true;
+
+    DPRINTF(Mwait,"mwait called (vAddr=0x%lx, line's paddr=0x%lx)\n",
+            addressMonitor.vAddr, addressMonitor.pAddr);
+}
+
+void
 BaseCPU::init()
 {
     if (!params()->switched_out) {
@@ -283,6 +350,42 @@ BaseCPU::startup()
     }
 }
 
+ProbePoints::PMUUPtr
+BaseCPU::pmuProbePoint(const char *name)
+{
+    ProbePoints::PMUUPtr ptr;
+    ptr.reset(new ProbePoints::PMU(getProbeManager(), name));
+
+    return ptr;
+}
+
+void
+BaseCPU::regProbePoints()
+{
+    ppCycles = pmuProbePoint("Cycles");
+
+    ppRetiredInsts = pmuProbePoint("RetiredInsts");
+    ppRetiredLoads = pmuProbePoint("RetiredLoads");
+    ppRetiredStores = pmuProbePoint("RetiredStores");
+    ppRetiredBranches = pmuProbePoint("RetiredBranches");
+}
+
+void
+BaseCPU::probeInstCommit(const StaticInstPtr &inst)
+{
+    if (!inst->isMicroop() || inst->isLastMicroop())
+        ppRetiredInsts->notify(1);
+
+
+    if (inst->isLoad())
+        ppRetiredLoads->notify(1);
+
+    if (inst->isStore())
+        ppRetiredStores->notify(1);
+
+    if (inst->isControl())
+        ppRetiredBranches->notify(1);
+}
 
 void
 BaseCPU::regStats()
@@ -537,7 +640,7 @@ BaseCPU::ProfileEvent::process()
 }
 
 void
-BaseCPU::serialize(std::ostream &os)
+BaseCPU::serialize(CheckpointOut &cp) const
 {
     SERIALIZE_SCALAR(instCnt);
 
@@ -548,28 +651,30 @@ BaseCPU::serialize(std::ostream &os)
          * system. */
         SERIALIZE_SCALAR(_pid);
 
-        interrupts->serialize(os);
+        interrupts->serialize(cp);
 
         // Serialize the threads, this is done by the CPU implementation.
         for (ThreadID i = 0; i < numThreads; ++i) {
-            nameOut(os, csprintf("%s.xc.%i", name(), i));
-            serializeThread(os, i);
+            ScopedCheckpointSection sec(cp, csprintf("xc.%i", i));
+            serializeThread(cp, i);
         }
     }
 }
 
 void
-BaseCPU::unserialize(Checkpoint *cp, const std::string &section)
+BaseCPU::unserialize(CheckpointIn &cp)
 {
     UNSERIALIZE_SCALAR(instCnt);
 
     if (!_switchedOut) {
         UNSERIALIZE_SCALAR(_pid);
-        interrupts->unserialize(cp, section);
+        interrupts->unserialize(cp);
 
         // Unserialize the threads, this is done by the CPU implementation.
-        for (ThreadID i = 0; i < numThreads; ++i)
-            unserializeThread(cp, csprintf("%s.xc.%i", section, i), i);
+        for (ThreadID i = 0; i < numThreads; ++i) {
+            ScopedCheckpointSection sec(cp, csprintf("xc.%i", i));
+            unserializeThread(cp, i);
+        }
     }
 }
 
@@ -580,6 +685,25 @@ BaseCPU::scheduleInstStop(ThreadID tid, Counter insts, const char *cause)
     Event *event(new LocalSimLoopExitEvent(cause, 0));
 
     comInstEventQueue[tid]->schedule(event, now + insts);
+}
+
+AddressMonitor::AddressMonitor() {
+    armed = false;
+    waiting = false;
+    gotWakeup = false;
+}
+
+bool AddressMonitor::doMonitor(PacketPtr pkt) {
+    assert(pkt->req->hasPaddr());
+    if(armed && waiting) {
+        if(pAddr == pkt->getAddr()) {
+            DPRINTF(Mwait,"pAddr=0x%lx invalidated: waking up core\n",
+                    pkt->getAddr());
+            waiting = false;
+            return true;
+        }
+    }
+    return false;
 }
 
 void

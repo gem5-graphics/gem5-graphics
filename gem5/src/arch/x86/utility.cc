@@ -52,9 +52,7 @@ namespace X86ISA {
 uint64_t
 getArgument(ThreadContext *tc, int &number, uint16_t size, bool fp)
 {
-    if (!FullSystem) {
-        panic("getArgument() only implemented for full system mode.\n");
-    } else if (fp) {
+    if (fp) {
         panic("getArgument(): Floating point arguments not implemented\n");
     } else if (size != 8) {
         panic("getArgument(): Can only handle 64-bit arguments.\n");
@@ -203,12 +201,12 @@ void initCPU(ThreadContext *tc, int cpuId)
 void startupCPU(ThreadContext *tc, int cpuId)
 {
     if (cpuId == 0 || !FullSystem) {
-        tc->activate(Cycles(0));
+        tc->activate();
     } else {
         // This is an application processor (AP). It should be initialized to
         // look like only the BIOS POST has run on it and put then put it into
         // a halted state.
-        tc->suspend(Cycles(0));
+        tc->suspend();
     }
 }
 

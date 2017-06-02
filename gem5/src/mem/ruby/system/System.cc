@@ -30,6 +30,7 @@
 #include <zlib.h>
 
 #include <cstdio>
+#include <list>
 
 #include "base/intmath.hh"
 #include "base/statistics.hh"
@@ -38,6 +39,7 @@
 #include "mem/ruby/common/Address.hh"
 #include "mem/ruby/network/Network.hh"
 #include "mem/ruby/system/System.hh"
+#include "mem/simple_mem.hh"
 #include "sim/eventq.hh"
 #include "sim/simulate.hh"
 
@@ -47,15 +49,17 @@ int RubySystem::m_random_seed;
 bool RubySystem::m_randomization;
 uint32_t RubySystem::m_block_size_bytes;
 uint32_t RubySystem::m_block_size_bits;
-uint64_t RubySystem::m_memory_size_bytes;
 uint32_t RubySystem::m_memory_size_bits;
+bool RubySystem::m_warmup_enabled = false;
+// To look forward to allowing multiple RubySystem instances, track the number
+// of RubySystems that need to be warmed up on checkpoint restore.
+unsigned RubySystem::m_systems_to_warmup = 0;
+bool RubySystem::m_cooldown_enabled = false;
 
 RubySystem::RubySystem(const Params *p)
-    : ClockedObject(p)
+    : ClockedObject(p), m_access_backing_store(p->access_backing_store),
+      m_cache_recorder(NULL)
 {
-    if (g_system_ptr != NULL)
-        fatal("Only one RubySystem object currently allowed.\n");
-
     m_random_seed = p->random_seed;
     srandom(m_random_seed);
     m_randomization = p->randomization;
@@ -63,76 +67,150 @@ RubySystem::RubySystem(const Params *p)
     m_block_size_bytes = p->block_size_bytes;
     assert(isPowerOf2(m_block_size_bytes));
     m_block_size_bits = floorLog2(m_block_size_bytes);
-
-    m_memory_size_bytes = p->mem_size;
-    if (m_memory_size_bytes == 0) {
-        m_memory_size_bits = 0;
-    } else {
-        m_memory_size_bits = ceilLog2(m_memory_size_bytes);
-    }
-
-    if (p->no_mem_vec) {
-        m_mem_vec = NULL;
-    } else {
-        m_mem_vec = new MemoryVector;
-        m_mem_vec->resize(m_memory_size_bytes);
-    }
-
-    m_warmup_enabled = false;
-    m_cooldown_enabled = false;
-
-    // Setup the global variables used in Ruby
-    g_system_ptr = this;
+    m_memory_size_bits = p->memory_size_bits;
 
     // Resize to the size of different machine types
-    g_abs_controls.resize(MachineType_NUM);
+    m_abstract_controls.resize(MachineType_NUM);
 
     // Collate the statistics before they are printed.
     Stats::registerDumpCallback(new RubyStatsCallback(this));
     // Create the profiler
-    m_profiler = new Profiler(p);
+    m_profiler = new Profiler(p, this);
+    m_phys_mem = p->phys_mem;
 }
 
 void
 RubySystem::registerNetwork(Network* network_ptr)
 {
-  m_network = network_ptr;
+    m_network = network_ptr;
 }
 
 void
 RubySystem::registerAbstractController(AbstractController* cntrl)
 {
-  m_abs_cntrl_vec.push_back(cntrl);
+    m_abs_cntrl_vec.push_back(cntrl);
 
-  MachineID id = cntrl->getMachineID();
-  g_abs_controls[id.getType()][id.getNum()] = cntrl;
-}
-
-void
-RubySystem::registerSparseMemory(SparseMemory* s)
-{
-    m_sparse_memory_vector.push_back(s);
-}
-
-void
-RubySystem::registerMemController(MemoryControl *mc) {
-    m_memory_controller_vec.push_back(mc);
+    MachineID id = cntrl->getMachineID();
+    m_abstract_controls[id.getType()][id.getNum()] = cntrl;
 }
 
 RubySystem::~RubySystem()
 {
     delete m_network;
     delete m_profiler;
-    if (m_mem_vec)
-        delete m_mem_vec;
+}
+
+void
+RubySystem::makeCacheRecorder(uint8_t *uncompressed_trace,
+                              uint64_t cache_trace_size,
+                              uint64_t block_size_bytes)
+{
+    vector<Sequencer*> sequencer_map;
+    Sequencer* sequencer_ptr = NULL;
+
+    for (int cntrl = 0; cntrl < m_abs_cntrl_vec.size(); cntrl++) {
+        sequencer_map.push_back(m_abs_cntrl_vec[cntrl]->getSequencer());
+        if (sequencer_ptr == NULL) {
+            sequencer_ptr = sequencer_map[cntrl];
+        }
+    }
+
+    assert(sequencer_ptr != NULL);
+
+    for (int cntrl = 0; cntrl < m_abs_cntrl_vec.size(); cntrl++) {
+        if (sequencer_map[cntrl] == NULL) {
+            sequencer_map[cntrl] = sequencer_ptr;
+        }
+    }
+
+    // Remove the old CacheRecorder if it's still hanging about.
+    if (m_cache_recorder != NULL) {
+        delete m_cache_recorder;
+    }
+
+    // Create the CacheRecorder and record the cache trace
+    m_cache_recorder = new CacheRecorder(uncompressed_trace, cache_trace_size,
+                                         sequencer_map, block_size_bytes);
+}
+
+void
+RubySystem::memWriteback()
+{
+    m_cooldown_enabled = true;
+
+    // Make the trace so we know what to write back.
+    DPRINTF(RubyCacheTrace, "Recording Cache Trace\n");
+    makeCacheRecorder(NULL, 0, getBlockSizeBytes());
+    for (int cntrl = 0; cntrl < m_abs_cntrl_vec.size(); cntrl++) {
+        m_abs_cntrl_vec[cntrl]->recordCacheTrace(cntrl, m_cache_recorder);
+    }
+    DPRINTF(RubyCacheTrace, "Cache Trace Complete\n");
+
+    // save the current tick value
+    Tick curtick_original = curTick();
+    DPRINTF(RubyCacheTrace, "Recording current tick %ld\n", curtick_original);
+
+    // Deschedule all prior events on the event queue, but record the tick they
+    // were scheduled at so they can be restored correctly later.
+    list<pair<Event*, Tick> > original_events;
+    while (!eventq->empty()) {
+        Event *curr_head = eventq->getHead();
+        if (curr_head->isAutoDelete()) {
+            DPRINTF(RubyCacheTrace, "Event %s auto-deletes when descheduled,"
+                    " not recording\n", curr_head->name());
+        } else {
+            original_events.push_back(make_pair(curr_head, curr_head->when()));
+        }
+        eventq->deschedule(curr_head);
+    }
+
+    // Schedule an event to start cache cooldown
+    DPRINTF(RubyCacheTrace, "Starting cache flush\n");
+    enqueueRubyEvent(curTick());
+    simulate();
+    DPRINTF(RubyCacheTrace, "Cache flush complete\n");
+
+    // Deschedule any events left on the event queue.
+    while (!eventq->empty()) {
+        eventq->deschedule(eventq->getHead());
+    }
+
+    // Restore curTick
+    setCurTick(curtick_original);
+
+    // Restore all events that were originally on the event queue.  This is
+    // done after setting curTick back to its original value so that events do
+    // not seem to be scheduled in the past.
+    while (!original_events.empty()) {
+        pair<Event*, Tick> event = original_events.back();
+        eventq->schedule(event.first, event.second);
+        original_events.pop_back();
+    }
+
+    // No longer flushing back to memory.
+    m_cooldown_enabled = false;
+
+    // There are several issues with continuing simulation after calling
+    // memWriteback() at the moment, that stem from taking events off the
+    // queue, simulating again, and then putting them back on, whilst
+    // pretending that no time has passed.  One is that some events will have
+    // been deleted, so can't be put back.  Another is that any object
+    // recording the tick something happens may end up storing a tick in the
+    // future.  A simple warning here alerts the user that things may not work
+    // as expected.
+    warn_once("Ruby memory writeback is experimental.  Continuing simulation "
+              "afterwards may not always work as intended.");
+
+    // Keep the cache recorder around so that we can dump the trace if a
+    // checkpoint is immediately taken.
 }
 
 void
 RubySystem::writeCompressedTrace(uint8_t *raw_data, string filename,
-                                 uint64 uncompressed_trace_size)
+                                 uint64_t uncompressed_trace_size)
 {
     // Create the checkpoint file for the memory
-    string thefile = Checkpoint::dir() + "/" + filename.c_str();
+    string thefile = CheckpointIn::dir() + "/" + filename.c_str();
 
     int fd = creat(thefile.c_str(), 0664);
     if (fd < 0) {
@@ -153,104 +231,50 @@ RubySystem::writeCompressedTrace(uint8_t *raw_data, string filename,
     if (gzclose(compressedMemory)) {
         fatal("Close failed on memory trace file '%s'\n", filename);
     }
-    delete raw_data;
+    delete[] raw_data;
 }
 
 void
-RubySystem::serialize(std::ostream &os)
+RubySystem::serialize(CheckpointOut &cp) const
 {
-    m_cooldown_enabled = true;
-
-    vector<Sequencer*> sequencer_map;
-    Sequencer* sequencer_ptr = NULL;
-    int cntrl_id = -1;
-
-
-    for (int cntrl = 0; cntrl < m_abs_cntrl_vec.size(); cntrl++) {
-        sequencer_map.push_back(m_abs_cntrl_vec[cntrl]->getSequencer());
-        if (sequencer_ptr == NULL) {
-            sequencer_ptr = sequencer_map[cntrl];
-            cntrl_id = cntrl;
-        }
-    }
-
-    assert(sequencer_ptr != NULL);
-
-    for (int cntrl = 0; cntrl < m_abs_cntrl_vec.size(); cntrl++) {
-        if (sequencer_map[cntrl] == NULL) {
-            sequencer_map[cntrl] = sequencer_ptr;
-        }
-    }
-
     // Store the cache-block size, so we are able to restore on systems with a
     // different cache-block size. CacheRecorder depends on the correct
     // cache-block size upon unserializing.
-    uint64 block_size_bytes = getBlockSizeBytes();
+    uint64_t block_size_bytes = getBlockSizeBytes();
     SERIALIZE_SCALAR(block_size_bytes);
 
-    DPRINTF(RubyCacheTrace, "Recording Cache Trace\n");
-    // Create the CacheRecorder and record the cache trace
-    m_cache_recorder = new CacheRecorder(NULL, 0, sequencer_map,
-                                         block_size_bytes);
-
-    for (int cntrl = 0; cntrl < m_abs_cntrl_vec.size(); cntrl++) {
-        m_abs_cntrl_vec[cntrl]->recordCacheTrace(cntrl, m_cache_recorder);
+    // Check that there's a valid trace to use.  If not, then memory won't be
+    // up-to-date and the simulation will probably fail when restoring from the
+    // checkpoint.
+    if (m_cache_recorder == NULL) {
+        fatal("Call memWriteback() before serialize() to create ruby trace");
     }
 
-    DPRINTF(RubyCacheTrace, "Cache Trace Complete\n");
-    // save the current tick value
-    Tick curtick_original = curTick();
-    // save the event queue head
-    Event* eventq_head = eventq->replaceHead(NULL);
-    DPRINTF(RubyCacheTrace, "Recording current tick %ld and event queue\n",
-            curtick_original);
-
-    // Schedule an event to start cache cooldown
-    DPRINTF(RubyCacheTrace, "Starting cache flush\n");
-    enqueueRubyEvent(curTick());
-    simulate();
-    DPRINTF(RubyCacheTrace, "Cache flush complete\n");
-
-    // Restore eventq head
-    eventq_head = eventq->replaceHead(eventq_head);
-    // Restore curTick
-    setCurTick(curtick_original);
-
-    uint8_t *raw_data = NULL;
-
-    if (m_mem_vec != NULL) {
-        uint64 memory_trace_size = m_mem_vec->collatePages(raw_data);
-
-        string memory_trace_file = name() + ".memory.gz";
-        writeCompressedTrace(raw_data, memory_trace_file,
-                             memory_trace_size);
-
-        SERIALIZE_SCALAR(memory_trace_file);
-        SERIALIZE_SCALAR(memory_trace_size);
-
-    } else {
-        for (int i = 0; i < m_sparse_memory_vector.size(); ++i) {
-            m_sparse_memory_vector[i]->recordBlocks(cntrl_id,
-                                                    m_cache_recorder);
-        }
-    }
-
-    // Aggergate the trace entries together into a single array
-    raw_data = new uint8_t[4096];
-    uint64 cache_trace_size = m_cache_recorder->aggregateRecords(&raw_data,
+    // Aggregate the trace entries together into a single array
+    uint8_t *raw_data = new uint8_t[4096];
+    uint64_t cache_trace_size = m_cache_recorder->aggregateRecords(&raw_data,
                                                                  4096);
     string cache_trace_file = name() + ".cache.gz";
     writeCompressedTrace(raw_data, cache_trace_file, cache_trace_size);
 
     SERIALIZE_SCALAR(cache_trace_file);
     SERIALIZE_SCALAR(cache_trace_size);
+}
 
-    m_cooldown_enabled = false;
+void
+RubySystem::drainResume()
+{
+    // Delete the cache recorder if it was created in memWriteback()
+    // to checkpoint the current cache state.
+    if (m_cache_recorder) {
+        delete m_cache_recorder;
+        m_cache_recorder = NULL;
+    }
 }
 
 void
 RubySystem::readCompressedTrace(string filename, uint8_t *&raw_data,
-                                uint64& uncompressed_trace_size)
+                                uint64_t &uncompressed_trace_size)
 {
     // Read the trace file
     gzFile compressedTrace;
@@ -280,60 +304,30 @@ RubySystem::readCompressedTrace(string filename, uint8_t *&raw_data,
 }
 
 void
-RubySystem::unserialize(Checkpoint *cp, const string &section)
+RubySystem::unserialize(CheckpointIn &cp)
 {
     uint8_t *uncompressed_trace = NULL;
 
     // This value should be set to the checkpoint-system's block-size.
     // Optional, as checkpoints without it can be run if the
     // checkpoint-system's block-size == current block-size.
-    uint64 block_size_bytes = getBlockSizeBytes();
+    uint64_t block_size_bytes = getBlockSizeBytes();
     UNSERIALIZE_OPT_SCALAR(block_size_bytes);
 
-    if (m_mem_vec != NULL) {
-        string memory_trace_file;
-        uint64 memory_trace_size = 0;
-
-        UNSERIALIZE_SCALAR(memory_trace_file);
-        UNSERIALIZE_SCALAR(memory_trace_size);
-        memory_trace_file = cp->cptDir + "/" + memory_trace_file;
-
-        readCompressedTrace(memory_trace_file, uncompressed_trace,
-                            memory_trace_size);
-        m_mem_vec->populatePages(uncompressed_trace);
-
-        delete [] uncompressed_trace;
-        uncompressed_trace = NULL;
-    }
-
     string cache_trace_file;
-    uint64 cache_trace_size = 0;
+    uint64_t cache_trace_size = 0;
 
     UNSERIALIZE_SCALAR(cache_trace_file);
     UNSERIALIZE_SCALAR(cache_trace_size);
-    cache_trace_file = cp->cptDir + "/" + cache_trace_file;
+    cache_trace_file = cp.cptDir + "/" + cache_trace_file;
 
     readCompressedTrace(cache_trace_file, uncompressed_trace,
                         cache_trace_size);
     m_warmup_enabled = true;
+    m_systems_to_warmup++;
 
-    vector<Sequencer*> sequencer_map;
-    Sequencer* t = NULL;
-    for (int cntrl = 0; cntrl < m_abs_cntrl_vec.size(); cntrl++) {
-        sequencer_map.push_back(m_abs_cntrl_vec[cntrl]->getSequencer());
-        if (t == NULL) t = sequencer_map[cntrl];
-    }
-
-    assert(t != NULL);
-
-    for (int cntrl = 0; cntrl < m_abs_cntrl_vec.size(); cntrl++) {
-        if (sequencer_map[cntrl] == NULL) {
-            sequencer_map[cntrl] = t;
-        }
-    }
-
-    m_cache_recorder = new CacheRecorder(uncompressed_trace, cache_trace_size,
-                                         sequencer_map, block_size_bytes);
+    // Create the cache recorder that will hang around until startup.
+    makeCacheRecorder(uncompressed_trace, cache_trace_size, block_size_bytes);
 }
 
 void
@@ -357,6 +351,7 @@ RubySystem::startup()
     // state was checkpointed.
 
     if (m_warmup_enabled) {
+        DPRINTF(RubyCacheTrace, "Starting ruby cache warmup\n");
         // save the current tick value
         Tick curtick_original = curTick();
         // save the event queue head
@@ -371,12 +366,9 @@ RubySystem::startup()
 
         delete m_cache_recorder;
         m_cache_recorder = NULL;
-        m_warmup_enabled = false;
-
-        // reset DRAM so that it's not waiting for events on the old event
-        // queue
-        for (int i = 0; i < m_memory_controller_vec.size(); ++i) {
-            m_memory_controller_vec[i]->reset();
+        m_systems_to_warmup--;
+        if (m_systems_to_warmup == 0) {
+            m_warmup_enabled = false;
         }
 
         // Restore eventq head
@@ -392,30 +384,29 @@ RubySystem::startup()
 void
 RubySystem::RubyEvent::process()
 {
-    if (ruby_system->m_warmup_enabled) {
-        ruby_system->m_cache_recorder->enqueueNextFetchRequest();
-    }  else if (ruby_system->m_cooldown_enabled) {
-        ruby_system->m_cache_recorder->enqueueNextFlushRequest();
+    if (RubySystem::getWarmupEnabled()) {
+        m_ruby_system->m_cache_recorder->enqueueNextFetchRequest();
+    } else if (RubySystem::getCooldownEnabled()) {
+        m_ruby_system->m_cache_recorder->enqueueNextFlushRequest();
     }
 }
 
 void
 RubySystem::resetStats()
 {
-    g_ruby_start = curCycle();
+    m_start_cycle = curCycle();
 }
 
 bool
 RubySystem::functionalRead(PacketPtr pkt)
 {
-    Address address(pkt->getAddr());
-    Address line_address(address);
-    line_address.makeLineAddress();
+    Addr address(pkt->getAddr());
+    Addr line_address = makeLineAddress(address);
 
     AccessPermission access_perm = AccessPermission_NotPresent;
     int num_controllers = m_abs_cntrl_vec.size();
 
-    DPRINTF(RubySystem, "Functional Read request for %s\n",address);
+    DPRINTF(RubySystem, "Functional Read request for %s\n", address);
 
     unsigned int num_ro = 0;
     unsigned int num_rw = 0;
@@ -445,10 +436,6 @@ RubySystem::functionalRead(PacketPtr pkt)
     }
     assert(num_rw <= 1);
 
-    uint8_t *data = pkt->getPtr<uint8_t>(true);
-    unsigned int size_in_bytes = pkt->getSize();
-    unsigned startByte = address.getAddress() - line_address.getAddress();
-
     // This if case is meant to capture what happens in a Broadcast/Snoop
     // protocol where the block does not exist in the cache hierarchy. You
     // only want to read from the Backing_Store memory if there is no copy in
@@ -457,20 +444,12 @@ RubySystem::functionalRead(PacketPtr pkt)
     // The reason is because the Backing_Store memory could easily be stale, if
     // there are copies floating around the cache hierarchy, so you want to read
     // it only if it's not in the cache hierarchy at all.
-    if (num_invalid == (num_controllers - 1) &&
-            num_backing_store == 1) {
+    if (num_invalid == (num_controllers - 1) && num_backing_store == 1) {
         DPRINTF(RubySystem, "only copy in Backing_Store memory, read from it\n");
         for (unsigned int i = 0; i < num_controllers; ++i) {
             access_perm = m_abs_cntrl_vec[i]->getAccessPermission(line_address);
             if (access_perm == AccessPermission_Backing_Store) {
-                DataBlock& block = m_abs_cntrl_vec[i]->
-                    getDataBlock(line_address);
-
-                DPRINTF(RubySystem, "reading from %s block %s\n",
-                        m_abs_cntrl_vec[i]->name(), block);
-                for (unsigned j = 0; j < size_in_bytes; ++j) {
-                    data[j] = block.getByte(j + startByte);
-                }
+                m_abs_cntrl_vec[i]->functionalRead(line_address, pkt);
                 return true;
             }
         }
@@ -488,14 +467,7 @@ RubySystem::functionalRead(PacketPtr pkt)
             access_perm = m_abs_cntrl_vec[i]->getAccessPermission(line_address);
             if (access_perm == AccessPermission_Read_Only ||
                 access_perm == AccessPermission_Read_Write) {
-                DataBlock& block = m_abs_cntrl_vec[i]->
-                    getDataBlock(line_address);
-
-                DPRINTF(RubySystem, "reading from %s block %s\n",
-                        m_abs_cntrl_vec[i]->name(), block);
-                for (unsigned j = 0; j < size_in_bytes; ++j) {
-                    data[j] = block.getByte(j + startByte);
-                }
+                m_abs_cntrl_vec[i]->functionalRead(line_address, pkt);
                 return true;
             }
         }
@@ -511,16 +483,12 @@ RubySystem::functionalRead(PacketPtr pkt)
 bool
 RubySystem::functionalWrite(PacketPtr pkt)
 {
-    Address addr(pkt->getAddr());
-    Address line_addr = line_address(addr);
+    Addr addr(pkt->getAddr());
+    Addr line_addr = makeLineAddress(addr);
     AccessPermission access_perm = AccessPermission_NotPresent;
     int num_controllers = m_abs_cntrl_vec.size();
 
-    DPRINTF(RubySystem, "Functional Write request for %s\n",addr);
-
-    uint8_t *data = pkt->getPtr<uint8_t>(true);
-    unsigned int size_in_bytes = pkt->getSize();
-    unsigned startByte = addr.getAddress() - line_addr.getAddress();
+    DPRINTF(RubySystem, "Functional Write request for %s\n", addr);
 
     uint32_t M5_VAR_USED num_functional_writes = 0;
 
@@ -531,21 +499,9 @@ RubySystem::functionalWrite(PacketPtr pkt)
         access_perm = m_abs_cntrl_vec[i]->getAccessPermission(line_addr);
         if (access_perm != AccessPermission_Invalid &&
             access_perm != AccessPermission_NotPresent) {
-
-            num_functional_writes++;
-
-            DataBlock& block = m_abs_cntrl_vec[i]->getDataBlock(line_addr);
-            DPRINTF(RubySystem, "%s\n",block);
-            for (unsigned j = 0; j < size_in_bytes; ++j) {
-              block.setByte(j + startByte, data[j]);
-            }
-            DPRINTF(RubySystem, "%s\n",block);
+            num_functional_writes +=
+                m_abs_cntrl_vec[i]->functionalWrite(line_addr, pkt);
         }
-    }
-
-    for (unsigned int i = 0; i < m_memory_controller_vec.size() ;++i) {
-        num_functional_writes +=
-            m_memory_controller_vec[i]->functionalWriteBuffers(pkt);
     }
 
     num_functional_writes += m_network->functionalWrite(pkt);

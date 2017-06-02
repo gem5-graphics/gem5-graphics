@@ -47,7 +47,6 @@
 #include "arch/arm/table_walker.hh"
 #include "arch/arm/tlb.hh"
 #include "mem/request.hh"
-#include "sim/tlb.hh"
 
 class ThreadContext;
 
@@ -80,8 +79,8 @@ class Stage2LookUp : public BaseTLB::Translation
         bool _functional, TLB::ArmTranslationType _tranType) :
         stage1Tlb(s1Tlb), stage2Tlb(s2Tlb), stage1Te(s1Te), s1Req(_req),
         transState(_transState), mode(_mode), timing(_timing),
-        functional(_functional), tranType(_tranType), fault(NoFault),
-        complete(false), selfDelete(false)
+        functional(_functional), tranType(_tranType), stage2Te(nullptr),
+        fault(NoFault), complete(false), selfDelete(false)
     {
         req.setVirt(0, s1Te.pAddr(s1Req->getVaddr()), s1Req->getSize(),
                     s1Req->getFlags(), s1Req->masterId(), 0);
@@ -97,7 +96,7 @@ class Stage2LookUp : public BaseTLB::Translation
 
     void markDelayed() {}
 
-    void finish(Fault fault, RequestPtr req, ThreadContext *tc,
+    void finish(const Fault &fault, RequestPtr req, ThreadContext *tc,
                 BaseTLB::Mode mode);
 };
 

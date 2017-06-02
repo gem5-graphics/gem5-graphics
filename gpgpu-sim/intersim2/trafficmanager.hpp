@@ -60,7 +60,7 @@ protected:
   int _routers;
   int _vcs;
 
-  vector<Network *> _net;
+  vector<ISNetwork *> _net;
   vector<vector<Router *> > _router;
 
   // ============ Traffic ============ 
@@ -292,9 +292,9 @@ protected:
 public:
 
   static TrafficManager * New(Configuration const & config, 
-			      vector<Network *> const & net);
+			      vector<ISNetwork *> const & net);
 
-  TrafficManager( const Configuration &config, const vector<Network *> & net );
+  TrafficManager( const Configuration &config, const vector<ISNetwork *> & net );
   virtual ~TrafficManager( );
 
   bool Run( );

@@ -91,7 +91,7 @@ class TrafficGen : public MemObject
      * Receive a retry from the neighbouring port and attempt to
      * resend the waiting packet.
      */
-    void recvRetry();
+    void recvReqRetry();
 
     /** Struct to represent a probabilistic transition during parsing. */
     struct Transition {
@@ -148,9 +148,15 @@ class TrafficGen : public MemObject
 
       protected:
 
-        void recvRetry() { trafficGen.recvRetry(); }
+        void recvReqRetry() { trafficGen.recvReqRetry(); }
 
         bool recvTimingResp(PacketPtr pkt);
+
+        void recvTimingSnoopReq(PacketPtr pkt) { }
+
+        void recvFunctionalSnoop(PacketPtr pkt) { }
+
+        Tick recvAtomicSnoop(PacketPtr pkt) { return 0; }
 
       private:
 
@@ -169,9 +175,6 @@ class TrafficGen : public MemObject
 
     /** Event for scheduling updates */
     EventWrapper<TrafficGen, &TrafficGen::update> updateEvent;
-
-    /** Manager to signal when drained */
-    DrainManager* drainManager;
 
     /** Count the number of generated packets. */
     Stats::Scalar numPackets;
@@ -195,11 +198,10 @@ class TrafficGen : public MemObject
 
     void initState();
 
-    unsigned int drain(DrainManager *dm);
+    DrainState drain() M5_ATTR_OVERRIDE;
 
-    void serialize(std::ostream &os);
-
-    void unserialize(Checkpoint* cp, const std::string& section);
+    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
+    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
 
     /** Register statistics */
     void regStats();

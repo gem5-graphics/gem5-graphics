@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 ARM Limited
+ * Copyright (c) 2010-2014 ARM Limited
  * Copyright (c) 2013 Advanced Micro Devices, Inc.
  * All rights reserved
  *
@@ -335,7 +335,8 @@ ArmStaticInst::printReg(std::ostream &os, int reg) const
         ccprintf(os, "%s", ArmISA::miscRegName[rel_reg]);
         break;
       case CCRegClass:
-        panic("printReg: CCRegClass but ARM has no CC regs\n");
+        ccprintf(os, "cc_%s", ArmISA::ccRegName[rel_reg]);
+        break;
     }
 }
 
@@ -384,54 +385,54 @@ ArmStaticInst::printCondition(std::ostream &os,
                               bool noImplicit) const
 {
     switch (code) {
-      case COND_EQ:
+      case ARM_COND_EQ:
         os << "eq";
         break;
-      case COND_NE:
+      case ARM_COND_NE:
         os << "ne";
         break;
-      case COND_CS:
+      case ARM_COND_CS:
         os << "cs";
         break;
-      case COND_CC:
+      case ARM_COND_CC:
         os << "cc";
         break;
-      case COND_MI:
+      case ARM_COND_MI:
         os << "mi";
         break;
-      case COND_PL:
+      case ARM_COND_PL:
         os << "pl";
         break;
-      case COND_VS:
+      case ARM_COND_VS:
         os << "vs";
         break;
-      case COND_VC:
+      case ARM_COND_VC:
         os << "vc";
         break;
-      case COND_HI:
+      case ARM_COND_HI:
         os << "hi";
         break;
-      case COND_LS:
+      case ARM_COND_LS:
         os << "ls";
         break;
-      case COND_GE:
+      case ARM_COND_GE:
         os << "ge";
         break;
-      case COND_LT:
+      case ARM_COND_LT:
         os << "lt";
         break;
-      case COND_GT:
+      case ARM_COND_GT:
         os << "gt";
         break;
-      case COND_LE:
+      case ARM_COND_LE:
         os << "le";
         break;
-      case COND_AL:
+      case ARM_COND_AL:
         // This one is implicit.
         if (noImplicit)
             os << "al";
         break;
-      case COND_UC:
+      case ARM_COND_UC:
         // Unconditional.
         if (noImplicit)
             os << "uc";

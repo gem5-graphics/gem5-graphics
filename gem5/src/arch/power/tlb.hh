@@ -39,6 +39,7 @@
 
 #include <map>
 
+#include "arch/generic/tlb.hh"
 #include "arch/power/isa_traits.hh"
 #include "arch/power/pagetable.hh"
 #include "arch/power/utility.hh"
@@ -46,8 +47,6 @@
 #include "base/statistics.hh"
 #include "mem/request.hh"
 #include "params/PowerTLB.hh"
-#include "sim/fault_fwd.hh"
-#include "sim/tlb.hh"
 
 class ThreadContext;
 
@@ -63,9 +62,13 @@ struct TlbEntry
     {
     }
 
-    TlbEntry(Addr asn, Addr vaddr, Addr paddr)
+    TlbEntry(Addr asn, Addr vaddr, Addr paddr,
+             bool uncacheable, bool read_only)
         : _pageStart(paddr)
     {
+        if (uncacheable || read_only)
+            warn("Power TlbEntry does not support uncacheable"
+                 " or read-only mappings\n");
     }
 
     void
@@ -81,13 +84,13 @@ struct TlbEntry
     }
 
     void
-    serialize(std::ostream &os)
+    serialize(CheckpointOut &cp) const
     {
         SERIALIZE_SCALAR(_pageStart);
     }
 
     void
-    unserialize(Checkpoint *cp, const std::string &section)
+    unserialize(CheckpointIn &cp)
     {
         UNSERIALIZE_SCALAR(_pageStart);
     }
@@ -169,8 +172,9 @@ class TLB : public BaseTLB
     Fault finalizePhysical(RequestPtr req, ThreadContext *tc, Mode mode) const;
 
     // Checkpointing
-    void serialize(std::ostream &os);
-    void unserialize(Checkpoint *cp, const std::string &section);
+    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
+    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
+
     void regStats();
 };
 

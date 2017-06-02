@@ -93,11 +93,9 @@ class LocalSimLoopExitEvent : public Event
 
     virtual const char *description() const;
 
-    virtual void serialize(std::ostream &os);
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
-    virtual void unserialize(Checkpoint *cp, const std::string &section,
-                             EventQueue *eventq);
-    static Serializable *createForUnserialize(Checkpoint *cp,
+    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
+    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
+    static Serializable *createForUnserialize(CheckpointIn &cp,
                                               const std::string &section);
 };
 

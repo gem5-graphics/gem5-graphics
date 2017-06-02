@@ -68,8 +68,10 @@ namespace ArmISA
         Bitfield<1, 0> bottom2;
     EndBitUnion(ITSTATE)
 
-
     BitUnion64(ExtMachInst)
+        // Decoder state
+        Bitfield<63, 62> decoderFault; // See DecoderFault
+
         // ITSTATE bits
         Bitfield<55, 48> itstate;
         Bitfield<55, 52> itstateCond;
@@ -223,7 +225,8 @@ namespace ArmISA
         uint8_t _nextItstate;
         uint8_t _size;
       public:
-        PCState() : flags(0), nextFlags(0), _itstate(0), _nextItstate(0)
+        PCState() : flags(0), nextFlags(0), _itstate(0), _nextItstate(0),
+                    _size(0)
         {}
 
         void
@@ -233,7 +236,8 @@ namespace ArmISA
             npc(val + (thumb() ? 2 : 4));
         }
 
-        PCState(Addr val) : flags(0), nextFlags(0), _itstate(0), _nextItstate(0)
+        PCState(Addr val) : flags(0), nextFlags(0), _itstate(0),
+                            _nextItstate(0), _size(0)
         { set(val); }
 
         bool
@@ -479,9 +483,9 @@ namespace ArmISA
         }
 
         void
-        serialize(std::ostream &os)
+        serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE
         {
-            Base::serialize(os);
+            Base::serialize(cp);
             SERIALIZE_SCALAR(flags);
             SERIALIZE_SCALAR(_size);
             SERIALIZE_SCALAR(nextFlags);
@@ -490,9 +494,9 @@ namespace ArmISA
         }
 
         void
-        unserialize(Checkpoint *cp, const std::string &section)
+        unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE
         {
-            Base::unserialize(cp, section);
+            Base::unserialize(cp);
             UNSERIALIZE_SCALAR(flags);
             UNSERIALIZE_SCALAR(_size);
             UNSERIALIZE_SCALAR(nextFlags);
@@ -624,6 +628,16 @@ namespace ArmISA
         EC_SERROR                  = 0x2F
     };
 
+    /**
+     * Instruction decoder fault codes in ExtMachInst.
+     */
+    enum DecoderFault : std::uint8_t {
+        OK = 0x0, ///< No fault
+        UNALIGNED = 0x1, ///< Unaligned instruction fault
+
+        PANIC = 0x3, ///< Internal gem5 error
+    };
+
     BitUnion8(OperatingMode64)
         Bitfield<0> spX;
         Bitfield<3, 2> el;
@@ -727,12 +741,17 @@ namespace ArmISA
 } // namespace ArmISA
 
 __hash_namespace_begin
-    template<>
-    struct hash<ArmISA::ExtMachInst> : public hash<uint32_t> {
-        size_t operator()(const ArmISA::ExtMachInst &emi) const {
-            return hash<uint32_t>::operator()((uint32_t)emi);
-        };
-    };
+
+template<>
+struct hash<ArmISA::ExtMachInst> :
+        public hash<ArmISA::ExtMachInst::__DataType> {
+
+    size_t operator()(const ArmISA::ExtMachInst &emi) const {
+        return hash<ArmISA::ExtMachInst::__DataType>::operator()(emi);
+    }
+
+};
+
 __hash_namespace_end
 
 #endif

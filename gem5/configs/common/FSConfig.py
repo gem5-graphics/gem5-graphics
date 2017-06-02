@@ -1,4 +1,4 @@
-# Copyright (c) 2010-2012 ARM Limited
+# Copyright (c) 2010-2012, 2015 ARM Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -43,6 +43,18 @@ from m5.objects import *
 from Benchmarks import *
 from m5.util import *
 
+# Populate to reflect supported os types per target ISA
+os_types = { 'alpha' : [ 'linux' ],
+             'mips'  : [ 'linux' ],
+             'sparc' : [ 'linux' ],
+             'x86'   : [ 'linux' ],
+             'arm'   : [ 'linux',
+                         'android-gingerbread',
+                         'android-ics',
+                         'android-jellybean',
+                         'android-kitkat' ],
+           }
+
 class CowIdeDisk(IdeDisk):
     image = CowDiskImage(child=RawDiskImage(read_only=True),
                          read_only=False)
@@ -51,16 +63,22 @@ class CowIdeDisk(IdeDisk):
         self.image.child.image_file = ci
 
 class RawIdeDisk(IdeDisk):
-       image = RawDiskImage(read_only=False)
-       def childImage(self, ci):
-           self.image.image_file=ci
+   image = RawDiskImage(read_only=False)
+   def childImage(self, ci):
+      self.image.image_file=ci
 
-class MemBus(CoherentBus):
+class MemBus(SystemXBar):
     badaddr_responder = BadAddr()
     default = Self.badaddr_responder.pio
 
+def fillInCmdline(mdesc, template, **kwargs):
+    kwargs.setdefault('disk', mdesc.disk())
+    kwargs.setdefault('rootdev', mdesc.rootdev())
+    kwargs.setdefault('mem', mdesc.mem())
+    kwargs.setdefault('script', mdesc.script())
+    return template % kwargs
 
-def makeLinuxAlphaSystem(mem_mode, mdesc = None, ruby = False):
+def makeLinuxAlphaSystem(mem_mode, mdesc=None, ruby=False, cmdline=None):
 
     class BaseTsunami(Tsunami):
         ethernet = NSGigE(pci_bus=0, pci_dev=1, pci_func=0)
@@ -76,7 +94,7 @@ def makeLinuxAlphaSystem(mem_mode, mdesc = None, ruby = False):
     self.tsunami = BaseTsunami()
 
     # Create the io bus to connect all device ports
-    self.iobus = NoncoherentBus()
+    self.iobus = IOXBar()
     self.tsunami.attachIO(self.iobus)
 
     self.tsunami.ide.pio = self.iobus.master
@@ -118,11 +136,13 @@ def makeLinuxAlphaSystem(mem_mode, mdesc = None, ruby = False):
     self.kernel = binary('vmlinux')
     self.pal = binary('ts_osfpal')
     self.console = binary('console')
-    self.boot_osflags = 'root=/dev/hda1 console=ttyS0'
+    if not cmdline:
+        cmdline = 'root=/dev/hda1 console=ttyS0'
+    self.boot_osflags = fillInCmdline(mdesc, cmdline)
 
     return self
 
-def makeSparcSystem(mem_mode, mdesc = None):
+def makeSparcSystem(mem_mode, mdesc=None):
     # Constants from iob.cc and uart8250.cc
     iob_man_addr = 0x9800000000
     uart_pio_size = 8
@@ -139,7 +159,7 @@ def makeSparcSystem(mem_mode, mdesc = None):
         # generic system
         mdesc = SysConfig()
     self.readfile = mdesc.script()
-    self.iobus = NoncoherentBus()
+    self.iobus = IOXBar()
     self.membus = MemBus()
     self.bridge = Bridge(delay='50ns')
     self.t1000 = T1000()
@@ -187,31 +207,10 @@ def makeSparcSystem(mem_mode, mdesc = None):
 
     return self
 
-def connectArmRubySystem(arm_sys):
-	arm_sys.iobus = NoncoherentBus()
-	arm_sys._dma_ports = [arm_sys.realview.cf_ctrl.dma, arm_sys.realview.clcd.dma]
-
-	arm_sys.realview.attachOnChipIO(arm_sys.iobus)
-	arm_sys.realview.attachIO(arm_sys.iobus, arm_sys._dma_ports)
-
-def connectArmClassicSystem(arm_sys):
-    arm_sys.iobus = NoncoherentBus()
-    arm_sys.membus = MemBus()
-    arm_sys.membus.badaddr_responder.warn_access = "warn"
-    
-    arm_sys.bridge = Bridge(delay='50ns')
-    arm_sys.bridge.master = arm_sys.iobus.slave
-    arm_sys.bridge.slave = arm_sys.membus.master
-    
-    arm_sys.realview.attachOnChipIO(arm_sys.membus, arm_sys.bridge)
-    arm_sys.realview.attachIO(arm_sys.iobus)
-
-    arm_sys.system_port = arm_sys.membus.slave
-
-def makeArmSystem(mem_mode, machine_type, mdesc = None,
-                  dtb_filename = None, bare_metal=False, ruby=False):
+def makeArmSystem(mem_mode, machine_type, num_cpus=1, mdesc=None,
+                  dtb_filename=None, bare_metal=False, cmdline=None,
+                  external_memory="", ruby=False):
     assert machine_type
-    print 'Building ARM %s system' % machine_type
 
     if bare_metal:
         self = ArmSystem()
@@ -223,18 +222,31 @@ def makeArmSystem(mem_mode, machine_type, mdesc = None,
         mdesc = SysConfig()
 
     self.readfile = mdesc.script()
+    self.iobus = IOXBar()
+    if not ruby:
+       self.membus = MemBus()
+       self.membus.badaddr_responder.warn_access = "warn"
+       self.bridge = Bridge(delay='50ns')
+       self.bridge.master = self.iobus.slave
+       self.bridge.slave = self.membus.master
+
     self.mem_mode = mem_mode
 
     if machine_type == "RealView_PBX":
         self.realview = RealViewPBX()
     elif machine_type == "RealView_EB":
         self.realview = RealViewEB()
-    elif machine_type == "VExpress_ELT":
-        self.realview = VExpress_ELT()
     elif machine_type == "VExpress_EMM":
         self.realview = VExpress_EMM()
+        if not dtb_filename:
+            dtb_filename = 'vexpress.aarch32.ll_20131205.0-gem5.%dcpu.dtb' % num_cpus
     elif machine_type == "VExpress_EMM64":
         self.realview = VExpress_EMM64()
+        if os.path.split(mdesc.disk())[-1] == 'linux-aarch32-ael.img':
+            print "Selected 64-bit ARM architecture, updating default disk image..."
+            mdesc.diskname = 'linaro-minimal-aarch64.img'
+        if not dtb_filename:
+            dtb_filename = 'vexpress.aarch64.20140821.dtb'
     else:
         print "Unknown Machine Type"
         sys.exit(1)
@@ -242,67 +254,136 @@ def makeArmSystem(mem_mode, machine_type, mdesc = None,
     self.cf0 = CowIdeDisk(driveID='master')
     #self.cf0 = RawIdeDisk(driveID='master')
     self.cf0.childImage(mdesc.disk())
+
+    # Attach any PCI devices this platform supports
+    self.realview.attachPciDevices()
     # default to an IDE controller rather than a CF one
-    # assuming we've got one; EMM64 is an exception for the moment
-    if machine_type != "VExpress_EMM64":
-        try:
-            self.realview.ide.disks = [self.cf0]
-        except:
-            self.realview.cf_ctrl.disks = [self.cf0]
-    else:
+    try:
+        self.realview.ide.disks = [self.cf0]
+    except:
         self.realview.cf_ctrl.disks = [self.cf0]
+
+    self.mem_ranges = []
+    size_remain = long(Addr(mdesc.mem()))
+    for region in self.realview._mem_regions:
+        if size_remain > long(region[1]):
+            self.mem_ranges.append(AddrRange(region[0], size=region[1]))
+            size_remain = size_remain - long(region[1])
+        else:
+            self.mem_ranges.append(AddrRange(region[0], size=size_remain))
+            size_remain = 0
+            break
+        warn("Memory size specified spans more than one region. Creating" \
+             " another memory controller for that range.")
+    
+    if not ruby:
+       if size_remain > 0:
+           print "size remain ", size_remain
+           fatal("The currently selected ARM platforms doesn't support" \
+                 " the amount of DRAM you've selected. Please try" \
+                 " another platform")
 
     if bare_metal:
         # EOT character on UART will end the simulation
         self.realview.uart.end_on_eot = True
-        self.mem_ranges = [AddrRange(self.realview.mem_start_addr,
-                                     size = mdesc.mem())]
     else:
         if machine_type == "VExpress_EMM64":
-            self.kernel = binary('vmlinux-3.14-aarch64-vexpress-emm64')
+            self.kernel = binary('vmlinux.aarch64.20140821')
         elif machine_type == "VExpress_EMM":
-            self.kernel = binary('vmlinux-3.3-arm-vexpress-emm-pcie')
+            self.kernel = binary('vmlinux.aarch32.ll_20131205.0-gem5')
         else:
             self.kernel = binary('vmlinux.arm.smp.fb.2.6.38.8')
 
         if dtb_filename:
             self.dtb_filename = binary(dtb_filename)
         self.machine_type = machine_type
-        if convert.toMemorySize(mdesc.mem()) > int(self.realview.max_mem_size):
-            print "The currently selected ARM platforms doesn't support"
-            print " the amount of DRAM you've selected. Please try"
-            print " another platform"
-            sys.exit(1)
-
         # Ensure that writes to the UART actually go out early in the boot
-        boot_flags = 'earlyprintk=pl011,0x1c090000 console=ttyAMA0 ' + \
-                     'lpj=19988480 norandmaps rw loglevel=8 ' + \
-                     'mem=%s root=/dev/sda1' % mdesc.mem()
+        if not cmdline:
+            cmdline = 'earlyprintk=pl011,0x1c090000 console=ttyAMA0 ' + \
+                      'lpj=19988480 norandmaps rw loglevel=8 ' + \
+                      'mem=%(mem)s root=%(rootdev)s'
 
+        # When using external memory, gem5 writes the boot loadem to nvmem
+        # and then SST will read from it, but SST can only get to nvmem from
+        # iobus, as gem5's membus is only used for initialization and
+        # SST doesn't use it.  Attaching nvmem to iobus solves this issue.
+        # During initialization, system_port -> membus -> iobus -> nvmem.
+        if external_memory or ruby:
+            self.realview.setupBootLoader(self.iobus,  self, binary)
+        else:
+            self.realview.setupBootLoader(self.membus, self, binary)
         self.gic_cpu_addr = self.realview.gic.cpu_addr
         self.flags_addr = self.realview.realview_io.pio_addr + 0x30
 
-        if mdesc.disk().lower().count('android'):
-            boot_flags += " init=/init "
-        self.boot_osflags = boot_flags
+        # This check is for users who have previously put 'android' in
+        # the disk image filename to tell the config scripts to
+        # prepare the kernel with android-specific boot options. That
+        # behavior has been replaced with a more explicit option per
+        # the error message below. The disk can have any name now and
+        # doesn't need to include 'android' substring.
+        if (os.path.split(mdesc.disk())[-1]).lower().count('android'):
+            if 'android' not in mdesc.os_type():
+                fatal("It looks like you are trying to boot an Android " \
+                      "platform.  To boot Android, you must specify " \
+                      "--os-type with an appropriate Android release on " \
+                      "the command line.")
 
-        self.mem_ranges = [AddrRange(self.realview.mem_start_addr,
-                                     size = mdesc.mem())]  
+        # android-specific tweaks
+        if 'android' in mdesc.os_type():
+            # generic tweaks
+            cmdline += " init=/init"
 
-	if ruby:
-		connectArmRubySystem(self)
-		self.realview.setupBootLoader(self.iobus, self, binary)
-	else: 
-		connectArmClassicSystem(self)
-   		self.realview.setupBootLoader(self.membus, self, binary)
+            # release-specific tweaks
+            if 'kitkat' in mdesc.os_type():
+                cmdline += " androidboot.hardware=gem5 qemu=1 qemu.gles=0 " + \
+                           "android.bootanim=0"
 
+        self.boot_osflags = fillInCmdline(mdesc, cmdline)
+
+    if external_memory:
+        # I/O traffic enters iobus
+        self.external_io = ExternalMaster(port_data="external_io",
+                                          port_type=external_memory)
+        self.external_io.port = self.iobus.slave
+
+        # Ensure iocache only receives traffic destined for (actual) memory.
+        self.iocache = ExternalSlave(port_data="iocache",
+                                     port_type=external_memory,
+                                     addr_ranges=self.mem_ranges)
+        self.iocache.port = self.iobus.master
+
+        # Let system_port get to nvmem and nothing else.
+        self.bridge.ranges = [self.realview.nvmem.range]
+
+        self.realview.attachOnChipIO(self.iobus)
+    elif ruby:
+        self._dma_ports = [self.realview.cf_ctrl.dma, self.realview.clcd.dma]
+                          # may connect later
+                          #self.realview.hdlcd.dma, self.realview.h264_decoder.dma] 
+        try:
+           self._dma_ports.append(self.realview.ide.dma)
+           self._dma_ports.append(self.realview.ethernet.dma)
+        except: 
+           pass
+        self.realview.attachOnChipIO(self.iobus, None, self._dma_ports)
+    else:
+        self.realview.attachOnChipIO(self.membus, self.bridge)
+
+    if ruby:
+       self.realview.attachIO(self.iobus, self._dma_ports)
+    else:
+       self.realview.attachIO(self.iobus)
     self.intrctrl = IntrControl()
     self.terminal = Terminal()
     self.vncserver = VncServer()
 
+    if not ruby:
+       self.system_port = self.membus.slave
+
     return self
 
-def makeLinuxMipsSystem(mem_mode, mdesc = None):
+
+def makeLinuxMipsSystem(mem_mode, mdesc=None, cmdline=None):
     class BaseMalta(Malta):
         ethernet = NSGigE(pci_bus=0, pci_dev=1, pci_func=0)
         ide = IdeController(disks=[Parent.disk0, Parent.disk2],
@@ -313,7 +394,7 @@ def makeLinuxMipsSystem(mem_mode, mdesc = None):
         # generic system
         mdesc = SysConfig()
     self.readfile = mdesc.script()
-    self.iobus = NoncoherentBus()
+    self.iobus = IOXBar()
     self.membus = MemBus()
     self.bridge = Bridge(delay='50ns')
     self.mem_ranges = [AddrRange('1GB')]
@@ -338,7 +419,9 @@ def makeLinuxMipsSystem(mem_mode, mdesc = None):
     self.terminal = Terminal()
     self.kernel = binary('mips/vmlinux')
     self.console = binary('mips/console')
-    self.boot_osflags = 'root=/dev/hda1 console=ttyS0'
+    if not cmdline:
+        cmdline = 'root=/dev/hda1 console=ttyS0'
+    self.boot_osflags = fillInCmdline(mdesc, cmdline)
 
     self.system_port = self.membus.slave
 
@@ -358,18 +441,19 @@ def connectX86ClassicSystem(x86_sys, numCPUs):
     x86_sys.membus = MemBus()
 
     # North Bridge
-    x86_sys.iobus = NoncoherentBus()
+    x86_sys.iobus = IOXBar()
     x86_sys.bridge = Bridge(delay='50ns')
     x86_sys.bridge.master = x86_sys.iobus.slave
     x86_sys.bridge.slave = x86_sys.membus.master
-    # Allow the bridge to pass through the IO APIC (two pages),
-    # everything in the IO address range up to the local APIC, and
-    # then the entire PCI address space and beyond
+    # Allow the bridge to pass through:
+    #  1) kernel configured PCI device memory map address: address range
+    #     [0xC0000000, 0xFFFF0000). (The upper 64kB are reserved for m5ops.)
+    #  2) the bridge to pass through the IO APIC (two pages, already contained in 1),
+    #  3) everything in the IO address range up to the local APIC, and
+    #  4) then the entire PCI address space and beyond.
     x86_sys.bridge.ranges = \
         [
-        AddrRange(x86_sys.pc.south_bridge.io_apic.pio_addr,
-                  x86_sys.pc.south_bridge.io_apic.pio_addr +
-                  APIC_range_size - 1),
+        AddrRange(0xC0000000, 0xFFFF0000),
         AddrRange(IO_address_space_base,
                   interrupts_address_space_base - 1),
         AddrRange(pci_config_address_space_base,
@@ -393,7 +477,7 @@ def connectX86ClassicSystem(x86_sys, numCPUs):
 
 def connectX86RubySystem(x86_sys):
     # North Bridge
-    x86_sys.iobus = NoncoherentBus()
+    x86_sys.iobus = IOXBar()
 
     # add the ide to the list of dma devices that later need to attach to
     # dma controllers
@@ -401,8 +485,7 @@ def connectX86RubySystem(x86_sys):
     x86_sys.pc.attachIO(x86_sys.iobus, x86_sys._dma_ports)
 
 
-def makeX86System(mem_mode, numCPUs = 1, mdesc = None, self = None,
-                  Ruby = False):
+def makeX86System(mem_mode, numCPUs=1, mdesc=None, self=None, Ruby=False):
     if self == None:
         self = X86System()
 
@@ -468,18 +551,21 @@ def makeX86System(mem_mode, numCPUs = 1, mdesc = None, self = None,
             address = 0xfec00000)
     self.pc.south_bridge.io_apic.apic_id = io_apic.id
     base_entries.append(io_apic)
-    isa_bus = X86IntelMPBus(bus_id = 0, bus_type='ISA')
-    base_entries.append(isa_bus)
-    pci_bus = X86IntelMPBus(bus_id = 1, bus_type='PCI')
+    # In gem5 Pc::calcPciConfigAddr(), it required "assert(bus==0)",
+    # but linux kernel cannot config PCI device if it was not connected to PCI bus,
+    # so we fix PCI bus id to 0, and ISA bus id to 1.
+    pci_bus = X86IntelMPBus(bus_id = 0, bus_type='PCI')
     base_entries.append(pci_bus)
-    connect_busses = X86IntelMPBusHierarchy(bus_id=0,
-            subtractive_decode=True, parent_bus=1)
+    isa_bus = X86IntelMPBus(bus_id = 1, bus_type='ISA')
+    base_entries.append(isa_bus)
+    connect_busses = X86IntelMPBusHierarchy(bus_id=1,
+            subtractive_decode=True, parent_bus=0)
     ext_entries.append(connect_busses)
     pci_dev4_inta = X86IntelMPIOIntAssignment(
             interrupt_type = 'INT',
             polarity = 'ConformPolarity',
             trigger = 'ConformTrigger',
-            source_bus_id = 1,
+            source_bus_id = 0,
             source_bus_irq = 0 + (4 << 2),
             dest_io_apic_id = io_apic.id,
             dest_io_apic_intin = 16)
@@ -489,7 +575,7 @@ def makeX86System(mem_mode, numCPUs = 1, mdesc = None, self = None,
                 interrupt_type = 'ExtInt',
                 polarity = 'ConformPolarity',
                 trigger = 'ConformTrigger',
-                source_bus_id = 0,
+                source_bus_id = 1,
                 source_bus_irq = irq,
                 dest_io_apic_id = io_apic.id,
                 dest_io_apic_intin = 0)
@@ -498,7 +584,7 @@ def makeX86System(mem_mode, numCPUs = 1, mdesc = None, self = None,
                 interrupt_type = 'INT',
                 polarity = 'ConformPolarity',
                 trigger = 'ConformTrigger',
-                source_bus_id = 0,
+                source_bus_id = 1,
                 source_bus_irq = irq,
                 dest_io_apic_id = io_apic.id,
                 dest_io_apic_intin = apicPin)
@@ -510,8 +596,8 @@ def makeX86System(mem_mode, numCPUs = 1, mdesc = None, self = None,
     self.intel_mp_table.base_entries = base_entries
     self.intel_mp_table.ext_entries = ext_entries
 
-def makeLinuxX86System(mem_mode, numCPUs = 1, mdesc = None,
-                       Ruby = False):
+def makeLinuxX86System(mem_mode, numCPUs=1, mdesc=None, Ruby=False,
+                       cmdline=None):
     self = LinuxX86System()
 
     # Build up the x86 system and then specialize it for Linux
@@ -532,10 +618,18 @@ def makeLinuxX86System(mem_mode, numCPUs = 1, mdesc = None,
         X86E820Entry(addr = 0x100000,
                 size = '%dB' % (self.mem_ranges[0].size() - 0x100000),
                 range_type = 1),
-        # Reserve the last 16kB of the 32-bit address space for the
-        # m5op interface
-        X86E820Entry(addr=0xFFFF0000, size='64kB', range_type=2),
         ]
+
+    # Mark [mem_size, 3GB) as reserved if memory less than 3GB, which force
+    # IO devices to be mapped to [0xC0000000, 0xFFFF0000). Requests to this
+    # specific range can pass though bridge to iobus.
+    if len(self.mem_ranges) == 1:
+        entries.append(X86E820Entry(addr = self.mem_ranges[0].size(),
+            size='%dB' % (0xC0000000 - self.mem_ranges[0].size()),
+            range_type=2))
+
+    # Reserve the last 16kB of the 32-bit address space for the m5op interface
+    entries.append(X86E820Entry(addr=0xFFFF0000, size='64kB', range_type=2))
 
     # In case the physical memory is greater than 3GB, we split it into two
     # parts and add a separate e820 entry for the second part.  This entry
@@ -548,8 +642,9 @@ def makeLinuxX86System(mem_mode, numCPUs = 1, mdesc = None,
     self.e820_table.entries = entries
 
     # Command line
-    self.boot_osflags = 'earlyprintk=ttyS0 console=ttyS0 lpj=7999923 ' + \
-                        'root=/dev/hda1'
+    if not cmdline:
+        cmdline = 'earlyprintk=ttyS0 console=ttyS0 lpj=7999923 root=/dev/hda1'
+    self.boot_osflags = fillInCmdline(mdesc, cmdline)
     self.kernel = binary('x86_64-vmlinux-2.6.22.9')
     return self
 

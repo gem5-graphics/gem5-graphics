@@ -176,7 +176,7 @@ class WarpInstBuffer {
         {
             assert(pktData);
             // Place the data pointer in the packet portion of the object
-            dataDynamicArray(pktData);
+            dataDynamic(pktData);
             pktData = NULL;
         }
 
@@ -330,6 +330,7 @@ class WarpInstBuffer {
         warpId = -1;
         state = EMPTY;
         instructionType = INVALID;
+        startTick = firstCycleTick = completeCycleTick = 0;
         bypassL1 = false;
     }
 };

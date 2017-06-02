@@ -49,14 +49,16 @@ cpu = TrafficGen(config_file = "tests/quick/se/70.tgen/tgen-simple-mem.cfg")
 
 # system simulated
 system = System(cpu = cpu, physmem = SimpleMemory(),
-                membus = NoncoherentBus(width = 16),
+                membus = IOXBar(width = 16),
                 clk_domain = SrcClockDomain(clock = '1GHz',
                                             voltage_domain =
                                             VoltageDomain()))
 
-# add a communication monitor, and also trace all the packets
-system.monitor = CommMonitor(trace_file = "monitor.ptrc.gz",
-                             trace_enable = True)
+# add a communication monitor, and also trace all the packets and
+# calculate and verify stack distance
+system.monitor = CommMonitor()
+system.monitor.trace = MemTraceProbe(trace_file = "monitor.ptrc.gz")
+system.monitor.stackdist = StackDistProbe(verify = True)
 
 # connect the traffic generator to the bus via a communication monitor
 system.cpu.port = system.monitor.slave

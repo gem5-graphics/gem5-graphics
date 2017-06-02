@@ -43,54 +43,17 @@
 #include "gpu/shader_tlb.hh"
 #include "sim/clocked_object.hh"
 #include "sim/faults.hh"
-#include "sim/tlb.hh"
+#include "arch/generic/tlb.hh"
 
 class ShaderMMU : public ClockedObject
 {
 private:
     std::vector<TheISA::TLB*> pagewalkers;
+    std::map<TheISA::TLB*, unsigned> pagewalkerIndices;
     std::vector<bool> activeWalkers;
-
-    // Latency for requests to reach the MMU from the L1 TLBs
-    Cycles latency;
-    
-    class TLBPendingWalks : public Event
-    {
-    private:
-        ShaderMMU *mmu;
-    public:
-        TLBPendingWalks(ShaderMMU * _mmu): mmu(_mmu){
-            setFlags(Event::AutoDelete);
-        }
-        void process(){
-            mmu->handlePendingWalks();
-        }
-        
-    };
-
-    class TLBMissEvent : public Event
-    {
-        ShaderMMU *mmu;
-        ShaderTLB *tlb;
-        BaseTLB::Translation *translation;
-        RequestPtr req;
-        BaseTLB::Mode mode;
-        ThreadContext *tc;
-    public:
-        TLBMissEvent(ShaderMMU *_mmu, ShaderTLB *_tlb,
-                     BaseTLB::Translation *_translation, RequestPtr _req,
-                     BaseTLB::Mode _mode, ThreadContext *_tc) :
-            mmu(_mmu), tlb(_tlb), translation(_translation), req(_req),
-            mode(_mode), tc(_tc)
-        {
-            setFlags(Event::AutoDelete);
-        }
-        void process() {
-            mmu->handleTLBMiss(tlb, translation, req, mode, tc);
-        }
-    };
-
-    TLBMemory *tlb;
+#if THE_ISA == ARM_ISA
+    TheISA::Stage2MMU *stage2MMU;
+#endif
 
     class TranslationRequest : public BaseTLB::Translation
     {
@@ -102,18 +65,20 @@ private:
         RequestPtr req;
         BaseTLB::Mode mode;
         ThreadContext *tc;
-        Addr vpn;
+        Addr vpBase;
         Cycles beginFault;
         Cycles beginWalk;
+        Tick startTick;
         bool prefetch;
 
     public:
         TranslationRequest(ShaderMMU *_mmu, ShaderTLB *_tlb,
                            BaseTLB::Translation *translation, RequestPtr _req,
                            BaseTLB::Mode _mode, ThreadContext *_tc,
-                           bool prefetch=false);
+                           Tick start_tick, bool prefetch = false);
+        Tick getStartTick() { return startTick; }
         void markDelayed() { wrappedTranslation->markDelayed(); }
-        void finish(Fault fault, RequestPtr _req, ThreadContext *_tc,
+        void finish(const Fault &fault, RequestPtr _req, ThreadContext *_tc,
                     BaseTLB::Mode _mode)
         {
             assert(_mode == mode);
@@ -121,18 +86,99 @@ private:
             assert(_tc == tc);
             mmu->finishWalk(this, fault);
         }
-        void walk(TheISA::TLB *walker) {
-            beginWalk = mmu->curCycle();
-            assert(walker != NULL);
-            pageWalker = walker;
-            mmu->numPagewalks++;
-            pageWalker->translateTiming(req, tc, this, mode);
+    };
+
+    // Latency for requests to reach the MMU from the L1 TLBs
+    Cycles latency;
+
+    /*class TLBPendingWalks : public Event
+   {
+      private:
+         ShaderMMU *mmu;
+      public:
+         TLBPendingWalks(ShaderMMU * _mmu): mmu(_mmu){
+            setFlags(Event::AutoDelete);
+         }
+         void process(){
+            mmu->handlePendingWalks();
+         }
+   };*/
+
+    class TLBMissEvent : public Event
+    {
+        ShaderMMU *mmu;
+    public:
+        TLBMissEvent(ShaderMMU *_mmu) : mmu(_mmu) {}
+        void process() {
+            mmu->handleTLBMiss();
         }
     };
 
+    TLBMissEvent startMissEvent;
+    std::queue<TranslationRequest*> startMisses;
+
+    class StartPagewalkEvent : public Event
+    {
+        ShaderMMU *mmu;
+        TheISA::TLB *walker;
+        TranslationRequest *translation;
+    public:
+        StartPagewalkEvent(ShaderMMU *_mmu, TheISA::TLB *_walker) :
+            mmu(_mmu), walker(_walker), translation(NULL) {}
+        void setTranslation(TranslationRequest *_translation) {
+            assert(!translation);
+            translation = _translation;
+        }
+        void process() {
+            assert(translation);
+            TranslationRequest *starting_translation = translation;
+            translation = NULL;
+            mmu->walk(walker, starting_translation);
+        }
+    };
+
+    std::vector<StartPagewalkEvent*> pagewalkEvents;
+
+    /**
+     * A timeout event for raising page faults to the CPU. Currently, this is
+     * used as a deadlock detection mechanism in the event that a page fault
+     * is raised but never serviced (e.g. CPU thread has swapped or been
+     * suspended, or a simulator bug drops the PF).
+     *
+     * Schedule this fault timeout for faultTimeoutCycles after raising
+     * a page fault. faultTimeoutCycles defaults to 1,000,000 cycles to be
+     * consistent with the ShaderLSQ deadlock: More LSQ activity can occur
+     * while a page fault is in flight, so the page fault timeout should
+     * trigger before the LSQ deadlock in the event that it is dropped.
+     *
+     * NOTE: GPU-triggered segmentation faults often print CPU output which is
+     * often helpful for debugging benchmark memory bugs. Two methods are
+     * useful for fixing these: Run in SE mode, which catches segfaults but not
+     * page faults, or in FS mode, increase timeouts and deadlock checks to at
+     * least 30M GPU cycles to allow the CPU thread to print segfault
+     * information.
+     */
+    class FaultTimeoutEvent : public Event
+    {
+        ShaderMMU *mmu;
+        ThreadContext *tc;
+    public:
+        FaultTimeoutEvent(ShaderMMU *_mmu) : mmu(_mmu), tc(NULL) {}
+        void setTC(ThreadContext *_tc) {
+            tc = _tc;
+        }
+        void process() {
+            mmu->faultTimeout(tc);
+        }
+    };
+
+    FaultTimeoutEvent faultTimeoutEvent;
+    Cycles faultTimeoutCycles;
+
+    TLBMemory *tlb;
+
     enum class FaultStatus {
         NoFault, // No outstanding faults
-        Pending, // Waiting until CPU is not in kernel mode anymore.
         InKernel, // Waiting for the kernel to handle the pf
         Retrying // Retrying the pagetable walk. May not be complete yet.
     };
@@ -157,13 +203,22 @@ private:
 
     void setWalkerFree(TheISA::TLB *walker);
     TheISA::TLB *getFreeWalker();
+    void schedulePagewalk(TheISA::TLB *walker, TranslationRequest *translation)
+    {
+        // Start the page walk in the next cycle
+        unsigned pw_id = pagewalkerIndices[walker];
+        assert(activeWalkers[pw_id]);
+        StartPagewalkEvent *spe = pagewalkEvents[pw_id];
+        spe->setTranslation(translation);
+        schedule(spe, nextCycle());
+    }
 
-    // Log the vpn of the access. If we detect a pattern issue the prefetch
-    // This is currently just a simple 1-ahead prefetcher
-    void tryPrefetch(Addr vpn, ThreadContext *tc);
+    // Log the vp base address of the access. If we detect a pattern issue the
+    // prefetch. This is currently just a simple 1-ahead prefetcher
+    void tryPrefetch(Addr vp_base, ThreadContext *tc);
 
     // Insert prefetch into prefetch buffer
-    void insertPrefetch(Addr vpn, Addr ppn);
+    void insertPrefetch(Addr vp_base, Addr pp_base);
 
 public:
     /// Constructor
@@ -173,19 +228,39 @@ public:
 
     /// Called from TLBMissEvent after latency cycles has passed since
     /// beginTLBMiss
-    void handleTLBMiss(ShaderTLB *req_tlb, BaseTLB::Translation *translation,
-                       RequestPtr req, BaseTLB::Mode mode, ThreadContext *tc);
+    void handleTLBMiss();
 
     /// Called when a shader tlb has a miss
     void beginTLBMiss(ShaderTLB *req_tlb, BaseTLB::Translation *translation,
                       RequestPtr req, BaseTLB::Mode mode, ThreadContext *tc);
 
+    /// Called from a start pagewalk event
+    void walk(TheISA::TLB *walker, TranslationRequest *translation) {
+        assert(translation->pageWalker == NULL);
+        assert(walker != NULL);
+        translation->beginWalk = curCycle();
+        translation->pageWalker = walker;
+        numPagewalks++;
+        walker->translateTiming(translation->req, translation->tc, translation,
+                                translation->mode);
+    }
+
     // Called after the pagetable walk from TranslationRequest
     void finishWalk(TranslationRequest *translation, Fault fault);
 
+    // Return whether there is a pending GPU fault for decisions about CPU
+    // thread handling
+    bool isFaultInFlight(ThreadContext *tc);
+
+    // Raise the page fault to the CPU if everything is ready
+    void raisePageFaultInterrupt(ThreadContext *tc);
+
+    // Page fault timed out, so crash and/or cleanup
+    void faultTimeout(ThreadContext *tc);
+
     /// Handle a page fault once it's done (called from CUDA API via CudaGPU)
     void handleFinishPageFault(ThreadContext *tc);
-    
+
     /// Handle pending walks, scheduled after a busy walker becomes available
     void handlePendingWalks();
 
@@ -194,7 +269,6 @@ public:
     Stats::Scalar numPagefaults;
     Stats::Scalar numPagewalks;
     Stats::Scalar totalRequests;
-    Stats::Scalar retryFailures;
     Stats::Scalar l2hits;
     Stats::Scalar prefetchHits;
     Stats::Scalar numPrefetches;

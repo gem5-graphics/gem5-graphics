@@ -20,7 +20,7 @@
 
 class UnixStream : public SocketStream {
 public:
-    explicit UnixStream(size_t bufsize = 10000);
+    explicit UnixStream(size_t bufsize = STREAM_BUFFER_SIZE);
     virtual int listen(char addrstr[MAX_ADDRSTR_LEN]);
     virtual SocketStream *accept();
     virtual int connect(const char* addr);

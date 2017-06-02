@@ -158,7 +158,7 @@ class Water_spatial(LiveProcess):
 # Base L1 Cache Definition
 # ====================
 
-class L1(BaseCache):
+class L1(Cache):
     latency = options.l1latency
     mshrs = 12
     tgts_per_mshr = 8
@@ -167,7 +167,7 @@ class L1(BaseCache):
 # Base L2 Cache Definition
 # ----------------------
 
-class L2(BaseCache):
+class L2(Cache):
     latency = options.l2latency
     mshrs = 92
     tgts_per_mshr = 16
@@ -196,10 +196,10 @@ else:
 # Create a system, and add system wide objects
 # ----------------------
 system = System(cpu = cpus, physmem = SimpleMemory(),
-                membus = CoherentBus(clock = busFrequency))
+                membus = SystemXBar(clock = busFrequency))
 system.clock = '1GHz'
 
-system.toL2bus = CoherentBus(clock = busFrequency)
+system.toL2bus = L2XBar(clock = busFrequency)
 system.l2 = L2(size = options.l2size, assoc = 8)
 
 # ----------------------

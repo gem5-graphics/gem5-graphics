@@ -1,5 +1,5 @@
 # Copyright (c) 2009-2012 Advanced Micro Devices, Inc.
-# Copyright (c) 2012-2013 Mark D. Hill and David A. Wood
+# Copyright (c) 2012-2015 Mark D. Hill and David A. Wood
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -53,6 +53,17 @@ from SysPaths import *
 from Benchmarks import *
 # from Caches import *
 
+def cmd_line_template():
+    if options.command_line and options.command_line_file:
+        print "Error: --command-line and --command-line-file are " \
+              "mutually exclusive"
+        sys.exit(1)
+    if options.command_line:
+        return options.command_line
+    if options.command_line_file:
+        return open(options.command_line_file).read().strip()
+    return None
+
 parser = optparse.OptionParser()
 GPUConfig.addGPUOptions(parser)
 GPUMemConfig.addMemCtrlOptions(parser)
@@ -81,15 +92,22 @@ if buildEnv['TARGET_ISA'] != "x86":
 #
 # CPU type configuration
 #
-if options.cpu_type != "timing" and options.cpu_type != "detailed":
-    print "Warning: gem5-gpu only works with timing and detailed CPUs. Defaulting to timing"
-    options.cpu_type = "timing"
+if options.cpu_type != "timing" and options.cpu_type != "TimingSimpleCPU" \
+    and options.cpu_type != "detailed" and options.cpu_type != "DerivO3CPU":
+    print "Warning: gem5-gpu only known to work with timing and detailed CPUs: Proceed at your own risk!"
 (CPUClass, test_mem_mode, FutureClass) = Simulation.setCPUClass(options)
+
+# If fast-forwarding, set the fast-forward CPU and mem mode for
+# timing rather than atomic
+if options.fast_forward:
+    assert(CPUClass == AtomicSimpleCPU)
+    assert(test_mem_mode == "atomic")
+    CPUClass, test_mem_mode = Simulation.getCPUClass("TimingSimpleCPU")
 
 #
 # Memory space configuration
 #
-(cpu_mem_range, gpu_mem_range) = GPUConfig.configureMemorySpaces(options)
+(cpu_mem_range, gpu_mem_range, total_mem_range) = GPUConfig.configureMemorySpaces(options)
 
 #
 # Setup benchmark to be run
@@ -106,7 +124,8 @@ if options.cacheline_size != 128:
 #
 # Instantiate system
 #
-system = makeLinuxX86System(test_mem_mode, options.num_cpus, bm[0], True)
+system = makeLinuxX86System(test_mem_mode, options.num_cpus, bm[0], True,
+                            cmdline=cmd_line_template())
 system.cache_line_size = options.cacheline_size
 system.voltage_domain = VoltageDomain(voltage = options.sys_voltage)
 system.clk_domain = SrcClockDomain(clock = options.sys_clock,
@@ -130,26 +149,26 @@ if options.script is not None:
 #
 system.gpu = GPUConfig.createGPU(options, gpu_mem_range)
 
-# Create the appropriate memory controllers and connect them to the
-# PIO bus
-system.mem_ctrls = [SimpleMemory(range = r) for r in system.mem_ranges]
-for i in xrange(len(system.mem_ctrls)):
-    system.mem_ctrls[i].port = system.iobus.master
-
-if options.split:
-    system.mem_ranges.append(gpu_mem_range)
-    system.gpu_physmem = SimpleMemory(range = gpu_mem_range)
-    system.gpu_physmem.port = system.iobus.master
-
 #
 # Setup Ruby
 #
 system.ruby_clk_domain = SrcClockDomain(clock = options.ruby_clock,
                                         voltage_domain = system.voltage_domain)
-Ruby.create_system(options, system, system.iobus, system._dma_ports)
+Ruby.create_system(options, True, system, system.iobus, system._dma_ports)
 
 system.gpu.ruby = system.ruby
 system.ruby.clk_domain = system.ruby_clk_domain
+
+# connect the PIO bus
+system.iobus.master = system.ruby._io_port.slave
+
+if options.split:
+    if options.access_backing_store:
+        #
+        # Reset Ruby's phys_mem to add the device memory range
+        #
+        system.ruby.phys_mem = SimpleMemory(range=total_mem_range,
+                                            in_addr_map=False)
 
 #
 # Connect CPU ports
@@ -174,14 +193,13 @@ for (i, cpu) in enumerate(system.cpu):
     else:
         fatal("Not sure how to connect TLB walker ports in non-x86 system!")
 
-    system.ruby._cpu_ports[i].access_phys_mem = True
-
 #
 # Connect GPU ports
 #
 GPUConfig.connectGPUPorts(system.gpu, system.ruby, options)
 
-GPUMemConfig.setMemoryControlOptions(system, options)
+if options.mem_type == "RubyMemoryControl":
+    GPUMemConfig.setMemoryControlOptions(system, options)
 
 #
 # Finalize setup and run

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012 ARM Limited
+ * Copyright (c) 2012, 2015 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -38,10 +38,17 @@
  */
 
 #include "sim/drain.hh"
+
+#include "base/misc.hh"
+#include "base/trace.hh"
+#include "debug/Drain.hh"
 #include "sim/sim_exit.hh"
 
+DrainManager DrainManager::_instance;
+
 DrainManager::DrainManager()
-    : _count(0)
+    : _count(0),
+      _state(DrainState::Running)
 {
 }
 
@@ -49,25 +56,127 @@ DrainManager::~DrainManager()
 {
 }
 
-void
-DrainManager::drainCycleDone()
+bool
+DrainManager::tryDrain()
 {
-    exitSimLoop("Finished drain", 0);
+    panic_if(_state == DrainState::Drained,
+             "Trying to drain a drained system\n");
+
+    panic_if(_count != 0,
+             "Drain counter must be zero at the start of a drain cycle\n");
+
+    DPRINTF(Drain, "Trying to drain %u objects.\n", drainableCount());
+    _state = DrainState::Draining;
+    for (auto *obj : _allDrainable)
+        _count += obj->dmDrain() == DrainState::Drained ? 0 : 1;
+
+    if (_count == 0) {
+        DPRINTF(Drain, "Drain done.\n");
+        _state = DrainState::Drained;
+        return true;
+    } else {
+        DPRINTF(Drain, "Need another drain cycle. %u/%u objects not ready.\n",
+                _count, drainableCount());
+        return false;
+    }
+}
+
+void
+DrainManager::resume()
+{
+    panic_if(_state == DrainState::Running,
+             "Trying to resume a system that is already running\n");
+
+    warn_if(_state == DrainState::Draining,
+            "Resuming a system that isn't fully drained, this is untested and "
+            "likely to break\n");
+
+    panic_if(_count != 0,
+             "Resume called in the middle of a drain cycle. %u objects "
+             "left to drain.\n", _count);
+
+    DPRINTF(Drain, "Resuming %u objects.\n", drainableCount());
+    _state = DrainState::Running;
+    for (auto *obj : _allDrainable)
+        obj->dmDrainResume();
+}
+
+void
+DrainManager::preCheckpointRestore()
+{
+    panic_if(_state != DrainState::Running,
+             "preCheckpointRestore() called on a system that isn't in the "
+             "Running state.\n");
+
+    DPRINTF(Drain, "Applying pre-restore fixes to %u objects.\n",
+            drainableCount());
+    _state = DrainState::Drained;
+    for (auto *obj : _allDrainable)
+        obj->_drainState = DrainState::Drained;
+}
+
+void
+DrainManager::signalDrainDone()
+{
+    if (--_count == 0) {
+        DPRINTF(Drain, "All %u objects drained..\n", drainableCount());
+        exitSimLoop("Finished drain", 0);
+    }
+}
+
+
+void
+DrainManager::registerDrainable(Drainable *obj)
+{
+    std::lock_guard<std::mutex> lock(globalLock);
+    _allDrainable.insert(obj);
+}
+
+void
+DrainManager::unregisterDrainable(Drainable *obj)
+{
+    std::lock_guard<std::mutex> lock(globalLock);
+    _allDrainable.erase(obj);
+}
+
+size_t
+DrainManager::drainableCount() const
+{
+    std::lock_guard<std::mutex> lock(globalLock);
+    return _allDrainable.size();
 }
 
 
 
 Drainable::Drainable()
-    : _drainState(Running)
+    : _drainManager(DrainManager::instance()),
+      _drainState(_drainManager.state())
 {
+    _drainManager.registerDrainable(this);
 }
 
 Drainable::~Drainable()
 {
+    _drainManager.unregisterDrainable(this);
+}
+
+DrainState
+Drainable::dmDrain()
+{
+    _drainState = DrainState::Draining;
+    _drainState = drain();
+    assert(_drainState == DrainState::Draining ||
+           _drainState == DrainState::Drained);
+
+    return _drainState;
 }
 
 void
-Drainable::drainResume()
+Drainable::dmDrainResume()
 {
-    _drainState = Running;
+    panic_if(_drainState != DrainState::Drained,
+             "Trying to resume an object that hasn't been drained\n");
+
+    _drainState = DrainState::Running;
+    drainResume();
 }

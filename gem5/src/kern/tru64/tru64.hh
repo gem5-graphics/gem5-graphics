@@ -438,7 +438,7 @@ class Tru64 : public OperatingSystem
         panic("getdirent not implemented on cygwin!");
 #else
         int index = 0;
-        int fd = process->sim_fd(process->getSyscallArg(tc, index));
+        int fd = process->getSimFD(process->getSyscallArg(tc, index));
         Addr tgt_buf = process->getSyscallArg(tc, index);
         int tgt_nbytes = process->getSyscallArg(tc, index);
         Addr tgt_basep = process->getSyscallArg(tc, index);
@@ -548,8 +548,8 @@ class Tru64 : public OperatingSystem
             process->next_thread_stack_base -= stack_size;
         }
 
-        Addr rounded_stack_base = roundDown(stack_base, VMPageSize);
-        Addr rounded_stack_size = roundUp(stack_size, VMPageSize);
+        Addr rounded_stack_base = roundDown(stack_base, PageBytes);
+        Addr rounded_stack_size = roundUp(stack_size, PageBytes);
 
         DPRINTF(SyscallVerbose,
                 "stack_create: allocating stack @ %#x size %#x "
@@ -675,9 +675,9 @@ class Tru64 : public OperatingSystem
         *configptr_ptr = htog(config_addr);
 
         // Register this as a valid address range with the process
-        base_addr = roundDown(base_addr, VMPageSize);
+        base_addr = roundDown(base_addr, PageBytes);
         int size = cur_addr - base_addr;
-        process->allocateMem(base_addr, roundUp(size, VMPageSize));
+        process->allocateMem(base_addr, roundUp(size, PageBytes));
 
         config.copyOut(tc->getMemProxy());
         slot_state.copyOut(tc->getMemProxy());

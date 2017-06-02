@@ -73,8 +73,8 @@ class Base : public EtherDevBase
  * Serialization stuff
  */
   public:
-    virtual void serialize(std::ostream &os);
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
+    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
+    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
 
 /**
  * Construction/Destruction/Parameters
@@ -271,12 +271,12 @@ class Device : public Base
   public:
     virtual Tick read(PacketPtr pkt);
     virtual Tick write(PacketPtr pkt);
-    virtual void drainResume();
+    virtual void drainResume() M5_ATTR_OVERRIDE;
 
-    void prepareIO(int cpu, int index);
-    void prepareRead(int cpu, int index);
-    void prepareWrite(int cpu, int index);
- //   Fault iprRead(Addr daddr, int cpu, uint64_t &result);
+    void prepareIO(ContextID cpu, int index);
+    void prepareRead(ContextID cpu, int index);
+    void prepareWrite(ContextID cpu, int index);
+ //   Fault iprRead(Addr daddr, ContextID cpu, uint64_t &result);
 
 /**
  * Statistics
@@ -297,8 +297,8 @@ class Device : public Base
  * Serialization stuff
  */
   public:
-    virtual void serialize(std::ostream &os);
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
+    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
+    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
 
   public:
     Device(const Params *p);

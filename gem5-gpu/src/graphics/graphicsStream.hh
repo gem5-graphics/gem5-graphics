@@ -11,7 +11,7 @@
 #include <map>
 #include "libOpenglRender/UnixStream.hh"
 #include "api/cuda_syscalls.hh"
-#define STREAM_BUFFER_SIZE  4*1024*1024
+#define STREAM_BUFFER_SIZE  4*1024*1024 //big enough to avoid blocking
 
 enum gem5GraphicsCall {
     gem5_writeFully = GEM5_GPU_CALLS_START, //start where cuda calls finish
@@ -48,6 +48,9 @@ public:
     const unsigned char* read( void *buf, size_t *inout_len);
     int recv(void *buf, size_t len);
     void* allocBuffer(size_t size);
+    int getSocketNum() {
+       return m_stream->getSocketNum();
+    }
     
 private:
     UnixStream * m_stream;

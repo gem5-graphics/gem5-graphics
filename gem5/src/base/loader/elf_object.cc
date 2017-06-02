@@ -56,7 +56,7 @@
 using namespace std;
 
 ObjectFile *
-ElfObject::tryFile(const string &fname, int fd, size_t len, uint8_t *data)
+ElfObject::tryFile(const string &fname, size_t len, uint8_t *data)
 {
     Elf *elf;
     GElf_Ehdr ehdr;
@@ -69,7 +69,6 @@ ElfObject::tryFile(const string &fname, int fd, size_t len, uint8_t *data)
 
     // get a pointer to elf structure
     elf = elf_memory((char*)data,len);
-    // will only fail if fd is invalid
     assert(elf != NULL);
 
     // Check that we actually have a elf file
@@ -150,6 +149,9 @@ ElfObject::tryFile(const string &fname, int fd, size_t len, uint8_t *data)
           case ELFOSABI_ARM:
             opSys = ObjectFile::LinuxArmOABI;
             break;
+          case ELFOSABI_FREEBSD:
+            opSys = ObjectFile::FreeBSD;
+            break;
           default:
             opSys = ObjectFile::UnknownOpSys;
         }
@@ -160,7 +162,8 @@ ElfObject::tryFile(const string &fname, int fd, size_t len, uint8_t *data)
             Elf_Scn *section;
             GElf_Shdr shdr;
             Elf_Data *data;
-            uint32_t osAbi;;
+            uint32_t osAbi;
+            uint32_t *elem;
             int secIdx = 1;
 
             // Get the first section
@@ -194,12 +197,22 @@ ElfObject::tryFile(const string &fname, int fd, size_t len, uint8_t *data)
                         opSys = ObjectFile::Solaris;
                 if (!strcmp(".stab.index", elf_strptr(elf, ehdr.e_shstrndx, shdr.sh_name)))
                         opSys = ObjectFile::Solaris;
+                if (shdr.sh_type == SHT_NOTE && !strcmp(".note.tag",
+                            elf_strptr(elf, ehdr.e_shstrndx, shdr.sh_name))) {
+                    data = elf_rawdata(section, NULL);
+                    assert(data->d_buf);
+                    elem = (uint32_t *)data->d_buf;
+                    if (elem[0] == 0x8) { //size of name
+                        if (memcmp((void *)&elem[3], "FreeBSD", 0x8) == 0)
+                                opSys = ObjectFile::FreeBSD;
+                    }
+                }
 
             section = elf_getscn(elf, ++secIdx);
             } // while sections
         }
 
-        ElfObject * result = new ElfObject(fname, fd, len, data, arch, opSys);
+        ElfObject * result = new ElfObject(fname, len, data, arch, opSys);
 
         //The number of headers in the file
         result->_programHeaderCount = ehdr.e_phnum;
@@ -236,10 +249,10 @@ ElfObject::tryFile(const string &fname, int fd, size_t len, uint8_t *data)
 }
 
 
-ElfObject::ElfObject(const string &_filename, int _fd,
-                     size_t _len, uint8_t *_data,
+ElfObject::ElfObject(const string &_filename, size_t _len, uint8_t *_data,
                      Arch _arch, OpSys _opSys)
-    : ObjectFile(_filename, _fd, _len, _data, _arch, _opSys)
+    : ObjectFile(_filename, _len, _data, _arch, _opSys),
+      _programHeaderTable(0), _programHeaderSize(0), _programHeaderCount(0)
 
 {
     Elf *elf;
@@ -251,7 +264,6 @@ ElfObject::ElfObject(const string &_filename, int _fd,
 
     // get a pointer to elf structure
     elf = elf_memory((char*)fileData,len);
-    // will only fail if fd is invalid
     assert(elf != NULL);
 
     // Check that we actually have a elf file

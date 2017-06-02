@@ -80,7 +80,7 @@ PciDevice::PciConfigPort::recvAtomic(PacketPtr pkt)
     assert(pkt->getAddr() >= configAddr &&
            pkt->getAddr() < configAddr + PCI_CONFIG_SIZE);
     // @todo someone should pay for this
-    pkt->busFirstWordDelay = pkt->busLastWordDelay = 0;
+    pkt->headerDelay = pkt->payloadDelay = 0;
     return pkt->isRead() ? device->readConfig(pkt) : device->writeConfig(pkt);
 }
 
@@ -97,8 +97,15 @@ PciDevice::PciConfigPort::getAddrRanges() const
 PciDevice::PciDevice(const Params *p)
     : DmaDevice(p),
       PMCAP_BASE(p->PMCAPBaseOffset),
+      PMCAP_ID_OFFSET(p->PMCAPBaseOffset+PMCAP_ID),
+      PMCAP_PC_OFFSET(p->PMCAPBaseOffset+PMCAP_PC),
+      PMCAP_PMCS_OFFSET(p->PMCAPBaseOffset+PMCAP_PMCS),
       MSICAP_BASE(p->MSICAPBaseOffset),
       MSIXCAP_BASE(p->MSIXCAPBaseOffset),
+      MSIXCAP_ID_OFFSET(p->MSIXCAPBaseOffset+MSIXCAP_ID),
+      MSIXCAP_MXC_OFFSET(p->MSIXCAPBaseOffset+MSIXCAP_MXC),
+      MSIXCAP_MTAB_OFFSET(p->MSIXCAPBaseOffset+MSIXCAP_MTAB),
+      MSIXCAP_MPBA_OFFSET(p->MSIXCAPBaseOffset+MSIXCAP_MPBA),
       PXCAP_BASE(p->PXCAPBaseOffset),
       platform(p->platform),
       pioDelay(p->pio_latency),
@@ -142,14 +149,14 @@ PciDevice::PciDevice(const Params *p)
     // endianess and must be converted to Little Endian when accessed
     // by the guest
     // PMCAP
-    pmcap.pid.cid = p->PMCAPCapId;
-    pmcap.pid.next = p->PMCAPNextCapability;
+    pmcap.pid = (uint16_t)p->PMCAPCapId; // pid.cid
+    pmcap.pid |= (uint16_t)p->PMCAPNextCapability << 8; //pid.next
     pmcap.pc = p->PMCAPCapabilities;
     pmcap.pmcs = p->PMCAPCtrlStatus;
 
     // MSICAP
-    msicap.mid.cid = p->MSICAPCapId;
-    msicap.mid.next = p->MSICAPNextCapability;
+    msicap.mid = (uint16_t)p->MSICAPCapId; //mid.cid
+    msicap.mid |= (uint16_t)p->MSICAPNextCapability << 8; //mid.next
     msicap.mc = p->MSICAPMsgCtrl;
     msicap.ma = p->MSICAPMsgAddr;
     msicap.mua = p->MSICAPMsgUpperAddr;
@@ -158,8 +165,8 @@ PciDevice::PciDevice(const Params *p)
     msicap.mpend = p->MSICAPPendingBits;
 
     // MSIXCAP
-    msixcap.mxid.cid = p->MSIXCAPCapId;
-    msixcap.mxid.next = p->MSIXCAPNextCapability;
+    msixcap.mxid = (uint16_t)p->MSIXCAPCapId; //mxid.cid
+    msixcap.mxid |= (uint16_t)p->MSIXCAPNextCapability << 8; //mxid.next
     msixcap.mxc = p->MSIXMsgCtrl;
     msixcap.mtab = p->MSIXTableOffset;
     msixcap.mpba = p->MSIXPbaOffset;
@@ -171,8 +178,9 @@ PciDevice::PciDevice(const Params *p)
     // little endian byte-order as according the
     // PCIe specification.  Make sure to take the proper
     // actions when manipulating these tables on the host
+    uint16_t msixcap_mxc_ts = msixcap.mxc & 0x07ff;
     if (MSIXCAP_BASE != 0x0) {
-        int msix_vecs = msixcap.mxc.ts + 1;
+        int msix_vecs = msixcap_mxc_ts + 1;
         MSIXTable tmp1 = {{0UL,0UL,0UL,0UL}};
         msix_table.resize(msix_vecs, tmp1);
 
@@ -183,10 +191,20 @@ PciDevice::PciDevice(const Params *p)
         }
         msix_pba.resize(pba_size, tmp2);
     }
+    MSIX_TABLE_OFFSET = msixcap.mtab & 0xfffffffc;
+    MSIX_TABLE_END = MSIX_TABLE_OFFSET +
+                     (msixcap_mxc_ts + 1) * sizeof(MSIXTable);
+    MSIX_PBA_OFFSET = msixcap.mpba & 0xfffffffc;
+    MSIX_PBA_END = MSIX_PBA_OFFSET +
+                   ((msixcap_mxc_ts + 1) / MSIXVECS_PER_PBA)
+                   * sizeof(MSIXPbaEntry);
+    if (((msixcap_mxc_ts + 1) % MSIXVECS_PER_PBA) > 0) {
+        MSIX_PBA_END += sizeof(MSIXPbaEntry);
+    }
 
     // PXCAP
-    pxcap.pxid.cid = p->PXCAPCapId;
-    pxcap.pxid.next = p->PXCAPNextCapability;
+    pxcap.pxid = (uint16_t)p->PXCAPCapId; //pxid.cid
+    pxcap.pxid |= (uint16_t)p->PXCAPNextCapability << 8; //pxid.next
     pxcap.pxcap = p->PXCAPCapabilities;
     pxcap.pxdcap = p->PXCAPDevCapabilities;
     pxcap.pxdc = p->PXCAPDevCtrl;
@@ -213,7 +231,7 @@ PciDevice::PciDevice(const Params *p)
 
     for (int i = 0; i < 6; ++i) {
         if (legacyIO[i]) {
-            BARAddrs[i] = platform->calcPciIOAddr(letoh(config.baseAddr[i]));
+            BARAddrs[i] = p->LegacyIOBase + letoh(config.baseAddr[i]);
             config.baseAddr[i] = 0;
         } else {
             BARAddrs[i] = 0;
@@ -237,26 +255,32 @@ PciDevice::init()
    DmaDevice::init();
 }
 
-unsigned int
-PciDevice::drain(DrainManager *dm)
-{
-    unsigned int count;
-    count = pioPort.drain(dm) + dmaPort.drain(dm) + configPort.drain(dm);
-    if (count)
-        setDrainState(Drainable::Draining);
-    else
-        setDrainState(Drainable::Drained);
-    return count;
-}
-
 Tick
 PciDevice::readConfig(PacketPtr pkt)
 {
     int offset = pkt->getAddr() & PCI_CONFIG_SIZE;
-    if (offset >= PCI_DEVICE_SPECIFIC)
-        panic("Device specific PCI config space not implemented!\n");
 
-    pkt->allocate();
+    /* Return 0 for accesses to unimplemented PCI configspace areas */
+    if (offset >= PCI_DEVICE_SPECIFIC &&
+        offset < PCI_CONFIG_SIZE) {
+        warn_once("Device specific PCI config space "
+                  "not implemented for %s!\n", this->name());
+        switch (pkt->getSize()) {
+            case sizeof(uint8_t):
+                pkt->set<uint8_t>(0);
+                break;
+            case sizeof(uint16_t):
+                pkt->set<uint16_t>(0);
+                break;
+            case sizeof(uint32_t):
+                pkt->set<uint32_t>(0);
+                break;
+            default:
+                panic("invalid access size(?) for PCI configspace!\n");
+        }
+    } else if (offset > PCI_CONFIG_SIZE) {
+        panic("Out-of-range access to PCI config space!\n");
+    }
 
     switch (pkt->getSize()) {
       case sizeof(uint8_t):
@@ -303,8 +327,23 @@ Tick
 PciDevice::writeConfig(PacketPtr pkt)
 {
     int offset = pkt->getAddr() & PCI_CONFIG_SIZE;
-    if (offset >= PCI_DEVICE_SPECIFIC)
-        panic("Device specific PCI config space not implemented!\n");
+
+    /* No effect if we write to config space that is not implemented*/
+    if (offset >= PCI_DEVICE_SPECIFIC &&
+        offset < PCI_CONFIG_SIZE) {
+        warn_once("Device specific PCI config space "
+                  "not implemented for %s!\n", this->name());
+        switch (pkt->getSize()) {
+            case sizeof(uint8_t):
+            case sizeof(uint16_t):
+            case sizeof(uint32_t):
+                break;
+            default:
+                panic("invalid access size(?) for PCI configspace!\n");
+        }
+    } else if (offset > PCI_CONFIG_SIZE) {
+        panic("Out-of-range access to PCI config space!\n");
+    }
 
     switch (pkt->getSize()) {
       case sizeof(uint8_t):
@@ -422,33 +461,34 @@ PciDevice::writeConfig(PacketPtr pkt)
 }
 
 void
-PciDevice::serialize(std::ostream &os)
+PciDevice::serialize(CheckpointOut &cp) const
 {
     SERIALIZE_ARRAY(BARSize, sizeof(BARSize) / sizeof(BARSize[0]));
     SERIALIZE_ARRAY(BARAddrs, sizeof(BARAddrs) / sizeof(BARAddrs[0]));
     SERIALIZE_ARRAY(config.data, sizeof(config.data) / sizeof(config.data[0]));
 
     // serialize the capability list registers
-    paramOut(os, csprintf("pmcap.pid"), uint16_t(pmcap.pid));
-    paramOut(os, csprintf("pmcap.pc"), uint16_t(pmcap.pc));
-    paramOut(os, csprintf("pmcap.pmcs"), uint16_t(pmcap.pmcs));
+    paramOut(cp, csprintf("pmcap.pid"), uint16_t(pmcap.pid));
+    paramOut(cp, csprintf("pmcap.pc"), uint16_t(pmcap.pc));
+    paramOut(cp, csprintf("pmcap.pmcs"), uint16_t(pmcap.pmcs));
 
-    paramOut(os, csprintf("msicap.mid"), uint16_t(msicap.mid));
-    paramOut(os, csprintf("msicap.mc"), uint16_t(msicap.mc));
-    paramOut(os, csprintf("msicap.ma"), uint32_t(msicap.ma));
+    paramOut(cp, csprintf("msicap.mid"), uint16_t(msicap.mid));
+    paramOut(cp, csprintf("msicap.mc"), uint16_t(msicap.mc));
+    paramOut(cp, csprintf("msicap.ma"), uint32_t(msicap.ma));
     SERIALIZE_SCALAR(msicap.mua);
-    paramOut(os, csprintf("msicap.md"), uint16_t(msicap.md));
+    paramOut(cp, csprintf("msicap.md"), uint16_t(msicap.md));
     SERIALIZE_SCALAR(msicap.mmask);
     SERIALIZE_SCALAR(msicap.mpend);
 
-    paramOut(os, csprintf("msixcap.mxid"), uint16_t(msixcap.mxid));
-    paramOut(os, csprintf("msixcap.mxc"), uint16_t(msixcap.mxc));
-    paramOut(os, csprintf("msixcap.mtab"), uint32_t(msixcap.mtab));
-    paramOut(os, csprintf("msixcap.mpba"), uint32_t(msixcap.mpba));
+    paramOut(cp, csprintf("msixcap.mxid"), uint16_t(msixcap.mxid));
+    paramOut(cp, csprintf("msixcap.mxc"), uint16_t(msixcap.mxc));
+    paramOut(cp, csprintf("msixcap.mtab"), uint32_t(msixcap.mtab));
+    paramOut(cp, csprintf("msixcap.mpba"), uint32_t(msixcap.mpba));
 
     // Only serialize if we have a non-zero base address
     if (MSIXCAP_BASE != 0x0) {
-        int msix_array_size = msixcap.mxc.ts + 1;
+        uint16_t msixcap_mxc_ts = msixcap.mxc & 0x07ff;
+        int msix_array_size = msixcap_mxc_ts + 1;
         int pba_array_size = msix_array_size/MSIXVECS_PER_PBA;
         if ((msix_array_size % MSIXVECS_PER_PBA) > 0) {
             pba_array_size++;
@@ -458,35 +498,35 @@ PciDevice::serialize(std::ostream &os)
         SERIALIZE_SCALAR(pba_array_size);
 
         for (int i = 0; i < msix_array_size; i++) {
-            paramOut(os, csprintf("msix_table[%d].addr_lo", i),
+            paramOut(cp, csprintf("msix_table[%d].addr_lo", i),
                      msix_table[i].fields.addr_lo);
-            paramOut(os, csprintf("msix_table[%d].addr_hi", i),
+            paramOut(cp, csprintf("msix_table[%d].addr_hi", i),
                      msix_table[i].fields.addr_hi);
-            paramOut(os, csprintf("msix_table[%d].msg_data", i),
+            paramOut(cp, csprintf("msix_table[%d].msg_data", i),
                      msix_table[i].fields.msg_data);
-            paramOut(os, csprintf("msix_table[%d].vec_ctrl", i),
+            paramOut(cp, csprintf("msix_table[%d].vec_ctrl", i),
                      msix_table[i].fields.vec_ctrl);
         }
         for (int i = 0; i < pba_array_size; i++) {
-            paramOut(os, csprintf("msix_pba[%d].bits", i),
+            paramOut(cp, csprintf("msix_pba[%d].bits", i),
                      msix_pba[i].bits);
         }
     }
 
-    paramOut(os, csprintf("pxcap.pxid"), uint16_t(pxcap.pxid));
-    paramOut(os, csprintf("pxcap.pxcap"), uint16_t(pxcap.pxcap));
-    paramOut(os, csprintf("pxcap.pxdcap"), uint32_t(pxcap.pxdcap));
-    paramOut(os, csprintf("pxcap.pxdc"), uint16_t(pxcap.pxdc));
-    paramOut(os, csprintf("pxcap.pxds"), uint16_t(pxcap.pxds));
-    paramOut(os, csprintf("pxcap.pxlcap"), uint32_t(pxcap.pxlcap));
-    paramOut(os, csprintf("pxcap.pxlc"), uint16_t(pxcap.pxlc));
-    paramOut(os, csprintf("pxcap.pxls"), uint16_t(pxcap.pxls));
-    paramOut(os, csprintf("pxcap.pxdcap2"), uint32_t(pxcap.pxdcap2));
-    paramOut(os, csprintf("pxcap.pxdc2"), uint32_t(pxcap.pxdc2));
+    paramOut(cp, csprintf("pxcap.pxid"), uint16_t(pxcap.pxid));
+    paramOut(cp, csprintf("pxcap.pxcap"), uint16_t(pxcap.pxcap));
+    paramOut(cp, csprintf("pxcap.pxdcap"), uint32_t(pxcap.pxdcap));
+    paramOut(cp, csprintf("pxcap.pxdc"), uint16_t(pxcap.pxdc));
+    paramOut(cp, csprintf("pxcap.pxds"), uint16_t(pxcap.pxds));
+    paramOut(cp, csprintf("pxcap.pxlcap"), uint32_t(pxcap.pxlcap));
+    paramOut(cp, csprintf("pxcap.pxlc"), uint16_t(pxcap.pxlc));
+    paramOut(cp, csprintf("pxcap.pxls"), uint16_t(pxcap.pxls));
+    paramOut(cp, csprintf("pxcap.pxdcap2"), uint32_t(pxcap.pxdcap2));
+    paramOut(cp, csprintf("pxcap.pxdc2"), uint32_t(pxcap.pxdc2));
 }
 
 void
-PciDevice::unserialize(Checkpoint *cp, const std::string &section)
+PciDevice::unserialize(CheckpointIn &cp)
 {
     UNSERIALIZE_ARRAY(BARSize, sizeof(BARSize) / sizeof(BARSize[0]));
     UNSERIALIZE_ARRAY(BARAddrs, sizeof(BARAddrs) / sizeof(BARAddrs[0]));
@@ -496,32 +536,32 @@ PciDevice::unserialize(Checkpoint *cp, const std::string &section)
     // unserialize the capability list registers
     uint16_t tmp16;
     uint32_t tmp32;
-    paramIn(cp, section, csprintf("pmcap.pid"), tmp16);
+    paramIn(cp, csprintf("pmcap.pid"), tmp16);
     pmcap.pid = tmp16;
-    paramIn(cp, section, csprintf("pmcap.pc"), tmp16);
+    paramIn(cp, csprintf("pmcap.pc"), tmp16);
     pmcap.pc = tmp16;
-    paramIn(cp, section, csprintf("pmcap.pmcs"), tmp16);
+    paramIn(cp, csprintf("pmcap.pmcs"), tmp16);
     pmcap.pmcs = tmp16;
 
-    paramIn(cp, section, csprintf("msicap.mid"), tmp16);
+    paramIn(cp, csprintf("msicap.mid"), tmp16);
     msicap.mid = tmp16;
-    paramIn(cp, section, csprintf("msicap.mc"), tmp16);
+    paramIn(cp, csprintf("msicap.mc"), tmp16);
     msicap.mc = tmp16;
-    paramIn(cp, section, csprintf("msicap.ma"), tmp32);
+    paramIn(cp, csprintf("msicap.ma"), tmp32);
     msicap.ma = tmp32;
     UNSERIALIZE_SCALAR(msicap.mua);
-    paramIn(cp, section, csprintf("msicap.md"), tmp16);;
+    paramIn(cp, csprintf("msicap.md"), tmp16);;
     msicap.md = tmp16;
     UNSERIALIZE_SCALAR(msicap.mmask);
     UNSERIALIZE_SCALAR(msicap.mpend);
 
-    paramIn(cp, section, csprintf("msixcap.mxid"), tmp16);
+    paramIn(cp, csprintf("msixcap.mxid"), tmp16);
     msixcap.mxid = tmp16;
-    paramIn(cp, section, csprintf("msixcap.mxc"), tmp16);
+    paramIn(cp, csprintf("msixcap.mxc"), tmp16);
     msixcap.mxc = tmp16;
-    paramIn(cp, section, csprintf("msixcap.mtab"), tmp32);
+    paramIn(cp, csprintf("msixcap.mtab"), tmp32);
     msixcap.mtab = tmp32;
-    paramIn(cp, section, csprintf("msixcap.mpba"), tmp32);
+    paramIn(cp, csprintf("msixcap.mpba"), tmp32);
     msixcap.mpba = tmp32;
 
     // Only allocate if MSIXCAP_BASE is not 0x0
@@ -539,40 +579,40 @@ PciDevice::unserialize(Checkpoint *cp, const std::string &section)
         msix_pba.resize(pba_array_size, tmp2);
 
         for (int i = 0; i < msix_array_size; i++) {
-            paramIn(cp, section, csprintf("msix_table[%d].addr_lo", i),
+            paramIn(cp, csprintf("msix_table[%d].addr_lo", i),
                     msix_table[i].fields.addr_lo);
-            paramIn(cp, section, csprintf("msix_table[%d].addr_hi", i),
+            paramIn(cp, csprintf("msix_table[%d].addr_hi", i),
                     msix_table[i].fields.addr_hi);
-            paramIn(cp, section, csprintf("msix_table[%d].msg_data", i),
+            paramIn(cp, csprintf("msix_table[%d].msg_data", i),
                     msix_table[i].fields.msg_data);
-            paramIn(cp, section, csprintf("msix_table[%d].vec_ctrl", i),
+            paramIn(cp, csprintf("msix_table[%d].vec_ctrl", i),
                     msix_table[i].fields.vec_ctrl);
         }
         for (int i = 0; i < pba_array_size; i++) {
-            paramIn(cp, section, csprintf("msix_pba[%d].bits", i),
+            paramIn(cp, csprintf("msix_pba[%d].bits", i),
                     msix_pba[i].bits);
         }
     }
 
-    paramIn(cp, section, csprintf("pxcap.pxid"), tmp16);
+    paramIn(cp, csprintf("pxcap.pxid"), tmp16);
     pxcap.pxid = tmp16;
-    paramIn(cp, section, csprintf("pxcap.pxcap"), tmp16);
+    paramIn(cp, csprintf("pxcap.pxcap"), tmp16);
     pxcap.pxcap = tmp16;
-    paramIn(cp, section, csprintf("pxcap.pxdcap"), tmp32);
+    paramIn(cp, csprintf("pxcap.pxdcap"), tmp32);
     pxcap.pxdcap = tmp32;
-    paramIn(cp, section, csprintf("pxcap.pxdc"), tmp16);
+    paramIn(cp, csprintf("pxcap.pxdc"), tmp16);
     pxcap.pxdc = tmp16;
-    paramIn(cp, section, csprintf("pxcap.pxds"), tmp16);
+    paramIn(cp, csprintf("pxcap.pxds"), tmp16);
     pxcap.pxds = tmp16;
-    paramIn(cp, section, csprintf("pxcap.pxlcap"), tmp32);
+    paramIn(cp, csprintf("pxcap.pxlcap"), tmp32);
     pxcap.pxlcap = tmp32;
-    paramIn(cp, section, csprintf("pxcap.pxlc"), tmp16);
+    paramIn(cp, csprintf("pxcap.pxlc"), tmp16);
     pxcap.pxlc = tmp16;
-    paramIn(cp, section, csprintf("pxcap.pxls"), tmp16);
+    paramIn(cp, csprintf("pxcap.pxls"), tmp16);
     pxcap.pxls = tmp16;
-    paramIn(cp, section, csprintf("pxcap.pxdcap2"), tmp32);
+    paramIn(cp, csprintf("pxcap.pxdcap2"), tmp32);
     pxcap.pxdcap2 = tmp32;
-    paramIn(cp, section, csprintf("pxcap.pxdc2"), tmp32);
+    paramIn(cp, csprintf("pxcap.pxdc2"), tmp32);
     pxcap.pxdc2 = tmp32;
     pioPort.sendRangeChange();
 }

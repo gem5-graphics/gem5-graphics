@@ -90,6 +90,7 @@ SIMPLE_OP(m5_panic, panic_func, 0)
 SIMPLE_OP(m5_work_begin, work_begin_func, 0)
 SIMPLE_OP(m5_work_end, work_end_func, 0)
 SIMPLE_OP(m5_gpu, gpu_func, 0)
+SIMPLE_OP(m5_util, util_func, 0)
 
 SIMPLE_OP(m5a_bsm, annotate_func, an_bsm)
 SIMPLE_OP(m5a_esm, annotate_func, an_esm)

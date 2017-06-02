@@ -33,26 +33,13 @@ import VI_hammer
 from m5.objects import *
 from m5.defines import buildEnv
 from Cluster import Cluster
+import MemConfig
 
-#
-# Note: the L1 Cache latency is only used by the sequencer on fast path hits
-#
-class L1Cache(RubyCache):
-    latency = 1
+class L1Cache(RubyCache): pass
+class L2Cache(RubyCache): pass
+class ProbeFilter(RubyCache): pass
 
-#
-# Note: the L2 Cache latency is not currently used
-#
-class L2Cache(RubyCache):
-    latency = 15
-
-#
-# Probe filter is a cache, latency is not used
-#
-class ProbeFilter(RubyCache):
-    latency = 1
-
-def create_system(options, system, dma_devices, ruby_system):
+def create_system(options, full_system, system, dma_devices, ruby_system):
 
     if not buildEnv['GPGPU_SIM']:
         m5.util.panic("This script requires GPGPU-Sim integration to be built.")
@@ -60,6 +47,7 @@ def create_system(options, system, dma_devices, ruby_system):
     # Run the protocol script to setup CPU cluster, directory and DMA
     (all_sequencers, dir_cntrls, dma_cntrls, cpu_cluster) = \
                                         VI_hammer.create_system(options,
+                                                                full_system,
                                                                 system,
                                                                 dma_devices,
                                                                 ruby_system)
@@ -79,7 +67,6 @@ def create_system(options, system, dma_devices, ruby_system):
     cpu_ce_seq = RubySequencer(version = options.num_cpus + options.num_sc,
                                icache = cache,
                                dcache = cache,
-                               access_phys_mem = True,
                                max_outstanding_requests = 64,
                                ruby_system = ruby_system,
                                connect_to_io = False)
@@ -87,7 +74,17 @@ def create_system(options, system, dma_devices, ruby_system):
     cpu_ce_cntrl = GPUCopyDMA_Controller(version = 0,
                                          sequencer = cpu_ce_seq,
                                          number_of_TBEs = 256,
+                                         transitions_per_cycle = options.ports,
                                          ruby_system = ruby_system)
+
+    cpu_ce_cntrl.responseFromDir = MessageBuffer(ordered = True)
+    cpu_ce_cntrl.responseFromDir.slave = ruby_system.network.master
+    cpu_ce_cntrl.reqToDirectory = MessageBuffer(ordered = True)
+    cpu_ce_cntrl.reqToDirectory.master = ruby_system.network.slave
+
+    cpu_ce_cntrl.mandatoryQueue = MessageBuffer()
+
+    ruby_system.ce_cntrl = cpu_ce_cntrl
 
     cpu_cntrl_count += 1
 
@@ -116,7 +113,7 @@ def create_system(options, system, dma_devices, ruby_system):
         #
         cache = L1Cache(size = options.sc_l1_size,
                             assoc = options.sc_l1_assoc,
-                            replacement_policy = "LRU",
+                            replacement_policy = LRUReplacementPolicy(),
                             start_index_bit = block_size_bits,
                             dataArrayBanks = 4,
                             tagArrayBanks = 4,
@@ -128,6 +125,7 @@ def create_system(options, system, dma_devices, ruby_system):
                                   cache = cache,
                                   l2_select_num_bits = l2_bits,
                                   num_l2 = options.num_l2caches,
+                                  transitions_per_cycle = options.ports,
                                   issue_latency = l1_to_l2_noc_latency,
                                   number_of_TBEs = options.gpu_l1_buf_depth,
                                   ruby_system = ruby_system)
@@ -135,7 +133,6 @@ def create_system(options, system, dma_devices, ruby_system):
         gpu_seq = RubySequencer(version = options.num_cpus + i,
                             icache = cache,
                             dcache = cache,
-                            access_phys_mem = True,
                             max_outstanding_requests = options.gpu_l1_buf_depth,
                             ruby_system = ruby_system,
                             deadlock_threshold = 2000000,
@@ -150,6 +147,14 @@ def create_system(options, system, dma_devices, ruby_system):
         #
         all_sequencers.append(gpu_seq)
         gpu_cluster.add(l1_cntrl)
+
+        # Connect the controller to the network
+        l1_cntrl.requestFromL1Cache = MessageBuffer(ordered = True)
+        l1_cntrl.requestFromL1Cache.master = ruby_system.network.slave
+        l1_cntrl.responseToL1Cache = MessageBuffer(ordered = True)
+        l1_cntrl.responseToL1Cache.slave = ruby_system.network.master
+
+        l1_cntrl.mandatoryQueue = MessageBuffer()
 
     l2_index_start = block_size_bits + l2_bits
     # Use L2 cache and interconnect latencies to calculate protocol latencies
@@ -166,7 +171,7 @@ def create_system(options, system, dma_devices, ruby_system):
         l2_cache = L2Cache(size = options.sc_l2_size,
                            assoc = options.sc_l2_assoc,
                            start_index_bit = l2_index_start,
-                           replacement_policy = "LRU",
+                           replacement_policy = LRUReplacementPolicy(),
                            dataArrayBanks = 4,
                            tagArrayBanks = 4,
                            dataAccessLatency = 4,
@@ -175,9 +180,11 @@ def create_system(options, system, dma_devices, ruby_system):
 
         l2_cntrl = GPUL2Cache_Controller(version = i,
                                 L2cache = l2_cache,
+                                transitions_per_cycle = options.ports,
                                 l2_response_latency = l2_cache_access_latency +
                                                       l2_to_l1_noc_latency,
                                 l2_request_latency = l2_to_mem_noc_latency,
+                                cache_response_latency = l2_cache_access_latency,
                                 ruby_system = ruby_system)
 
         exec("ruby_system.l2_cntrl%d = l2_cntrl" % i)
@@ -186,7 +193,26 @@ def create_system(options, system, dma_devices, ruby_system):
         gpu_cluster.add(l2_cluster)
         l2_clusters.append(l2_cluster)
 
-    gpu_phys_mem_size = system.gpu_physmem.range.size()
+        # Connect the controller to the network
+        l2_cntrl.responseToL1Cache = MessageBuffer(ordered = True)
+        l2_cntrl.responseToL1Cache.master = ruby_system.network.slave
+        l2_cntrl.requestFromCache = MessageBuffer()
+        l2_cntrl.requestFromCache.master = ruby_system.network.slave
+        l2_cntrl.responseFromCache = MessageBuffer()
+        l2_cntrl.responseFromCache.master = ruby_system.network.slave
+        l2_cntrl.unblockFromCache = MessageBuffer()
+        l2_cntrl.unblockFromCache.master = ruby_system.network.slave
+
+        l2_cntrl.requestFromL1Cache = MessageBuffer(ordered = True)
+        l2_cntrl.requestFromL1Cache.slave = ruby_system.network.master
+        l2_cntrl.forwardToCache = MessageBuffer()
+        l2_cntrl.forwardToCache.slave = ruby_system.network.master
+        l2_cntrl.responseToCache = MessageBuffer()
+        l2_cntrl.responseToCache.slave = ruby_system.network.master
+
+        l2_cntrl.triggerQueue = MessageBuffer()
+
+    gpu_phys_mem_size = system.gpu.gpu_memory_range.size()
 
     if options.num_dev_dirs > 0:
         mem_module_size = gpu_phys_mem_size / options.num_dev_dirs
@@ -214,6 +240,8 @@ def create_system(options, system, dma_devices, ruby_system):
             else:
                 pf_start_bit = block_size_bits
 
+        dev_dir_cntrls = []
+        dev_mem_ctrls = []
         num_cpu_dirs = len(dir_cntrls)
         for i in xrange(options.num_dev_dirs):
             #
@@ -221,10 +249,6 @@ def create_system(options, system, dma_devices, ruby_system):
             #
 
             dir_version = i + num_cpu_dirs
-
-            mem_cntrl = RubyMemoryControl(version = dir_version,
-                                          bank_queue_size = 24,
-                                          ruby_system = ruby_system)
 
             dir_size = MemorySize('0B')
             dir_size.value = mem_module_size
@@ -237,23 +261,49 @@ def create_system(options, system, dma_devices, ruby_system):
                                  RubyDirectoryMemory( \
                                             version = dir_version,
                                             size = dir_size,
-                                            use_map = options.use_map,
-                                            map_levels = \
-                                            options.map_levels,
                                             numa_high_bit = \
                                             options.numa_high_bit,
                                             device_directory = True),
                                  probeFilter = pf,
-                                 memBuffer = mem_cntrl,
                                  probe_filter_enabled = options.pf_on,
                                  full_bit_dir_enabled = options.dir_on,
+                                 transitions_per_cycle = options.ports,
                                  ruby_system = ruby_system)
 
             if options.recycle_latency:
                 dev_dir_cntrl.recycle_latency = options.recycle_latency
 
             exec("ruby_system.dev_dir_cntrl%d = dev_dir_cntrl" % i)
-            dir_cntrls.append(dev_dir_cntrl)
+            dev_dir_cntrls.append(dev_dir_cntrl)
+
+            # Connect the directory controller to the network
+            dev_dir_cntrl.forwardFromDir = MessageBuffer()
+            dev_dir_cntrl.forwardFromDir.master = ruby_system.network.slave
+            dev_dir_cntrl.responseFromDir = MessageBuffer()
+            dev_dir_cntrl.responseFromDir.master = ruby_system.network.slave
+            dev_dir_cntrl.dmaResponseFromDir = MessageBuffer(ordered = True)
+            dev_dir_cntrl.dmaResponseFromDir.master = ruby_system.network.slave
+
+            dev_dir_cntrl.unblockToDir = MessageBuffer()
+            dev_dir_cntrl.unblockToDir.slave = ruby_system.network.master
+            dev_dir_cntrl.responseToDir = MessageBuffer()
+            dev_dir_cntrl.responseToDir.slave = ruby_system.network.master
+            dev_dir_cntrl.requestToDir = MessageBuffer()
+            dev_dir_cntrl.requestToDir.slave = ruby_system.network.master
+            dev_dir_cntrl.dmaRequestToDir = MessageBuffer(ordered = True)
+            dev_dir_cntrl.dmaRequestToDir.slave = ruby_system.network.master
+
+            dev_dir_cntrl.triggerQueue = MessageBuffer(ordered = True)
+            dev_dir_cntrl.responseFromMemory = MessageBuffer()
+
+            dev_mem_ctrl = MemConfig.create_mem_ctrl(
+                MemConfig.get(options.mem_type), system.gpu.gpu_memory_range,
+                i, options.num_dev_dirs, int(math.log(options.num_dev_dirs, 2)),
+                options.cacheline_size)
+            dev_mem_ctrl.port = dev_dir_cntrl.memory
+            dev_mem_ctrls.append(dev_mem_ctrl)
+
+        system.dev_mem_ctrls = dev_mem_ctrls
     else:
         # Since there are no device directories, use CPU directories
         # Fix up the memory sizes of the CPU directories
@@ -272,7 +322,6 @@ def create_system(options, system, dma_devices, ruby_system):
     gpu_ce_seq = RubySequencer(version = options.num_cpus + options.num_sc + 1,
                                icache = cache,
                                dcache = cache,
-                               access_phys_mem = True,
                                max_outstanding_requests = 64,
                                support_inst_reqs = False,
                                ruby_system = ruby_system,
@@ -281,12 +330,20 @@ def create_system(options, system, dma_devices, ruby_system):
     gpu_ce_cntrl = GPUCopyDMA_Controller(version = 1,
                                   sequencer = gpu_ce_seq,
                                   number_of_TBEs = 256,
+                                  transitions_per_cycle = options.ports,
                                   ruby_system = ruby_system)
 
-    ruby_system.l1_cntrl_ce = gpu_ce_cntrl
+    ruby_system.dev_ce_cntrl = gpu_ce_cntrl
 
     all_sequencers.append(cpu_ce_seq)
     all_sequencers.append(gpu_ce_seq)
+
+    gpu_ce_cntrl.responseFromDir = MessageBuffer(ordered = True)
+    gpu_ce_cntrl.responseFromDir.slave = ruby_system.network.master
+    gpu_ce_cntrl.reqToDirectory = MessageBuffer(ordered = True)
+    gpu_ce_cntrl.reqToDirectory.master = ruby_system.network.slave
+
+    gpu_ce_cntrl.mandatoryQueue = MessageBuffer()
 
     complete_cluster = Cluster(intBW = 32, extBW = 32)
     complete_cluster.add(cpu_ce_cntrl)
@@ -295,6 +352,9 @@ def create_system(options, system, dma_devices, ruby_system):
     complete_cluster.add(gpu_cluster)
 
     for cntrl in dir_cntrls:
+        complete_cluster.add(cntrl)
+
+    for cntrl in dev_dir_cntrls:
         complete_cluster.add(cntrl)
 
     for cntrl in dma_cntrls:

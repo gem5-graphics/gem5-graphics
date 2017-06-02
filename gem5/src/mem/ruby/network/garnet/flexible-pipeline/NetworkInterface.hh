@@ -42,7 +42,6 @@
 #include "mem/ruby/slicc_interface/Message.hh"
 #include "params/GarnetNetworkInterface.hh"
 
-class NetworkMessage;
 class MessageBuffer;
 class flitBuffer;
 
@@ -56,10 +55,10 @@ class NetworkInterface : public ClockedObject, public FlexibleConsumer
 
     void addInPort(NetworkLink *in_link);
     void addOutPort(NetworkLink *out_link);
-
-    void wakeup();
     void addNode(std::vector<MessageBuffer *> &inNode,
                  std::vector<MessageBuffer *> &outNode);
+
+    void wakeup();
     void grant_vc(int out_port, int vc, Cycles grant_time);
     void release_vc(int out_port, int vc, Cycles release_time);
 

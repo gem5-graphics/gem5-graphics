@@ -119,7 +119,7 @@ SocketStream * UnixStream::accept()
 
     if (clientSock >= 0) {
         clientStream =  new UnixStream(clientSock, m_bufsize);
-        SocketStream::incSockets(clientSock);
+        SocketStream::regSocket(clientSock);
     }
     return clientStream;
 }

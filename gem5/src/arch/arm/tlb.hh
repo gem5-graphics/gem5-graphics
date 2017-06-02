@@ -48,12 +48,11 @@
 #include "arch/arm/pagetable.hh"
 #include "arch/arm/utility.hh"
 #include "arch/arm/vtophys.hh"
+#include "arch/generic/tlb.hh"
 #include "base/statistics.hh"
-#include "dev/dma_device.hh"
 #include "mem/request.hh"
 #include "params/ArmTLB.hh"
-#include "sim/fault_fwd.hh"
-#include "sim/tlb.hh"
+#include "sim/probe/pmu.hh"
 
 class ThreadContext;
 
@@ -131,9 +130,10 @@ class TLB : public BaseTLB
     Stats::Formula misses;
     Stats::Formula accesses;
 
-    int rangeMRU; //On lookup, only move entries ahead when outside rangeMRU
+    /** PMU probe for TLB refills */
+    ProbePoints::PMUUPtr ppRefills;
 
-    bool bootUncacheability;
+    int rangeMRU; //On lookup, only move entries ahead when outside rangeMRU
 
   public:
     TLB(const ArmTLBParams *p);
@@ -160,7 +160,9 @@ class TLB : public BaseTLB
     /// setup all the back pointers
     virtual void init();
 
-    void setMMU(Stage2MMU *m);
+    TableWalker *getTableWalker() { return tableWalker; }
+
+    void setMMU(Stage2MMU *m, MasterID master_id);
 
     int getsize() const { return size; }
 
@@ -228,7 +230,6 @@ class TLB : public BaseTLB
 
     void printTlb() const;
 
-    void allCpusCaching() { bootUncacheability = true; }
     void demapPage(Addr vaddr, uint64_t asn)
     {
         // needed for x86 only
@@ -283,13 +284,15 @@ class TLB : public BaseTLB
             bool callFromS2);
     Fault finalizePhysical(RequestPtr req, ThreadContext *tc, Mode mode) const;
 
-    void drainResume();
+    void drainResume() M5_ATTR_OVERRIDE;
 
     // Checkpointing
-    void serialize(std::ostream &os);
-    void unserialize(Checkpoint *cp, const std::string &section);
+    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
+    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
 
     void regStats();
+
+    void regProbePoints() M5_ATTR_OVERRIDE;
 
     /**
      * Get the table walker master port. This is used for migrating
@@ -303,20 +306,12 @@ class TLB : public BaseTLB
      */
     virtual BaseMasterPort* getMasterPort();
 
-    /**
-     * Allow the MMU (overseeing both stage 1 and stage 2 TLBs) to
-     * access the table walker port of this TLB so that it can
-     * orchestrate staged translations.
-     *
-     * @return The table walker DMA port
-     */
-    DmaPort& getWalkerPort();
-
     // Caching misc register values here.
     // Writing to misc registers needs to invalidate them.
     // translateFunctional/translateSe/translateFs checks if they are
     // invalid and call updateMiscReg if necessary.
 protected:
+    CPSR cpsr;
     bool aarch64;
     ExceptionLevel aarch64EL;
     SCTLR sctlr;

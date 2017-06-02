@@ -61,10 +61,9 @@ using namespace ArmISA;
 using namespace Linux;
 
 LinuxArmSystem::LinuxArmSystem(Params *p)
-    : ArmSystem(p),
+    : GenericArmSystem(p), dumpStatsPCEvent(nullptr),
       enableContextSwitchStatsDump(p->enable_context_switch_stats_dump),
-      kernelPanicEvent(NULL), kernelOopsEvent(NULL),
-      bootReleaseAddr(p->boot_release_addr)
+      taskFile(nullptr), kernelPanicEvent(nullptr), kernelOopsEvent(nullptr)
 {
     if (p->panic_on_panic) {
         kernelPanicEvent = addKernelFuncEventOrPanic<PanicPCEvent>(
@@ -96,34 +95,6 @@ LinuxArmSystem::LinuxArmSystem(Params *p)
         constUDelaySkipEvent = addKernelFuncEventOrPanic<UDelayEvent>(
          "__const_udelay", "__const_udelay", 1000, 107374);
 
-    secDataPtrAddr = 0;
-    secDataAddr = 0;
-    penReleaseAddr = 0;
-
-    kernelSymtab->findAddress("__secondary_data", secDataPtrAddr);
-    kernelSymtab->findAddress("secondary_data", secDataAddr);
-    kernelSymtab->findAddress("pen_release", penReleaseAddr);
-    kernelSymtab->findAddress("secondary_holding_pen_release", pen64ReleaseAddr);
-
-    secDataPtrAddr &= ~ULL(0x7F);
-    secDataAddr &= ~ULL(0x7F);
-    penReleaseAddr &= ~ULL(0x7F);
-    pen64ReleaseAddr &= ~ULL(0x7F);
-    bootReleaseAddr = (bootReleaseAddr & ~ULL(0x7F)) + loadAddrOffset;
-
-}
-
-bool
-LinuxArmSystem::adderBootUncacheable(Addr a)
-{
-    Addr block = a & ~ULL(0x7F);
-
-    if (block == secDataPtrAddr || block == secDataAddr ||
-            block == penReleaseAddr || pen64ReleaseAddr == block ||
-            block == bootReleaseAddr)
-        return true;
-
-    return false;
 }
 
 void
@@ -133,7 +104,7 @@ LinuxArmSystem::initState()
     // address map being resolved in the interconnect
 
     // Call the initialisation of the super class
-    ArmSystem::initState();
+    GenericArmSystem::initState();
 
     // Load symbols at physical address, we might not want
     // to do this permanently, for but early bootup work
@@ -270,7 +241,7 @@ LinuxArmSystem::startup()
         for (int i = 0; i < _numContexts; i++) {
             ThreadContext *tc = threadContexts[i];
             uint32_t pid = tc->getCpuPtr()->getPid();
-            if (pid != Request::invldPid) {
+            if (pid != BaseCPU::invldPid) {
                 mapPid(tc, pid);
                 tc->getCpuPtr()->taskId(taskMap[pid]);
             }

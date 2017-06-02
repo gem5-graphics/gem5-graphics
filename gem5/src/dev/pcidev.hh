@@ -108,12 +108,23 @@ class PciDevice : public DmaDevice
      * @{
      */
     const int PMCAP_BASE;
+    const int PMCAP_ID_OFFSET;
+    const int PMCAP_PC_OFFSET;
+    const int PMCAP_PMCS_OFFSET;
     PMCAP pmcap;
 
     const int MSICAP_BASE;
     MSICAP msicap;
 
     const int MSIXCAP_BASE;
+    const int MSIXCAP_ID_OFFSET;
+    const int MSIXCAP_MXC_OFFSET;
+    const int MSIXCAP_MTAB_OFFSET;
+    const int MSIXCAP_MPBA_OFFSET;
+    int MSIX_TABLE_OFFSET;
+    int MSIX_TABLE_END;
+    int MSIX_PBA_OFFSET;
+    int MSIX_PBA_END;
     MSIXCAP msixcap;
 
     const int PXCAP_BASE;
@@ -238,17 +249,15 @@ class PciDevice : public DmaDevice
      * Serialize this object to the given output stream.
      * @param os The stream to serialize to.
      */
-    virtual void serialize(std::ostream &os);
+    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
 
     /**
      * Reconstruct the state of this object from a checkpoint.
      * @param cp The checkpoint use.
      * @param section The section name of this object
      */
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
+    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
 
-
-    virtual unsigned int drain(DrainManager *dm);
 
     virtual BaseSlavePort &getSlavePort(const std::string &if_name,
                                         PortID idx = InvalidPortID)

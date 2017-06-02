@@ -38,10 +38,9 @@
 #include "mem/ruby/network/garnet/fixed-pipeline/CreditLink_d.hh"
 #include "mem/ruby/network/garnet/fixed-pipeline/NetworkLink_d.hh"
 #include "mem/ruby/network/garnet/fixed-pipeline/OutVcState_d.hh"
+#include "mem/ruby/network/garnet/fixed-pipeline/Router_d.hh"
 #include "mem/ruby/network/garnet/fixed-pipeline/flitBuffer_d.hh"
 #include "mem/ruby/network/garnet/NetworkHeader.hh"
-
-class Router_d;
 
 class OutputUnit_d : public Consumer
 {
@@ -71,7 +70,7 @@ class OutputUnit_d : public Consumer
     inline void
     set_vc_state(VC_state_type state, int vc, Cycles curTime)
     {
-        m_outvc_state[vc]->setState(state, curTime + Cycles(1));
+      m_outvc_state[vc]->setState(state, curTime);
     }
 
     inline bool

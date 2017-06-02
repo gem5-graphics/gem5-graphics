@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013 ARM Limited
+ * Copyright (c) 2012-2014 ARM Limited
  * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
@@ -49,13 +49,15 @@
  * Describes a cache based on template policies.
  */
 
-#ifndef __CACHE_HH__
-#define __CACHE_HH__
+#ifndef __MEM_CACHE_CACHE_HH__
+#define __MEM_CACHE_CACHE_HH__
 
 #include "base/misc.hh" // fatal, panic, and warn
 #include "mem/cache/base.hh"
 #include "mem/cache/blk.hh"
 #include "mem/cache/mshr.hh"
+#include "mem/cache/tags/base.hh"
+#include "params/Cache.hh"
 #include "sim/eventq.hh"
 
 //Forward decleration
@@ -66,17 +68,14 @@ class BasePrefetcher;
  * supplying different template policies. TagStore handles all tag and data
  * storage @sa TagStore, \ref gem5MemorySystem "gem5 Memory System"
  */
-template <class TagStore>
 class Cache : public BaseCache
 {
   public:
-    /** Define the type of cache block to use. */
-    typedef typename TagStore::BlkType BlkType;
-    /** A typedef for a list of BlkType pointers. */
-    typedef typename TagStore::BlkList BlkList;
+
+    /** A typedef for a list of CacheBlk pointers. */
+    typedef std::list<CacheBlk*> BlkList;
 
   protected:
-    typedef CacheBlkVisitorWrapper<Cache<TagStore>, BlkType> WrappedBlkVisitor;
 
     /**
      * The CPU-side port extends the base cache slave port with access
@@ -87,7 +86,7 @@ class Cache : public BaseCache
       private:
 
         // a pointer to our specific cache implementation
-        Cache<TagStore> *cache;
+        Cache *cache;
 
       protected:
 
@@ -103,7 +102,7 @@ class Cache : public BaseCache
 
       public:
 
-        CpuSidePort(const std::string &_name, Cache<TagStore> *_cache,
+        CpuSidePort(const std::string &_name, Cache *_cache,
                     const std::string &_label);
 
     };
@@ -114,18 +113,21 @@ class Cache : public BaseCache
      * current MSHR status. This queue has a pointer to our specific
      * cache implementation and is used by the MemSidePort.
      */
-    class MemSidePacketQueue : public MasterPacketQueue
+    class CacheReqPacketQueue : public ReqPacketQueue
     {
 
       protected:
 
-        Cache<TagStore> &cache;
+        Cache &cache;
+        SnoopRespPacketQueue &snoopRespQueue;
 
       public:
 
-        MemSidePacketQueue(Cache<TagStore> &cache, MasterPort &port,
-                           const std::string &label) :
-            MasterPacketQueue(cache, port, label), cache(cache) { }
+        CacheReqPacketQueue(Cache &cache, MasterPort &port,
+                            SnoopRespPacketQueue &snoop_resp_queue,
+                            const std::string &label) :
+            ReqPacketQueue(cache, port, label), cache(cache),
+            snoopRespQueue(snoop_resp_queue) { }
 
         /**
          * Override the normal sendDeferredPacket and do not only
@@ -145,10 +147,12 @@ class Cache : public BaseCache
       private:
 
         /** The cache-specific queue. */
-        MemSidePacketQueue _queue;
+        CacheReqPacketQueue _reqQueue;
+
+        SnoopRespPacketQueue _snoopRespQueue;
 
         // a pointer to our specific cache implementation
-        Cache<TagStore> *cache;
+        Cache *cache;
 
       protected:
 
@@ -162,23 +166,28 @@ class Cache : public BaseCache
 
       public:
 
-        MemSidePort(const std::string &_name, Cache<TagStore> *_cache,
+        MemSidePort(const std::string &_name, Cache *_cache,
                     const std::string &_label);
     };
 
     /** Tag and data Storage */
-    TagStore *tags;
+    BaseTags *tags;
 
     /** Prefetcher */
     BasePrefetcher *prefetcher;
 
     /** Temporary cache block for occasional transitory use */
-    BlkType *tempBlock;
+    CacheBlk *tempBlock;
 
     /**
      * This cache should allocate a block on a line-sized write miss.
      */
     const bool doFastWrites;
+
+    /**
+     * Turn line-sized writes into WriteInvalidate transactions.
+     */
+    void promoteWholeLineWrites(PacketPtr pkt);
 
     /**
      * Notify the prefetcher on every access, not just misses.
@@ -200,13 +209,13 @@ class Cache : public BaseCache
      * @param writebacks List for any writebacks that need to be performed.
      * @return Boolean indicating whether the request was satisfied.
      */
-    bool access(PacketPtr pkt, BlkType *&blk,
+    bool access(PacketPtr pkt, CacheBlk *&blk,
                 Cycles &lat, PacketList &writebacks);
 
     /**
      *Handle doing the Compare and Swap function for SPARC.
      */
-    void cmpAndSwap(BlkType *blk, PacketPtr pkt);
+    void cmpAndSwap(CacheBlk *blk, PacketPtr pkt);
 
     /**
      * Find a block frame for new block at address addr targeting the
@@ -215,7 +224,7 @@ class Cache : public BaseCache
      * list.  Return free block frame.  May return NULL if there are
      * no replaceable blocks at the moment.
      */
-    BlkType *allocateBlock(Addr addr, bool is_secure, PacketList &writebacks);
+    CacheBlk *allocateBlock(Addr addr, bool is_secure, PacketList &writebacks);
 
     /**
      * Populates a cache block and handles all outstanding requests for the
@@ -226,7 +235,7 @@ class Cache : public BaseCache
      * @param writebacks List for any writebacks that need to be performed.
      * @return Pointer to the new cache block.
      */
-    BlkType *handleFill(PacketPtr pkt, BlkType *blk,
+    CacheBlk *handleFill(PacketPtr pkt, CacheBlk *blk,
                         PacketList &writebacks);
 
 
@@ -236,6 +245,11 @@ class Cache : public BaseCache
      * @return The result of the access.
      */
     bool recvTimingReq(PacketPtr pkt);
+
+    /**
+     * Insert writebacks into the write buffer
+     */
+    void doWritebacks(PacketList& writebacks, Tick forward_time);
 
     /**
      * Handles a response (cache line fill/write ack) from the bus.
@@ -277,12 +291,12 @@ class Cache : public BaseCache
      */
     void functionalAccess(PacketPtr pkt, bool fromCpuSide);
 
-    void satisfyCpuSideRequest(PacketPtr pkt, BlkType *blk,
+    void satisfyCpuSideRequest(PacketPtr pkt, CacheBlk *blk,
                                bool deferred_response = false,
                                bool pending_downgrade = false);
-    bool satisfyMSHR(MSHR *mshr, PacketPtr pkt, BlkType *blk);
+    bool satisfyMSHR(MSHR *mshr, PacketPtr pkt, CacheBlk *blk);
 
-    void doTimingSupplyResponse(PacketPtr req_pkt, uint8_t *blk_data,
+    void doTimingSupplyResponse(PacketPtr req_pkt, const uint8_t *blk_data,
                                 bool already_copied, bool pending_inval);
 
     /**
@@ -290,7 +304,7 @@ class Cache : public BaseCache
      * @param blk The cache block being snooped.
      * @param new_state The new coherence state for the block.
      */
-    void handleSnoop(PacketPtr ptk, BlkType *blk,
+    void handleSnoop(PacketPtr ptk, CacheBlk *blk,
                      bool is_timing, bool is_deferred, bool pending_inval);
 
     /**
@@ -298,7 +312,14 @@ class Cache : public BaseCache
      * @param blk The block to writeback.
      * @return The writeback request for the block.
      */
-    PacketPtr writebackBlk(BlkType *blk);
+    PacketPtr writebackBlk(CacheBlk *blk);
+
+    /**
+     * Create a CleanEvict request for the given block.
+     * @param blk The block to evict.
+     * @return The CleanEvict request for the block.
+     */
+    PacketPtr cleanEvictBlk(CacheBlk *blk);
 
 
     void memWriteback();
@@ -311,7 +332,7 @@ class Cache : public BaseCache
      *
      * \return Always returns true.
      */
-    bool writebackVisitor(BlkType &blk);
+    bool writebackVisitor(CacheBlk &blk);
     /**
      * Cache block visitor that invalidates all blocks in the cache.
      *
@@ -319,26 +340,7 @@ class Cache : public BaseCache
      *
      * \return Always returns true.
      */
-    bool invalidateVisitor(BlkType &blk);
-
-    /**
-     * Flush a cache line due to an uncacheable memory access to the
-     * line.
-     *
-     * @note This shouldn't normally happen, but we need to handle it
-     * since some architecture models don't implement cache
-     * maintenance operations. We won't even try to get a decent
-     * timing here since the line should have been flushed earlier by
-     * a cache maintenance operation.
-     */
-    void uncacheableFlush(PacketPtr pkt);
-
-    /**
-     * Squash all requests associated with specified thread.
-     * intended for use by I-cache.
-     * @param threadNum The thread to squash.
-     */
-    void squash(int threadNum);
+    bool invalidateVisitor(CacheBlk &blk);
 
     /**
      * Generate an appropriate downstream bus request packet for the
@@ -351,7 +353,7 @@ class Cache : public BaseCache
      * @return A new Packet containing the request, or NULL if the
      * current request in cpu_pkt should just be forwarded on.
      */
-    PacketPtr getBusPacket(PacketPtr cpu_pkt, BlkType *blk,
+    PacketPtr getBusPacket(PacketPtr cpu_pkt, CacheBlk *blk,
                            bool needsExclusive) const;
 
     /**
@@ -363,6 +365,12 @@ class Cache : public BaseCache
     MSHR *getNextMSHR();
 
     /**
+     * Send up a snoop request and find cached copies. If cached copies are
+     * found, set the BLOCK_CACHED flag in pkt.
+     */
+    bool isCachedAbove(const PacketPtr pkt) const;
+
+    /**
      * Selects an outstanding request to service.  Called when the
      * cache gets granted the downstream bus in timing mode.
      * @return The request to service, NULL if none found.
@@ -370,12 +378,13 @@ class Cache : public BaseCache
     PacketPtr getTimingPacket();
 
     /**
-     * Marks a request as in service (sent on the bus). This can have side
-     * effect since storage for no response commands is deallocated once they
-     * are successfully sent.
-     * @param pkt The request that was sent on the bus.
+     * Marks a request as in service (sent on the bus). This can have
+     * side effect since storage for no response commands is
+     * deallocated once they are successfully sent. Also remember if
+     * we are expecting a dirty response from another cache,
+     * effectively making this MSHR the ordering point.
      */
-    void markInService(MSHR *mshr, PacketPtr pkt = 0);
+    void markInService(MSHR *mshr, bool pending_dirty_resp);
 
     /**
      * Return whether there are any outstanding misses.
@@ -404,7 +413,7 @@ class Cache : public BaseCache
 
   public:
     /** Instantiates a basic cache object. */
-    Cache(const Params *p);
+    Cache(const CacheParams *p);
 
     /** Non-default destructor is needed to deallocate memory. */
     virtual ~Cache();
@@ -414,8 +423,66 @@ class Cache : public BaseCache
     /** serialize the state of the caches
      * We currently don't support checkpointing cache state, so this panics.
      */
-    virtual void serialize(std::ostream &os);
-    void unserialize(Checkpoint *cp, const std::string &section);
+    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
+    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
 };
 
-#endif // __CACHE_HH__
+/**
+ * Wrap a method and present it as a cache block visitor.
+ *
+ * For example the forEachBlk method in the tag arrays expects a
+ * callable object/function as their parameter. This class wraps a
+ * method in an object and presents  callable object that adheres to
+ * the cache block visitor protocol.
+ */
+class CacheBlkVisitorWrapper : public CacheBlkVisitor
+{
+  public:
+    typedef bool (Cache::*VisitorPtr)(CacheBlk &blk);
+
+    CacheBlkVisitorWrapper(Cache &_cache, VisitorPtr _visitor)
+        : cache(_cache), visitor(_visitor) {}
+
+    bool operator()(CacheBlk &blk) M5_ATTR_OVERRIDE {
+        return (cache.*visitor)(blk);
+    }
+
+  private:
+    Cache &cache;
+    VisitorPtr visitor;
+};
+
+/**
+ * Cache block visitor that determines if there are dirty blocks in a
+ * cache.
+ *
+ * Use with the forEachBlk method in the tag array to determine if the
+ * array contains dirty blocks.
+ */
+class CacheBlkIsDirtyVisitor : public CacheBlkVisitor
+{
+  public:
+    CacheBlkIsDirtyVisitor()
+        : _isDirty(false) {}
+
+    bool operator()(CacheBlk &blk) M5_ATTR_OVERRIDE {
+        if (blk.isDirty()) {
+            _isDirty = true;
+            return false;
+        } else {
+            return true;
+        }
+    }
+
+    /**
+     * Does the array contain a dirty line?
+     *
+     * \return true if yes, false otherwise.
+     */
+    bool isDirty() const { return _isDirty; };
+
+  private:
+    bool _isDirty;
+};
+
+#endif // __MEM_CACHE_CACHE_HH__

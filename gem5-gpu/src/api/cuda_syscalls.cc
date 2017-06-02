@@ -429,6 +429,7 @@ cudaError_t graphicsMalloc(void **devPtr, size_t size) {
     DPRINTF(GPUSyscalls, "gem5 GPU Syscall: graphicsMalloc(devPtr = %x, size = %d)\n", devPtr, size);
     CudaGPU *cudaGPU = CudaGPU::getCudaGPU(g_active_device);
     *devPtr = (void*) cudaGPU->mallocGraphicsMem(size);
+    printf("graphics malloc ptr=%x, size =%d\n", *devPtr, size);
     if (*devPtr)
         return g_last_cudaError = cudaSuccess;
     else
@@ -498,8 +499,9 @@ graphicsMallocArray(struct cudaArray **array, const struct cudaChannelFormatDesc
     (*array)->height = height;
     (*array)->size = size;
     (*array)->dimensions = 2;
-    ((*array)->devPtr32)= cudaGPU->mallocGraphicsMem(size);
-    ((*array)->devPtr) = (void*) (long long) ((*array)->devPtr32);
+    ((*array)->devPtr) = (void*) cudaGPU->mallocGraphicsMem(size);
+    printf("assignment devPtr = %x, size=%d\n",  ((*array)->devPtr), size );
+    ((*array)->devPtr32)=  NULL;
     ((*array)->texData) = (unsigned char*) malloc(texSize);
     memcpy((*array)->texData, texData, texSize);
     
@@ -744,10 +746,30 @@ graphicsMemcpyToSymbol(const char *hostVar, const void *src, size_t count, size_
     return g_last_cudaError;
 }
 
-//__host__ cudaError_t CUDARTAPI cudaMemcpyFromSymbol(void *dst, const char *symbol, size_t count, size_t offset __dv(0), enum cudaMemcpyKind kind __dv(cudaMemcpyDeviceToHost)) {
 void
 cudaMemcpyFromSymbol(ThreadContext *tc, gpusyscall_t *call_params) {
-    cuda_not_implemented(__my_func__,__LINE__);
+    GPUSyscallHelper helper(tc, call_params);
+
+    Addr sim_dst = *((Addr*)helper.getParam(0, true));
+    Addr sim_symbol = *((Addr*)helper.getParam(1, true));
+    size_t sim_count = *((size_t*)helper.getParam(2));
+    size_t sim_offset = *((size_t*)helper.getParam(3));
+    enum cudaMemcpyKind sim_kind = *((enum cudaMemcpyKind*)helper.getParam(4));
+
+    CudaGPU *cudaGPU = CudaGPU::getCudaGPU(g_active_device);
+
+    DPRINTF(GPUSyscalls, "gem5 GPU Syscall: cudaMemcpyToSymbol(symbol = %x, src = %x, count = %d, offset = %d, kind = %s)\n",
+            sim_symbol, sim_dst, sim_count, sim_offset, cudaMemcpyKindStrings[sim_kind]);
+
+    assert(sim_kind == cudaMemcpyDeviceToHost);
+    stream_operation mem_op((const char*)sim_symbol, (void*)sim_dst, sim_count, sim_offset, NULL);
+    mem_op.setThreadContext(tc);
+    g_stream_manager->push(mem_op);
+
+    bool suspend = cudaGPU->needsToBlock();
+    assert(suspend);
+    g_last_cudaError = cudaSuccess;
+    helper.setReturn((uint8_t*)&suspend, sizeof(bool));
 }
 
 /*******************************************************************************
@@ -760,7 +782,52 @@ cudaMemcpyFromSymbol(ThreadContext *tc, gpusyscall_t *call_params) {
 void
 cudaMemcpyAsync(ThreadContext *tc, gpusyscall_t *call_params)
 {
-    cuda_not_implemented(__my_func__,__LINE__);
+    GPUSyscallHelper helper(tc, call_params);
+
+    Addr sim_dst = *((Addr*)helper.getParam(0, true));
+    Addr sim_src = *((Addr*)helper.getParam(1, true));
+    size_t sim_count = *((size_t*)helper.getParam(2));
+    enum cudaMemcpyKind sim_kind = *((enum cudaMemcpyKind*)helper.getParam(3));
+    cudaStream_t sim_stream = *((cudaStream_t*)helper.getParam(4));
+
+    CudaGPU *cudaGPU = CudaGPU::getCudaGPU(g_active_device);
+
+    DPRINTF(GPUSyscalls, "gem5 GPU Syscall: cudaMemcpyAsync(dst = %x, src = %x, count = %d, kind = %s, stream = %x)\n",
+            sim_dst, sim_src, sim_count, cudaMemcpyKindStrings[sim_kind], sim_stream);
+
+    bool suspend = false;
+    if (sim_count == 0) {
+        g_last_cudaError = cudaSuccess;
+        helper.setReturn((uint8_t*)&suspend, sizeof(bool));
+        return;
+    }
+
+    if (sim_kind == cudaMemcpyHostToDevice) {
+        stream_operation mem_op((const void*)sim_src, (size_t)sim_dst, sim_count, sim_stream);
+        mem_op.setThreadContext(tc);
+        g_stream_manager->push(mem_op);
+    } else if (sim_kind == cudaMemcpyDeviceToHost) {
+        stream_operation mem_op((size_t)sim_src, (void*)sim_dst, sim_count, sim_stream);
+        mem_op.setThreadContext(tc);
+        g_stream_manager->push(mem_op);
+    } else if (sim_kind == cudaMemcpyDeviceToDevice) {
+        stream_operation mem_op((size_t)sim_src, (size_t)sim_dst, sim_count, sim_stream);
+        mem_op.setThreadContext(tc);
+        g_stream_manager->push(mem_op);
+    } else {
+        panic("GPGPU-Sim PTX: cudaMemcpy - ERROR : unsupported cudaMemcpyKind\n");
+    }
+
+    // EDGE: FIXME: Need to figure out if we have to block here or not. This is an Async call... probably
+    // don't need to block. But possibly some other side effects?
+    //suspend = cudaGPU->needsToBlock();
+    suspend = false;
+    //assert(suspend);
+    g_last_cudaError = cudaSuccess;
+    helper.setReturn((uint8_t*)&suspend, sizeof(bool));
+    
+    
+//    cuda_not_implemented(__my_func__,__LINE__);
 }
 
 //	__host__ cudaError_t CUDARTAPI cudaMemcpyToArrayAsync(struct cudaArray *dst, size_t wOffset, size_t hOffset, const void *src, size_t count, enum cudaMemcpyKind kind, cudaStream_t stream)
@@ -803,11 +870,13 @@ cudaBlockThread(ThreadContext *tc, gpusyscall_t *call_params)
     // be set
     GPUSyscallHelper helper(tc, call_params);
     Addr sim_is_free_ptr = *((Addr*)helper.getParam(0, true));
+    CUstream_st* sim_stream = *((CUstream_st**)helper.getParam(1, true));
 
-    DPRINTF(GPUSyscalls, "gem5 GPU Syscall: cudaBlockThread(tc = %x, is_free_ptr = %x)\n", tc, sim_is_free_ptr);
-
+    DPRINTF(GPUSyscalls, "gem5 GPU Syscall: cudaBlockThread(tc = %x, is_free_ptr = %x, stream=%x)\n", 
+                                                                       tc, sim_is_free_ptr, sim_stream);
+    
     CudaGPU *cudaGPU = CudaGPU::getCudaGPU(g_active_device);
-    cudaGPU->blockThread(tc, sim_is_free_ptr);
+    cudaGPU->blockThread(tc, sim_is_free_ptr, sim_stream);
 }
 
 /*******************************************************************************
@@ -828,8 +897,10 @@ cudaMemset(ThreadContext *tc, gpusyscall_t *call_params)
 
     CudaGPU *cudaGPU = CudaGPU::getCudaGPU(g_active_device);
 
-    if (!cudaGPU->isManagingGPUMemory()) {
-        // Signal to libcuda that it should handle the memset
+    if (!cudaGPU->isManagingGPUMemory() && !cudaGPU->isAccessingHostPagetable()) {
+        // Signal to libcuda that it should handle the memset. This is required
+        // if the copy engine may be unable to access the CPU's pagetable to get
+        // address translations (unified memory without access host pagetable)
         g_last_cudaError = cudaErrorApiFailureBase;
         helper.setReturn((uint8_t*)&g_last_cudaError, sizeof(cudaError_t));
     } else {
@@ -838,6 +909,9 @@ cudaMemset(ThreadContext *tc, gpusyscall_t *call_params)
         g_stream_manager->push(mem_op);
         g_last_cudaError = cudaSuccess;
         helper.setReturn((uint8_t*)&g_last_cudaError, sizeof(cudaError_t));
+
+        bool suspend = cudaGPU->needsToBlock();
+        assert(suspend);
     }
 }
 
@@ -1062,11 +1136,14 @@ cudaConfigureCall(ThreadContext *tc, gpusyscall_t *call_params)
     dim3 sim_blockDim = *((dim3*)helper.getParam(1));
     size_t sim_sharedMem = *((size_t*)helper.getParam(2));
     cudaStream_t sim_stream = *((cudaStream_t*)helper.getParam(3));
+    
     if (sim_stream) {
-        panic("gem5-fusion doesn't currently support CUDA streams");
+        //panic("gem5-fusion doesn't currently support CUDA streams");
+        DPRINTF(GPUSyscalls, "gem5 GPU Syscall: Using non-default stream!\n");
     }
-    assert(!sim_stream); // We do not currently support CUDA streams
-    DPRINTF(GPUSyscalls, "gem5 GPU Syscall: cudaConfigureCall(gridDim = (%u,%u,%u), blockDim = (%u,%u,%u), sharedMem = %u, stream)\n", sim_gridDim.x, sim_gridDim.y, sim_gridDim.z, sim_blockDim.x, sim_blockDim.y, sim_blockDim.z, sim_sharedMem);
+
+    //assert(!sim_stream); // We do not currently support CUDA streams
+    DPRINTF(GPUSyscalls, "gem5 GPU Syscall: cudaConfigureCall(gridDim = (%u,%u,%u), blockDim = (%u,%u,%u), sharedMem = %u, stream = %x)\n", sim_gridDim.x, sim_gridDim.y, sim_gridDim.z, sim_blockDim.x, sim_blockDim.y, sim_blockDim.z, sim_sharedMem, sim_stream);
 
     g_cuda_launch_stack.push_back(kernel_config(sim_gridDim, sim_blockDim, sim_sharedMem, sim_stream));
     g_last_cudaError = cudaSuccess;
@@ -1195,6 +1272,8 @@ cudaFuncGetAttributes(ThreadContext *tc, gpusyscall_t *call_params)
     Addr sim_attr = *((Addr*)helper.getParam(0, true));
     Addr sim_hostFun = *((Addr*)helper.getParam(1, true));
 
+    DPRINTF(GPUSyscalls, "gem5 GPU Syscall: cudaFuncGetAttributes(attr* = %x, hostFun* = %x)\n", sim_attr, sim_hostFun);
+
     CudaGPU *cudaGPU = CudaGPU::getCudaGPU(g_active_device);
     function_info *entry = cudaGPU->get_kernel((const char*)sim_hostFun);
 
@@ -1227,13 +1306,26 @@ cudaFuncGetAttributes(ThreadContext *tc, gpusyscall_t *call_params)
 void
 cudaStreamCreate(ThreadContext *tc, gpusyscall_t *call_params)
 {
-    cuda_not_implemented(__my_func__,__LINE__);
+    GPUSyscallHelper helper(tc, call_params);
+    Addr sim_stream = *((Addr*)helper.getParam(0, true));
+    
+    cudaStream_t stream = new CUstream_st();
+    DPRINTF(GPUSyscalls, "gem5 GPU Syscall: cudaStreamCreate <%x>\n", stream);
+
+    // Add stream to GPGPU-Sim
+    g_stream_manager->add_stream(stream);
+
+    // Set stream to return to host code
+    helper.writeBlob(sim_stream, (uint8_t*)&stream, sizeof(cudaStream_t));
+
+    g_last_cudaError = cudaSuccess;
+    helper.setReturn((uint8_t*)&g_last_cudaError, sizeof(cudaError_t));
 }
 
 cudaError_t
 graphicsStreamCreate(cudaStream_t *stream)
 {
-    printf("gem5 GPU Syscall: graphicsStreamCreate(stream = %x)\n",stream);
+    DPRINTF(GPUSyscalls, "gem5 GPU Syscall: graphicsStreamCreate(stream = %x)\n",stream);
 #if (CUDART_VERSION >= 3000)
 	*stream = new struct CUstream_st();
 	g_stream_manager->add_stream(*stream);
@@ -1248,16 +1340,24 @@ graphicsStreamCreate(cudaStream_t *stream)
 void
 cudaStreamDestroy(ThreadContext *tc, gpusyscall_t *call_params)
 {
-    cuda_not_implemented(__my_func__,__LINE__);
+    GPUSyscallHelper helper(tc, call_params);
+    CUstream_st* sim_stream = *((CUstream_st**)helper.getParam(0, true));
+    
+    DPRINTF(GPUSyscalls, "gem5 GPU Syscall: cudaStreamDestroy <%x>\n", sim_stream);
+    assert( g_stream_manager->streamEmpty(sim_stream) );
+    g_stream_manager->destroy_stream((cudaStream_t)sim_stream);
+
+    g_last_cudaError = cudaSuccess;
+    helper.setReturn((uint8_t*)&g_last_cudaError, sizeof(cudaError_t));
 }
 
 cudaError_t
 graphicsStreamDestroy(cudaStream_t stream)
 {
-//    printf("gem5 GPU Syscall: graphicsStreamDestroy(stream = %x)\n",stream);
-//#if (CUDART_VERSION >= 3000)
-//	g_stream_manager->destroy_stream(stream);
-//#endif
+    DPRINTF(GPUSyscalls, "gem5 GPU Syscall: graphicsStreamDestroy(stream = %x)\n",stream);
+#if (CUDART_VERSION >= 3000)
+	g_stream_manager->destroy_stream(stream);
+#endif
 	return g_last_cudaError = cudaSuccess;
 }
 
@@ -1265,14 +1365,41 @@ graphicsStreamDestroy(cudaStream_t stream)
 void
 cudaStreamSynchronize(ThreadContext *tc, gpusyscall_t *call_params)
 {
-    cuda_not_implemented(__my_func__,__LINE__);
+    GPUSyscallHelper helper(tc, call_params);
+    cudaStream_t stream = *((cudaStream_t*)helper.getParam(0, true));
+
+    DPRINTF(GPUSyscalls, "gem5 GPU Syscall: cudaStreamSynchronize <%x>\n", stream);
+    bool suspend = false;
+
+    if( stream == NULL ) {
+        g_last_cudaError = cudaErrorInvalidResourceHandle; // Doesn't really do anything right now
+    } else {
+        CudaGPU *cudaGPU = CudaGPU::getCudaGPU(g_active_device);
+        suspend = cudaGPU->needsToBlock(stream);
+        g_last_cudaError = cudaSuccess;
+        // Legacy GPGPU-Sim. This will incorrectly stall the CPU
+        // stream->synchronize();
+    }
+
+    helper.setReturn((uint8_t*)&suspend, sizeof(bool));
 }
 
 // __host__ cudaError_t CUDARTAPI cudaStreamQuery(cudaStream_t stream)
 void
 cudaStreamQuery(ThreadContext *tc, gpusyscall_t *call_params)
 {
-    cuda_not_implemented(__my_func__,__LINE__);
+    GPUSyscallHelper helper(tc, call_params);
+    cudaStream_t stream = ((cudaStream_t)helper.getParam(0, true));
+
+    DPRINTF(GPUSyscalls, "gem5 GPU Syscall: cudaStreamSynchronize <%x>\n", stream);
+
+    if( stream == NULL ) {
+        g_last_cudaError = cudaErrorInvalidResourceHandle;
+    } else {
+        g_last_cudaError = stream->empty() ? cudaSuccess : cudaErrorNotReady;
+    }
+
+    helper.setReturn((uint8_t*)&g_last_cudaError, sizeof(cudaError_t));
 }
 
 /*******************************************************************************
@@ -1457,7 +1584,7 @@ void registerFatBinaryTop(GPUSyscallHelper *helper, Addr sim_fatCubin, size_t si
     // Get primary arguments
     __cudaFatCudaBinary* fat_cubin = new __cudaFatCudaBinary;
 
-#ifdef TARGET_ARM
+#if THE_ISA == ARM_ISA
     // Size of fat binary in 32-bit simulated system is 64B
     #define FATBIN_PACKAGE_SIZE 64
     // Add 4B to keep last 64-bit pointer math from reading other stack junk
@@ -1479,9 +1606,11 @@ void registerFatBinaryTop(GPUSyscallHelper *helper, Addr sim_fatCubin, size_t si
     fat_cubin->dependends = unpackPointer<__cudaFatCudaBinaryRec*>(fatbin_package, 52);
     fat_cubin->characteristic = unpackData<unsigned int>(fatbin_package, 56);
     fat_cubin->elf = unpackPointer<__cudaFatElfEntry*>(fatbin_package, 60);
-#else
+#elif THE_ISA == X86_ISA
     // x86 64-bit, we can just read directly from memory
     helper->readBlob(sim_fatCubin, (uint8_t*)fat_cubin, sizeof(struct __cudaFatCudaBinaryRec));
+#else
+    #error Currently gem5-gpu is only known to support x86 and ARM
 #endif
 
     if (sim_binSize < 0) {
@@ -1498,7 +1627,7 @@ void registerFatBinaryTop(GPUSyscallHelper *helper, Addr sim_fatCubin, size_t si
             memcpy(temp_ptx_entry_buf, ptx_entries, sizeof(__cudaFatPtxEntry) * ptx_count);
         }
 
-#ifdef TARGET_ARM
+#if THE_ISA == ARM_ISA
         // Size of PTX entry in 32-bit simulated system is 8B
         #define PTXENTRY_PACKAGE_SIZE 8
         // Add 4B to keep last 64-bit pointer math from reading other stack junk
@@ -1513,7 +1642,7 @@ void registerFatBinaryTop(GPUSyscallHelper *helper, Addr sim_fatCubin, size_t si
                                     unpackPointer<char*>(ptx_entry_package, 0);
         temp_ptx_entry_ptr[ptx_count].ptx =
                                     unpackPointer<char*>(ptx_entry_package, 4);
-#else
+#elif THE_ISA == X86_ISA
         helper->readBlob((Addr)(fat_cubin->ptx + ptx_count),
                 temp_ptx_entry_buf + sizeof(__cudaFatPtxEntry) * ptx_count,
                 sizeof(__cudaFatPtxEntry));

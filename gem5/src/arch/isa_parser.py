@@ -1,3 +1,15 @@
+# Copyright (c) 2014 ARM Limited
+# All rights reserved
+#
+# The license below extends only to copyright in the software and shall
+# not be construed as granting a license to any other intellectual
+# property including but not limited to intellectual property relating
+# to a hardware implementation of the functionality of the software
+# licensed hereunder.  You may use the software subject to the license
+# terms below provided that you ensure that this notice is replicated
+# unmodified and in its entirety in all distributions of the software,
+# modified or unmodified, in source code or in binary form.
+#
 # Copyright (c) 2003-2005 The Regents of The University of Michigan
 # Copyright (c) 2013 Advanced Micro Devices, Inc.
 # All rights reserved.
@@ -844,7 +856,9 @@ class PCStateOperand(Operand):
         ctype = 'TheISA::PCState'
         if self.isPCPart():
             ctype = self.ctype
-        return "%s %s;\n" % (ctype, self.base_name)
+        # Note that initializations in the declarations are solely
+        # to avoid 'uninitialized variable' errors from the compiler.
+        return '%s %s = 0;\n' % (ctype, self.base_name)
 
     def isPCState(self):
         return 1
@@ -1119,17 +1133,7 @@ class InstObjParams(object):
 
         self.flags = self.operands.concatAttrLists('flags')
 
-        # Make a basic guess on the operand class (function unit type).
-        # These are good enough for most cases, and can be overridden
-        # later otherwise.
-        if 'IsStore' in self.flags:
-            self.op_class = 'MemWriteOp'
-        elif 'IsLoad' in self.flags or 'IsPrefetch' in self.flags:
-            self.op_class = 'MemReadOp'
-        elif 'IsFloating' in self.flags:
-            self.op_class = 'FloatAddOp'
-        else:
-            self.op_class = 'IntAluOp'
+        self.op_class = None
 
         # Optional arguments are assumed to be either StaticInst flags
         # or an OpClass value.  To avoid having to import a complete
@@ -1143,6 +1147,18 @@ class InstObjParams(object):
             else:
                 error('InstObjParams: optional arg "%s" not recognized '
                       'as StaticInst::Flag or OpClass.' % oa)
+
+        # Make a basic guess on the operand class if not set.
+        # These are good enough for most cases.
+        if not self.op_class:
+            if 'IsStore' in self.flags:
+                self.op_class = 'MemWriteOp'
+            elif 'IsLoad' in self.flags or 'IsPrefetch' in self.flags:
+                self.op_class = 'MemReadOp'
+            elif 'IsFloating' in self.flags:
+                self.op_class = 'FloatAddOp'
+            else:
+                self.op_class = 'IntAluOp'
 
         # add flag initialization to contructor here to include
         # any flags added via opt_args
@@ -1178,13 +1194,25 @@ class Stack(list):
 #
 
 class ISAParser(Grammar):
-    def __init__(self, output_dir, cpu_models):
+    class CpuModel(object):
+        def __init__(self, name, filename, includes, strings):
+            self.name = name
+            self.filename = filename
+            self.includes = includes
+            self.strings = strings
+
+    def __init__(self, output_dir):
         super(ISAParser, self).__init__()
         self.output_dir = output_dir
 
         self.filename = None # for output file watermarking/scaremongering
 
-        self.cpuModels = cpu_models
+        self.cpuModels = [
+            ISAParser.CpuModel('ExecContext',
+                               'generic_cpu_exec.cc',
+                               '#include "cpu/exec_context.hh"',
+                               { "CPU_exec_context" : "ExecContext" }),
+            ]
 
         # variable to hold templates
         self.templateMap = {}
@@ -1960,53 +1988,60 @@ StaticInstPtr
             error(t, 'instruction format "%s" not defined.' % t[1])
 
     # Nested decode block: if the value of the current field matches
-    # the specified constant, do a nested decode on some other field.
+    # the specified constant(s), do a nested decode on some other field.
     def p_decode_stmt_decode(self, t):
-        'decode_stmt : case_label COLON decode_block'
-        label = t[1]
+        'decode_stmt : case_list COLON decode_block'
+        case_list = t[1]
         codeObj = t[3]
         # just wrap the decoding code from the block as a case in the
         # outer switch statement.
-        codeObj.wrap_decode_block('\n%s:\n' % label)
-        codeObj.has_decode_default = (label == 'default')
+        codeObj.wrap_decode_block('\n%s\n' % ''.join(case_list))
+        codeObj.has_decode_default = (case_list == ['default:'])
         t[0] = codeObj
 
     # Instruction definition (finally!).
     def p_decode_stmt_inst(self, t):
-        'decode_stmt : case_label COLON inst SEMI'
-        label = t[1]
+        'decode_stmt : case_list COLON inst SEMI'
+        case_list = t[1]
         codeObj = t[3]
-        codeObj.wrap_decode_block('\n%s:' % label, 'break;\n')
-        codeObj.has_decode_default = (label == 'default')
+        codeObj.wrap_decode_block('\n%s' % ''.join(case_list), 'break;\n')
+        codeObj.has_decode_default = (case_list == ['default:'])
         t[0] = codeObj
 
-    # The case label is either a list of one or more constants or
-    # 'default'
-    def p_case_label_0(self, t):
-        'case_label : intlit_list'
-        def make_case(intlit):
-            if intlit >= 2**32:
-                return 'case ULL(%#x)' % intlit
-            else:
-                return 'case %#x' % intlit
-        t[0] = ': '.join(map(make_case, t[1]))
+    # The constant list for a decode case label must be non-empty, and must
+    # either be the keyword 'default', or made up of one or more
+    # comma-separated integer literals or strings which evaluate to
+    # constants when compiled as C++.
+    def p_case_list_0(self, t):
+        'case_list : DEFAULT'
+        t[0] = ['default:']
 
-    def p_case_label_1(self, t):
-        'case_label : DEFAULT'
-        t[0] = 'default'
+    def prep_int_lit_case_label(self, lit):
+        if lit >= 2**32:
+            return 'case ULL(%#x): ' % lit
+        else:
+            return 'case %#x: ' % lit
 
-    #
-    # The constant list for a decode case label must be non-empty, but
-    # may have one or more comma-separated integer literals in it.
-    #
-    def p_intlit_list_0(self, t):
-        'intlit_list : INTLIT'
-        t[0] = [t[1]]
+    def prep_str_lit_case_label(self, lit):
+        return 'case %s: ' % lit
 
-    def p_intlit_list_1(self, t):
-        'intlit_list : intlit_list COMMA INTLIT'
+    def p_case_list_1(self, t):
+        'case_list : INTLIT'
+        t[0] = [self.prep_int_lit_case_label(t[1])]
+
+    def p_case_list_2(self, t):
+        'case_list : STRLIT'
+        t[0] = [self.prep_str_lit_case_label(t[1])]
+
+    def p_case_list_3(self, t):
+        'case_list : case_list COMMA INTLIT'
         t[0] = t[1]
-        t[0].append(t[3])
+        t[0].append(self.prep_int_lit_case_label(t[3]))
+
+    def p_case_list_4(self, t):
+        'case_list : case_list COMMA STRLIT'
+        t[0] = t[1]
+        t[0].append(self.prep_str_lit_case_label(t[3]))
 
     # Define an instruction using the current instruction format
     # (specified by an enclosing format block).
@@ -2376,8 +2411,6 @@ StaticInstPtr
             e.exit(self.fileNameStack)
 
 # Called as script: get args from command line.
-# Args are: <path to cpu_models.py> <isa desc file> <output dir> <cpu models>
+# Args are: <isa desc file> <output dir>
 if __name__ == '__main__':
-    execfile(sys.argv[1])  # read in CpuModel definitions
-    cpu_models = [CpuModel.dict[cpu] for cpu in sys.argv[4:]]
-    ISAParser(sys.argv[3], cpu_models).parse_isa_desc(sys.argv[2])
+    ISAParser(sys.argv[2]).parse_isa_desc(sys.argv[1])

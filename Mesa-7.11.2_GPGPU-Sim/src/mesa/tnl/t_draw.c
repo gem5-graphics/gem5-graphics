@@ -446,7 +446,24 @@ GLboolean _tnl_draw_prims( struct gl_context *ctx,
 {
    TNLcontext *tnl = TNL_CONTEXT(ctx);
    const GLuint TEST_SPLIT = 0;
-   const GLint max = TEST_SPLIT ? 8 : tnl->vb.Size - MAX_CLIPPED_VERTICES;
+   struct gl_vertex_program * vprogram = ctx->VertexProgram._Current;
+   GLint max = TEST_SPLIT ? 8 : tnl->vb.Size - MAX_CLIPPED_VERTICES;
+   GLuint numOutputs;
+   int ver;
+   //TODO: set as parameter
+   //const GLuint TEST_SPLIT = 0;
+   //const GLint max = TEST_SPLIT ? 8 : tnl->vb.Size - MAX_CLIPPED_VERTICES;
+   if(vprogram){
+      numOutputs = 0;
+      for (ver = 0; ver < VERT_RESULT_MAX; ver++) {
+         if (vprogram->Base.OutputsWritten & BITFIELD64_BIT(ver)) {
+            numOutputs++;
+         }
+      }
+      max = max/numOutputs;
+   } 
+
+
    GLint max_basevertex = prim->basevertex;
    GLuint i;
 

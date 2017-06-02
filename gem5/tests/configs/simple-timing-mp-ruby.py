@@ -71,14 +71,13 @@ cpus = [ TimingSimpleCPU(cpu_id=i) for i in xrange(nb_cores) ]
 options.num_cpus = nb_cores
 
 # system simulated
-system = System(cpu = cpus, physmem = SimpleMemory(),
-                clk_domain = SrcClockDomain(clock = '1GHz'))
+system = System(cpu = cpus, clk_domain = SrcClockDomain(clock = '1GHz'))
 
 # Create a seperate clock domain for components that should run at
 # CPUs frequency
 system.cpu.clk_domain = SrcClockDomain(clock = '2GHz')
 
-Ruby.create_system(options, system)
+Ruby.create_system(options, False, system)
 
 # Create a separate clock domain for Ruby
 system.ruby.clk_domain = SrcClockDomain(clock = options.ruby_clock)

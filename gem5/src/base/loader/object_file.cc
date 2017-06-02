@@ -50,11 +50,12 @@
 
 using namespace std;
 
-ObjectFile::ObjectFile(const string &_filename, int _fd,
+ObjectFile::ObjectFile(const string &_filename,
                        size_t _len, uint8_t *_data,
                        Arch _arch, OpSys _opSys)
-    : filename(_filename), descriptor(_fd), fileData(_data), len(_len),
-      arch(_arch), opSys(_opSys), globalPtr(0)
+    : filename(_filename), fileData(_data), len(_len),
+      arch(_arch), opSys(_opSys), entry(0), globalPtr(0),
+      text{0, nullptr, 0}, data{0, nullptr, 0}, bss{0, nullptr, 0}
 {
 }
 
@@ -94,11 +95,6 @@ ObjectFile::loadSections(PortProxy& memProxy, Addr addrMask, Addr offset)
 void
 ObjectFile::close()
 {
-    if (descriptor >= 0) {
-        ::close(descriptor);
-        descriptor = -1;
-    }
-
     if (fileData) {
         ::munmap((char*)fileData, len);
         fileData = NULL;
@@ -116,40 +112,41 @@ createObjectFile(const string &fname, bool raw)
     }
 
     // find the length of the file by seeking to the end
-    size_t len = (size_t)lseek(fd, 0, SEEK_END);
+    off_t off = lseek(fd, 0, SEEK_END);
+    fatal_if(off < 0, "Failed to determine size of object file %s\n", fname);
+    size_t len = static_cast<size_t>(off);
 
     // mmap the whole shebang
     uint8_t *fileData =
         (uint8_t *)mmap(NULL, len, PROT_READ, MAP_SHARED, fd, 0);
+    close(fd);
     if (fileData == MAP_FAILED) {
-        close(fd);
         return NULL;
     }
 
     ObjectFile *fileObj = NULL;
 
     // figure out what we have here
-    if ((fileObj = EcoffObject::tryFile(fname, fd, len, fileData)) != NULL) {
+    if ((fileObj = ElfObject::tryFile(fname, len, fileData)) != NULL) {
         return fileObj;
     }
 
-    if ((fileObj = AoutObject::tryFile(fname, fd, len, fileData)) != NULL) {
+    if ((fileObj = EcoffObject::tryFile(fname, len, fileData)) != NULL) {
         return fileObj;
     }
 
-    if ((fileObj = ElfObject::tryFile(fname, fd, len, fileData)) != NULL) {
+    if ((fileObj = AoutObject::tryFile(fname, len, fileData)) != NULL) {
         return fileObj;
     }
 
-    if ((fileObj = DtbObject::tryFile(fname, fd, len, fileData)) != NULL) {
+    if ((fileObj = DtbObject::tryFile(fname, len, fileData)) != NULL) {
         return fileObj;
     }
 
     if (raw)
-        return RawObject::tryFile(fname, fd, len, fileData);
+        return RawObject::tryFile(fname, len, fileData);
 
     // don't know what it is
-    close(fd);
     munmap((char*)fileData, len);
     return NULL;
 }

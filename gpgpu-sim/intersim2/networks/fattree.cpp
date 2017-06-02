@@ -56,7 +56,7 @@
  //#define FATTREE_DEBUG
 
 FatTree::FatTree( const Configuration& config,const string & name )
-  : Network( config ,name)
+  : ISNetwork( config ,name)
 {
   
 

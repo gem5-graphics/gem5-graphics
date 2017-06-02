@@ -42,7 +42,7 @@ class CudaGPU(ClockedObject):
     cxx_header = "gpu/gpgpu-sim/cuda_gpu.hh"
 
     sys = Param.System(Parent.any, "system sp will run on")
-    shared_mem_delay = Param.Int(1, "Delay to access shared memory in gpgpu-sim ticks")
+    kernel_delay_enabled = Param.Bool(True, "Enable/disable delay for kernel launchs and returns")
     kernel_launch_delay = Param.Float(0.00000025, "Kernel launch delay in seconds")
     kernel_return_delay = Param.Float(0.0000001, "Kernel return delay in seconds")
 
@@ -58,6 +58,8 @@ class CudaGPU(ClockedObject):
 
     # When using a segmented physical address space, the SPA can manage memory
     manage_gpu_memory = Param.Bool(False, "Handle all GPU memory allocations in this SPA")
+    access_host_pagetable = Param.Bool(False, \
+                "Whether to allow accesses to host page table")
     gpu_memory_range = Param.AddrRange(AddrRange('1kB'), "The address range for the GPU memory space")
 
     shader_mmu = Param.ShaderMMU(ShaderMMU(), "Memory managment unit for this GPU")

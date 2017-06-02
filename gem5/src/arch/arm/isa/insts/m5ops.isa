@@ -576,5 +576,4 @@ let {{
     header_output += BasicDeclare.subst(m5gpuIop)
     decoder_output += BasicConstructor.subst(m5gpuIop)
     exec_output += PredOpExecute.subst(m5gpuIop)
-
 }};

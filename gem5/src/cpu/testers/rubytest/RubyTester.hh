@@ -47,11 +47,10 @@
 #include <vector>
 
 #include "cpu/testers/rubytest/CheckTable.hh"
-#include "mem/ruby/common/Global.hh"
-#include "mem/ruby/common/SubBlock.hh"
-#include "mem/ruby/system/RubyPort.hh"
 #include "mem/mem_object.hh"
 #include "mem/packet.hh"
+#include "mem/ruby/common/SubBlock.hh"
+#include "mem/ruby/common/TypeDefines.hh"
 #include "params/RubyTester.hh"
 
 class RubyTester : public MemObject
@@ -75,7 +74,7 @@ class RubyTester : public MemObject
 
       protected:
         virtual bool recvTimingResp(PacketPtr pkt);
-        virtual void recvRetry()
+        virtual void recvReqRetry()
         { panic("%s does not expect a retry\n", name()); }
     };
 
@@ -83,7 +82,7 @@ class RubyTester : public MemObject
     {
         SubBlock subBlock;
 
-        SenderState(Address addr, int size) : subBlock(addr, size) {}
+        SenderState(Addr addr, int size) : subBlock(addr, size) {}
 
     };
 
@@ -141,13 +140,13 @@ class RubyTester : public MemObject
     RubyTester& operator=(const RubyTester& obj);
 
     CheckTable* m_checkTable_ptr;
-    std::vector<RubyTime> m_last_progress_vector;
+    std::vector<Cycles> m_last_progress_vector;
 
     int m_num_cpus;
-    uint64 m_checks_completed;
+    uint64_t m_checks_completed;
     std::vector<MasterPort*> writePorts;
     std::vector<MasterPort*> readPorts;
-    uint64 m_checks_to_complete;
+    uint64_t m_checks_to_complete;
     int m_deadlock_threshold;
     int m_num_writers;
     int m_num_readers;

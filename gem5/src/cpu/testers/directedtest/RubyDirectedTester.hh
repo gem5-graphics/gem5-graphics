@@ -35,9 +35,8 @@
 #include <vector>
 
 #include "mem/ruby/common/DataBlock.hh"
-#include "mem/ruby/common/Global.hh"
 #include "mem/ruby/common/SubBlock.hh"
-#include "mem/ruby/system/RubyPort.hh"
+#include "mem/ruby/common/TypeDefines.hh"
 #include "mem/mem_object.hh"
 #include "mem/packet.hh"
 #include "params/RubyDirectedTester.hh"
@@ -60,7 +59,7 @@ class RubyDirectedTester : public MemObject
 
       protected:
         virtual bool recvTimingResp(PacketPtr pkt);
-        virtual void recvRetry()
+        virtual void recvReqRetry()
         { panic("%s does not expect a retry\n", name()); }
     };
 
@@ -110,9 +109,9 @@ class RubyDirectedTester : public MemObject
     RubyDirectedTester(const RubyDirectedTester& obj);
     RubyDirectedTester& operator=(const RubyDirectedTester& obj);
 
-    uint64 m_requests_completed;
+    uint64_t m_requests_completed;
     std::vector<MasterPort*> ports;
-    uint64 m_requests_to_complete;
+    uint64_t m_requests_to_complete;
     DirectedGenerator* generator;
 };
 

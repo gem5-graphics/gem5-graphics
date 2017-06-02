@@ -44,7 +44,7 @@
 #include "intersim2/routefunc.hpp"
 #include "network.hpp"
 
-class CMesh : public Network {
+class CMesh : public ISNetwork {
 public:
   CMesh( const Configuration &config, const string & name );
   int GetN() const;

@@ -103,6 +103,8 @@ void stream_operation::do_operation( gpgpu_sim *gpu )
     if( is_noop() ) 
         return;
 
+    bool ret = true;
+
     assert(!m_done && m_stream);
     m_stream->setThreadContext(tc);
     if(g_debug_execution >= 3)
@@ -111,28 +113,27 @@ void stream_operation::do_operation( gpgpu_sim *gpu )
     case stream_memcpy_host_to_device:
         if(g_debug_execution >= 3)
             printf("memcpy host-to-device\n");
-        gpu->gem5CudaGPU->memcpy((void *)m_host_address_src,(void *)m_device_address_dst,m_cnt, m_stream, m_type);
+        ret = gpu->gem5CudaGPU->memcpy((void *)m_host_address_src,(void *)m_device_address_dst,m_cnt, m_stream, m_type);
         break;
     case stream_memcpy_device_to_host:
         if(g_debug_execution >= 3)
             printf("memcpy device-to-host\n");
-        gpu->gem5CudaGPU->memcpy((void *)m_device_address_src,m_host_address_dst,m_cnt, m_stream, m_type);
+        ret = gpu->gem5CudaGPU->memcpy((void *)m_device_address_src,m_host_address_dst,m_cnt, m_stream, m_type);
         break;
     case stream_memcpy_device_to_device:
         if(g_debug_execution >= 3)
             printf("memcpy device-to-device\n");
-        gpu->gem5CudaGPU->memcpy((void *)m_device_address_src,(void *)m_device_address_dst,m_cnt, m_stream, m_type);
+        ret = gpu->gem5CudaGPU->memcpy((void *)m_device_address_src,(void *)m_device_address_dst,m_cnt, m_stream, m_type);
         break;
     case stream_memcpy_to_symbol:
         if(g_debug_execution >= 3)
             printf("memcpy to symbol\n");
-        gpu->gem5CudaGPU->memcpy_symbol(m_symbol, m_host_address_src, m_cnt, m_offset, 1, m_stream);
+        ret = gpu->gem5CudaGPU->memcpy_to_symbol(m_symbol, m_host_address_src, m_cnt, m_offset, m_stream);
         break;
     case stream_memcpy_from_symbol:
         if(g_debug_execution >= 3)
             printf("memcpy from symbol\n");
-        printf("Received stream_memcpy_from_symbol request, which is not implemented!\n");
-        abort();
+        ret = gpu->gem5CudaGPU->memcpy_from_symbol(m_host_address_dst, m_symbol, m_cnt, m_offset, m_stream);
         break;
     case stream_kernel_launch:
         if( gpu->can_start_kernel() ) {
@@ -166,7 +167,12 @@ void stream_operation::do_operation( gpgpu_sim *gpu )
     default:
         abort();
     }
-    m_done=true;
+    
+    if( !ret ) {
+        m_stream->clearPending(); // Couldn't initiate operation, so clear the pending operation from this stream
+    } else {
+        m_done=true;
+    }
     fflush(stdout);
 }
 
@@ -227,6 +233,14 @@ bool stream_manager::register_finished_kernel(unsigned grid_uid)
     	return false;
     }
     return false;
+}
+
+CUstream_st* stream_manager::get_kernel_stream(unsigned grid_uid)
+{
+    CUstream_st* stream = m_grid_id_to_stream[grid_uid];
+    kernel_info_t* kernel = stream->front().get_kernel();
+    assert( grid_uid == kernel->get_uid() );
+    return stream;
 }
 
 stream_operation stream_manager::front() 
@@ -345,6 +359,20 @@ bool stream_manager::empty()
     return result;
 }
 
+bool stream_manager::streamEmpty(CUstream_st *stream) 
+{
+    bool result = true;
+    if( stream == NULL )
+        result = streamZeroEmpty();
+    else 
+        result = stream->empty(); 
+    return result;
+}
+
+bool stream_manager::streamZeroEmpty() 
+{
+    return m_stream_zero.empty();
+}
 
 void stream_manager::print( FILE *fp)
 {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009-2013 ARM Limited
+ * Copyright (c) 2009-2014 ARM Limited
  * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
@@ -37,6 +37,7 @@
  * Authors: Ali Saidi
  */
 
+#include <memory>
 
 #include "arch/arm/faults.hh"
 #include "arch/arm/isa_traits.hh"
@@ -59,7 +60,7 @@ initCPU(ThreadContext *tc, int cpuId)
 
     // FPEXC.EN = 0
 
-    static Fault reset = new Reset;
+    static Fault reset = std::make_shared<Reset>();
     reset->invoke(tc);
 }
 
@@ -85,6 +86,7 @@ getArgument(ThreadContext *tc, int &number, uint16_t size, bool fp)
         }
     } else {
         if (size == (uint16_t)(-1))
+            // todo: should this not be sizeof(uint32_t) rather?
             size = ArmISA::MachineBytes;
 
         if (number < NumArgumentRegs) {
@@ -151,8 +153,8 @@ copyRegs(ThreadContext *src, ThreadContext *dest)
     for (int i = 0; i < NumFloatRegs; i++)
         dest->setFloatRegFlat(i, src->readFloatRegFlat(i));
 
-    // Would need to add condition-code regs if implemented
-    assert(NumCCRegs == 0);
+    for (int i = 0; i < NumCCRegs; i++)
+        dest->setCCReg(i, src->readCCReg(i));
 
     for (int i = 0; i < NumMiscRegs; i++)
         dest->setMiscRegNoEffect(i, src->readMiscRegNoEffect(i));
@@ -267,6 +269,38 @@ isBigEndian64(ThreadContext *tc)
         panic("Invalid exception level");
         break;
     }
+}
+
+Addr
+purifyTaggedAddr(Addr addr, ThreadContext *tc, ExceptionLevel el,
+                 TTBCR tcr)
+{
+    switch (el) {
+      case EL0:
+      case EL1:
+        if (bits(addr, 55, 48) == 0xFF && tcr.tbi1)
+            return addr | mask(63, 55);
+        else if (!bits(addr, 55, 48) && tcr.tbi0)
+            return bits(addr,55, 0);
+        break;
+      // @todo: uncomment this to enable Virtualization
+      // case EL2:
+      //   assert(ArmSystem::haveVirtualization());
+      //   tcr = tc->readMiscReg(MISCREG_TCR_EL2);
+      //   if (tcr.tbi)
+      //       return addr & mask(56);
+      //   break;
+      case EL3:
+        assert(ArmSystem::haveSecurity(tc));
+        if (tcr.tbi)
+            return addr & mask(56);
+        break;
+      default:
+        panic("Invalid exception level");
+        break;
+    }
+
+    return addr;  // Nothing to do if this is not a tagged address
 }
 
 Addr

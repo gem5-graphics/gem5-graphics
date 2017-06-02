@@ -88,7 +88,8 @@ using namespace TheISA;
 BaseSimpleCPU::BaseSimpleCPU(BaseSimpleCPUParams *p)
     : BaseCPU(p),
       branchPred(p->branchPred),
-      traceData(NULL), thread(NULL)
+      traceData(NULL), thread(NULL), _status(Idle), interval_stats(false),
+      inst()
 {
     if (FullSystem)
         thread = new SimpleThread(this, 0, p->system, p->itb, p->dtb,
@@ -131,14 +132,6 @@ BaseSimpleCPU::BaseSimpleCPU(BaseSimpleCPUParams *p)
 BaseSimpleCPU::~BaseSimpleCPU()
 {
 }
-
-void
-BaseSimpleCPU::deallocateContext(ThreadID thread_num)
-{
-    // for now, these are equivalent
-    suspendContext(thread_num);
-}
-
 
 void
 BaseSimpleCPU::haltContext(ThreadID thread_num)
@@ -274,18 +267,6 @@ BaseSimpleCPU::regStats()
         .prereq(dcacheStallCycles)
         ;
 
-    icacheRetryCycles
-        .name(name() + ".icache_retry_cycles")
-        .desc("ICache total retry cycles")
-        .prereq(icacheRetryCycles)
-        ;
-
-    dcacheRetryCycles
-        .name(name() + ".dcache_retry_cycles")
-        .desc("DCache total retry cycles")
-        .prereq(dcacheRetryCycles)
-        ;
-
     statExecutedInstType
         .init(Enums::Num_OpClass)
         .name(name() + ".op_class")
@@ -324,21 +305,20 @@ BaseSimpleCPU::resetStats()
 }
 
 void
-BaseSimpleCPU::serializeThread(ostream &os, ThreadID tid)
+BaseSimpleCPU::serializeThread(CheckpointOut &cp, ThreadID tid) const
 {
     assert(_status == Idle || _status == Running);
     assert(tid == 0);
 
-    thread->serialize(os);
+    thread->serialize(cp);
 }
 
 void
-BaseSimpleCPU::unserializeThread(Checkpoint *cp, const string &section,
-                                 ThreadID tid)
+BaseSimpleCPU::unserializeThread(CheckpointIn &cp, ThreadID tid)
 {
     if (tid != 0)
         fatal("Trying to load more than one thread into a SimpleCPU\n");
-    thread->unserialize(cp, section);
+    thread->unserialize(cp);
 }
 
 void
@@ -355,6 +335,8 @@ BaseSimpleCPU::dbg_vtophys(Addr addr)
 void
 BaseSimpleCPU::wakeup()
 {
+    getAddrMonitor()->gotWakeup = true;
+
     if (thread->status() != ThreadContext::Suspended)
         return;
 
@@ -552,10 +534,13 @@ BaseSimpleCPU::postExecute()
         delete traceData;
         traceData = NULL;
     }
+
+    // Call CPU instruction commit probes
+    probeInstCommit(curStaticInst);
 }
 
 void
-BaseSimpleCPU::advancePC(Fault fault)
+BaseSimpleCPU::advancePC(const Fault &fault)
 {
     const bool branching(thread->pcState().branching());
 

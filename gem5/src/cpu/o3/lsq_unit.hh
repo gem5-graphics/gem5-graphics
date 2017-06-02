@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013 ARM Limited
+ * Copyright (c) 2012-2014 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -12,6 +12,7 @@
  * modified or unmodified, in source code or in binary form.
  *
  * Copyright (c) 2004-2006 The Regents of The University of Michigan
+ * Copyright (c) 2013 Advanced Micro Devices, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -60,7 +61,6 @@
 #include "debug/LSQUnit.hh"
 #include "mem/packet.hh"
 #include "mem/port.hh"
-#include "sim/fault_fwd.hh"
 
 struct DerivO3CPUParams;
 
@@ -182,24 +182,11 @@ class LSQUnit {
     /** Returns the memory ordering violator. */
     DynInstPtr getMemDepViolator();
 
-    /** Returns if a load became blocked due to the memory system. */
-    bool loadBlocked()
-    { return isLoadBlocked; }
+    /** Returns the number of free LQ entries. */
+    unsigned numFreeLoadEntries();
 
-    /** Clears the signal that a load became blocked. */
-    void clearLoadBlocked()
-    { isLoadBlocked = false; }
-
-    /** Returns if the blocked load was handled. */
-    bool isLoadBlockedHandled()
-    { return loadBlockedHandled; }
-
-    /** Records the blocked load as being handled. */
-    void setLoadBlockedHandled()
-    { loadBlockedHandled = true; }
-
-    /** Returns the number of free entries (min of free LQ and SQ entries). */
-    unsigned numFreeEntries();
+    /** Returns the number of free SQ entries. */
+    unsigned numFreeStoreEntries();
 
     /** Returns the number of loads in the LQ. */
     int numLoads() { return loads; }
@@ -293,8 +280,9 @@ class LSQUnit {
       public:
         /** Default constructor. */
         LSQSenderState()
-            : mainPkt(NULL), pendingPacket(NULL), outstanding(1),
-              noWB(false), isSplit(false), pktToSend(false)
+            : mainPkt(NULL), pendingPacket(NULL), idx(0), outstanding(1),
+              isLoad(false), noWB(false), isSplit(false),
+              pktToSend(false), cacheBlocked(false)
           { }
 
         /** Instruction who initiated the access to memory. */
@@ -315,6 +303,8 @@ class LSQUnit {
         bool isSplit;
         /** Whether or not there is a packet that needs sending. */
         bool pktToSend;
+        /** Whether or not the second packet of this split load was blocked */
+        bool cacheBlocked;
 
         /** Completes a packet and returns whether the access is finished. */
         inline bool complete() { return --outstanding == 0; }
@@ -469,17 +459,8 @@ class LSQUnit {
     /** Whehter or not a store is blocked due to the memory system. */
     bool isStoreBlocked;
 
-    /** Whether or not a load is blocked due to the memory system. */
-    bool isLoadBlocked;
-
-    /** Has the blocked load been handled. */
-    bool loadBlockedHandled;
-
     /** Whether or not a store is in flight. */
     bool storeInFlight;
-
-    /** The sequence number of the blocked load. */
-    InstSeqNum blockedLoadSeqNum;
 
     /** The oldest load that caused a memory ordering violation. */
     DynInstPtr memDepViolator;
@@ -578,15 +559,15 @@ LSQUnit<Impl>::read(Request *req, Request *sreqLow, Request *sreqHigh,
 
     assert(!load_inst->isExecuted());
 
-    // Make sure this isn't an uncacheable access
-    // A bit of a hackish way to get uncached accesses to work only if they're
-    // at the head of the LSQ and are ready to commit (at the head of the ROB
-    // too).
-    if (req->isUncacheable() &&
+    // Make sure this isn't a strictly ordered load
+    // A bit of a hackish way to get strictly ordered accesses to work
+    // only if they're at the head of the LSQ and are ready to commit
+    // (at the head of the ROB too).
+    if (req->isStrictlyOrdered() &&
         (load_idx != loadHead || !load_inst->isAtCommit())) {
         iewStage->rescheduleMemInst(load_inst);
         ++lsqRescheduledLoads;
-        DPRINTF(LSQUnit, "Uncachable load [sn:%lli] PC %s\n",
+        DPRINTF(LSQUnit, "Strictly ordered load [sn:%lli] PC %s\n",
                 load_inst->seqNum, load_inst->pcState());
 
         // Must delete request now that it wasn't handed off to
@@ -597,9 +578,9 @@ LSQUnit<Impl>::read(Request *req, Request *sreqLow, Request *sreqHigh,
             delete sreqLow;
             delete sreqHigh;
         }
-        return new GenericISA::M5PanicFault(
-                "Uncachable load [sn:%llx] PC %s\n",
-                load_inst->seqNum, load_inst->pcState());
+        return std::make_shared<GenericISA::M5PanicFault>(
+            "Strictly ordered load [sn:%llx] PC %s\n",
+            load_inst->seqNum, load_inst->pcState());
     }
 
     // Check the SQ for any previous stores that might lead to forwarding
@@ -672,7 +653,7 @@ LSQUnit<Impl>::read(Request *req, Request *sreqLow, Request *sreqHigh,
 
         if (store_size == 0)
             continue;
-        else if (storeQueue[store_idx].inst->uncacheable())
+        else if (storeQueue[store_idx].inst->strictlyOrdered())
             continue;
 
         assert(storeQueue[store_idx].inst->effAddrValid());
@@ -702,8 +683,10 @@ LSQUnit<Impl>::read(Request *req, Request *sreqLow, Request *sreqHigh,
                 memcpy(data, storeQueue[store_idx].data + shift_amt,
                    req->getSize());
 
-            assert(!load_inst->memData);
-            load_inst->memData = new uint8_t[req->getSize()];
+            // Allocate memory if this is the first time a load is issued.
+            if (!load_inst->memData) {
+                load_inst->memData = new uint8_t[req->getSize()];
+            }
             if (storeQueue[store_idx].isAllZeros)
                 memset(load_inst->memData, 0, req->getSize());
             else
@@ -758,7 +741,6 @@ LSQUnit<Impl>::read(Request *req, Request *sreqLow, Request *sreqHigh,
             // Tell IQ/mem dep unit that this instruction will need to be
             // rescheduled eventually
             iewStage->rescheduleMemInst(load_inst);
-            iewStage->decrWb(load_inst->seqNum);
             load_inst->clearIssued();
             ++lsqRescheduledLoads;
 
@@ -785,122 +767,104 @@ LSQUnit<Impl>::read(Request *req, Request *sreqLow, Request *sreqHigh,
     DPRINTF(LSQUnit, "Doing memory access for inst [sn:%lli] PC %s\n",
             load_inst->seqNum, load_inst->pcState());
 
-    assert(!load_inst->memData);
-    load_inst->memData = new uint8_t[req->getSize()];
+    // Allocate memory if this is the first time a load is issued.
+    if (!load_inst->memData) {
+        load_inst->memData = new uint8_t[req->getSize()];
+    }
 
     ++usedPorts;
 
     // if we the cache is not blocked, do cache access
     bool completedFirst = false;
-    if (!lsq->cacheBlocked()) {
-        MemCmd command =
-            req->isLLSC() ? MemCmd::LoadLockedReq : MemCmd::ReadReq;
-        PacketPtr data_pkt = new Packet(req, command);
-        PacketPtr fst_data_pkt = NULL;
-        PacketPtr snd_data_pkt = NULL;
+    PacketPtr data_pkt = Packet::createRead(req);
+    PacketPtr fst_data_pkt = NULL;
+    PacketPtr snd_data_pkt = NULL;
 
-        data_pkt->dataStatic(load_inst->memData);
+    data_pkt->dataStatic(load_inst->memData);
 
-        LSQSenderState *state = new LSQSenderState;
-        state->isLoad = true;
-        state->idx = load_idx;
-        state->inst = load_inst;
-        data_pkt->senderState = state;
+    LSQSenderState *state = new LSQSenderState;
+    state->isLoad = true;
+    state->idx = load_idx;
+    state->inst = load_inst;
+    data_pkt->senderState = state;
 
-        if (!TheISA::HasUnalignedMemAcc || !sreqLow) {
+    if (!TheISA::HasUnalignedMemAcc || !sreqLow) {
+        // Point the first packet at the main data packet.
+        fst_data_pkt = data_pkt;
+    } else {
+        // Create the split packets.
+        fst_data_pkt = Packet::createRead(sreqLow);
+        snd_data_pkt = Packet::createRead(sreqHigh);
 
-            // Point the first packet at the main data packet.
-            fst_data_pkt = data_pkt;
-        } else {
+        fst_data_pkt->dataStatic(load_inst->memData);
+        snd_data_pkt->dataStatic(load_inst->memData + sreqLow->getSize());
 
-            // Create the split packets.
-            fst_data_pkt = new Packet(sreqLow, command);
-            snd_data_pkt = new Packet(sreqHigh, command);
+        fst_data_pkt->senderState = state;
+        snd_data_pkt->senderState = state;
 
-            fst_data_pkt->dataStatic(load_inst->memData);
-            snd_data_pkt->dataStatic(load_inst->memData + sreqLow->getSize());
+        state->isSplit = true;
+        state->outstanding = 2;
+        state->mainPkt = data_pkt;
+    }
 
-            fst_data_pkt->senderState = state;
-            snd_data_pkt->senderState = state;
+    bool successful_load = true;
+    if (!dcachePort->sendTimingReq(fst_data_pkt)) {
+        successful_load = false;
+    } else if (TheISA::HasUnalignedMemAcc && sreqLow) {
+        completedFirst = true;
 
-            state->isSplit = true;
-            state->outstanding = 2;
-            state->mainPkt = data_pkt;
-        }
-
-        if (!dcachePort->sendTimingReq(fst_data_pkt)) {
-            // Delete state and data packet because a load retry
-            // initiates a pipeline restart; it does not retry.
-            delete state;
-            delete data_pkt->req;
-            delete data_pkt;
-            if (TheISA::HasUnalignedMemAcc && sreqLow) {
-                delete fst_data_pkt->req;
-                delete fst_data_pkt;
-                delete snd_data_pkt->req;
-                delete snd_data_pkt;
-                sreqLow = NULL;
-                sreqHigh = NULL;
-            }
-
-            req = NULL;
-
-            // If the access didn't succeed, tell the LSQ by setting
-            // the retry thread id.
-            lsq->setRetryTid(lsqID);
-        } else if (TheISA::HasUnalignedMemAcc && sreqLow) {
-            completedFirst = true;
-
-            // The first packet was sent without problems, so send this one
-            // too. If there is a problem with this packet then the whole
-            // load will be squashed, so indicate this to the state object.
-            // The first packet will return in completeDataAccess and be
-            // handled there.
-            ++usedPorts;
-            if (!dcachePort->sendTimingReq(snd_data_pkt)) {
-
-                // The main packet will be deleted in completeDataAccess.
-                delete snd_data_pkt->req;
-                delete snd_data_pkt;
-
-                state->complete();
-
-                req = NULL;
-                sreqHigh = NULL;
-
-                lsq->setRetryTid(lsqID);
-            }
+        // The first packet was sent without problems, so send this one
+        // too. If there is a problem with this packet then the whole
+        // load will be squashed, so indicate this to the state object.
+        // The first packet will return in completeDataAccess and be
+        // handled there.
+        ++usedPorts;
+        if (!dcachePort->sendTimingReq(snd_data_pkt)) {
+            // The main packet will be deleted in completeDataAccess.
+            state->complete();
+            // Signify to 1st half that the 2nd half was blocked via state
+            state->cacheBlocked = true;
+            successful_load = false;
         }
     }
 
     // If the cache was blocked, or has become blocked due to the access,
     // handle it.
-    if (lsq->cacheBlocked()) {
-        if (req)
+    if (!successful_load) {
+        if (!sreqLow) {
+            // Packet wasn't split, just delete main packet info
+            delete state;
             delete req;
-        if (TheISA::HasUnalignedMemAcc && sreqLow && !completedFirst) {
-            delete sreqLow;
-            delete sreqHigh;
+            delete data_pkt;
+        }
+
+        if (TheISA::HasUnalignedMemAcc && sreqLow) {
+            if (!completedFirst) {
+                // Split packet, but first failed.  Delete all state.
+                delete state;
+                delete req;
+                delete data_pkt;
+                delete fst_data_pkt;
+                delete snd_data_pkt;
+                delete sreqLow;
+                delete sreqHigh;
+                sreqLow = NULL;
+                sreqHigh = NULL;
+            } else {
+                // Can't delete main packet data or state because first packet
+                // was sent to the memory system
+                delete data_pkt;
+                delete req;
+                delete sreqHigh;
+                delete snd_data_pkt;
+                sreqHigh = NULL;
+            }
         }
 
         ++lsqCacheBlocked;
 
-        // If the first part of a split access succeeds, then let the LSQ
-        // handle the decrWb when completeDataAccess is called upon return
-        // of the requested first part of data
-        if (!completedFirst)
-            iewStage->decrWb(load_inst->seqNum);
+        iewStage->blockMemInst(load_inst);
 
-        // There's an older load that's already going to squash.
-        if (isLoadBlocked && blockedLoadSeqNum < load_inst->seqNum)
-            return NoFault;
-
-        // Record that the load was blocked due to memory.  This
-        // load will squash all instructions after it, be
-        // refetched, and re-executed.
-        isLoadBlocked = true;
-        loadBlockedHandled = false;
-        blockedLoadSeqNum = load_inst->seqNum;
         // No fault occurred, even though the interface is blocked.
         return NoFault;
     }

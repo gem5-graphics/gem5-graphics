@@ -39,7 +39,7 @@ using namespace std;
 class Flit;
 class GPUTrafficManager;
 class IntersimConfig;
-class Network;
+class ISNetwork;
 class Stats;
 
 //TODO: fixed_lat_icnt, add class support? support for signle network
@@ -113,7 +113,7 @@ protected:
   unsigned _flit_size;
   IntersimConfig* _icnt_config;
   unsigned _n_shader, _n_mem;
-  vector<Network *> _net;
+  vector<ISNetwork *> _net;
   int _vcs;
   int _subnets;
   

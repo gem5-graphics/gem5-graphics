@@ -108,7 +108,7 @@ void InterconnectInterface::CreateInterconnect(unsigned n_shader, unsigned n_mem
   for (int i = 0; i < _subnets; ++i) {
     ostringstream name;
     name << "network_" << i;
-    _net[i] = Network::New( *_icnt_config, name.str() );
+    _net[i] = ISNetwork::New( *_icnt_config, name.str() );
   }
 
   assert(_icnt_config->GetStr("sim_type") == "gpgpusim");

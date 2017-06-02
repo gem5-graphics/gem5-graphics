@@ -553,6 +553,90 @@ def from_9(cpt):
             # upgraded checkpoints were not taken with block-size 64!
             cpt.set(sec, 'block_size_bytes', '64')
 
+# Checkpoint version 11 (0xB) adds the perfLevel variable in the clock domain
+# and voltage domain simObjects used for DVFS and is serialized and
+# unserialized.
+def from_A(cpt):
+    for sec in cpt.sections():
+        import re
+
+        if re.match('^.*sys.*[._]clk_domain$', sec):
+            # Make _perfLevel equal to 0 which means best performance
+            cpt.set(sec, '_perfLevel', ' '.join('0'))
+        elif re.match('^.*sys.*[._]voltage_domain$', sec):
+            # Make _perfLevel equal to 0 which means best performance
+            cpt.set(sec, '_perfLevel', ' '.join('0'))
+        else:
+            continue
+
+# The change between versions C and D is the addition of support for multiple
+# event queues, so for old checkpoints we must specify that there's only one.
+def from_B(cpt):
+    cpt.set('Globals', 'numMainEventQueues', '1')
+
+# Checkpoint version D uses condition code registers for the ARM
+# architecture; previously the integer register file was used for these
+# registers. To upgrade, we move those 5 integer registers to the ccRegs
+# register file.
+def from_C(cpt):
+    if cpt.get('root','isa') == 'arm':
+        for sec in cpt.sections():
+            import re
+
+            re_cpu_match = re.match('^(.*sys.*\.cpu[^.]*)\.xc\.(.+)$', sec)
+            # Search for all the execution contexts
+            if not re_cpu_match:
+                continue
+
+            items = []
+            for (item,value) in cpt.items(sec):
+                items.append(item)
+            if 'ccRegs' not in items:
+                intRegs = cpt.get(sec, 'intRegs').split()
+
+                ccRegs = intRegs[38:43]
+                del      intRegs[38:43]
+
+                ccRegs.append('0') # CCREG_ZERO
+
+                cpt.set(sec, 'intRegs', ' '.join(intRegs))
+                cpt.set(sec, 'ccRegs',  ' '.join(ccRegs))
+
+# Checkpoint version E adds the ARM CONTEXTIDR_EL2 miscreg.
+def from_D(cpt):
+    if cpt.get('root','isa') == 'arm':
+        for sec in cpt.sections():
+            import re
+            # Search for all ISA sections
+            if re.search('.*sys.*\.cpu.*\.isa$', sec):
+                miscRegs = cpt.get(sec, 'miscRegs').split()
+                # CONTEXTIDR_EL2 defaults to 0b11111100000000000001
+                miscRegs[599:599] = [0xFC001]
+                cpt.set(sec, 'miscRegs', ' '.join(str(x) for x in miscRegs))
+
+# Checkpoint version F renames an internal member of Process class.
+def from_E(cpt):
+    import re
+    for sec in cpt.sections():
+        fdm = 'FdMap'
+        fde = 'FDEntry'
+        if re.match('.*\.%s.*' % fdm, sec):
+            rename = re.sub(fdm, fde, sec)
+            split = re.split(fde, rename)
+
+            # rename the section and add the 'mode' field
+            rename_section(cpt, sec, rename)
+            cpt.set(rename, 'mode', "0") # no proper value to set :(
+
+            # add in entries 257 to 1023
+            if split[1] == "0":
+                for x in range(257, 1024):
+                    seq = (split[0], fde, "%s" % x)
+                    section = "".join(seq)
+                    cpt.add_section(section)
+                    cpt.set(section, 'fd', '-1')
+
+
 migrations = []
 migrations.append(from_0)
 migrations.append(from_1)
@@ -564,6 +648,20 @@ migrations.append(from_6)
 migrations.append(from_7)
 migrations.append(from_8)
 migrations.append(from_9)
+migrations.append(from_A)
+migrations.append(from_B)
+migrations.append(from_C)
+migrations.append(from_D)
+migrations.append(from_E)
+
+# http://stackoverflow.com/questions/15069127/python-configparser-module-\
+# rename-a-section
+def rename_section(cp, section_from, section_to):
+    items = cp.items(section_from)
+    cp.add_section(section_to)
+    for item in items:
+        cp.set(section_to, item[0], item[1])
+    cp.remove_section(section_from)
 
 verbose_print = False
 

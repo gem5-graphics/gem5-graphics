@@ -43,6 +43,8 @@
 #include "s_texfilter.h"
 
 
+extern void gpgpusimAddPrimitive();
+
 /**
  * Recompute the value of swrast->_RasterMask, etc. according to
  * the current context.  The _RasterMask field can be easily tested by
@@ -694,6 +696,7 @@ void
 _swrast_Triangle( struct gl_context *ctx, const SWvertex *v0,
                   const SWvertex *v1, const SWvertex *v2 )
 {
+   gpgpusimAddPrimitive();
    if (SWRAST_DEBUG) {
       _mesa_debug(ctx, "_swrast_Triangle\n");
       _swrast_print_vertex( ctx, v0 );
@@ -706,6 +709,7 @@ _swrast_Triangle( struct gl_context *ctx, const SWvertex *v0,
 void
 _swrast_Line( struct gl_context *ctx, const SWvertex *v0, const SWvertex *v1 )
 {
+   gpgpusimAddPrimitive();
    if (SWRAST_DEBUG) {
       _mesa_debug(ctx, "_swrast_Line\n");
       _swrast_print_vertex( ctx, v0 );
@@ -717,6 +721,7 @@ _swrast_Line( struct gl_context *ctx, const SWvertex *v0, const SWvertex *v1 )
 void
 _swrast_Point( struct gl_context *ctx, const SWvertex *v0 )
 {
+   gpgpusimAddPrimitive();
    if (SWRAST_DEBUG) {
       _mesa_debug(ctx, "_swrast_Point\n");
       _swrast_print_vertex( ctx, v0 );

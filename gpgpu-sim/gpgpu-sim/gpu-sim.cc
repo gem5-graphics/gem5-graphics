@@ -277,6 +277,9 @@ void shader_core_config::reg_options(class OptionParser * opp)
     option_parser_register(opp, "-gpgpu_shmem_size_PrefShared", OPT_UINT32, &gpgpu_shmem_sizePrefShared,
                  "Size of shared memory per shader core (default 16kB)",
                  "16384");
+    option_parser_register(opp, "-gpgpu_shmem_access_latency", OPT_UINT32, &gpgpu_shmem_access_latency,
+                 "Shared load buffer depth (default 13: Fermi, Maxwell = 21)",
+                 "13");
     option_parser_register(opp, "-gpgpu_shmem_num_banks", OPT_UINT32, &num_shmem_bank, 
                  "Number of banks in the shared memory in each shader core (default 16)",
                  "16");
@@ -368,6 +371,9 @@ void shader_core_config::reg_options(class OptionParser * opp)
                                 "For complete list of prioritization values see shader.h enum scheduler_prioritization_type"
                                 "Default: gto",
                                  "gto");
+	option_parser_register(opp, "-gpgpu_fetch_decode_width", OPT_INT32, &gpgpu_fetch_decode_width,
+                            	 "Number of instructions to fetch per cycle (default=2)",
+                            	 "2");
     option_parser_register(opp, "-debug_texture_accesses", OPT_BOOL,
                           &gpgpu_debug_texture_accesses, "Texture memory accesses debug mode (1=On, 0=Off)",
                           "0");
@@ -606,8 +612,8 @@ void gpgpu_sim::set_kernel_done( kernel_info_t *kernel )
 
 void set_ptx_warp_size(const struct core_config * warp_size);
 
-gpgpu_sim::gpgpu_sim( const gpgpu_sim_config &config, int _sharedMemDelay )
-    : gpgpu_t(config, _sharedMemDelay), m_config(config)
+gpgpu_sim::gpgpu_sim( const gpgpu_sim_config &config, CudaGPU *cuda_gpu )
+    : gpgpu_t(config, cuda_gpu), m_config(config)
 { 
     m_shader_config = &m_config.m_shader_config;
     m_memory_config = &m_config.m_memory_config;
@@ -991,7 +997,7 @@ void gpgpu_sim::gpu_print_stat()
 #endif
 
    // performance counter that are not local to one shader
-   m_memory_stats->memlatstat_print(m_memory_config->m_n_mem,m_memory_config->nbk,m_memory_config->busW*m_memory_config->data_command_freq_ratio);
+   m_memory_stats->memlatstat_print(m_memory_config->m_n_mem,m_memory_config->nbk, m_memory_config->busW*m_memory_config->data_command_freq_ratio);
    for (unsigned i=0;i<m_memory_config->m_n_mem;i++)
       m_memory_partition_unit[i]->print(stdout);
 
@@ -1305,7 +1311,7 @@ gpgpu_sim::core_cycle_start()
        }
     }
 
-    if (!(gpu_sim_cycle % 20000)) {
+    if (!(gpu_sim_cycle % 2000000)) {
        // deadlock detection 
        if (m_config.gpu_deadlock_detect && gpu_sim_insn == last_gpu_sim_insn) {
           gpu_deadlock = true;

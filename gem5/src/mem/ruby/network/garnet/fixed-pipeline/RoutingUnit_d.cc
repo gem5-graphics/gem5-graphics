@@ -32,7 +32,7 @@
 #include "mem/ruby/network/garnet/fixed-pipeline/InputUnit_d.hh"
 #include "mem/ruby/network/garnet/fixed-pipeline/Router_d.hh"
 #include "mem/ruby/network/garnet/fixed-pipeline/RoutingUnit_d.hh"
-#include "mem/ruby/slicc_interface/NetworkMessage.hh"
+#include "mem/ruby/slicc_interface/Message.hh"
 
 RoutingUnit_d::RoutingUnit_d(Router_d *router)
 {
@@ -58,7 +58,7 @@ RoutingUnit_d::RC_stage(flit_d *t_flit, InputUnit_d *in_unit, int invc)
 {
     int outport = routeCompute(t_flit);
     in_unit->updateRoute(invc, outport, m_router->curCycle());
-    t_flit->advance_stage(VA_, m_router->curCycle());
+    t_flit->advance_stage(VA_, m_router->curCycle() + Cycles(1));
     m_router->vcarb_req();
 }
 
@@ -66,8 +66,8 @@ int
 RoutingUnit_d::routeCompute(flit_d *t_flit)
 {
     MsgPtr msg_ptr = t_flit->get_msg_ptr();
-    NetworkMessage* net_msg_ptr = safe_cast<NetworkMessage *>(msg_ptr.get());
-    NetDest msg_destination = net_msg_ptr->getInternalDestination();
+    Message *net_msg_ptr = msg_ptr.get();
+    NetDest msg_destination = net_msg_ptr->getDestination();
 
     int output_link = -1;
     int min_weight = INFINITE_;

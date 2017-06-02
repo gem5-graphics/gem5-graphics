@@ -172,6 +172,8 @@ struct dim3
 };
 #endif
 
+typedef struct CUstream_st* cudaStream_t;
+
 typedef struct CUevent_st *cudaEvent_t;
 
 typedef struct cudaFuncAttributes {

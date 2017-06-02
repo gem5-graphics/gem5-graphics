@@ -1,4 +1,4 @@
-# Copyright (c) 2014 ARM Limited
+# Copyright (c) 2014-2015 ARM Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -54,9 +54,23 @@ import MemConfig
 parser = optparse.OptionParser()
 
 # Use a single-channel DDR3-1600 x64 by default
-parser.add_option("--mem-type", type="choice", default="ddr3_1600_x64",
+parser.add_option("--mem-type", type="choice", default="DDR3_1600_x64",
                   choices=MemConfig.mem_names(),
                   help = "type of memory to use")
+
+parser.add_option("--mem-ranks", "-r", type="int", default=1,
+                  help = "Number of ranks to iterate across")
+
+parser.add_option("--rd_perc", type="int", default=100,
+                  help = "Percentage of read commands")
+
+parser.add_option("--mode", type="choice", default="DRAM",
+                  choices=["DRAM", "DRAM_ROTATE"],
+                  help = "DRAM: Random traffic; \
+                          DRAM_ROTATE: Traffic rotating across banks and ranks")
+
+parser.add_option("--addr_map", type="int", default=1,
+                  help = "0: RoCoRaBaCh; 1: RoRaBaCoCh/RoRaBaChCo")
 
 (options, args) = parser.parse_args()
 
@@ -68,9 +82,9 @@ if args:
 # and address mapping
 
 # start with the system itself, using a multi-layer 1.5 GHz
-# bus/crossbar, delivering 64 bytes / 5 cycles (one header cycle)
+# crossbar, delivering 64 bytes / 5 cycles (one header cycle)
 # which amounts to 19.2 GByte/s per layer and thus per port
-system = System(membus = NoncoherentBus(width = 16))
+system = System(membus = IOXBar(width = 16))
 system.clk_domain = SrcClockDomain(clock = '1.5GHz',
                                    voltage_domain =
                                    VoltageDomain(voltage = '1V'))
@@ -79,9 +93,13 @@ system.clk_domain = SrcClockDomain(clock = '1.5GHz',
 mem_range = AddrRange('256MB')
 system.mem_ranges = [mem_range]
 
+# do not worry about reserving space for the backing store
+mmap_using_noreserve = True
+
 # force a single channel to match the assumptions in the DRAM traffic
 # generator
 options.mem_channels = 1
+options.external_memory_system = 0
 MemConfig.config_mem(options, system)
 
 # the following assumes that we are using the native DRAM
@@ -89,8 +107,17 @@ MemConfig.config_mem(options, system)
 if not isinstance(system.mem_ctrls[0], m5.objects.DRAMCtrl):
     fatal("This script assumes the memory is a DRAMCtrl subclass")
 
-# for now the generator assumes a single rank
-system.mem_ctrls[0].ranks_per_channel = 1
+# there is no point slowing things down by saving any data
+system.mem_ctrls[0].null = True
+
+# Set the address mapping based on input argument
+# Default to RoRaBaCoCh
+if options.addr_map == 0:
+   system.mem_ctrls[0].addr_mapping = "RoCoRaBaCh"
+elif options.addr_map == 1:
+   system.mem_ctrls[0].addr_mapping = "RoRaBaCoCh"
+else:
+    fatal("Did not specify a valid address map argument")
 
 # stay in each state for 0.25 ms, long enough to warm things up, and
 # short enough to avoid hitting a refresh
@@ -124,16 +151,22 @@ itt = system.mem_ctrls[0].tBURST.value * 1000000000000
 # assume we start at 0
 max_addr = mem_range.end
 
+# use min of the page size and 512 bytes as that should be more than
+# enough
+max_stride = min(512, page_size)
+
 # now we create the state by iterating over the stride size from burst
-# size to min of the page size and 1 kB, and from using only a single
-# bank up to the number of banks available
+# size to the max stride, and from using only a single bank up to the
+# number of banks available
 nxt_state = 0
 for bank in range(1, nbr_banks + 1):
-    for stride_size in range(burst_size, min(1024, page_size) + 1, burst_size):
-        cfg_file.write("STATE %d %d DRAM 100 0 %d "
-                       "%d %d %d %d %d %d %d %d 1\n" %
-                       (nxt_state, period, max_addr, burst_size, itt, itt, 0,
-                        stride_size, page_size, nbr_banks, bank))
+    for stride_size in range(burst_size, max_stride + 1, burst_size):
+        cfg_file.write("STATE %d %d %s %d 0 %d %d "
+                       "%d %d %d %d %d %d %d %d %d\n" %
+                       (nxt_state, period, options.mode, options.rd_perc,
+                        max_addr, burst_size, itt, itt, 0, stride_size,
+                        page_size, nbr_banks, bank, options.addr_map,
+                        options.mem_ranks))
         nxt_state = nxt_state + 1
 
 cfg_file.write("INIT 0\n")
@@ -168,3 +201,6 @@ root.system.mem_mode = 'timing'
 
 m5.instantiate()
 m5.simulate(nxt_state * period)
+
+print "DRAM sweep with burst: %d, banks: %d, max stride: %d" % \
+    (burst_size, nbr_banks, max_stride)

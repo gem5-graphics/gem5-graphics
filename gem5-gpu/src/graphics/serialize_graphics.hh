@@ -27,7 +27,7 @@ struct GraphicsCommand_t{
 class checkpointGraphics{
 public:
     static void serializeGraphicsState (const char* graphicsFile);
-    static void unserializeGraphicsState(Checkpoint * cp);
+    static void unserializeGraphicsState(CheckpointIn& cp);
     static void serializeGraphicsCommand(int pid, int tid,
         uint64_t commandCode, uint8_t* buffer, uint32_t buffLen);
     static bool isUnserializingCp();
@@ -39,11 +39,11 @@ private:
     std::vector<GraphicsCommand_t> mCommands;
     
     //methods
-    void serializeCommand (std::string cmdName,GraphicsCommand_t* command, std::ostream &os);
-    void unserializeCommand(std::string cmdName, Checkpoint * cp);
+    void serializeCommand (std::string cmdName, GraphicsCommand_t* command, std::ostream &os);
+    void unserializeCommand(std::string cmdName, CheckpointIn& cp);
     inline std::string getCmdName(int id);
     void serializeAll(std::ostream &os);
-    void unserializeAll(Checkpoint * cp);
+    void unserializeAll(CheckpointIn& cp);
     void invokeAll();
     void invokeCommand(GraphicsCommand_t* cmd);
     static bool isWriteCommand(uint64_t commandCode);
@@ -53,7 +53,6 @@ private:
 };
 
 void serializeGraphicsState (const char* graphicsFile);
-void unserializeGraphicsState(Checkpoint * cp);
-
+void unserializeGraphicsState(CheckpointIn * cp);
 
 #endif

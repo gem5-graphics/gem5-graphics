@@ -62,11 +62,27 @@
 #include "sim/eventq.hh"
 #include "sim/full_system.hh"
 #include "sim/insttracer.hh"
+#include "sim/probe/pmu.hh"
 #include "sim/system.hh"
+#include "debug/Mwait.hh"
 
+class BaseCPU;
 struct BaseCPUParams;
 class CheckerCPU;
 class ThreadContext;
+
+struct AddressMonitor
+{
+    AddressMonitor();
+    bool doMonitor(PacketPtr pkt);
+
+    bool armed;
+    Addr vAddr;
+    Addr pAddr;
+    uint64_t val;
+    bool waiting;   // 0=normal, 1=mwaiting
+    bool gotWakeup;
+};
 
 class CPUProgressEvent : public Event
 {
@@ -93,8 +109,10 @@ class BaseCPU : public MemObject
 {
   protected:
 
-    // @todo remove me after debugging with legion done
+    /// Instruction count used for SPARC misc register
+    /// @todo unify this with the counters that cpus individually keep
     Tick instCnt;
+
     // every cpu has an id, put it in the base cpu
     // Set at initialization, only time a cpuId might change is during a
     // takeover (which should be done from within the BaseCPU anyway,
@@ -245,22 +263,22 @@ class BaseCPU : public MemObject
 
   public:
 
+
+    /** Invalid or unknown Pid. Possible when operating system is not present
+     *  or has not assigned a pid yet */
+    static const uint32_t invldPid = std::numeric_limits<uint32_t>::max();
+
     // Mask to align PCs to MachInst sized boundaries
     static const Addr PCMask = ~((Addr)sizeof(TheISA::MachInst) - 1);
 
     /// Provide access to the tracer pointer
     Trace::InstTracer * getTracer() { return tracer; }
 
-    /// Notify the CPU that the indicated context is now active.  The
-    /// delay parameter indicates the number of ticks to wait before
-    /// executing (typically 0 or 1).
-    virtual void activateContext(ThreadID thread_num, Cycles delay) {}
+    /// Notify the CPU that the indicated context is now active.
+    virtual void activateContext(ThreadID thread_num) {}
 
     /// Notify the CPU that the indicated context is now suspended.
     virtual void suspendContext(ThreadID thread_num) {}
-
-    /// Notify the CPU that the indicated context is now deallocated.
-    virtual void deallocateContext(ThreadID thread_num) {}
 
     /// Notify the CPU that the indicated context is now halted.
     virtual void haltContext(ThreadID thread_num) {}
@@ -285,7 +303,7 @@ class BaseCPU : public MemObject
     virtual void startup();
     virtual void regStats();
 
-    virtual void activateWhenReady(ThreadID tid) {};
+    void regProbePoints() M5_ATTR_OVERRIDE;
 
     void registerThreadContexts();
 
@@ -377,7 +395,7 @@ class BaseCPU : public MemObject
      *
      * @param os The stream to serialize to.
      */
-    virtual void serialize(std::ostream &os);
+    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
 
     /**
      * Reconstruct the state of this object from a checkpoint.
@@ -390,7 +408,7 @@ class BaseCPU : public MemObject
      * @param cp The checkpoint use.
      * @param section The section name of this object.
      */
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
+    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
 
     /**
      * Serialize a single thread.
@@ -398,7 +416,7 @@ class BaseCPU : public MemObject
      * @param os The stream to serialize to.
      * @param tid ID of the current thread.
      */
-    virtual void serializeThread(std::ostream &os, ThreadID tid) {};
+    virtual void serializeThread(CheckpointOut &cp, ThreadID tid) const {};
 
     /**
      * Unserialize one thread.
@@ -407,8 +425,7 @@ class BaseCPU : public MemObject
      * @param section The section name of this thread.
      * @param tid ID of the current thread.
      */
-    virtual void unserializeThread(Checkpoint *cp, const std::string &section,
-                                   ThreadID tid) {};
+    virtual void unserializeThread(CheckpointIn &cp, ThreadID tid) {};
 
     virtual Counter totalInsts() const = 0;
 
@@ -443,6 +460,54 @@ class BaseCPU : public MemObject
      * @param cause Cause to signal in the exit event.
      */
     void scheduleLoadStop(ThreadID tid, Counter loads, const char *cause);
+
+  public:
+    /**
+     * @{
+     * @name PMU Probe points.
+     */
+
+    /**
+     * Helper method to trigger PMU probes for a committed
+     * instruction.
+     *
+     * @param inst Instruction that just committed
+     */
+    virtual void probeInstCommit(const StaticInstPtr &inst);
+
+    /**
+     * Helper method to instantiate probe points belonging to this
+     * object.
+     *
+     * @param name Name of the probe point.
+     * @return A unique_ptr to the new probe point.
+     */
+    ProbePoints::PMUUPtr pmuProbePoint(const char *name);
+
+    /** CPU cycle counter */
+    ProbePoints::PMUUPtr ppCycles;
+
+    /**
+     * Instruction commit probe point.
+     *
+     * This probe point is triggered whenever one or more instructions
+     * are committed. It is normally triggered once for every
+     * instruction. However, CPU models committing bundles of
+     * instructions may call notify once for the entire bundle.
+     */
+    ProbePoints::PMUUPtr ppRetiredInsts;
+
+    /** Retired load instructions */
+    ProbePoints::PMUUPtr ppRetiredLoads;
+    /** Retired store instructions */
+    ProbePoints::PMUUPtr ppRetiredStores;
+
+    /** Retired branches (any type) */
+    ProbePoints::PMUUPtr ppRetiredBranches;
+
+    /** @} */
+
+
 
     // Function tracing
   private:
@@ -492,6 +557,16 @@ class BaseCPU : public MemObject
     Stats::Scalar numCycles;
     Stats::Scalar numWorkItemsStarted;
     Stats::Scalar numWorkItemsCompleted;
+
+  private:
+    AddressMonitor addressMonitor;
+
+  public:
+    void armMonitor(Addr address);
+    bool mwait(PacketPtr pkt);
+    void mwaitAtomic(ThreadContext *tc, TheISA::TLB *dtb);
+    AddressMonitor *getCpuAddrMonitor() { return &addressMonitor; }
+    void atomicNotify(Addr address);
 };
 
 #endif // THE_ISA == NULL_ISA

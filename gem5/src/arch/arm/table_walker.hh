@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 ARM Limited
+ * Copyright (c) 2010-2015 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -46,14 +46,13 @@
 #include "arch/arm/miscregs.hh"
 #include "arch/arm/system.hh"
 #include "arch/arm/tlb.hh"
-#include "dev/dma_device.hh"
-#include "mem/mem_object.hh"
 #include "mem/request.hh"
 #include "params/ArmTableWalker.hh"
 #include "sim/eventq.hh"
-#include "sim/fault_fwd.hh"
 
 class ThreadContext;
+
+class DmaPort;
 
 namespace ArmISA {
 class Translation;
@@ -107,7 +106,7 @@ class TableWalker : public MemObject
         bool _dirty;
 
         /** Default ctor */
-        L1Descriptor()
+        L1Descriptor() : data(0), _dirty(false)
         {
             lookupLevel = L1;
         }
@@ -251,12 +250,13 @@ class TableWalker : public MemObject
         bool _dirty;
 
         /** Default ctor */
-        L2Descriptor()
+        L2Descriptor() : data(0), l1Parent(nullptr), _dirty(false)
         {
             lookupLevel = L2;
         }
 
-        L2Descriptor(L1Descriptor &parent) : l1Parent(&parent)
+        L2Descriptor(L1Descriptor &parent) : data(0), l1Parent(&parent),
+                                             _dirty(false)
         {
             lookupLevel = L2;
         }
@@ -362,6 +362,14 @@ class TableWalker : public MemObject
 
     };
 
+    // Granule sizes for AArch64 long descriptors
+    enum GrainSize {
+        Grain4KB  = 12,
+        Grain16KB = 14,
+        Grain64KB = 16,
+        ReservedGrain = 0
+    };
+
     /** Long-descriptor format (LPAE) */
     class LongDescriptor : public DescriptorBase {
       public:
@@ -409,11 +417,8 @@ class TableWalker : public MemObject
         /** True if the current lookup is performed in AArch64 state */
         bool aarch64;
 
-        /** True if the granule size is 64 KB (AArch64 only) */
-        bool largeGrain;
-
         /** Width of the granule size in bits */
-        int grainSize;
+        GrainSize grainSize;
 
         /** Return the descriptor type */
         EntryType type() const
@@ -421,8 +426,8 @@ class TableWalker : public MemObject
             switch (bits(data, 1, 0)) {
               case 0x1:
                 // In AArch64 blocks are not allowed at L0 for the 4 KB granule
-                // and at L1 for the 64 KB granule
-                if (largeGrain)
+                // and at L1 for 16/64 KB granules
+                if (grainSize > Grain4KB)
                     return lookupLevel == L2 ? Block : Invalid;
                 return lookupLevel == L0 || lookupLevel == L3 ? Invalid : Block;
               case 0x3:
@@ -435,15 +440,29 @@ class TableWalker : public MemObject
         /** Return the bit width of the page/block offset */
         uint8_t offsetBits() const
         {
-            assert(type() == Block || type() == Page);
-            if (largeGrain) {
-                if (type() == Block)
-                    return 29 /* 512 MB */;
-                return 16 /* 64 KB */;  // type() == Page
+            if (type() == Block) {
+                switch (grainSize) {
+                    case Grain4KB:
+                        return lookupLevel == L1 ? 30 /* 1 GB */
+                                                 : 21 /* 2 MB */;
+                    case Grain16KB:
+                        return 25  /* 32 MB */;
+                    case Grain64KB:
+                        return 29 /* 512 MB */;
+                    default:
+                        panic("Invalid AArch64 VM granule size\n");
+                }
+            } else if (type() == Page) {
+                switch (grainSize) {
+                    case Grain4KB:
+                    case Grain16KB:
+                    case Grain64KB:
+                        return grainSize; /* enum -> uint okay */
+                    default:
+                        panic("Invalid AArch64 VM granule size\n");
+                }
             } else {
-                if (type() == Block)
-                    return lookupLevel == L1 ? 30 /* 1 GB */ : 21 /* 2 MB */;
-                return 12 /* 4 KB */;  // type() == Page
+                panic("AArch64 page table entry must be block or page\n");
             }
         }
 
@@ -707,8 +726,11 @@ class TableWalker : public MemObject
         /** Cached copy of the cpsr as it existed when translation began */
         CPSR cpsr;
 
-        /** Cached copy of the ttbcr as it existed when translation began. */
-        TTBCR ttbcr;
+        /** Cached copy of ttbcr/tcr as it existed when translation began */
+        union {
+            TTBCR ttbcr; // AArch32 translations
+            TCR tcr;     // AArch64 translations
+        };
 
         /** Cached copy of the htcr as it existed when translation began. */
         HTCR htcr;
@@ -772,6 +794,12 @@ class TableWalker : public MemObject
 
         TableWalker *tableWalker;
 
+        /** Timestamp for calculating elapsed time in service (for stats) */
+        Tick startTime;
+
+        /** Page entries walked during service (for stats) */
+        unsigned levels;
+
         void doL1Descriptor();
         void doL2Descriptor();
 
@@ -784,37 +812,6 @@ class TableWalker : public MemObject
 
   protected:
 
-    /**
-     * A snooping DMA port that currently does nothing besides
-     * extending the DMA port to accept snoops without complaining.
-     */
-    class SnoopingDmaPort : public DmaPort
-    {
-
-      protected:
-
-        virtual void recvTimingSnoopReq(PacketPtr pkt)
-        { }
-
-        virtual Tick recvAtomicSnoop(PacketPtr pkt)
-        { return 0; }
-
-        virtual void recvFunctionalSnoop(PacketPtr pkt)
-        { }
-
-        virtual bool isSnooping() const { return true; }
-
-      public:
-
-        /**
-         * A snooping DMA port merely calls the construtor of the DMA
-         * port.
-         */
-        SnoopingDmaPort(MemObject *dev, System *s) :
-            DmaPort(dev, s)
-        { }
-    };
-
     /** Queues of requests for all the different lookup levels */
     std::list<WalkerState *> stateQueues[MAX_LOOKUP_LEVELS];
 
@@ -822,15 +819,14 @@ class TableWalker : public MemObject
      * currently busy. */
     std::list<WalkerState *> pendingQueue;
 
-
-    /** Port to issue translation requests from */
-    SnoopingDmaPort port;
-
-    /** If we're draining keep the drain event around until we're drained */
-    DrainManager *drainManager;
-
     /** The MMU to forward second stage look upts to */
     Stage2MMU *stage2Mmu;
+
+    /** Port shared by the two table walkers. */
+    DmaPort* port;
+
+    /** Master id assigned by the MMU. */
+    MasterID masterId;
 
     /** Indicates whether this table walker is part of the stage 2 mmu */
     const bool isStage2;
@@ -846,9 +842,6 @@ class TableWalker : public MemObject
     /** If a timing translation is currently in progress */
     bool pending;
 
-    /** Request id for requests generated by this walker */
-    MasterID masterId;
-
     /** The number of walks belonging to squashed instructions that can be
      * removed from the pendingQueue per cycle. */
     unsigned numSquashable;
@@ -859,7 +852,26 @@ class TableWalker : public MemObject
     bool _haveVirtualization;
     uint8_t physAddrRange;
     bool _haveLargeAsid64;
-    ArmSystem *armSys;
+
+    /** Statistics */
+    Stats::Scalar statWalks;
+    Stats::Scalar statWalksShortDescriptor;
+    Stats::Scalar statWalksLongDescriptor;
+    Stats::Vector statWalksShortTerminatedAtLevel;
+    Stats::Vector statWalksLongTerminatedAtLevel;
+    Stats::Scalar statSquashedBefore;
+    Stats::Scalar statSquashedAfter;
+    Stats::Histogram statWalkWaitTime;
+    Stats::Histogram statWalkServiceTime;
+    Stats::Histogram statPendingWalks; // essentially "L" of queueing theory
+    Stats::Vector statPageSizes;
+    Stats::Vector2d statRequestOrigin;
+
+    mutable unsigned pendingReqs;
+    mutable Tick pendingChangeTick;
+
+    static const unsigned REQUESTED = 0;
+    static const unsigned COMPLETED = 1;
 
   public:
    typedef ArmTableWalkerParams Params;
@@ -872,24 +884,20 @@ class TableWalker : public MemObject
         return dynamic_cast<const Params *>(_params);
     }
 
+    virtual void init();
+
     bool haveLPAE() const { return _haveLPAE; }
     bool haveVirtualization() const { return _haveVirtualization; }
     bool haveLargeAsid64() const { return _haveLargeAsid64; }
     /** Checks if all state is cleared and if so, completes drain */
     void completeDrain();
-    unsigned int drain(DrainManager *dm);
-    virtual void drainResume();
+    DrainState drain() M5_ATTR_OVERRIDE;
+    virtual void drainResume() M5_ATTR_OVERRIDE;
+
     virtual BaseMasterPort& getMasterPort(const std::string &if_name,
                                           PortID idx = InvalidPortID);
 
-    /**
-     * Allow the MMU (overseeing both stage 1 and stage 2 TLBs) to
-     * access the table walker port through the TLB so that it can
-     * orchestrate staged translations.
-     *
-     * @return Our DMA port
-     */
-    DmaPort& getWalkerPort() { return port; }
+    void regStats();
 
     Fault walk(RequestPtr req, ThreadContext *tc, uint16_t asid, uint8_t _vmid,
                bool _isHyp, TLB::Mode mode, TLB::Translation *_trans,
@@ -898,7 +906,7 @@ class TableWalker : public MemObject
 
     void setTlb(TLB *_tlb) { tlb = _tlb; }
     TLB* getTlb() { return tlb; }
-    void setMMU(Stage2MMU *m) { stage2Mmu = m; }
+    void setMMU(Stage2MMU *m, MasterID master_id);
     void memAttrs(ThreadContext *tc, TlbEntry &te, SCTLR sctlr,
                   uint8_t texcb, bool s);
     void memAttrsLPAE(ThreadContext *tc, TlbEntry &te,
@@ -954,6 +962,10 @@ class TableWalker : public MemObject
     EventWrapper<TableWalker, &TableWalker::processWalkWrapper> doProcessEvent;
 
     void nextWalk(ThreadContext *tc);
+
+    void pendingChange();
+
+    static uint8_t pageSizeNtoStatBin(uint8_t N);
 };
 
 } // namespace ArmISA

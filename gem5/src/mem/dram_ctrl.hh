@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2014 ARM Limited
+ * Copyright (c) 2012-2015 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -40,6 +40,7 @@
  * Authors: Andreas Hansson
  *          Ani Udipi
  *          Neha Agarwal
+ *          Omar Naji
  */
 
 /**
@@ -51,6 +52,8 @@
 #define __MEM_DRAM_CTRL_HH__
 
 #include <deque>
+#include <string>
+#include <unordered_set>
 
 #include "base/statistics.hh"
 #include "enums/AddrMap.hh"
@@ -60,25 +63,28 @@
 #include "mem/qport.hh"
 #include "params/DRAMCtrl.hh"
 #include "sim/eventq.hh"
+#include "mem/drampower.hh"
 
 /**
- * The DRAM controller is a basic single-channel memory controller
- * aiming to mimic a high-level DRAM controller and the most important
- * timing constraints associated with the DRAM. The focus is really on
- * modelling the impact on the system rather than the DRAM itself,
- * hence the focus is on the controller model and not on the
- * memory. By adhering to the correct timing constraints, ultimately
- * there is no need for a memory model in addition to the controller
- * model.
+ * The DRAM controller is a single-channel memory controller capturing
+ * the most important timing constraints associated with a
+ * contemporary DRAM. For multi-channel memory systems, the controller
+ * is combined with a crossbar model, with the channel address
+ * interleaving taking part in the crossbar.
  *
- * As a basic design principle, this controller is not cycle callable,
- * but instead uses events to decide when new decisions can be made,
- * when resources become available, when things are to be considered
- * done, and when to send things back. Through these simple
- * principles, we achieve a performant model that is not
- * cycle-accurate, but enables us to evaluate the system impact of a
- * wide range of memory technologies, and also collect statistics
- * about the use of the memory.
+ * As a basic design principle, this controller
+ * model is not cycle callable, but instead uses events to: 1) decide
+ * when new decisions can be made, 2) when resources become available,
+ * 3) when things are to be considered done, and 4) when to send
+ * things back. Through these simple principles, the model delivers
+ * high performance, and lots of flexibility, allowing users to
+ * evaluate the system impact of a wide range of memory technologies,
+ * such as DDR3/4, LPDDR2/3/4, WideIO1/2, HBM and HMC.
+ *
+ * For more details, please see Hansson et al, "Simulating DRAM
+ * controllers for future system architecture exploration",
+ * Proc. ISPASS, 2014. If you use this model as part of your research
+ * please cite the paper.
  */
 class DRAMCtrl : public AbstractMemory
 {
@@ -90,7 +96,7 @@ class DRAMCtrl : public AbstractMemory
     class MemoryPort : public QueuedSlavePort
     {
 
-        SlavePacketQueue queue;
+        RespPacketQueue queue;
         DRAMCtrl& memory;
 
       public:
@@ -116,6 +122,11 @@ class DRAMCtrl : public AbstractMemory
     MemoryPort port;
 
     /**
+     * Remeber if the memory system is in timing mode
+     */
+    bool isTimingMode;
+
+    /**
      * Remember if we have to retry a request when available.
      */
     bool retryRdReq;
@@ -134,9 +145,6 @@ class DRAMCtrl : public AbstractMemory
 
     BusState busState;
 
-    /** List to keep track of activate ticks */
-    std::vector<std::deque<Tick>> actTicks;
-
     /**
      * A basic class to track the bank state, i.e. what row is
      * currently open (if any), when is the bank free to accept a new
@@ -154,6 +162,8 @@ class DRAMCtrl : public AbstractMemory
         static const uint32_t NO_ROW = -1;
 
         uint32_t openRow;
+        uint8_t bank;
+        uint8_t bankgr;
 
         Tick colAllowedAt;
         Tick preAllowedAt;
@@ -163,9 +173,217 @@ class DRAMCtrl : public AbstractMemory
         uint32_t bytesAccessed;
 
         Bank() :
-            openRow(NO_ROW), colAllowedAt(0), preAllowedAt(0), actAllowedAt(0),
+            openRow(NO_ROW), bank(0), bankgr(0),
+            colAllowedAt(0), preAllowedAt(0), actAllowedAt(0),
             rowAccesses(0), bytesAccessed(0)
         { }
+    };
+
+
+    /**
+     * Rank class includes a vector of banks. Refresh and Power state
+     * machines are defined per rank. Events required to change the
+     * state of the refresh and power state machine are scheduled per
+     * rank. This class allows the implementation of rank-wise refresh
+     * and rank-wise power-down.
+     */
+    class Rank : public EventManager
+    {
+
+      private:
+
+        /**
+         * The power state captures the different operational states of
+         * the DRAM and interacts with the bus read/write state machine,
+         * and the refresh state machine. In the idle state all banks are
+         * precharged. From there we either go to an auto refresh (as
+         * determined by the refresh state machine), or to a precharge
+         * power down mode. From idle the memory can also go to the active
+         * state (with one or more banks active), and in turn from there
+         * to active power down. At the moment we do not capture the deep
+         * power down and self-refresh state.
+         */
+        enum PowerState {
+            PWR_IDLE = 0,
+            PWR_REF,
+            PWR_PRE_PDN,
+            PWR_ACT,
+            PWR_ACT_PDN
+        };
+
+        /**
+         * The refresh state is used to control the progress of the
+         * refresh scheduling. When normal operation is in progress the
+         * refresh state is idle. From there, it progresses to the refresh
+         * drain state once tREFI has passed. The refresh drain state
+         * captures the DRAM row active state, as it will stay there until
+         * all ongoing accesses complete. Thereafter all banks are
+         * precharged, and lastly, the DRAM is refreshed.
+         */
+        enum RefreshState {
+            REF_IDLE = 0,
+            REF_DRAIN,
+            REF_PRE,
+            REF_RUN
+        };
+
+        /**
+         * A reference to the parent DRAMCtrl instance
+         */
+        DRAMCtrl& memory;
+
+        /**
+         * Since we are taking decisions out of order, we need to keep
+         * track of what power transition is happening at what time, such
+         * that we can go back in time and change history. For example, if
+         * we precharge all banks and schedule going to the idle state, we
+         * might at a later point decide to activate a bank before the
+         * transition to idle would have taken place.
+         */
+        PowerState pwrStateTrans;
+
+        /**
+         * Current power state.
+         */
+        PowerState pwrState;
+
+        /**
+         * Track when we transitioned to the current power state
+         */
+        Tick pwrStateTick;
+
+        /**
+         * current refresh state
+         */
+        RefreshState refreshState;
+
+        /**
+         * Keep track of when a refresh is due.
+         */
+        Tick refreshDueAt;
+
+        /*
+         * Command energies
+         */
+        Stats::Scalar actEnergy;
+        Stats::Scalar preEnergy;
+        Stats::Scalar readEnergy;
+        Stats::Scalar writeEnergy;
+        Stats::Scalar refreshEnergy;
+
+        /*
+         * Active Background Energy
+         */
+        Stats::Scalar actBackEnergy;
+
+        /*
+         * Precharge Background Energy
+         */
+        Stats::Scalar preBackEnergy;
+
+        Stats::Scalar totalEnergy;
+        Stats::Scalar averagePower;
+
+        /**
+         * Track time spent in each power state.
+         */
+        Stats::Vector pwrStateTime;
+
+        /**
+         * Function to update Power Stats
+         */
+        void updatePowerStats();
+
+        /**
+         * Schedule a power state transition in the future, and
+         * potentially override an already scheduled transition.
+         *
+         * @param pwr_state Power state to transition to
+         * @param tick Tick when transition should take place
+         */
+        void schedulePowerEvent(PowerState pwr_state, Tick tick);
+
+      public:
+
+        /**
+         * Current Rank index
+         */
+        uint8_t rank;
+
+        /**
+         * One DRAMPower instance per rank
+         */
+        DRAMPower power;
+
+        /**
+         * Vector of Banks. Each rank is made of several devices which in
+         * term are made from several banks.
+         */
+        std::vector<Bank> banks;
+
+        /**
+         *  To track number of banks which are currently active for
+         *  this rank.
+         */
+        unsigned int numBanksActive;
+
+        /** List to keep track of activate ticks */
+        std::deque<Tick> actTicks;
+
+        Rank(DRAMCtrl& _memory, const DRAMCtrlParams* _p);
+
+        const std::string name() const
+        {
+            return csprintf("%s_%d", memory.name(), rank);
+        }
+
+        /**
+         * Kick off accounting for power and refresh states and
+         * schedule initial refresh.
+         *
+         * @param ref_tick Tick for first refresh
+         */
+        void startup(Tick ref_tick);
+
+        /**
+         * Stop the refresh events.
+         */
+        void suspend();
+
+        /**
+         * Check if the current rank is available for scheduling.
+         *
+         * @param Return true if the rank is idle from a refresh point of view
+         */
+        bool isAvailable() const { return refreshState == REF_IDLE; }
+
+        /**
+         * Let the rank check if it was waiting for requests to drain
+         * to allow it to transition states.
+         */
+        void checkDrainDone();
+
+        /*
+         * Function to register Stats
+         */
+        void regStats();
+
+        void processActivateEvent();
+        EventWrapper<Rank, &Rank::processActivateEvent>
+        activateEvent;
+
+        void processPrechargeEvent();
+        EventWrapper<Rank, &Rank::processPrechargeEvent>
+        prechargeEvent;
+
+        void processRefreshEvent();
+        EventWrapper<Rank, &Rank::processRefreshEvent>
+        refreshEvent;
+
+        void processPowerEvent();
+        EventWrapper<Rank, &Rank::processPowerEvent>
+        powerEvent;
+
     };
 
     /**
@@ -186,7 +404,7 @@ class DRAMCtrl : public AbstractMemory
 
         BurstHelper(unsigned int _burstCount)
             : burstCount(_burstCount), burstsServiced(0)
-            { }
+        { }
     };
 
     /**
@@ -211,7 +429,7 @@ class DRAMCtrl : public AbstractMemory
         /** Will be populated by address decoder */
         const uint8_t rank;
         const uint8_t bank;
-        const uint16_t row;
+        const uint32_t row;
 
         /**
          * Bank id is calculated considering banks in all the ranks
@@ -240,14 +458,15 @@ class DRAMCtrl : public AbstractMemory
          */
         BurstHelper* burstHelper;
         Bank& bankRef;
+        Rank& rankRef;
 
         DRAMPacket(PacketPtr _pkt, bool is_read, uint8_t _rank, uint8_t _bank,
-                   uint16_t _row, uint16_t bank_id, Addr _addr,
-                   unsigned int _size, Bank& bank_ref)
+                   uint32_t _row, uint16_t bank_id, Addr _addr,
+                   unsigned int _size, Bank& bank_ref, Rank& rank_ref)
             : entryTime(curTick()), readyTime(curTick()),
               pkt(_pkt), isRead(is_read), rank(_rank), bank(_bank), row(_row),
               bankId(bank_id), addr(_addr), size(_size), burstHelper(NULL),
-              bankRef(bank_ref)
+              bankRef(bank_ref), rankRef(rank_ref)
         { }
 
     };
@@ -263,18 +482,6 @@ class DRAMCtrl : public AbstractMemory
 
     void processRespondEvent();
     EventWrapper<DRAMCtrl, &DRAMCtrl::processRespondEvent> respondEvent;
-
-    void processActivateEvent();
-    EventWrapper<DRAMCtrl, &DRAMCtrl::processActivateEvent> activateEvent;
-
-    void processPrechargeEvent();
-    EventWrapper<DRAMCtrl, &DRAMCtrl::processPrechargeEvent> prechargeEvent;
-
-    void processRefreshEvent();
-    EventWrapper<DRAMCtrl, &DRAMCtrl::processRefreshEvent> refreshEvent;
-
-    void processPowerEvent();
-    EventWrapper<DRAMCtrl,&DRAMCtrl::processPowerEvent> powerEvent;
 
     /**
      * Check if the read queue has room for more entries
@@ -363,23 +570,39 @@ class DRAMCtrl : public AbstractMemory
      * The memory schduler/arbiter - picks which request needs to
      * go next, based on the specified policy such as FCFS or FR-FCFS
      * and moves it to the head of the queue.
+     * Prioritizes accesses to the same rank as previous burst unless
+     * controller is switching command type.
+     *
+     * @param queue Queued requests to consider
+     * @param extra_col_delay Any extra delay due to a read/write switch
+     * @return true if a packet is scheduled to a rank which is available else
+     * false
      */
-    void chooseNext(std::deque<DRAMPacket*>& queue);
+    bool chooseNext(std::deque<DRAMPacket*>& queue, Tick extra_col_delay);
 
     /**
      * For FR-FCFS policy reorder the read/write queue depending on row buffer
-     * hits and earliest banks available in DRAM
+     * hits and earliest bursts available in DRAM
+     *
+     * @param queue Queued requests to consider
+     * @param extra_col_delay Any extra delay due to a read/write switch
+     * @return true if a packet is scheduled to a rank which is available else
+     * false
      */
-    void reorderQueue(std::deque<DRAMPacket*>& queue);
+    bool reorderQueue(std::deque<DRAMPacket*>& queue, Tick extra_col_delay);
 
     /**
      * Find which are the earliest banks ready to issue an activate
      * for the enqueued requests. Assumes maximum of 64 banks per DIMM
+     * Also checks if the bank is already prepped.
      *
-     * @param Queued requests to consider
+     * @param queue Queued requests to consider
+     * @param time of seamless burst command
      * @return One-hot encoded mask of bank indices
+     * @return boolean indicating burst can issue seamlessly, with no gaps
      */
-    uint64_t minBankActAt(const std::deque<DRAMPacket*>& queue) const;
+    std::pair<uint64_t, bool> minBankPrep(const std::deque<DRAMPacket*>& queue,
+                                          Tick min_col_at) const;
 
     /**
      * Keep track of when row activations happen, in order to enforce
@@ -387,24 +610,26 @@ class DRAMCtrl : public AbstractMemory
      * method updates the time that the banks become available based
      * on the current limits.
      *
-     * @param act_tick Time when the activation takes place
-     * @param rank Index of the rank
-     * @param bank Index of the bank
-     * @param row Index of the row
+     * @param rank_ref Reference to the rank
      * @param bank_ref Reference to the bank
+     * @param act_tick Time when the activation takes place
+     * @param row Index of the row
      */
-    void activateBank(Tick act_tick, uint8_t rank, uint8_t bank,
-                      uint16_t row, Bank& bank_ref);
+    void activateBank(Rank& rank_ref, Bank& bank_ref, Tick act_tick,
+                      uint32_t row);
 
     /**
      * Precharge a given bank and also update when the precharge is
      * done. This will also deal with any stats related to the
      * accesses to the open page.
      *
-     * @param bank The bank to precharge
+     * @param rank_ref The rank to precharge
+     * @param bank_ref The bank to precharge
      * @param pre_at Time when the precharge takes place
+     * @param trace Is this an auto precharge then do not add to trace
      */
-    void prechargeBank(Bank& bank, Tick pre_at);
+    void prechargeBank(Rank& rank_ref, Bank& bank_ref,
+                       Tick pre_at, bool trace = true);
 
     /**
      * Used for debugging to observe the contents of the queues.
@@ -412,10 +637,28 @@ class DRAMCtrl : public AbstractMemory
     void printQs() const;
 
     /**
+     * Burst-align an address.
+     *
+     * @param addr The potentially unaligned address
+     *
+     * @return An address aligned to a DRAM burst
+     */
+    Addr burstAlign(Addr addr) const { return (addr & ~(Addr(burstSize - 1))); }
+
+    /**
      * The controller's main read and write queues
      */
     std::deque<DRAMPacket*> readQueue;
     std::deque<DRAMPacket*> writeQueue;
+
+    /**
+     * To avoid iterating over the write queue to check for
+     * overlapping transactions, maintain a set of burst addresses
+     * that are currently queued. Since we merge writes to the same
+     * location we never have more than one address to the same burst
+     * address.
+     */
+    std::unordered_set<Addr> isInWriteQueue;
 
     /**
      * Response queue where read packets wait after we're done working
@@ -428,16 +671,9 @@ class DRAMCtrl : public AbstractMemory
     std::deque<DRAMPacket*> respQueue;
 
     /**
-     * If we need to drain, keep the drain manager around until we're
-     * done here.
+     * Vector of ranks
      */
-    DrainManager *drainManager;
-
-    /**
-     * Multi-dimensional vector of banks, first dimension is ranks,
-     * second is bank
-     */
-    std::vector<std::vector<Bank> > banks;
+    std::vector<Rank*> ranks;
 
     /**
      * The following are basic design parameters of the memory
@@ -445,6 +681,7 @@ class DRAMCtrl : public AbstractMemory
      * The rowsPerBank is determined based on the capacity, number of
      * ranks and banks, the burst size, and the row buffer size.
      */
+    const uint32_t deviceSize;
     const uint32_t deviceBusWidth;
     const uint32_t burstLength;
     const uint32_t deviceRowBufferSize;
@@ -452,7 +689,10 @@ class DRAMCtrl : public AbstractMemory
     const uint32_t burstSize;
     const uint32_t rowBufferSize;
     const uint32_t columnsPerRowBuffer;
+    const uint32_t columnsPerStripe;
     const uint32_t ranksPerChannel;
+    const uint32_t bankGroupsPerRank;
+    const bool bankGroupArch;
     const uint32_t banksPerRank;
     const uint32_t channels;
     uint32_t rowsPerBank;
@@ -468,10 +708,12 @@ class DRAMCtrl : public AbstractMemory
      * Basic memory timing parameters initialized based on parameter
      * values.
      */
-    const Tick tCK;
+    const Tick M5_CLASS_VAR_USED tCK;
     const Tick tWTR;
     const Tick tRTW;
+    const Tick tCS;
     const Tick tBURST;
+    const Tick tCCD_L;
     const Tick tRCD;
     const Tick tCL;
     const Tick tRP;
@@ -481,6 +723,7 @@ class DRAMCtrl : public AbstractMemory
     const Tick tRFC;
     const Tick tREFI;
     const Tick tRRD;
+    const Tick tRRD_L;
     const Tick tXAW;
     const uint32_t activationLimit;
 
@@ -516,72 +759,6 @@ class DRAMCtrl : public AbstractMemory
      * Till when has the main data bus been spoken for already?
      */
     Tick busBusyUntil;
-
-    /**
-     * Keep track of when a refresh is due.
-     */
-    Tick refreshDueAt;
-
-    /**
-     * The refresh state is used to control the progress of the
-     * refresh scheduling. When normal operation is in progress the
-     * refresh state is idle. From there, it progresses to the refresh
-     * drain state once tREFI has passed. The refresh drain state
-     * captures the DRAM row active state, as it will stay there until
-     * all ongoing accesses complete. Thereafter all banks are
-     * precharged, and lastly, the DRAM is refreshed.
-     */
-    enum RefreshState {
-        REF_IDLE = 0,
-        REF_DRAIN,
-        REF_PRE,
-        REF_RUN
-    };
-
-    RefreshState refreshState;
-
-    /**
-     * The power state captures the different operational states of
-     * the DRAM and interacts with the bus read/write state machine,
-     * and the refresh state machine. In the idle state all banks are
-     * precharged. From there we either go to an auto refresh (as
-     * determined by the refresh state machine), or to a precharge
-     * power down mode. From idle the memory can also go to the active
-     * state (with one or more banks active), and in turn from there
-     * to active power down. At the moment we do not capture the deep
-     * power down and self-refresh state.
-     */
-    enum PowerState {
-        PWR_IDLE = 0,
-        PWR_REF,
-        PWR_PRE_PDN,
-        PWR_ACT,
-        PWR_ACT_PDN
-    };
-
-    /**
-     * Since we are taking decisions out of order, we need to keep
-     * track of what power transition is happening at what time, such
-     * that we can go back in time and change history. For example, if
-     * we precharge all banks and schedule going to the idle state, we
-     * might at a later point decide to activate a bank before the
-     * transition to idle would have taken place.
-     */
-    PowerState pwrStateTrans;
-
-    /**
-     * Current power state.
-     */
-    PowerState pwrState;
-
-    /**
-     * Schedule a power state transition in the future, and
-     * potentially override an already scheduled transition.
-     *
-     * @param pwr_state Power state to transition to
-     * @param tick Tick when transition should take place
-     */
-    void schedulePowerEvent(PowerState pwr_state, Tick tick);
 
     Tick prevArrival;
 
@@ -652,13 +829,12 @@ class DRAMCtrl : public AbstractMemory
 
     // DRAM Power Calculation
     Stats::Formula pageHitRate;
-    Stats::Vector pwrStateTime;
 
-    // Track when we transitioned to the current power state
-    Tick pwrStateTick;
+    // Holds the value of the rank of burst issued
+    uint8_t activeRank;
 
-    // To track number of banks which are currently active
-    unsigned int numBanksActive;
+    // timestamp offset
+    uint64_t timeStampOffset;
 
     /** @todo this is a temporary workaround until the 4-phase code is
      * committed. upstream caches needs this packet until true is returned, so
@@ -666,19 +842,44 @@ class DRAMCtrl : public AbstractMemory
      */
     std::vector<PacketPtr> pendingDelete;
 
+    /**
+     * This function increments the energy when called. If stats are
+     * dumped periodically, note accumulated energy values will
+     * appear in the stats (even if the stats are reset). This is a
+     * result of the energy values coming from DRAMPower, and there
+     * is currently no support for resetting the state.
+     *
+     * @param rank Currrent rank
+     */
+    void updatePowerStats(Rank& rank_ref);
+
+    /**
+     * Function for sorting commands in the command list of DRAMPower.
+     *
+     * @param a Memory Command in command list of DRAMPower library
+     * @param next Memory Command in command list of DRAMPower
+     * @return true if timestamp of Command 1 < timestamp of Command 2
+     */
+    static bool sortTime(const Data::MemCommand& m1,
+                         const Data::MemCommand& m2) {
+        return m1.getTime() < m2.getTime();
+    };
+
+
   public:
 
     void regStats();
 
     DRAMCtrl(const DRAMCtrlParams* p);
 
-    unsigned int drain(DrainManager* dm);
+    DrainState drain() M5_ATTR_OVERRIDE;
 
     virtual BaseSlavePort& getSlavePort(const std::string& if_name,
                                         PortID idx = InvalidPortID);
 
-    virtual void init();
-    virtual void startup();
+    virtual void init() M5_ATTR_OVERRIDE;
+    virtual void startup() M5_ATTR_OVERRIDE;
+    virtual void drainResume() M5_ATTR_OVERRIDE;
 
   protected:
 

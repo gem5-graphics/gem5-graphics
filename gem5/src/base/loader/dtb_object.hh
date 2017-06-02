@@ -41,8 +41,7 @@
 class DtbObject : public ObjectFile
 {
     protected:
-        DtbObject(const std::string &_filename, int _fd,
-                  size_t _len, uint8_t *_data,
+        DtbObject(const std::string &_filename, size_t _len, uint8_t *_data,
                   Arch _arch, OpSys _opSys);
 
         /** Bool marking if this dtb file has replaced the original
@@ -60,6 +59,13 @@ class DtbObject : public ObjectFile
           * @return returns true on success, false otherwise
           */
         bool addBootCmdLine(const char* _args, size_t len);
+
+        /** Parse the DTB file enough to find the provided release
+         * address and return it.
+         * @return release address for SMP boot
+         */
+        Addr findReleaseAddr();
+
         bool loadGlobalSymbols(SymbolTable *symtab,
             Addr addrMask = std::numeric_limits<Addr>::max());
         bool loadLocalSymbols(SymbolTable *symtab,
@@ -68,12 +74,11 @@ class DtbObject : public ObjectFile
         /** Static function that tries to load file as a
           * flattened device tree blob.
           * @param fname path to file
-          * @param fd file descriptor of object file
           * @param len length of file
           * @param data mmap'ed data buffer containing file contents
           * @return ObjectFile representing closest match of file type
           */
-        static ObjectFile *tryFile(const std::string &fname, int fd,
+        static ObjectFile *tryFile(const std::string &fname,
                                    size_t len, uint8_t *data);
 };
 

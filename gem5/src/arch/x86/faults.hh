@@ -42,10 +42,11 @@
 
 #include <string>
 
+#include "arch/generic/tlb.hh"
 #include "base/bitunion.hh"
 #include "base/misc.hh"
+#include "debug/LocalApic.hh"
 #include "sim/faults.hh"
-#include "sim/tlb.hh"
 
 namespace X86ISA
 {
@@ -85,8 +86,8 @@ namespace X86ISA
             return false;
         }
 
-        void invoke(ThreadContext * tc,
-                StaticInstPtr inst = StaticInst::nullStaticInstPtr);
+        void invoke(ThreadContext * tc, const StaticInstPtr &inst =
+                    StaticInst::nullStaticInstPtr);
 
         virtual std::string describe() const;
 
@@ -120,8 +121,8 @@ namespace X86ISA
             : X86FaultBase(name, mnem, vector, _errorCode)
         {}
 
-        void invoke(ThreadContext * tc,
-                StaticInstPtr inst = StaticInst::nullStaticInstPtr);
+        void invoke(ThreadContext * tc, const StaticInstPtr &inst =
+                    StaticInst::nullStaticInstPtr);
     };
 
     // Base class for x86 aborts which seem to be catastrophic failures.
@@ -133,8 +134,8 @@ namespace X86ISA
             : X86FaultBase(name, mnem, vector, _errorCode)
         {}
 
-        void invoke(ThreadContext * tc,
-                StaticInstPtr inst = StaticInst::nullStaticInstPtr);
+        void invoke(ThreadContext * tc, const StaticInstPtr &inst =
+                    StaticInst::nullStaticInstPtr);
     };
 
     // Base class for x86 interrupts.
@@ -155,8 +156,8 @@ namespace X86ISA
             return "unimplemented_micro";
         }
 
-        void invoke(ThreadContext * tc,
-                StaticInstPtr inst = StaticInst::nullStaticInstPtr)
+        void invoke(ThreadContext * tc, const StaticInstPtr &inst =
+                    StaticInst::nullStaticInstPtr)
         {
             panic("Unimplemented instruction!");
         }
@@ -167,7 +168,7 @@ namespace X86ISA
 
     // Class  |  Type    | vector |               Cause                 | mnem
     //------------------------------------------------------------------------
-    //Contrib   Fault     0         Divide-by-Zero-Error                  #DE
+    //Contrib   Fault     0         Divide Error                          #DE
     //Benign    Either    1         Debug                                 #DB
     //Benign    Interrupt 2         Non-Maskable-Interrupt                #NMI
     //Benign    Trap      3         Breakpoint                            #BP
@@ -193,11 +194,12 @@ namespace X86ISA
     //Benign    Interrupt 0-255     External Interrupts                   #INTR
     //Benign    Interrupt 0-255     Software Interrupts                   INTn
 
-    class DivideByZero : public X86Fault
+    // Note that
+    class DivideError : public X86Fault
     {
       public:
-        DivideByZero() :
-            X86Fault("Divide-by-Zero-Error", "#DE", 0)
+        DivideError() :
+            X86Fault("Divide-Error", "#DE", 0)
         {}
     };
 
@@ -248,8 +250,8 @@ namespace X86ISA
             X86Fault("Invalid-Opcode", "#UD", 6)
         {}
 
-        void invoke(ThreadContext * tc,
-                StaticInstPtr inst = StaticInst::nullStaticInstPtr);
+        void invoke(ThreadContext * tc, const StaticInstPtr &inst =
+                    StaticInst::nullStaticInstPtr);
     };
 
     class DeviceNotAvailable : public X86Fault
@@ -331,10 +333,57 @@ namespace X86ISA
             errorCode = code;
         }
 
-        void invoke(ThreadContext * tc,
-                StaticInstPtr inst = StaticInst::nullStaticInstPtr);
+        void invoke(ThreadContext * tc, const StaticInstPtr &inst =
+                    StaticInst::nullStaticInstPtr);
 
         virtual std::string describe() const;
+    };
+
+    class GPUPageFault : public PageFault
+    {
+      public:
+        GPUPageFault(Addr _addr, uint32_t _errorCode) :
+            PageFault(_addr, _errorCode)
+        {
+            if (!((PageFaultErrorCode)errorCode).user) {
+                panic("GPU page faults can only be raised in user mode!");
+            }
+            faultName = "GPU Page Fault";
+        }
+
+        void invoke(ThreadContext * tc, const StaticInstPtr &inst =
+                    StaticInst::nullStaticInstPtr)
+        {
+            HandyM5Reg m5reg = tc->readMiscRegNoEffect(MISCREG_M5_REG);
+            if (m5reg.cpl != 3) {
+                // Unfortunately, we can't allow the GPU page fault to start
+                // here, because it is possible that the OS will not have the
+                // GPU application's pagetable in the CR3, so handling the
+                // fault would likely result in a segmentation fault.
+                warn("Invoking GPU page fault in kernel mode!\n");
+            }
+
+            GPUFaultReg fault_reg = tc->readMiscRegNoEffect(MISCREG_GPU_FAULT);
+            // Verify that the fault is still in flight. If not, either the
+            // ShaderMMU dropped the fault for some reason, or the GPU
+            // application thread (and fault_reg) may have been migrated from
+            // the passed thread context (i.e. a bad situation).
+            assert(fault_reg.inFault == 1);
+            GPUFaultRSPReg fault_rsp =
+                    tc->readMiscRegNoEffect(MISCREG_GPU_FAULT_RSP);
+            assert(fault_rsp == 0);
+
+            PageFault::invoke(tc, inst);
+
+            // Change inFault to indicate that the fault handler has been
+            // invoked and will be running
+            fault_reg.inFault = 2;
+            tc->setMiscRegActuallyNoEffect(MISCREG_GPU_FAULT, fault_reg);
+            fault_rsp = tc->readIntReg(INTREG_RSP);
+            DPRINTF(LocalApic,
+                    "Invoking GPU page fault interrupt. SP: %x\n", fault_rsp);
+            tc->setMiscRegActuallyNoEffect(MISCREG_GPU_FAULT_RSP, fault_rsp);
+        }
     };
 
     class X87FpExceptionPending : public X86Fault
@@ -400,8 +449,8 @@ namespace X86ISA
             X86Interrupt("INIT Interrupt", "#INIT", _vector)
         {}
 
-        void invoke(ThreadContext * tc,
-                StaticInstPtr inst = StaticInst::nullStaticInstPtr);
+        void invoke(ThreadContext * tc, const StaticInstPtr &inst =
+                    StaticInst::nullStaticInstPtr);
     };
 
     class StartupInterrupt : public X86Interrupt
@@ -411,8 +460,8 @@ namespace X86ISA
             X86Interrupt("Startup Interrupt", "#SIPI", _vector)
         {}
 
-        void invoke(ThreadContext * tc,
-                StaticInstPtr inst = StaticInst::nullStaticInstPtr);
+        void invoke(ThreadContext * tc, const StaticInstPtr &inst =
+                    StaticInst::nullStaticInstPtr);
     };
 
     class SoftwareInterrupt : public X86Interrupt

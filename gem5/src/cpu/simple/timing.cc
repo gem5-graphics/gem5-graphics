@@ -1,4 +1,5 @@
 /*
+ * Copyright 2014 Google, Inc.
  * Copyright (c) 2010-2013 ARM Limited
  * All rights reserved
  *
@@ -58,6 +59,8 @@
 #include "sim/full_system.hh"
 #include "sim/system.hh"
 
+#include "debug/Mwait.hh"
+
 using namespace std;
 using namespace TheISA;
 
@@ -88,11 +91,9 @@ TimingSimpleCPU::TimingCPUPort::TickEvent::schedule(PacketPtr _pkt, Tick t)
 TimingSimpleCPU::TimingSimpleCPU(TimingSimpleCPUParams *p)
     : BaseSimpleCPU(p), fetchTranslation(this), icachePort(this),
       dcachePort(this), ifetch_pkt(NULL), dcache_pkt(NULL), previousCycle(0),
-      fetchEvent(this), drainManager(NULL)
+      fetchEvent(this)
 {
     _status = Idle;
-
-    system->totalNumInsts = 0;
 }
 
 
@@ -101,19 +102,17 @@ TimingSimpleCPU::~TimingSimpleCPU()
 {
 }
 
-unsigned int
-TimingSimpleCPU::drain(DrainManager *drain_manager)
+DrainState
+TimingSimpleCPU::drain()
 {
-    assert(!drainManager);
     if (switchedOut())
-        return 0;
+        return DrainState::Drained;
 
     if (_status == Idle ||
         (_status == BaseSimpleCPU::Running && isDrained())) {
         DPRINTF(Drain, "No need to drain.\n");
-        return 0;
+        return DrainState::Drained;
     } else {
-        drainManager = drain_manager;
         DPRINTF(Drain, "Requesting drain: %s\n", pcState());
 
         // The fetch event can become descheduled if a drain didn't
@@ -122,7 +121,7 @@ TimingSimpleCPU::drain(DrainManager *drain_manager)
         if (_status == BaseSimpleCPU::Running && !fetchEvent.scheduled())
             schedule(fetchEvent, clockEdge());
 
-        return 1;
+        return DrainState::Draining;
     }
 }
 
@@ -130,7 +129,6 @@ void
 TimingSimpleCPU::drainResume()
 {
     assert(!fetchEvent.scheduled());
-    assert(!drainManager);
     if (switchedOut())
         return;
 
@@ -154,7 +152,7 @@ TimingSimpleCPU::drainResume()
 bool
 TimingSimpleCPU::tryCompleteDrain()
 {
-    if (!drainManager)
+    if (drainState() != DrainState::Draining)
         return false;
 
     DPRINTF(Drain, "tryCompleteDrain: %s\n", pcState());
@@ -162,8 +160,7 @@ TimingSimpleCPU::tryCompleteDrain()
         return false;
 
     DPRINTF(Drain, "CPU done draining, processing drain event\n");
-    drainManager->signalDrainDone();
-    drainManager = NULL;
+    signalDrainDone();
 
     return true;
 }
@@ -178,7 +175,7 @@ TimingSimpleCPU::switchOut()
     assert(!stayAtPC);
     assert(microPC() == 0);
 
-    numCycles += curCycle() - previousCycle;
+    updateCycleCounts();
 }
 
 
@@ -200,9 +197,9 @@ TimingSimpleCPU::verifyMemoryMode() const
 }
 
 void
-TimingSimpleCPU::activateContext(ThreadID thread_num, Cycles delay)
+TimingSimpleCPU::activateContext(ThreadID thread_num)
 {
-    DPRINTF(SimpleCPU, "ActivateContext %d (%d cycles)\n", thread_num, delay);
+    DPRINTF(SimpleCPU, "ActivateContext %d\n", thread_num);
 
     assert(thread_num == 0);
     assert(thread);
@@ -213,7 +210,7 @@ TimingSimpleCPU::activateContext(ThreadID thread_num, Cycles delay)
     _status = BaseSimpleCPU::Running;
 
     // kick things off by initiating the fetch of the next instruction
-    schedule(fetchEvent, clockEdge(delay));
+    schedule(fetchEvent, clockEdge(Cycles(0)));
 }
 
 
@@ -241,6 +238,12 @@ bool
 TimingSimpleCPU::handleReadPacket(PacketPtr pkt)
 {
     RequestPtr req = pkt->req;
+
+    // We're about the issues a locked load, so tell the monitor
+    // to start caring about this address
+    if (pkt->isRead() && pkt->req->isLLSC()) {
+        TheISA::handleLockedRead(thread, pkt->req);
+    }
     if (req->isMmappedIpr()) {
         Cycles delay = TheISA::handleIprRead(thread->getTC(), pkt);
         new IprEvent(pkt, this, clockEdge(delay));
@@ -261,9 +264,8 @@ void
 TimingSimpleCPU::sendData(RequestPtr req, uint8_t *data, uint64_t *res,
                           bool read)
 {
-    PacketPtr pkt;
-    buildPacket(pkt, req, read);
-    pkt->dataDynamicArray<uint8_t>(data);
+    PacketPtr pkt = buildPacket(req, read);
+    pkt->dataDynamic<uint8_t>(data);
     if (req->getFlags().isSet(Request::NO_ACCESS)) {
         assert(!dcache_pkt);
         pkt->makeResponse();
@@ -328,12 +330,11 @@ TimingSimpleCPU::sendSplitData(RequestPtr req1, RequestPtr req2,
 }
 
 void
-TimingSimpleCPU::translationFault(Fault fault)
+TimingSimpleCPU::translationFault(const Fault &fault)
 {
     // fault may be NoFault in cases where a fault is suppressed,
     // for instance prefetches.
-    numCycles += curCycle() - previousCycle;
-    previousCycle = curCycle();
+    updateCycleCounts();
 
     if (traceData) {
         // Since there was a fault, we shouldn't trace this instruction.
@@ -346,23 +347,10 @@ TimingSimpleCPU::translationFault(Fault fault)
     advanceInst(fault);
 }
 
-void
-TimingSimpleCPU::buildPacket(PacketPtr &pkt, RequestPtr req, bool read)
+PacketPtr
+TimingSimpleCPU::buildPacket(RequestPtr req, bool read)
 {
-    MemCmd cmd;
-    if (read) {
-        cmd = MemCmd::ReadReq;
-        if (req->isLLSC())
-            cmd = MemCmd::LoadLockedReq;
-    } else {
-        cmd = MemCmd::WriteReq;
-        if (req->isLLSC()) {
-            cmd = MemCmd::StoreCondReq;
-        } else if (req->isSwap()) {
-            cmd = MemCmd::SwapReq;
-        }
-    }
-    pkt = new Packet(req, cmd);
+    return read ? Packet::createRead(req) : Packet::createWrite(req);
 }
 
 void
@@ -375,17 +363,16 @@ TimingSimpleCPU::buildSplitPacket(PacketPtr &pkt1, PacketPtr &pkt2,
     assert(!req1->isMmappedIpr() && !req2->isMmappedIpr());
 
     if (req->getFlags().isSet(Request::NO_ACCESS)) {
-        buildPacket(pkt1, req, read);
+        pkt1 = buildPacket(req, read);
         return;
     }
 
-    buildPacket(pkt1, req1, read);
-    buildPacket(pkt2, req2, read);
+    pkt1 = buildPacket(req1, read);
+    pkt2 = buildPacket(req2, read);
 
-    req->setPhys(req1->getPaddr(), req->getSize(), req1->getFlags(), dataMasterId());
     PacketPtr pkt = new Packet(req, pkt1->cmd.responseCommand());
 
-    pkt->dataDynamicArray<uint8_t>(data);
+    pkt->dataDynamic<uint8_t>(data);
     pkt1->dataStatic<uint8_t>(data);
     pkt2->dataStatic<uint8_t>(data + req1->getSize());
 
@@ -409,9 +396,8 @@ TimingSimpleCPU::readMem(Addr addr, uint8_t *data,
     unsigned block_size = cacheLineSize();
     BaseTLB::Mode mode = BaseTLB::Read;
 
-    if (traceData) {
-        traceData->setAddr(addr);
-    }
+    if (traceData)
+        traceData->setMem(addr, size, flags);
 
     RequestPtr req  = new Request(asid, addr, size,
                                   flags, dataMasterId(), pc, _cpuId, tid);
@@ -486,9 +472,8 @@ TimingSimpleCPU::writeMem(uint8_t *data, unsigned size,
         memcpy(newData, data, size);
     }
 
-    if (traceData) {
-        traceData->setAddr(addr);
-    }
+    if (traceData)
+        traceData->setMem(addr, size, flags);
 
     RequestPtr req = new Request(asid, addr, size,
                                  flags, dataMasterId(), pc, _cpuId, tid);
@@ -557,10 +542,10 @@ TimingSimpleCPU::fetch()
 {
     DPRINTF(SimpleCPU, "Fetch\n");
 
-    if (!curStaticInst || !curStaticInst->isDelayedCommit())
+    if (!curStaticInst || !curStaticInst->isDelayedCommit()) {
         checkForInterrupts();
-
-    checkPcEventQueue();
+        checkPcEventQueue();
+    }
 
     // We must have just got suspended by a PC event
     if (_status == Idle)
@@ -582,14 +567,14 @@ TimingSimpleCPU::fetch()
         _status = IcacheWaitResponse;
         completeIfetch(NULL);
 
-        numCycles += curCycle() - previousCycle;
-        previousCycle = curCycle();
+        updateCycleCounts();
     }
 }
 
 
 void
-TimingSimpleCPU::sendFetch(Fault fault, RequestPtr req, ThreadContext *tc)
+TimingSimpleCPU::sendFetch(const Fault &fault, RequestPtr req,
+                           ThreadContext *tc)
 {
     if (fault == NoFault) {
         DPRINTF(SimpleCPU, "Sending fetch for addr %#x(pa: %#x)\n",
@@ -615,13 +600,12 @@ TimingSimpleCPU::sendFetch(Fault fault, RequestPtr req, ThreadContext *tc)
         advanceInst(fault);
     }
 
-    numCycles += curCycle() - previousCycle;
-    previousCycle = curCycle();
+    updateCycleCounts();
 }
 
 
 void
-TimingSimpleCPU::advanceInst(Fault fault)
+TimingSimpleCPU::advanceInst(const Fault &fault)
 {
     if (_status == Faulting)
         return;
@@ -663,8 +647,7 @@ TimingSimpleCPU::completeIfetch(PacketPtr pkt)
 
     _status = BaseSimpleCPU::Running;
 
-    numCycles += curCycle() - previousCycle;
-    previousCycle = curCycle();
+    updateCycleCounts();
 
     if (pkt)
         pkt->req->setAccessLatency();
@@ -729,20 +712,18 @@ TimingSimpleCPU::IcachePort::ITickEvent::process()
 bool
 TimingSimpleCPU::IcachePort::recvTimingResp(PacketPtr pkt)
 {
-    DPRINTF(SimpleCPU, "Received timing response %#x\n", pkt->getAddr());
+    DPRINTF(SimpleCPU, "Received fetch response %#x\n", pkt->getAddr());
+    // we should only ever see one response per cycle since we only
+    // issue a new request once this response is sunk
+    assert(!tickEvent.scheduled());
     // delay processing of returned data until next CPU clock edge
-    Tick next_tick = cpu->clockEdge();
-
-    if (next_tick == curTick())
-        cpu->completeIfetch(pkt);
-    else
-        tickEvent.schedule(pkt, next_tick);
+    tickEvent.schedule(pkt, cpu->clockEdge());
 
     return true;
 }
 
 void
-TimingSimpleCPU::IcachePort::recvRetry()
+TimingSimpleCPU::IcachePort::recvReqRetry()
 {
     // we shouldn't get a retry unless we have a packet that we're
     // waiting to transmit
@@ -765,8 +746,8 @@ TimingSimpleCPU::completeDataAccess(PacketPtr pkt)
            pkt->req->getFlags().isSet(Request::NO_ACCESS));
 
     pkt->req->setAccessLatency();
-    numCycles += curCycle() - previousCycle;
-    previousCycle = curCycle();
+
+    updateCycleCounts();
 
     if (pkt->senderState) {
         SplitFragmentSenderState * send_state =
@@ -806,12 +787,6 @@ TimingSimpleCPU::completeDataAccess(PacketPtr pkt)
         traceData = NULL;
     }
 
-    // the locked flag may be cleared on the response packet, so check
-    // pkt->req and not pkt to see if it was a load-locked
-    if (pkt->isRead() && pkt->req->isLLSC()) {
-        TheISA::handleLockedRead(thread, pkt->req);
-    }
-
     delete pkt->req;
     delete pkt;
 
@@ -821,34 +796,54 @@ TimingSimpleCPU::completeDataAccess(PacketPtr pkt)
 }
 
 void
+TimingSimpleCPU::updateCycleCounts()
+{
+    const Cycles delta(curCycle() - previousCycle);
+
+    numCycles += delta;
+    ppCycles->notify(delta);
+
+    previousCycle = curCycle();
+}
+
+void
 TimingSimpleCPU::DcachePort::recvTimingSnoopReq(PacketPtr pkt)
 {
+    // X86 ISA: Snooping an invalidation for monitor/mwait
+    if(cpu->getAddrMonitor()->doMonitor(pkt)) {
+        cpu->wakeup();
+    }
     TheISA::handleLockedSnoop(cpu->thread, pkt, cacheBlockMask);
 }
 
+void
+TimingSimpleCPU::DcachePort::recvFunctionalSnoop(PacketPtr pkt)
+{
+    // X86 ISA: Snooping an invalidation for monitor/mwait
+    if(cpu->getAddrMonitor()->doMonitor(pkt)) {
+        cpu->wakeup();
+    }
+}
 
 bool
 TimingSimpleCPU::DcachePort::recvTimingResp(PacketPtr pkt)
 {
-    // delay processing of returned data until next CPU clock edge
-    Tick next_tick = cpu->clockEdge();
+    DPRINTF(SimpleCPU, "Received load/store response %#x\n", pkt->getAddr());
 
-    if (next_tick == curTick()) {
-        cpu->completeDataAccess(pkt);
+    // The timing CPU is not really ticked, instead it relies on the
+    // memory system (fetch and load/store) to set the pace.
+    if (!tickEvent.scheduled()) {
+        // Delay processing of returned data until next CPU clock edge
+        tickEvent.schedule(pkt, cpu->clockEdge());
+        return true;
     } else {
-        if (!tickEvent.scheduled()) {
-            tickEvent.schedule(pkt, next_tick);
-        } else {
-            // In the case of a split transaction and a cache that is
-            // faster than a CPU we could get two responses before
-            // next_tick expires
-            if (!retryEvent.scheduled())
-                cpu->schedule(retryEvent, next_tick);
-            return false;
-        }
+        // In the case of a split transaction and a cache that is
+        // faster than a CPU we could get two responses in the
+        // same tick, delay the second one
+        if (!retryRespEvent.scheduled())
+            cpu->schedule(retryRespEvent, cpu->clockEdge(Cycles(1)));
+        return false;
     }
-
-    return true;
 }
 
 void
@@ -858,7 +853,7 @@ TimingSimpleCPU::DcachePort::DTickEvent::process()
 }
 
 void
-TimingSimpleCPU::DcachePort::recvRetry()
+TimingSimpleCPU::DcachePort::recvReqRetry()
 {
     // we shouldn't get a retry unless we have a packet that we're
     // waiting to transmit

@@ -41,21 +41,21 @@
 class RubyRequest : public Message
 {
   public:
-    Address m_PhysicalAddress;
-    Address m_LineAddress;
+    Addr m_PhysicalAddress;
+    Addr m_LineAddress;
     RubyRequestType m_Type;
-    Address m_ProgramCounter;
+    Addr m_ProgramCounter;
     RubyAccessMode m_AccessMode;
     int m_Size;
     PrefetchBit m_Prefetch;
     uint8_t* data;
     PacketPtr pkt;
-    unsigned m_contextId;
+    ContextID m_contextId;
 
     RubyRequest(Tick curTime, uint64_t _paddr, uint8_t* _data, int _len,
         uint64_t _pc, RubyRequestType _type, RubyAccessMode _access_mode,
         PacketPtr _pkt, PrefetchBit _pb = PrefetchBit_No,
-        unsigned _proc_id = 100)
+        ContextID _proc_id = 100)
         : Message(curTime),
           m_PhysicalAddress(_paddr),
           m_Type(_type),
@@ -67,17 +67,17 @@ class RubyRequest : public Message
           pkt(_pkt),
           m_contextId(_proc_id)
     {
-      m_LineAddress = m_PhysicalAddress;
-      m_LineAddress.makeLineAddress();
+      m_LineAddress = makeLineAddress(m_PhysicalAddress);
     }
 
     RubyRequest(Tick curTime) : Message(curTime) {}
-    RubyRequest* clone() const { return new RubyRequest(*this); }
+    MsgPtr clone() const
+    { return std::shared_ptr<Message>(new RubyRequest(*this)); }
 
-    const Address& getLineAddress() const { return m_LineAddress; }
-    const Address& getPhysicalAddress() const { return m_PhysicalAddress; }
+    Addr getLineAddress() const { return m_LineAddress; }
+    Addr getPhysicalAddress() const { return m_PhysicalAddress; }
     const RubyRequestType& getType() const { return m_Type; }
-    const Address& getProgramCounter() const { return m_ProgramCounter; }
+    Addr getProgramCounter() const { return m_ProgramCounter; }
     const RubyAccessMode& getAccessMode() const { return m_AccessMode; }
     const int& getSize() const { return m_Size; }
     const PrefetchBit& getPrefetch() const { return m_Prefetch; }
@@ -85,7 +85,7 @@ class RubyRequest : public Message
     void
     writeData(DataBlock& block) const
     {
-      block.setData(data, m_PhysicalAddress.getOffset(), m_Size);
+      block.setData(data, getOffset(m_PhysicalAddress), m_Size);
     }
 
     void print(std::ostream& out) const;
@@ -101,4 +101,4 @@ operator<<(std::ostream& out, const RubyRequest& obj)
   return out;
 }
 
-#endif
+#endif  // __MEM_RUBY_SLICC_INTERFACE_RUBY_REQUEST_HH__

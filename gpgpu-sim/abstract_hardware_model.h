@@ -96,7 +96,6 @@ enum uarch_op_t {
 };
 typedef enum uarch_op_t op_type;
 
-
 enum uarch_operand_type_t {
 	UN_OP=-1,
     INT_OP,
@@ -293,13 +292,13 @@ struct core_config {
     unsigned gpgpu_shmem_sizeDefault;
     unsigned gpgpu_shmem_sizePrefL1;
     unsigned gpgpu_shmem_sizePrefShared;
+	unsigned gpgpu_shmem_access_latency;
 
     // texture and constant cache line sizes (used to determine number of memory accesses)
     unsigned gpgpu_cache_texl1_linesize;
     unsigned gpgpu_cache_constl1_linesize;
     unsigned gpgpu_cache_datal1_linesize;
-    unsigned gpgpu_max_insn_issue_per_warp;
-    
+    unsigned gpgpu_max_insn_issue_per_warp;    
     bool gpgpu_debug_texture_accesses;
 };
 
@@ -462,7 +461,7 @@ private:
 
 class gpgpu_t {
 public:
-    gpgpu_t( const gpgpu_functional_sim_config &config, int _sharedMemDelay = 1 );
+    gpgpu_t( const gpgpu_functional_sim_config &config, CudaGPU *cuda_gpu );
     void* gpu_malloc( size_t size );
     void* gpu_mallocarray( size_t count );
     void  gpu_memset( size_t dst_start_addr, int c, size_t count );
@@ -509,7 +508,6 @@ public:
 
     // gem5 stuff
     CudaGPU *gem5CudaGPU;
-    int sharedMemDelay;
     void setCudaGPU(CudaGPU *cudaGPU) {gem5CudaGPU = cudaGPU;}
 
 protected:
@@ -613,6 +611,7 @@ MEM_ACCESS_TYPE_TUP_DEF
 #undef MA_TUP_BEGIN
 #undef MA_TUP
 #undef MA_TUP_END
+
 const char * mem_access_type_str(enum mem_access_type access_type); 
 
 //Z unit structures
@@ -701,6 +700,7 @@ public:
    bool is_write() const { return m_write; }
    enum mem_access_type get_type() const { return m_type; }
    mem_access_byte_mask_t get_byte_mask() const { return m_byte_mask; }
+
    void print(FILE *fp) const
    {
        fprintf(fp,"addr=0x%llx, %s, size=%u, ", m_addr, m_write?"store":"load ", m_req_size );
@@ -758,7 +758,6 @@ public:
 struct dram_callback_t {
    dram_callback_t() { function=NULL; instruction=NULL; thread=NULL; }
    void (*function)(const class inst_t*, class ptx_thread_info*);
-
    const class inst_t* instruction;
    class ptx_thread_info *thread;
 };
@@ -819,7 +818,6 @@ public:
     address_type pc;        // program counter address of instruction
     unsigned isize;         // size of instruction in bytes 
     op_type op;             // opcode (uarch visible)
-
     types_of_operands oprnd_type;     // code (uarch visible) identify if the operation is an interger or a floating point
     special_ops sp_op;           // code (uarch visible) identify if int_alu, fp_alu, int_mul ....
     operation_pipeline op_pipe;  // code (uarch visible) identify the pipeline of the operation (SP, SFU or MEM)
@@ -913,7 +911,6 @@ public:
     	return m_warp_active_mask;
     }
     void completed( unsigned long long cycle ) const;  // stat collection: called when the instruction is completed  
-
     void set_addr( unsigned n, new_addr_type addr ) 
     {
         if( !m_per_scalar_thread_valid ) {
@@ -1080,6 +1077,10 @@ public:
     	return cycles > 0;
     }
 
+    const int get_cycles(){
+    	return cycles;
+    }
+
     void print( FILE *fout ) const;
     unsigned get_uid() const { return m_uid; }
     int vectorLength;
@@ -1155,7 +1156,6 @@ class core_t {
                      calloc( m_warp_count * m_warp_size,
                              sizeof( ptx_thread_info* ) );
             initilizeSIMTStack(m_warp_count,m_warp_size);
-
         }
         virtual ~core_t() { free(m_thread); }
         virtual void warp_exit( unsigned warp_id ) = 0;

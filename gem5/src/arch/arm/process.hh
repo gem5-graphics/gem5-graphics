@@ -67,7 +67,6 @@ class ArmLiveProcess : public LiveProcess
 class ArmLiveProcess32 : public ArmLiveProcess
 {
   protected:
-    ObjectFile::Arch arch;
     ArmLiveProcess32(LiveProcessParams * params, ObjectFile *objFile,
                      ObjectFile::Arch _arch);
 
@@ -84,7 +83,6 @@ class ArmLiveProcess32 : public ArmLiveProcess
 class ArmLiveProcess64 : public ArmLiveProcess
 {
   protected:
-    ObjectFile::Arch arch;
     ArmLiveProcess64(LiveProcessParams * params, ObjectFile *objFile,
                      ObjectFile::Arch _arch);
 
@@ -97,6 +95,9 @@ class ArmLiveProcess64 : public ArmLiveProcess
     void setSyscallArg(ThreadContext *tc, int i, ArmISA::IntReg val);
     void setSyscallReturn(ThreadContext *tc, SyscallReturn return_value);
 };
+
+/* No architectural page table defined for this ISA */
+typedef NoArchPageTable ArchPageTable;
 
 #endif // __ARM_PROCESS_HH__
 

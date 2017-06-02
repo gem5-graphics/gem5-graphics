@@ -59,7 +59,7 @@
 map<int, int>* global_routing_table;
 
 AnyNet::AnyNet( const Configuration &config, const string & name )
-  :  Network( config, name ){
+  :  ISNetwork( config, name ){
 
   router_list.resize(2);
   _ComputeSize( config );

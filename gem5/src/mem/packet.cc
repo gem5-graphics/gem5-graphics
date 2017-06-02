@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2013 ARM Limited
+ * Copyright (c) 2011-2015 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -12,7 +12,7 @@
  * modified or unmodified, in source code or in binary form.
  *
  * Copyright (c) 2006 The Regents of The University of Michigan
- * Copyright (c) 2010 Advanced Micro Devices, Inc.
+ * Copyright (c) 2010,2015 Advanced Micro Devices, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -71,7 +71,8 @@ MemCmd::commandInfo[] =
 {
     /* InvalidCmd */
     { 0, InvalidCmd, "InvalidCmd" },
-    /* ReadReq */
+    /* ReadReq - Read issued by a non-caching agent such as a CPU or
+     * device, with no restrictions on alignment. */
     { SET3(IsRead, IsRequest, NeedsResponse), ReadResp, "ReadReq" },
     /* ReadResp */
     { SET3(IsRead, IsResponse, HasData), InvalidCmd, "ReadResp" },
@@ -86,6 +87,8 @@ MemCmd::commandInfo[] =
     /* Writeback */
     { SET4(IsWrite, NeedsExclusive, IsRequest, HasData),
             InvalidCmd, "Writeback" },
+    /* CleanEvict */
+    { SET2(IsWrite, IsRequest), InvalidCmd, "CleanEvict" },
     /* SoftPFReq */
     { SET4(IsRead, IsRequest, IsSWPrefetch, NeedsResponse),
             SoftPFResp, "SoftPFReq" },
@@ -98,13 +101,9 @@ MemCmd::commandInfo[] =
     /* HardPFResp */
     { SET4(IsRead, IsResponse, IsHWPrefetch, HasData),
             InvalidCmd, "HardPFResp" },
-    /* WriteInvalidateReq (currently unused, see packet.hh) */
-    { SET6(IsWrite, NeedsExclusive, IsInvalidate,
-           IsRequest, HasData, NeedsResponse),
-            WriteInvalidateResp, "WriteInvalidateReq" },
-    /* WriteInvalidateResp (currently unused, see packet.hh) */
-    { SET3(IsWrite, NeedsExclusive, IsResponse),
-            InvalidCmd, "WriteInvalidateResp" },
+    /* WriteLineReq */
+    { SET5(IsWrite, NeedsExclusive, IsRequest, NeedsResponse, HasData),
+            WriteResp, "WriteLineReq" },
     /* UpgradeReq */
     { SET5(IsInvalidate, NeedsExclusive, IsUpgrade, IsRequest, NeedsResponse),
             UpgradeResp, "UpgradeReq" },
@@ -115,19 +114,31 @@ MemCmd::commandInfo[] =
     /* UpgradeResp */
     { SET3(NeedsExclusive, IsUpgrade, IsResponse),
             InvalidCmd, "UpgradeResp" },
-    /* SCUpgradeFailReq: generates UpgradeFailResp ASAP */
-    { SET5(IsInvalidate, NeedsExclusive, IsLlsc,
-           IsRequest, NeedsResponse),
+    /* SCUpgradeFailReq: generates UpgradeFailResp but still gets the data */
+    { SET6(IsRead, NeedsExclusive, IsInvalidate,
+           IsLlsc, IsRequest, NeedsResponse),
             UpgradeFailResp, "SCUpgradeFailReq" },
-    /* UpgradeFailResp */
-    { SET2(NeedsExclusive, IsResponse),
+    /* UpgradeFailResp - Behaves like a ReadExReq, but notifies an SC
+     * that it has failed, acquires line as Dirty*/
+    { SET4(IsRead, NeedsExclusive, IsResponse, HasData),
             InvalidCmd, "UpgradeFailResp" },
-    /* ReadExReq */
+    /* ReadExReq - Read issues by a cache, always cache-line aligned,
+     * and the response is guaranteed to be writeable (exclusive or
+     * even modified) */
     { SET5(IsRead, NeedsExclusive, IsInvalidate, IsRequest, NeedsResponse),
             ReadExResp, "ReadExReq" },
-    /* ReadExResp */
+    /* ReadExResp - Response matching a read exclusive, as we check
+     * the need for exclusive also on responses */
     { SET4(IsRead, NeedsExclusive, IsResponse, HasData),
             InvalidCmd, "ReadExResp" },
+    /* ReadCleanReq - Read issued by a cache, always cache-line
+     * aligned, and the response is guaranteed to not contain dirty data
+     * (exclusive or shared).*/
+    { SET3(IsRead, IsRequest, NeedsResponse), ReadResp, "ReadCleanReq" },
+    /* ReadSharedReq - Read issued by a cache, always cache-line
+     * aligned, response is shared, possibly exclusive, owned or even
+     * modified. */
+    { SET3(IsRead, IsRequest, NeedsResponse), ReadResp, "ReadSharedReq" },
     /* LoadLockedReq: note that we use plain ReadResp as response, so that
      *                we can also use ReadRespWithInvalidate when needed */
     { SET4(IsRead, IsLlsc, IsRequest, NeedsResponse),
@@ -136,7 +147,7 @@ MemCmd::commandInfo[] =
     { SET6(IsWrite, NeedsExclusive, IsLlsc,
            IsRequest, NeedsResponse, HasData),
             StoreCondResp, "StoreCondReq" },
-    /* StoreCondFailReq: generates failing StoreCondResp ASAP */
+    /* StoreCondFailReq: generates failing StoreCondResp */
     { SET6(IsWrite, NeedsExclusive, IsLlsc,
            IsRequest, NeedsResponse, HasData),
             StoreCondResp, "StoreCondFailReq" },
@@ -154,6 +165,14 @@ MemCmd::commandInfo[] =
         MessageResp, "MessageReq" },
     /* IntResp -- for interrupts */
     { SET2(IsWrite, IsResponse), InvalidCmd, "MessageResp" },
+    /* ReleaseReq -- for release synchronization */
+    { SET2(IsRequest, NeedsResponse), ReleaseResp, "ReleaseReq" },
+    /* ReleaseResp -- for release synchronization */
+    { SET1(IsResponse), InvalidCmd, "ReleaseResp" },
+    /* AcquireReq -- for release synchronization */
+    { SET2(IsRequest, NeedsResponse), AcquireResp, "AcquireReq" },
+    /* AcquireResp -- for release synchronization */
+    { SET2(IsResponse, NeedsResponse), InvalidCmd, "AcquireResp" },
     /* InvalidDestError  -- packet dest field invalid */
     { SET2(IsResponse, IsError), InvalidCmd, "InvalidDestError" },
     /* BadAddressError   -- memory address invalid */
@@ -171,22 +190,25 @@ MemCmd::commandInfo[] =
     { SET3(IsResponse, IsFlush, NeedsExclusive), InvalidCmd,
            "FlushResp" },
     /* Invalidation Request */
-    { SET3(NeedsExclusive, IsInvalidate, IsRequest),
-      InvalidCmd, "InvalidationReq" },
+    { SET4(IsInvalidate, IsRequest, NeedsExclusive, NeedsResponse),
+      InvalidateResp, "InvalidateReq" },
+    /* Invalidation Response */
+    { SET3(IsInvalidate, IsResponse, NeedsExclusive),
+      InvalidCmd, "InvalidateResp" },
     /* FlushAll Request */
     { SET4(IsRequest, NeedsResponse, IsFlush, IsInvalidate), FlushAllResp,
-      "FlushAllReq"},
+      "FlushAllReq" },
     /* FlushAll Response */
-    { SET3(IsResponse, IsFlush, IsInvalidate), InvalidCmd, "FlushAllResp"},
+    { SET3(IsResponse, IsFlush, IsInvalidate), InvalidCmd, "FlushAllResp" },
     /* Fence Request */
-    { SET2(IsRequest, NeedsResponse), FenceResp, "FenceReq"},
+    { SET2(IsRequest, NeedsResponse), FenceResp, "FenceReq" },
     /* Fence Response */
-    { SET1(IsResponse), InvalidCmd, "FenceResp"},
+    { SET1(IsResponse), InvalidCmd, "FenceResp" },
 };
 
 bool
 Packet::checkFunctional(Printable *obj, Addr addr, bool is_secure, int size,
-                        uint8_t *data)
+                        uint8_t *_data)
 {
     Addr func_start = getAddr();
     Addr func_end   = getAddr() + getSize() - 1;
@@ -201,12 +223,14 @@ Packet::checkFunctional(Printable *obj, Addr addr, bool is_secure, int size,
 
     // check print first since it doesn't require data
     if (isPrint()) {
-        dynamic_cast<PrintReqState*>(senderState)->printObj(obj);
+        assert(!_data);
+        safe_cast<PrintReqState*>(senderState)->printObj(obj);
         return false;
     }
 
-    // if there's no data, there's no need to look further
-    if (!data) {
+    // we allow the caller to pass NULL to signify the other packet
+    // has no data
+    if (!_data) {
         return false;
     }
 
@@ -216,8 +240,11 @@ Packet::checkFunctional(Printable *obj, Addr addr, bool is_secure, int size,
 
     if (isRead()) {
         if (func_start >= val_start && func_end <= val_end) {
-            allocate();
-            memcpy(getPtr<uint8_t>(), data + offset, getSize());
+            memcpy(getPtr<uint8_t>(), _data + offset, getSize());
+            if (bytesValid.empty())
+                bytesValid.resize(getSize(), true);
+            // complete overlap, and as the current packet is a read
+            // we are done
             return true;
         } else {
             // Offsets and sizes to copy in case of partial overlap
@@ -227,99 +254,72 @@ Packet::checkFunctional(Printable *obj, Addr addr, bool is_secure, int size,
 
             // calculate offsets and copy sizes for the two byte arrays
             if (val_start < func_start && val_end <= func_end) {
+                // the one we are checking against starts before and
+                // ends before or the same
                 val_offset = func_start - val_start;
                 func_offset = 0;
                 overlap_size = val_end - func_start;
             } else if (val_start >= func_start && val_end > func_end) {
+                // the one we are checking against starts after or the
+                // same, and ends after
                 val_offset = 0;
                 func_offset = val_start - func_start;
                 overlap_size = func_end - val_start;
             } else if (val_start >= func_start && val_end <= func_end) {
+                // the one we are checking against is completely
+                // subsumed in the current packet, possibly starting
+                // and ending at the same address
                 val_offset = 0;
                 func_offset = val_start - func_start;
                 overlap_size = size;
+            } else if (val_start < func_start && val_end > func_end) {
+                // the current packet is completely subsumed in the
+                // one we are checking against
+                val_offset = func_start - val_start;
+                func_offset = 0;
+                overlap_size = func_end - func_start;
             } else {
-                panic("BUG: Missed a case for a partial functional request");
+                panic("Missed a case for checkFunctional with "
+                      " %s 0x%x size %d, against 0x%x size %d\n",
+                      cmdString(), getAddr(), getSize(), addr, size);
             }
-
-            // Figure out how much of the partial overlap should be copied
-            // into the packet and not overwrite previously found bytes.
-            if (bytesValidStart == 0 && bytesValidEnd == 0) {
-                // No bytes have been copied yet, just set indices
-                // to found range
-                bytesValidStart = func_offset;
-                bytesValidEnd = func_offset + overlap_size;
-            } else {
-                // Some bytes have already been copied. Use bytesValid
-                // indices and offset values to figure out how much data
-                // to copy and where to copy it to.
-
-                // Indice overlap conditions to check
-                int a = func_offset - bytesValidStart;
-                int b = (func_offset + overlap_size) - bytesValidEnd;
-                int c = func_offset - bytesValidEnd;
-                int d = (func_offset + overlap_size) - bytesValidStart;
-
-                if (a >= 0 && b <= 0) {
-                    // bytes already in pkt data array are superset of
-                    // found bytes, will not copy any bytes
-                    overlap_size = 0;
-                } else if (a < 0 && d >= 0 && b <= 0) {
-                    // found bytes will move bytesValidStart towards 0
-                    overlap_size = bytesValidStart - func_offset;
-                    bytesValidStart = func_offset;
-                } else if (b > 0 && c <= 0 && a >= 0) {
-                    // found bytes will move bytesValidEnd
-                    // towards end of pkt data array
-                    overlap_size =
-                        (func_offset + overlap_size) - bytesValidEnd;
-                    val_offset += bytesValidEnd - func_offset;
-                    func_offset = bytesValidEnd;
-                    bytesValidEnd += overlap_size;
-                } else if (a < 0 && b > 0) {
-                    // Found bytes are superset of copied range. Will move
-                    // bytesValidStart towards 0 and bytesValidEnd towards
-                    // end of pkt data array.  Need to break copy into two
-                    // pieces so as to not overwrite previously found data.
-
-                    // copy the first half
-                    uint8_t *dest = getPtr<uint8_t>() + func_offset;
-                    uint8_t *src = data + val_offset;
-                    memcpy(dest, src, (bytesValidStart - func_offset));
-
-                    // re-calc the offsets and indices to do the copy
-                    // required for the second half
-                    val_offset += (bytesValidEnd - func_offset);
-                    bytesValidStart = func_offset;
-                    overlap_size =
-                        (func_offset + overlap_size) - bytesValidEnd;
-                    func_offset = bytesValidEnd;
-                    bytesValidEnd += overlap_size;
-                } else if ((c > 0 && b > 0)
-                           || (a < 0 && d < 0)) {
-                    // region to be copied is discontiguous! Not supported.
-                    panic("BUG: Discontiguous bytes found"
-                          "for functional copying!");
-                }
-            }
-            assert(bytesValidEnd <= getSize());
 
             // copy partial data into the packet's data array
             uint8_t *dest = getPtr<uint8_t>() + func_offset;
-            uint8_t *src = data + val_offset;
+            uint8_t *src = _data + val_offset;
             memcpy(dest, src, overlap_size);
 
-            // check if we're done filling the functional access
-            bool done = (bytesValidStart == 0) && (bytesValidEnd == getSize());
-            return done;
+            // initialise the tracking of valid bytes if we have not
+            // used it already
+            if (bytesValid.empty())
+                bytesValid.resize(getSize(), false);
+
+            // track if we are done filling the functional access
+            bool all_bytes_valid = true;
+
+            int i = 0;
+
+            // check up to func_offset
+            for (; all_bytes_valid && i < func_offset; ++i)
+                all_bytes_valid &= bytesValid[i];
+
+            // update the valid bytes
+            for (i = func_offset; i < func_offset + overlap_size; ++i)
+                bytesValid[i] = true;
+
+            // check the bit after the update we just made
+            for (; all_bytes_valid && i < getSize(); ++i)
+                all_bytes_valid &= bytesValid[i];
+
+            return all_bytes_valid;
         }
     } else if (isWrite()) {
         if (offset >= 0) {
-            memcpy(data + offset, getPtr<uint8_t>(),
+            memcpy(_data + offset, getConstPtr<uint8_t>(),
                    (min(func_end, val_end) - func_start) + 1);
         } else {
             // val_start > func_start
-            memcpy(data, getPtr<uint8_t>() - offset,
+            memcpy(_data, getConstPtr<uint8_t>() - offset,
                    (min(func_end, val_end) - val_start) + 1);
         }
     } else {

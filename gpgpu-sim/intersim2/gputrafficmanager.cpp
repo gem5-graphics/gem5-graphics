@@ -34,7 +34,7 @@
 #include "globals.hpp"
 
 
-GPUTrafficManager::GPUTrafficManager( const Configuration &config, const vector<Network *> &net)
+GPUTrafficManager::GPUTrafficManager( const Configuration &config, const vector<ISNetwork *> &net)
 :TrafficManager(config, net)
 {
   // The total simulations equal to number of kernels

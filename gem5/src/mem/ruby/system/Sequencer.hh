@@ -36,7 +36,7 @@
 #include "mem/protocol/RubyRequestType.hh"
 #include "mem/protocol/SequencerRequestType.hh"
 #include "mem/ruby/common/Address.hh"
-#include "mem/ruby/system/CacheMemory.hh"
+#include "mem/ruby/structures/CacheMemory.hh"
 #include "mem/ruby/system/RubyPort.hh"
 #include "params/RubySequencer.hh"
 
@@ -68,7 +68,7 @@ class Sequencer : public RubyPort
     void collateStats();
     void regStats();
 
-    void writeCallback(const Address& address,
+    void writeCallback(Addr address,
                        DataBlock& data,
                        const bool externalHit = false,
                        const MachineType mach = MachineType_NUM,
@@ -76,7 +76,7 @@ class Sequencer : public RubyPort
                        const Cycles forwardRequestTime = Cycles(0),
                        const Cycles firstResponseTime = Cycles(0));
 
-    void readCallback(const Address& address,
+    void readCallback(Addr address,
                       DataBlock& data,
                       const bool externalHit = false,
                       const MachineType mach = MachineType_NUM,
@@ -95,12 +95,12 @@ class Sequencer : public RubyPort
     { deschedule(deadlockCheckEvent); }
 
     void print(std::ostream& out) const;
-    void checkCoherence(const Address& address);
+    void checkCoherence(Addr address);
 
     void markRemoved();
     void removeRequest(SequencerRequest* request);
-    void evictionCallback(const Address& address);
-    void invalidateSC(const Address& address);
+    void evictionCallback(Addr address);
+    void invalidateSC(Addr address);
 
     void recordRequestType(SequencerRequestType requestType);
     Stats::Histogram& getOutstandReqHist() { return m_outstandReqHist; }
@@ -167,7 +167,7 @@ class Sequencer : public RubyPort
                            Cycles completionTime);
 
     RequestStatus insertRequest(PacketPtr pkt, RubyRequestType request_type);
-    bool handleLlsc(const Address& address, SequencerRequest* request);
+    bool handleLlsc(Addr address, SequencerRequest* request);
 
     // Private copy constructor and assignment operator
     Sequencer(const Sequencer& obj);
@@ -180,7 +180,14 @@ class Sequencer : public RubyPort
     CacheMemory* m_dataCache_ptr;
     CacheMemory* m_instCache_ptr;
 
-    typedef m5::hash_map<Address, SequencerRequest*> RequestTable;
+    // The cache access latency for top-level caches (L0/L1). These are
+    // currently assessed at the beginning of each memory access through the
+    // sequencer.
+    // TODO: Migrate these latencies into top-level cache controllers.
+    Cycles m_data_cache_hit_latency;
+    Cycles m_inst_cache_hit_latency;
+
+    typedef m5::hash_map<Addr, SequencerRequest*> RequestTable;
     RequestTable m_writeRequestTable;
     RequestTable m_readRequestTable;
     // Global outstanding request count, across all request tables

@@ -11,6 +11,7 @@
 # modified or unmodified, in source code or in binary form.
 #
 # Copyright (c) 2013 Amin Farmahini-Farahani
+# Copyright (c) 2015 University of Kaiserslautern
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -38,6 +39,8 @@
 #
 # Authors: Andreas Hansson
 #          Ani Udipi
+#          Omar Naji
+#          Matthias Jung
 
 from m5.params import *
 from AbstractMemory import *
@@ -71,7 +74,10 @@ class DRAMCtrl(AbstractMemory):
     # bus in front of the controller for multiple ports
     port = SlavePort("Slave port")
 
-    # the basic configuration of the controller architecture
+    # the basic configuration of the controller architecture, note
+    # that each entry corresponds to a burst for the specific DRAM
+    # configuration (e.g. x32 with burst length 8 is 32 bytes) and not
+    # the cacheline size or request/packet size
     write_buffer_size = Param.Unsigned(64, "Number of write queue entries")
     read_buffer_size = Param.Unsigned(32, "Number of read queue entries")
 
@@ -89,12 +95,15 @@ class DRAMCtrl(AbstractMemory):
 
     # scheduler, address map and page policy
     mem_sched_policy = Param.MemSched('frfcfs', "Memory scheduling policy")
-    addr_mapping = Param.AddrMap('RoRaBaChCo', "Address mapping policy")
+    addr_mapping = Param.AddrMap('RoRaBaCoCh', "Address mapping policy")
     page_policy = Param.PageManage('open_adaptive', "Page management policy")
 
     # enforce a limit on the number of accesses per row
     max_accesses_per_row = Param.Unsigned(16, "Max accesses per row before "
                                           "closing");
+
+    # size of DRAM Chip in Bytes
+    device_size = Param.MemorySize("Size of DRAM chip")
 
     # pipeline latency of the controller and PHY, split into a
     # frontend part and a backend part, with reads and writes serviced
@@ -111,11 +120,25 @@ class DRAMCtrl(AbstractMemory):
                                            "device/chip")
     devices_per_rank = Param.Unsigned("Number of devices/chips per rank")
     ranks_per_channel = Param.Unsigned("Number of ranks per channel")
+
+    # default to 0 bank groups per rank, indicating bank group architecture
+    # is not used
+    # update per memory class when bank group architecture is supported
+    bank_groups_per_rank = Param.Unsigned(0, "Number of bank groups per rank")
     banks_per_rank = Param.Unsigned("Number of banks per rank")
     # only used for the address mapping as the controller by
     # construction is a single channel and multiple controllers have
     # to be instantiated for a multi-channel configuration
     channels = Param.Unsigned(1, "Number of channels")
+
+    # For power modelling we need to know if the DRAM has a DLL or not
+    dll = Param.Bool(True, "DRAM has DLL or not")
+
+    # DRAMPower provides in addition to the core power, the possibility to
+    # include RD/WR termination and IO power. This calculation assumes some
+    # default values. The integration of DRAMPower with gem5 does not include
+    # IO and RD/WR termination power by default. This might be added as an
+    # additional feature in the future.
 
     # timing behaviour and constraints - all in nanoseconds
 
@@ -147,7 +170,16 @@ class DRAMCtrl(AbstractMemory):
     # This parameter has to account for burst length.
     # Read/Write requests with data size larger than one full burst are broken
     # down into multiple requests in the controller
+    # tBURST is equivalent to the CAS-to-CAS delay (tCCD)
+    # With bank group architectures, tBURST represents the CAS-to-CAS
+    # delay for bursts to different bank groups (tCCD_S)
     tBURST = Param.Latency("Burst duration (for DDR burst length / 2 cycles)")
+
+    # CAS-to-CAS delay for bursts to the same bank group
+    # only utilized with bank group architectures; set to 0 for default case
+    # tBURST is equivalent to tCCD_S; no explicit parameter required
+    # for CAS-to-CAS delay for bursts to different bank groups
+    tCCD_L = Param.Latency("0ns", "Same bank group CAS to CAS delay")
 
     # time taken to complete one refresh cycle (N rows in all banks)
     tRFC = Param.Latency("Refresh cycle time")
@@ -156,29 +188,135 @@ class DRAMCtrl(AbstractMemory):
     # to be sent. It is 7.8 us for a 64ms refresh requirement
     tREFI = Param.Latency("Refresh command interval")
 
-    # write-to-read turn around penalty
-    tWTR = Param.Latency("Write to read switching time")
+    # write-to-read, same rank turnaround penalty
+    tWTR = Param.Latency("Write to read, same rank switching time")
 
-    # read-to-write turn around penalty, bus turnaround delay
-    tRTW = Param.Latency("Read to write switching time")
+    # read-to-write, same rank turnaround penalty
+    tRTW = Param.Latency("Read to write, same rank switching time")
+
+    # rank-to-rank bus delay penalty
+    # this does not correlate to a memory timing parameter and encompasses:
+    # 1) RD-to-RD, 2) WR-to-WR, 3) RD-to-WR, and 4) WR-to-RD
+    # different rank bus delay
+    tCS = Param.Latency("Rank to rank switching time")
 
     # minimum row activate to row activate delay time
     tRRD = Param.Latency("ACT to ACT delay")
+
+    # only utilized with bank group architectures; set to 0 for default case
+    tRRD_L = Param.Latency("0ns", "Same bank group ACT to ACT delay")
 
     # time window in which a maximum number of activates are allowed
     # to take place, set to 0 to disable
     tXAW = Param.Latency("X activation window")
     activation_limit = Param.Unsigned("Max number of activates in window")
 
+    # time to exit power-down mode
+    # Exit power-down to next valid command delay
+    tXP = Param.Latency("0ns", "Power-up Delay")
+
+    # Exit Powerdown to commands requiring a locked DLL
+    tXPDLL = Param.Latency("0ns", "Power-up Delay with locked DLL")
+
+    # time to exit self-refresh mode
+    tXS = Param.Latency("0ns", "Self-refresh exit latency")
+
+    # time to exit self-refresh mode with locked DLL
+    tXSDLL = Param.Latency("0ns", "Self-refresh exit latency DLL")
+
     # Currently rolled into other params
     ######################################################################
 
     # tRC  - assumed to be tRAS + tRP
 
+    # Power Behaviour and Constraints
+    # DRAMs like LPDDR and WideIO have 2 external voltage domains. These are
+    # defined as VDD and VDD2. Each current is defined for each voltage domain
+    # separately. For example, current IDD0 is active-precharge current for
+    # voltage domain VDD and current IDD02 is active-precharge current for
+    # voltage domain VDD2.
+    # By default all currents are set to 0mA. Users who are only interested in
+    # the performance of DRAMs can leave them at 0.
+
+    # Operating 1 Bank Active-Precharge current
+    IDD0 = Param.Current("0mA", "Active precharge current")
+
+    # Operating 1 Bank Active-Precharge current multiple voltage Range
+    IDD02 = Param.Current("0mA", "Active precharge current VDD2")
+
+    # Precharge Power-down Current: Slow exit
+    IDD2P0 = Param.Current("0mA", "Precharge Powerdown slow")
+
+    # Precharge Power-down Current: Slow exit multiple voltage Range
+    IDD2P02 = Param.Current("0mA", "Precharge Powerdown slow VDD2")
+
+    # Precharge Power-down Current: Fast exit
+    IDD2P1 = Param.Current("0mA", "Precharge Powerdown fast")
+
+    # Precharge Power-down Current: Fast exit multiple voltage Range
+    IDD2P12 = Param.Current("0mA", "Precharge Powerdown fast VDD2")
+
+    # Precharge Standby current
+    IDD2N = Param.Current("0mA", "Precharge Standby current")
+
+    # Precharge Standby current multiple voltage range
+    IDD2N2 = Param.Current("0mA", "Precharge Standby current VDD2")
+
+    # Active Power-down current: slow exit
+    IDD3P0 = Param.Current("0mA", "Active Powerdown slow")
+
+    # Active Power-down current: slow exit multiple voltage range
+    IDD3P02 = Param.Current("0mA", "Active Powerdown slow VDD2")
+
+    # Active Power-down current : fast exit
+    IDD3P1 = Param.Current("0mA", "Active Powerdown fast")
+
+    # Active Power-down current : fast exit multiple voltage range
+    IDD3P12 = Param.Current("0mA", "Active Powerdown fast VDD2")
+
+    # Active Standby current
+    IDD3N = Param.Current("0mA", "Active Standby current")
+
+    # Active Standby current multiple voltage range
+    IDD3N2 = Param.Current("0mA", "Active Standby current VDD2")
+
+    # Burst Read Operating Current
+    IDD4R = Param.Current("0mA", "READ current")
+
+    # Burst Read Operating Current multiple voltage range
+    IDD4R2 = Param.Current("0mA", "READ current VDD2")
+
+    # Burst Write Operating Current
+    IDD4W = Param.Current("0mA", "WRITE current")
+
+    # Burst Write Operating Current multiple voltage range
+    IDD4W2 = Param.Current("0mA", "WRITE current VDD2")
+
+    # Refresh Current
+    IDD5 = Param.Current("0mA", "Refresh current")
+
+    # Refresh Current multiple voltage range
+    IDD52 = Param.Current("0mA", "Refresh current VDD2")
+
+    # Self-Refresh Current
+    IDD6 = Param.Current("0mA", "Self-refresh Current")
+
+    # Self-Refresh Current multiple voltage range
+    IDD62 = Param.Current("0mA", "Self-refresh Current VDD2")
+
+    # Main voltage range of the DRAM
+    VDD = Param.Voltage("0V", "Main Voltage Range")
+
+    # Second voltage range defined by some DRAMs
+    VDD2 = Param.Voltage("0V", "2nd Voltage Range")
+
 # A single DDR3-1600 x64 channel (one command and address bus), with
 # timings based on a DDR3-1600 4 Gbit datasheet (Micron MT41J512M8) in
-# an 8x8 configuration, amounting to 4 Gbyte of memory.
+# an 8x8 configuration.
 class DDR3_1600_x64(DRAMCtrl):
+    # size of device in bytes
+    device_size = '512MB'
+
     # 8x8 configuration, 8 devices each with an 8-bit interface
     device_bus_width = 8
 
@@ -221,11 +359,109 @@ class DDR3_1600_x64(DRAMCtrl):
     # Greater of 4 CK or 7.5 ns
     tRTP = '7.5ns'
 
-    # Default read-to-write bus around to 2 CK, @800 MHz = 2.5 ns
+    # Default same rank rd-to-wr bus turnaround to 2 CK, @800 MHz = 2.5 ns
     tRTW = '2.5ns'
+
+    # Default different rank bus delay to 2 CK, @800 MHz = 2.5 ns
+    tCS = '2.5ns'
 
     # <=85C, half for >85C
     tREFI = '7.8us'
+
+    # Current values from datasheet
+    IDD0 = '75mA'
+    IDD2N = '50mA'
+    IDD3N = '57mA'
+    IDD4W = '165mA'
+    IDD4R = '187mA'
+    IDD5 = '220mA'
+    VDD = '1.5V'
+
+# A single HMC-2500 x32 model based on:
+# [1] DRAMSpec: a high-level DRAM bank modelling tool
+# developed at the University of Kaiserslautern. This high level tool
+# uses RC (resistance-capacitance) and CV (capacitance-voltage) models to
+# estimate the DRAM bank latency and power numbers.
+# [2] A Logic-base Interconnect for Supporting Near Memory Computation in the
+# Hybrid Memory Cube (E. Azarkhish et. al)
+# Assumed for the HMC model is a 30 nm technology node.
+# The modelled HMC consists of 4 Gbit layers which sum up to 2GB of memory (4
+# layers).
+# Each layer has 16 vaults and each vault consists of 2 banks per layer.
+# In order to be able to use the same controller used for 2D DRAM generations
+# for HMC, the following analogy is done:
+# Channel (DDR) => Vault (HMC)
+# device_size (DDR) => size of a single layer in a vault
+# ranks per channel (DDR) => number of layers
+# banks per rank (DDR) => banks per layer
+# devices per rank (DDR) => devices per layer ( 1 for HMC).
+# The parameters for which no input is available are inherited from the DDR3
+# configuration.
+# This configuration includes the latencies from the DRAM to the logic layer of
+# the HMC
+class HMC_2500_x32(DDR3_1600_x64):
+    # size of device
+    # two banks per device with each bank 4MB [2]
+    device_size = '8MB'
+
+    # 1x32 configuration, 1 device with 32 TSVs [2]
+    device_bus_width = 32
+
+    # HMC is a BL8 device [2]
+    burst_length = 8
+
+    # Each device has a page (row buffer) size of 256 bytes [2]
+    device_rowbuffer_size = '256B'
+
+    # 1x32 configuration, so 1 device [2]
+    devices_per_rank = 1
+
+    # 4 layers so 4 ranks [2]
+    ranks_per_channel = 4
+
+    # HMC has 2 banks per layer [2]
+    # Each layer represents a rank. With 4 layers and 8 banks in total, each
+    # layer has 2 banks; thus 2 banks per rank.
+    banks_per_rank = 2
+
+    # 1250 MHz [2]
+    tCK = '0.8ns'
+
+    # 8 beats across an x32 interface translates to 4 clocks @ 1250 MHz
+    tBURST = '3.2ns'
+
+    # Values using DRAMSpec HMC model [1]
+    tRCD = '10.2ns'
+    tCL = '9.9ns'
+    tRP = '7.7ns'
+    tRAS = '21.6ns'
+
+    # tRRD depends on the power supply network for each vendor.
+    # We assume a tRRD of a double bank approach to be equal to 4 clock
+    # cycles (Assumption)
+    tRRD = '3.2ns'
+
+    # activation limit is set to 0 since there are only 2 banks per vault layer.
+    activation_limit = 0
+
+    # Values using DRAMSpec HMC model [1]
+    tRFC = '59ns'
+    tWR = '8ns'
+    tRTP = '4.9ns'
+
+    # Default different rank bus delay assumed to 1 CK for TSVs, @1250 MHz = 0.8
+    # ns (Assumption)
+    tCS = '0.8ns'
+
+    # Value using DRAMSpec HMC model [1]
+    tREFI = '3.9us'
+
+    # Set default controller parameters
+    page_policy = 'close'
+    write_buffer_size = 8
+    read_buffer_size = 8
+    addr_mapping = 'RoCoRaBaCh'
+    min_writes_per_switch = 8
 
 # A single DDR3-2133 x64 channel refining a selected subset of the
 # options for the DDR-1600 configuration, based on the same DDR3-1600
@@ -246,10 +482,22 @@ class DDR3_2133_x64(DDR3_1600_x64):
     tRRD = '5ns'
     tXAW = '25ns'
 
+    # Current values from datasheet
+    IDD0 = '70mA'
+    IDD2N = '37mA'
+    IDD3N = '44mA'
+    IDD4W = '157mA'
+    IDD4R = '191mA'
+    IDD5 = '250mA'
+    VDD = '1.5V'
+
 # A single DDR4-2400 x64 channel (one command and address bus), with
-# timings based on a DDR4-2400 4 Gbit datasheet (Samsung K4A4G085WD)
-# in an 8x8 configuration, amounting to 4 Gbyte of memory.
+# timings based on a DDR4-2400 4 Gbit datasheet (Micron MT40A512M8)
+# in an 8x8 configuration.
 class DDR4_2400_x64(DRAMCtrl):
+    # size of device
+    device_size = '512MB'
+
     # 8x8 configuration, 8 devices each with an 8-bit interface
     device_bus_width = 8
 
@@ -262,19 +510,37 @@ class DDR4_2400_x64(DRAMCtrl):
     # 8x8 configuration, so 8 devices
     devices_per_rank = 8
 
-    # Use a single rank
-    ranks_per_channel = 1
+    # Match our DDR3 configurations which is dual rank
+    ranks_per_channel = 2
+
+    # DDR4 has 2 (x16) or 4 (x4 and x8) bank groups
+    # Set to 4 for x4, x8 case
+    bank_groups_per_rank = 4
 
     # DDR4 has 16 banks (4 bank groups) in all
     # configurations. Currently we do not capture the additional
     # constraints incurred by the bank groups
     banks_per_rank = 16
 
+    # override the default buffer sizes and go for something larger to
+    # accommodate the larger bank count
+    write_buffer_size = 128
+    read_buffer_size = 64
+
     # 1200 MHz
     tCK = '0.833ns'
 
     # 8 beats across an x64 interface translates to 4 clocks @ 1200 MHz
+    # tBURST is equivalent to the CAS-to-CAS delay (tCCD)
+    # With bank group architectures, tBURST represents the CAS-to-CAS
+    # delay for bursts to different bank groups (tCCD_S)
     tBURST = '3.333ns'
+
+    # @2400 data rate, tCCD_L is 6 CK
+    # CAS-to-CAS delay for bursts to the same bank group
+    # tBURST is equivalent to tCCD_S; no explicit parameter required
+    # for CAS-to-CAS delay for bursts to different bank groups
+    tCCD_L = '5ns';
 
     # DDR4-2400 17-17-17
     tRCD = '14.16ns'
@@ -282,11 +548,15 @@ class DDR4_2400_x64(DRAMCtrl):
     tRP = '14.16ns'
     tRAS = '32ns'
 
-    # Here using the average of RRD_S and RRD_L
-    tRRD = '4.1ns'
+    # RRD_S (different bank group) for 1K page is MAX(4 CK, 3.3ns)
+    tRRD = '3.3ns'
+
+    # RRD_L (same bank group) for 1K page is MAX(4 CK, 4.9ns)
+    tRRD_L = '4.9ns';
+
     tXAW = '21ns'
     activation_limit = 4
-    tRFC = '260ns'
+    tRFC = '350ns'
 
     tWR = '15ns'
 
@@ -296,76 +566,37 @@ class DDR4_2400_x64(DRAMCtrl):
     # Greater of 4 CK or 7.5 ns
     tRTP = '7.5ns'
 
-    # Default read-to-write bus around to 2 CK, @1200 MHz = 1.666 ns
+    # Default same rank rd-to-wr bus turnaround to 2 CK, @1200 MHz = 1.666 ns
     tRTW = '1.666ns'
+
+    # Default different rank bus delay to 2 CK, @1200 MHz = 1.666 ns
+    tCS = '1.666ns'
 
     # <=85C, half for >85C
     tREFI = '7.8us'
 
-# A single DDR3 x64 interface (one command and address bus), with
-# default timings based on DDR3-1333 4 Gbit parts in an 8x8
-# configuration, which would amount to 4 GByte of memory.  This
-# configuration is primarily for comparing with DRAMSim2, and all the
-# parameters except ranks_per_channel are based on the DRAMSim2 config
-# file DDR3_micron_32M_8B_x8_sg15.ini. Note that ranks_per_channel has
-# to be manually set, depending on size of the memory to be
-# simulated. By default DRAMSim2 has 2048MB of memory with a single
-# rank. Therefore for 4 GByte memory, set ranks_per_channel = 2
-class DDR3_1333_x64_DRAMSim2(DRAMCtrl):
-    # 8x8 configuration, 8 devices each with an 8-bit interface
-    device_bus_width = 8
-
-    # DDR3 is a BL8 device
-    burst_length = 8
-
-    # Each device has a page (row buffer) size of 1KB
-    # (this depends on the memory density)
-    device_rowbuffer_size = '1kB'
-
-    # 8x8 configuration, so 8 devices
-    devices_per_rank = 8
-
-    # Use two ranks
-    ranks_per_channel = 2
-
-    # DDR3 has 8 banks in all configurations
-    banks_per_rank = 8
-
-    # 666 MHs
-    tCK = '1.5ns'
-
-    tRCD = '15ns'
-    tCL = '15ns'
-    tRP = '15ns'
-    tRAS = '36ns'
-    tWR = '15ns'
-    tRTP = '7.5ns'
-
-    # 8 beats across an x64 interface translates to 4 clocks @ 666.66 MHz.
-    # Note this is a BL8 DDR device.
-    tBURST = '6ns'
-
-    tRFC = '160ns'
-
-    # DDR3, <=85C, half for >85C
-    tREFI = '7.8us'
-
-    # Greater of 4 CK or 7.5 ns, 4 CK @ 666.66 MHz = 6 ns
-    tWTR = '7.5ns'
-
-    # Default read-to-write bus around to 2 CK, @666.66 MHz = 3 ns
-    tRTW = '3ns'
-
-    tRRD = '6.0ns'
-
-    tXAW = '30ns'
-    activation_limit = 4
-
+    # Current values from datasheet
+    IDD0 = '64mA'
+    IDD02 = '4mA'
+    IDD2N = '50mA'
+    IDD3N = '67mA'
+    IDD3N2 = '3mA'
+    IDD4W = '180mA'
+    IDD4R = '160mA'
+    IDD5 = '192mA'
+    VDD = '1.2V'
+    VDD2 = '2.5V'
 
 # A single LPDDR2-S4 x32 interface (one command/address bus), with
-# default timings based on a LPDDR2-1066 4 Gbit part in a 1x32
-# configuration.
+# default timings based on a LPDDR2-1066 4 Gbit part (Micron MT42L128M32D1)
+# in a 1x32 configuration.
 class LPDDR2_S4_1066_x32(DRAMCtrl):
+    # No DLL in LPDDR2
+    dll = False
+
+    # size of device
+    device_size = '512MB'
+
     # 1x32 configuration, 1 device with a 32-bit interface
     device_bus_width = 32
 
@@ -400,8 +631,7 @@ class LPDDR2_S4_1066_x32(DRAMCtrl):
     tRAS = '42ns'
     tWR = '15ns'
 
-    # 6 CK read to precharge delay
-    tRTP = '11.256ns'
+    tRTP = '7.5ns'
 
     # 8 beats across an x32 DDR interface translates to 4 clocks @ 533 MHz.
     # Note this is a BL8 DDR device.
@@ -416,8 +646,11 @@ class LPDDR2_S4_1066_x32(DRAMCtrl):
     # Irrespective of speed grade, tWTR is 7.5 ns
     tWTR = '7.5ns'
 
-    # Default read-to-write bus around to 2 CK, @533 MHz = 3.75 ns
+    # Default same rank rd-to-wr bus turnaround to 2 CK, @533 MHz = 3.75 ns
     tRTW = '3.75ns'
+
+    # Default different rank bus delay to 2 CK, @533 MHz = 3.75 ns
+    tCS = '3.75ns'
 
     # Activate to activate irrespective of density and speed grade
     tRRD = '10.0ns'
@@ -426,9 +659,31 @@ class LPDDR2_S4_1066_x32(DRAMCtrl):
     tXAW = '50ns'
     activation_limit = 4
 
+    # Current values from datasheet
+    IDD0 = '15mA'
+    IDD02 = '70mA'
+    IDD2N = '2mA'
+    IDD2N2 = '30mA'
+    IDD3N = '2.5mA'
+    IDD3N2 = '30mA'
+    IDD4W = '10mA'
+    IDD4W2 = '190mA'
+    IDD4R = '3mA'
+    IDD4R2 = '220mA'
+    IDD5 = '40mA'
+    IDD52 = '150mA'
+    VDD = '1.8V'
+    VDD2 = '1.2V'
+
 # A single WideIO x128 interface (one command and address bus), with
 # default timings based on an estimated WIO-200 8 Gbit part.
 class WideIO_200_x128(DRAMCtrl):
+    # No DLL for WideIO
+    dll = False
+
+    # size of device
+    device_size = '1024MB'
+
     # 1x128 configuration, 1 device with a 128-bit interface
     device_bus_width = 128
 
@@ -473,8 +728,11 @@ class WideIO_200_x128(DRAMCtrl):
     # Greater of 2 CK or 15 ns, 2 CK @ 200 MHz = 10 ns
     tWTR = '15ns'
 
-    # Default read-to-write bus around to 2 CK, @200 MHz = 10 ns
+    # Default same rank rd-to-wr bus turnaround to 2 CK, @200 MHz = 10 ns
     tRTW = '10ns'
+
+    # Default different rank bus delay to 2 CK, @200 MHz = 10 ns
+    tCS = '10ns'
 
     # Activate to activate irrespective of density and speed grade
     tRRD = '10.0ns'
@@ -483,10 +741,18 @@ class WideIO_200_x128(DRAMCtrl):
     tXAW = '50ns'
     activation_limit = 2
 
+    # The WideIO specification does not provide current information
+
 # A single LPDDR3 x32 interface (one command/address bus), with
-# default timings based on a LPDDR3-1600 4 Gbit part in a 1x32
-# configuration
+# default timings based on a LPDDR3-1600 4 Gbit part (Micron
+# EDF8132A1MC) in a 1x32 configuration.
 class LPDDR3_1600_x32(DRAMCtrl):
+    # No DLL for LPDDR3
+    dll = False
+
+    # size of device
+    device_size = '512MB'
+
     # 1x32 configuration, 1 device with a 32-bit interface
     device_bus_width = 32
 
@@ -499,7 +765,8 @@ class LPDDR3_1600_x32(DRAMCtrl):
     # 1x32 configuration, so 1 device
     devices_per_rank = 1
 
-    # Use a single rank
+    # Technically the datasheet is a dual-rank package, but for
+    # comparison with the LPDDR2 config we stick to a single rank
     ranks_per_channel = 1
 
     # LPDDR3 has 8 banks in all configurations
@@ -508,8 +775,7 @@ class LPDDR3_1600_x32(DRAMCtrl):
     # 800 MHz
     tCK = '1.25ns'
 
-    # Fixed at 15 ns
-    tRCD = '15ns'
+    tRCD = '18ns'
 
     # 12 CK read latency, 6 CK write latency @ 800 MHz, 1.25 ns cycle time
     tCL = '15ns'
@@ -520,8 +786,8 @@ class LPDDR3_1600_x32(DRAMCtrl):
     # Greater of 4 CK or 7.5 ns, 4 CK @ 800 MHz = 5 ns
     tRTP = '7.5ns'
 
-    # Pre-charge one bank 15 ns (all banks 18 ns)
-    tRP = '15ns'
+    # Pre-charge one bank 18 ns (all banks 21 ns)
+    tRP = '18ns'
 
     # 8 beats across a x32 DDR interface translates to 4 clocks @ 800 MHz.
     # Note this is a BL8 DDR device.
@@ -536,8 +802,11 @@ class LPDDR3_1600_x32(DRAMCtrl):
     # Irrespective of speed grade, tWTR is 7.5 ns
     tWTR = '7.5ns'
 
-    # Default read-to-write bus around to 2 CK, @800 MHz = 2.5 ns
+    # Default same rank rd-to-wr bus turnaround to 2 CK, @800 MHz = 2.5 ns
     tRTW = '2.5ns'
+
+    # Default different rank bus delay to 2 CK, @800 MHz = 2.5 ns
+    tCS = '2.5ns'
 
     # Activate to activate irrespective of density and speed grade
     tRRD = '10.0ns'
@@ -545,3 +814,104 @@ class LPDDR3_1600_x32(DRAMCtrl):
     # Irrespective of size, tFAW is 50 ns
     tXAW = '50ns'
     activation_limit = 4
+
+    # Current values from datasheet
+    IDD0 = '8mA'
+    IDD02 = '60mA'
+    IDD2N = '0.8mA'
+    IDD2N2 = '26mA'
+    IDD3N = '2mA'
+    IDD3N2 = '34mA'
+    IDD4W = '2mA'
+    IDD4W2 = '190mA'
+    IDD4R = '2mA'
+    IDD4R2 = '230mA'
+    IDD5 = '28mA'
+    IDD52 = '150mA'
+    VDD = '1.8V'
+    VDD2 = '1.2V'
+
+# A single GDDR5 x64 interface, with
+# default timings based on a GDDR5-4000 1 Gbit part (SK Hynix
+# H5GQ1H24AFR) in a 2x32 configuration.
+class GDDR5_4000_x64(DRAMCtrl):
+    # size of device
+    device_size = '128MB'
+
+    # 2x32 configuration, 1 device with a 32-bit interface
+    device_bus_width = 32
+
+    # GDDR5 is a BL8 device
+    burst_length = 8
+
+    # Each device has a page (row buffer) size of 2Kbits (256Bytes)
+    device_rowbuffer_size = '256B'
+
+    # 2x32 configuration, so 2 devices
+    devices_per_rank = 2
+
+    # assume single rank
+    ranks_per_channel = 1
+
+    # GDDR5 has 4 bank groups
+    bank_groups_per_rank = 4
+
+    # GDDR5 has 16 banks with 4 bank groups
+    banks_per_rank = 16
+
+    # 1000 MHz
+    tCK = '1ns'
+
+    # 8 beats across an x64 interface translates to 2 clocks @ 1000 MHz
+    # Data bus runs @2000 Mhz => DDR ( data runs at 4000 MHz )
+    # 8 beats at 4000 MHz = 2 beats at 1000 MHz
+    # tBURST is equivalent to the CAS-to-CAS delay (tCCD)
+    # With bank group architectures, tBURST represents the CAS-to-CAS
+    # delay for bursts to different bank groups (tCCD_S)
+    tBURST = '2ns'
+
+    # @1000MHz data rate, tCCD_L is 3 CK
+    # CAS-to-CAS delay for bursts to the same bank group
+    # tBURST is equivalent to tCCD_S; no explicit parameter required
+    # for CAS-to-CAS delay for bursts to different bank groups
+    tCCD_L = '3ns';
+
+    tRCD = '12ns'
+
+    # tCL is not directly found in datasheet and assumed equal tRCD
+    tCL = '12ns'
+
+    tRP = '12ns'
+    tRAS = '28ns'
+
+    # RRD_S (different bank group)
+    # RRD_S is 5.5 ns in datasheet.
+    # rounded to the next multiple of tCK
+    tRRD = '6ns'
+
+    # RRD_L (same bank group)
+    # RRD_L is 5.5 ns in datasheet.
+    # rounded to the next multiple of tCK
+    tRRD_L = '6ns'
+
+    tXAW = '23ns'
+
+    # tXAW < 4 x tRRD.
+    # Therefore, activation limit is set to 0
+    activation_limit = 0
+
+    tRFC = '65ns'
+    tWR = '12ns'
+
+    # Here using the average of WTR_S and WTR_L
+    tWTR = '5ns'
+
+    # Read-to-Precharge 2 CK
+    tRTP = '2ns'
+
+    # Assume 2 cycles
+    tRTW = '2ns'
+
+    # Default different rank bus delay to 2 CK, @1000 MHz = 2 ns
+    tCS = '2ns'
+    tREFI = '3.9us'

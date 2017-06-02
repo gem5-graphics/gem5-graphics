@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 ARM Limited
+ * Copyright (c) 2010-2015 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -39,10 +39,13 @@
  */
 
 #include "arch/arm/isa.hh"
+#include "arch/arm/pmu.hh"
 #include "arch/arm/system.hh"
 #include "cpu/checker/cpu.hh"
+#include "cpu/base.hh"
 #include "debug/Arm.hh"
 #include "debug/MiscRegs.hh"
+#include "dev/arm/generic_timer.hh"
 #include "params/ArmISA.hh"
 #include "sim/faults.hh"
 #include "sim/stat_control.hh"
@@ -122,14 +125,25 @@ const struct ISA::MiscRegInitializerEntry
 
 
 ISA::ISA(Params *p)
-    : SimObject(p), system(NULL), lookUpMiscReg(NUM_MISCREGS, {0,0})
+    : SimObject(p),
+      system(NULL),
+      pmu(p->pmu),
+      lookUpMiscReg(NUM_MISCREGS, {0,0})
 {
     SCTLR sctlr;
     sctlr = 0;
     miscRegs[MISCREG_SCTLR_RST] = sctlr;
 
+    // Hook up a dummy device if we haven't been configured with a
+    // real PMU. By using a dummy device, we don't need to check that
+    // the PMU exist every time we try to access a PMU register.
+    if (!pmu)
+        pmu = &dummyDevice;
+
+    // Give all ISA devices a pointer to this ISA
+    pmu->setISA(this);
+
     system = dynamic_cast<ArmSystem *>(p->system);
-    DPRINTFN("ISA system set to: %p %p\n", system, p->system);
 
     // Cache system-level properties
     if (FullSystem && system) {
@@ -356,7 +370,10 @@ ISA::clear64(const ArmISAParams *p)
     // Initialize configurable id registers
     miscRegs[MISCREG_ID_AA64AFR0_EL1] = p->id_aa64afr0_el1;
     miscRegs[MISCREG_ID_AA64AFR1_EL1] = p->id_aa64afr1_el1;
-    miscRegs[MISCREG_ID_AA64DFR0_EL1] = p->id_aa64dfr0_el1;
+    miscRegs[MISCREG_ID_AA64DFR0_EL1] =
+        (p->id_aa64dfr0_el1 & 0xfffffffffffff0ffULL) |
+        (p->pmu ?             0x0000000000000100ULL : 0); // Enable PMUv3
+
     miscRegs[MISCREG_ID_AA64DFR1_EL1] = p->id_aa64dfr1_el1;
     miscRegs[MISCREG_ID_AA64ISAR0_EL1] = p->id_aa64isar0_el1;
     miscRegs[MISCREG_ID_AA64ISAR1_EL1] = p->id_aa64isar1_el1;
@@ -364,6 +381,11 @@ ISA::clear64(const ArmISAParams *p)
     miscRegs[MISCREG_ID_AA64MMFR1_EL1] = p->id_aa64mmfr1_el1;
     miscRegs[MISCREG_ID_AA64PFR0_EL1] = p->id_aa64pfr0_el1;
     miscRegs[MISCREG_ID_AA64PFR1_EL1] = p->id_aa64pfr1_el1;
+
+    miscRegs[MISCREG_ID_DFR0_EL1] =
+        (p->pmu ? 0x03000000ULL : 0); // Enable PMUv3
+
+    miscRegs[MISCREG_ID_DFR0] = miscRegs[MISCREG_ID_DFR0_EL1];
 
     // Enforce consistency with system-level settings...
 
@@ -491,7 +513,6 @@ ISA::readMiscReg(int misc_reg, ThreadContext *tc)
         // top bit defined as RES1
         return readMiscRegNoEffect(misc_reg) | 0x80000000;
       case MISCREG_ID_AFR0: // not implemented, so alias MIDR
-      case MISCREG_ID_DFR0: // not implemented, so alias MIDR
       case MISCREG_REVIDR:  // not implemented, so alias MIDR
       case MISCREG_MIDR:
         cpsr = readMiscRegNoEffect(MISCREG_CPSR);
@@ -549,12 +570,13 @@ ISA::readMiscReg(int misc_reg, ThreadContext *tc)
       case MISCREG_ACTLR:
         warn("Not doing anything for miscreg ACTLR\n");
         break;
-      case MISCREG_PMCR:
-      case MISCREG_PMCCNTR:
-      case MISCREG_PMSELR:
-        warn("Not doing anything for read to miscreg %s\n",
-                miscRegName[misc_reg]);
-        break;
+
+      case MISCREG_PMXEVTYPER_PMCCFILTR:
+      case MISCREG_PMINTENSET_EL1 ... MISCREG_PMOVSSET_EL0:
+      case MISCREG_PMEVCNTR0_EL0 ... MISCREG_PMEVTYPER5_EL0:
+      case MISCREG_PMCR ... MISCREG_PMOVSSET:
+        return pmu->readMiscReg(misc_reg);
+
       case MISCREG_CPSR_Q:
         panic("shouldn't be reading this register seperately\n");
       case MISCREG_FPSCR_QC:
@@ -599,9 +621,9 @@ ISA::readMiscReg(int misc_reg, ThreadContext *tc)
       case MISCREG_NZCV:
         {
             CPSR cpsr = 0;
-            cpsr.nz   = tc->readIntReg(INTREG_CONDCODES_NZ);
-            cpsr.c    = tc->readIntReg(INTREG_CONDCODES_C);
-            cpsr.v    = tc->readIntReg(INTREG_CONDCODES_V);
+            cpsr.nz   = tc->readCCReg(CCREG_NZ);
+            cpsr.c    = tc->readCCReg(CCREG_C);
+            cpsr.v    = tc->readCCReg(CCREG_V);
             return cpsr;
         }
       case MISCREG_DAIF:
@@ -640,9 +662,9 @@ ISA::readMiscReg(int misc_reg, ThreadContext *tc)
         }
       case MISCREG_DBGDIDR:
         /* For now just implement the version number.
-         * Return 0 as we don't support debug architecture yet.
+         * ARMv7, v7.1 Debug architecture (0b0101 --> 0x5)
          */
-        return 0;
+        return 0x5 << 16;
       case MISCREG_DBGDSCRint:
         return 0;
       case MISCREG_ISR:
@@ -708,52 +730,14 @@ ISA::readMiscReg(int misc_reg, ThreadContext *tc)
                 return readMiscRegNoEffect(MISCREG_SCR_EL3);
             }
         }
+
       // Generic Timer registers
-      case MISCREG_CNTFRQ:
-      case MISCREG_CNTFRQ_EL0:
-        inform_once("Read CNTFREQ_EL0 frequency\n");
-        return getSystemCounter(tc)->freq();
-      case MISCREG_CNTPCT:
-      case MISCREG_CNTPCT_EL0:
-        return getSystemCounter(tc)->value();
-      case MISCREG_CNTVCT:
-        return getSystemCounter(tc)->value();
-      case MISCREG_CNTVCT_EL0:
-        return getSystemCounter(tc)->value();
-      case MISCREG_CNTP_CVAL:
-      case MISCREG_CNTP_CVAL_EL0:
-        return getArchTimer(tc, tc->cpuId())->compareValue();
-      case MISCREG_CNTP_TVAL:
-      case MISCREG_CNTP_TVAL_EL0:
-        return getArchTimer(tc, tc->cpuId())->timerValue();
-      case MISCREG_CNTP_CTL:
-      case MISCREG_CNTP_CTL_EL0:
-        return getArchTimer(tc, tc->cpuId())->control();
-      // PL1 phys. timer, secure
-      //   AArch64
-      // case MISCREG_CNTPS_CVAL_EL1:
-      // case MISCREG_CNTPS_TVAL_EL1:
-      // case MISCREG_CNTPS_CTL_EL1:
-      // PL2 phys. timer, non-secure
-      //   AArch32
-      // case MISCREG_CNTHCTL:
-      // case MISCREG_CNTHP_CVAL:
-      // case MISCREG_CNTHP_TVAL:
-      // case MISCREG_CNTHP_CTL:
-      //   AArch64
-      // case MISCREG_CNTHCTL_EL2:
-      // case MISCREG_CNTHP_CVAL_EL2:
-      // case MISCREG_CNTHP_TVAL_EL2:
-      // case MISCREG_CNTHP_CTL_EL2:
-      // Virtual timer
-      //   AArch32
-      // case MISCREG_CNTV_CVAL:
-      // case MISCREG_CNTV_TVAL:
-      // case MISCREG_CNTV_CTL:
-      //   AArch64
-      // case MISCREG_CNTV_CVAL_EL2:
-      // case MISCREG_CNTV_TVAL_EL2:
-      // case MISCREG_CNTV_CTL_EL2:
+      case MISCREG_CNTFRQ ... MISCREG_CNTHP_CTL:
+      case MISCREG_CNTPCT ... MISCREG_CNTHP_CVAL:
+      case MISCREG_CNTKCTL_EL1 ... MISCREG_CNTV_CVAL_EL0:
+      case MISCREG_CNTVOFF_EL2 ... MISCREG_CNTPS_CVAL_EL1:
+        return getGenericTimer(tc).readMiscReg(misc_reg);
+
       default:
         break;
 
@@ -1081,37 +1065,11 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
                 miscRegs[sctlr_idx] = (MiscReg)new_sctlr;
                 tc->getITBPtr()->invalidateMiscReg();
                 tc->getDTBPtr()->invalidateMiscReg();
-
-                // Check if all CPUs are booted with caches enabled
-                // so we can stop enforcing coherency of some kernel
-                // structures manually.
-                sys = tc->getSystemPtr();
-                for (x = 0; x < sys->numContexts(); x++) {
-                    oc = sys->getThreadContext(x);
-                    // @todo: double check this for security
-                    SCTLR other_sctlr = oc->readMiscRegNoEffect(MISCREG_SCTLR);
-                    if (!other_sctlr.c && oc->status() != ThreadContext::Halted)
-                        return;
-                }
-
-                for (x = 0; x < sys->numContexts(); x++) {
-                    oc = sys->getThreadContext(x);
-                    oc->getDTBPtr()->allCpusCaching();
-                    oc->getITBPtr()->allCpusCaching();
-
-                    // If CheckerCPU is connected, need to notify it.
-                    CheckerCPU *checker = oc->getCheckerCpuPtr();
-                    if (checker) {
-                        checker->getDTBPtr()->allCpusCaching();
-                        checker->getITBPtr()->allCpusCaching();
-                    }
-                }
-                return;
             }
-
           case MISCREG_MIDR:
           case MISCREG_ID_PFR0:
           case MISCREG_ID_PFR1:
+          case MISCREG_ID_DFR0:
           case MISCREG_ID_MMFR0:
           case MISCREG_ID_MMFR1:
           case MISCREG_ID_MMFR2:
@@ -1386,7 +1344,7 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
                 oc = sys->getThreadContext(x);
                 assert(oc->getITBPtr() && oc->getDTBPtr());
                 asid = bits(newVal, 63, 48);
-                if (haveLargeAsid64)
+                if (!haveLargeAsid64)
                     asid &= mask(8);
                 oc->getITBPtr()->flushAsid(asid, secure_lookup, target_el);
                 oc->getDTBPtr()->flushAsid(asid, secure_lookup, target_el);
@@ -1443,24 +1401,15 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
           case MISCREG_ACTLR:
             warn("Not doing anything for write of miscreg ACTLR\n");
             break;
-          case MISCREG_PMCR:
-            {
-              // Performance counters not implemented.  Instead, interpret
-              //   a reset command to this register to reset the simulator
-              //   statistics.
-              // PMCR_E | PMCR_P | PMCR_C
-              const int ResetAndEnableCounters = 0x7;
-              if (newVal == ResetAndEnableCounters) {
-                  inform("Resetting all simobject stats\n");
-                  Stats::schedStatEvent(false, true);
-                  break;
-              }
-            }
-          case MISCREG_PMCCNTR:
-          case MISCREG_PMSELR:
-            warn("Not doing anything for write to miscreg %s\n",
-                    miscRegName[misc_reg]);
+
+          case MISCREG_PMXEVTYPER_PMCCFILTR:
+          case MISCREG_PMINTENSET_EL1 ... MISCREG_PMOVSSET_EL0:
+          case MISCREG_PMEVCNTR0_EL0 ... MISCREG_PMEVTYPER5_EL0:
+          case MISCREG_PMCR ... MISCREG_PMOVSSET:
+            pmu->setMiscReg(misc_reg, newVal);
             break;
+
+
           case MISCREG_HSTR: // TJDBX, now redifined to be RES0
             {
                 HSTR hstrMask = 0;
@@ -1499,7 +1448,6 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
           case MISCREG_ATS1HR:
           case MISCREG_ATS1HW:
             {
-              RequestPtr req = new Request;
               unsigned flags = 0;
               BaseTLB::Mode mode = BaseTLB::Read;
               TLB::ArmTranslationType tranType = TLB::NormalTran;
@@ -1571,16 +1519,16 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
               // can't be an atomic translation because that causes problems
               // with unexpected atomic snoop requests.
               warn("Translating via MISCREG(%d) in functional mode! Fix Me!\n", misc_reg);
-              req->setVirt(0, val, 1, flags,  Request::funcMasterId,
-                           tc->pcState().pc());
-              req->setThreadContext(tc->contextId(), tc->threadId());
-              fault = tc->getDTBPtr()->translateFunctional(req, tc, mode, tranType);
+              Request req(0, val, 1, flags,  Request::funcMasterId,
+                          tc->pcState().pc(), tc->contextId(),
+                          tc->threadId());
+              fault = tc->getDTBPtr()->translateFunctional(&req, tc, mode, tranType);
               TTBCR ttbcr = readMiscRegNoEffect(MISCREG_TTBCR);
               HCR   hcr   = readMiscRegNoEffect(MISCREG_HCR);
 
               MiscReg newVal;
               if (fault == NoFault) {
-                  Addr paddr = req->getPaddr();
+                  Addr paddr = req.getPaddr();
                   if (haveLPAE && (ttbcr.eae || tranType & TLB::HypMode ||
                      ((tranType & TLB::S1S2NsTran) && hcr.vm) )) {
                       newVal = (paddr & mask(39, 12)) |
@@ -1614,7 +1562,6 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
                           "MISCREG: Translated addr 0x%08x fault fsr %#x: PAR: 0x%08x\n",
                           val, fsr, newVal);
               }
-              delete req;
               setMiscRegNoEffect(MISCREG_PAR, newVal);
               return;
             }
@@ -1663,6 +1610,12 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
                     }
                 }
             }
+          case MISCREG_SCTLR_EL1:
+            {
+                tc->getITBPtr()->invalidateMiscReg();
+                tc->getDTBPtr()->invalidateMiscReg();
+                setMiscRegNoEffect(misc_reg, newVal);
+            }
           case MISCREG_CONTEXTIDR:
           case MISCREG_PRRR:
           case MISCREG_NMRR:
@@ -1671,12 +1624,11 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
           case MISCREG_DACR:
           case MISCREG_VTTBR:
           case MISCREG_SCR_EL3:
-          case MISCREG_SCTLR_EL1:
-          case MISCREG_SCTLR_EL2:
-          case MISCREG_SCTLR_EL3:
           case MISCREG_TCR_EL1:
           case MISCREG_TCR_EL2:
           case MISCREG_TCR_EL3:
+          case MISCREG_SCTLR_EL2:
+          case MISCREG_SCTLR_EL3:
           case MISCREG_TTBR0_EL1:
           case MISCREG_TTBR1_EL1:
           case MISCREG_TTBR0_EL2:
@@ -1688,9 +1640,9 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
             {
                 CPSR cpsr = val;
 
-                tc->setIntReg(INTREG_CONDCODES_NZ, cpsr.nz);
-                tc->setIntReg(INTREG_CONDCODES_C,  cpsr.c);
-                tc->setIntReg(INTREG_CONDCODES_V,  cpsr.v);
+                tc->setCCReg(CCREG_NZ, cpsr.nz);
+                tc->setCCReg(CCREG_C,  cpsr.c);
+                tc->setCCReg(CCREG_V,  cpsr.v);
             }
             break;
           case MISCREG_DAIF:
@@ -1863,47 +1815,11 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
             break;
 
           // Generic Timer registers
-          case MISCREG_CNTFRQ:
-          case MISCREG_CNTFRQ_EL0:
-            getSystemCounter(tc)->setFreq(val);
-            break;
-          case MISCREG_CNTP_CVAL:
-          case MISCREG_CNTP_CVAL_EL0:
-            getArchTimer(tc, tc->cpuId())->setCompareValue(val);
-            break;
-          case MISCREG_CNTP_TVAL:
-          case MISCREG_CNTP_TVAL_EL0:
-            getArchTimer(tc, tc->cpuId())->setTimerValue(val);
-            break;
-          case MISCREG_CNTP_CTL:
-          case MISCREG_CNTP_CTL_EL0:
-            getArchTimer(tc, tc->cpuId())->setControl(val);
-            break;
-          // PL1 phys. timer, secure
-          //   AArch64
-          case MISCREG_CNTPS_CVAL_EL1:
-          case MISCREG_CNTPS_TVAL_EL1:
-          case MISCREG_CNTPS_CTL_EL1:
-          // PL2 phys. timer, non-secure
-          //   AArch32
-          case MISCREG_CNTHCTL:
-          case MISCREG_CNTHP_CVAL:
-          case MISCREG_CNTHP_TVAL:
-          case MISCREG_CNTHP_CTL:
-          //   AArch64
-          case MISCREG_CNTHCTL_EL2:
-          case MISCREG_CNTHP_CVAL_EL2:
-          case MISCREG_CNTHP_TVAL_EL2:
-          case MISCREG_CNTHP_CTL_EL2:
-          // Virtual timer
-          //   AArch32
-          case MISCREG_CNTV_CVAL:
-          case MISCREG_CNTV_TVAL:
-          case MISCREG_CNTV_CTL:
-          //   AArch64
-          // case MISCREG_CNTV_CVAL_EL2:
-          // case MISCREG_CNTV_TVAL_EL2:
-          // case MISCREG_CNTV_CTL_EL2:
+          case MISCREG_CNTFRQ ... MISCREG_CNTHP_CTL:
+          case MISCREG_CNTPCT ... MISCREG_CNTHP_CVAL:
+          case MISCREG_CNTKCTL_EL1 ... MISCREG_CNTV_CVAL_EL0:
+          case MISCREG_CNTVOFF_EL2 ... MISCREG_CNTPS_CVAL_EL1:
+            getGenericTimer(tc).setMiscReg(misc_reg, newVal);
             break;
         }
     }
@@ -1911,10 +1827,10 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
 }
 
 void
-ISA::tlbiVA(ThreadContext *tc, MiscReg newVal, uint8_t asid, bool secure_lookup,
-            uint8_t target_el)
+ISA::tlbiVA(ThreadContext *tc, MiscReg newVal, uint16_t asid,
+            bool secure_lookup, uint8_t target_el)
 {
-    if (haveLargeAsid64)
+    if (!haveLargeAsid64)
         asid &= mask(8);
     Addr va = ((Addr) bits(newVal, 43, 0)) << 12;
     System *sys = tc->getSystemPtr();
@@ -1998,26 +1914,23 @@ ISA::tlbiMVA(ThreadContext *tc, MiscReg newVal, bool secure_lookup, bool hyp,
     }
 }
 
-::GenericTimer::SystemCounter *
-ISA::getSystemCounter(ThreadContext *tc)
+BaseISADevice &
+ISA::getGenericTimer(ThreadContext *tc)
 {
-    ::GenericTimer::SystemCounter *cnt = ((ArmSystem *) tc->getSystemPtr())->
-        getSystemCounter();
-    if (cnt == NULL) {
-        panic("System counter not available\n");
-    }
-    return cnt;
-}
+    // We only need to create an ISA interface the first time we try
+    // to access the timer.
+    if (timer)
+        return *timer.get();
 
-::GenericTimer::ArchTimer *
-ISA::getArchTimer(ThreadContext *tc, int cpu_id)
-{
-    ::GenericTimer::ArchTimer *timer = ((ArmSystem *) tc->getSystemPtr())->
-        getArchTimer(cpu_id);
-    if (timer == NULL) {
-        panic("Architected timer not available\n");
+    assert(system);
+    GenericTimer *generic_timer(system->getGenericTimer());
+    if (!generic_timer) {
+        panic("Trying to get a generic timer from a system that hasn't "
+              "been configured to use a generic timer.\n");
     }
-    return timer;
+
+    timer.reset(new GenericTimerISA(*generic_timer, tc->cpuId()));
+    return *timer.get();
 }
 
 }

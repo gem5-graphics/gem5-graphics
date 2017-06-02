@@ -31,7 +31,7 @@
 #include "power_module.hpp"
 #include "switch_monitor.hpp"
 
-Power_Module::Power_Module(Network * n , const Configuration &config)
+Power_Module::Power_Module(ISNetwork * n , const Configuration &config)
   : Module( 0, "power_module" ){
 
   

@@ -67,9 +67,6 @@ class IGbE : public EtherDevice
     uint8_t eeOpcode, eeAddr;
     uint16_t flash[iGbReg::EEPROM_SIZE];
 
-    // The drain event if we have one
-    DrainManager *drainManager;
-
     // packet fifos
     PacketFifo rxFifo;
     PacketFifo txFifo;
@@ -182,36 +179,43 @@ class IGbE : public EtherDevice
     void checkDrain();
 
     void anBegin(std::string sm, std::string st, int flags = CPA::FL_NONE) {
-        cpa->hwBegin((CPA::flags)flags, sys, macAddr, sm, st);
+        if (cpa)
+            cpa->hwBegin((CPA::flags)flags, sys, macAddr, sm, st);
     }
 
-    void anQ(std::string sm, std::string q) { 
-        cpa->hwQ(CPA::FL_NONE, sys, macAddr, sm, q, macAddr);
+    void anQ(std::string sm, std::string q) {
+        if (cpa)
+            cpa->hwQ(CPA::FL_NONE, sys, macAddr, sm, q, macAddr);
     }
 
     void anDq(std::string sm, std::string q) {
-        cpa->hwDq(CPA::FL_NONE, sys, macAddr, sm, q, macAddr);
+        if (cpa)
+            cpa->hwDq(CPA::FL_NONE, sys, macAddr, sm, q, macAddr);
     }
 
     void anPq(std::string sm, std::string q, int num = 1) {
-        cpa->hwPq(CPA::FL_NONE, sys, macAddr, sm, q, macAddr, NULL, num);
+        if (cpa)
+            cpa->hwPq(CPA::FL_NONE, sys, macAddr, sm, q, macAddr, NULL, num);
     }
 
     void anRq(std::string sm, std::string q, int num = 1) {
-        cpa->hwRq(CPA::FL_NONE, sys, macAddr, sm, q, macAddr, NULL, num);
+        if (cpa)
+            cpa->hwRq(CPA::FL_NONE, sys, macAddr, sm, q, macAddr, NULL, num);
     }
 
     void anWe(std::string sm, std::string q) {
-        cpa->hwWe(CPA::FL_NONE, sys, macAddr, sm, q, macAddr);
+        if (cpa)
+            cpa->hwWe(CPA::FL_NONE, sys, macAddr, sm, q, macAddr);
     }
 
     void anWf(std::string sm, std::string q) {
-        cpa->hwWf(CPA::FL_NONE, sys, macAddr, sm, q, macAddr);
+        if (cpa)
+            cpa->hwWf(CPA::FL_NONE, sys, macAddr, sm, q, macAddr);
     }
 
 
     template<class T>
-    class DescCache
+    class DescCache : public Serializable
     {
       protected:
         virtual Addr descBase() const = 0;
@@ -324,8 +328,9 @@ class IGbE : public EtherDevice
          * changed */
         void reset();
 
-        virtual void serialize(std::ostream &os);
-        virtual void unserialize(Checkpoint *cp, const std::string &section);
+
+        void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
+        void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
 
         virtual bool hasOutstandingEvents() {
             return wbEvent.scheduled() || fetchEvent.scheduled();
@@ -344,7 +349,7 @@ class IGbE : public EtherDevice
         virtual void updateHead(long h) { igbe->regs.rdh(h); }
         virtual void enableSm();
         virtual void fetchAfterWb() {
-            if (!igbe->rxTick && igbe->getDrainState() == Drainable::Running)
+            if (!igbe->rxTick && igbe->drainState() == DrainState::Running)
                 fetchDescriptors();
         }
 
@@ -388,8 +393,8 @@ class IGbE : public EtherDevice
 
         virtual bool hasOutstandingEvents();
 
-        virtual void serialize(std::ostream &os);
-        virtual void unserialize(Checkpoint *cp, const std::string &section);
+        void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
+        void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
     };
     friend class RxDescCache;
 
@@ -406,7 +411,7 @@ class IGbE : public EtherDevice
         virtual void enableSm();
         virtual void actionAfterWb();
         virtual void fetchAfterWb() {
-            if (!igbe->txTick && igbe->getDrainState() == Drainable::Running)
+            if (!igbe->txTick && igbe->drainState() == DrainState::Running)
                 fetchDescriptors();
         }
         
@@ -499,10 +504,10 @@ class IGbE : public EtherDevice
         }
         EventWrapper<TxDescCache, &TxDescCache::nullCallback> nullEvent;
 
-        virtual void serialize(std::ostream &os);
-        virtual void unserialize(Checkpoint *cp, const std::string &section);
-
+        void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
+        void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
     };
+
     friend class TxDescCache;
 
     TxDescCache txDescCache;
@@ -530,11 +535,11 @@ class IGbE : public EtherDevice
     bool ethRxPkt(EthPacketPtr packet);
     void ethTxDone();
 
-    virtual void serialize(std::ostream &os);
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
+    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
+    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
 
-    unsigned int drain(DrainManager *dm);
-    void drainResume();
+    DrainState drain() M5_ATTR_OVERRIDE;
+    void drainResume() M5_ATTR_OVERRIDE;
 
 };
 

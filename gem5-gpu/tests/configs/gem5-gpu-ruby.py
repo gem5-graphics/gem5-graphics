@@ -1,5 +1,5 @@
 # Copyright (c) 2006-2008 The Regents of The University of Michigan
-# Copyright (c) 2012-2013 Mark D. Hill and David A. Wood
+# Copyright (c) 2012-2015 Mark D. Hill and David A. Wood
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -45,9 +45,15 @@ def getTestFilename(test_location):
     test_filename = test_filename.replace('/opt/','/')
     test_filename = test_filename.replace('/debug/','/')
     test_filename = test_filename.replace('/fast/','/')
-    isa = 'x86'
-    if not isa in test_filename:
-        fatal('ISA of this test is not supported')
+    supported_isas = [ 'arm', 'x86' ]
+    isa = None
+    for test_isa in supported_isas:
+        if test_isa in test_filename:
+            isa = test_isa
+            break
+
+    if not isa:
+        fatal('ISA not found in test: %s' % test_filename)
 
     file_chop_index = test_filename.find('%s/' % isa)
     if file_chop_index >= len(test_filename):
@@ -85,15 +91,17 @@ Ruby.define_options(parser)
 
 (options, args) = parser.parse_args()
 
+# Use ruby
 options.ruby = True
+options.mem_type = "RubyMemoryControl"
 options.g_depth_shader=1 #z-unit not used
 
 if not args or len(args) != 1:
     print "Error: script expects a single positional argument"
     sys.exit(1)
 
-if buildEnv['TARGET_ISA'] != "x86":
-    fatal("gem5-gpu doesn't currently work with non-x86 system!")
+if buildEnv['TARGET_ISA'] != "x86" and buildEnv['TARGET_ISA'] != "arm":
+    fatal("gem5-gpu doesn't currently work with non-ARM or non-x86 system!")
 
 #
 # Setup test benchmark to be run
@@ -116,7 +124,7 @@ if options.cpu_type != "timing" and options.cpu_type != "detailed":
 #
 # Memory space configuration
 #
-(cpu_mem_range, gpu_mem_range) = GPUConfig.configureMemorySpaces(options)
+(cpu_mem_range, gpu_mem_range, total_mem_range) = GPUConfig.configureMemorySpaces(options)
 
 # Hard code the cache block width to 128B for now
 # TODO: Remove this if/when block size can be different than 128B
@@ -148,9 +156,6 @@ system.cpu_clk_domain = SrcClockDomain(clock = options.cpu_clock,
                                        voltage_domain =
                                        system.cpu_voltage_domain)
 
-mem_ctrls = [SimpleMemory(range = cpu_mem_range)]
-system.mem_ctrls = mem_ctrls
-
 Simulation.setWorkCountOptions(system, options)
 
 #
@@ -158,19 +163,23 @@ Simulation.setWorkCountOptions(system, options)
 #
 system.gpu = GPUConfig.createGPU(options, gpu_mem_range)
 
-if options.split:
-    system.gpu_physmem = SimpleMemory(range = gpu_mem_range)
-    system.mem_ranges.append(gpu_mem_range)
-
 #
 # Setup Ruby
 #
 system.ruby_clk_domain = SrcClockDomain(clock = options.ruby_clock,
                                         voltage_domain = system.voltage_domain)
-Ruby.create_system(options, system)
+Ruby.create_system(options, False, system)
 
 system.gpu.ruby = system.ruby
 system.ruby.clk_domain = system.ruby_clk_domain
+
+if options.split:
+    if options.access_backing_store:
+        #
+        # Reset Ruby's phys_mem to add the device memory range
+        #
+        system.ruby.phys_mem = SimpleMemory(range=total_mem_range,
+                                            in_addr_map=False)
 
 #
 # Connect CPU ports
@@ -193,14 +202,13 @@ for (i, cpu) in enumerate(system.cpu):
         cpu.interrupts.int_master = ruby_port.slave
         cpu.interrupts.int_slave = ruby_port.master
 
-    system.ruby._cpu_ports[i].access_phys_mem = True
-
 #
 # Connect GPU ports
 #
 GPUConfig.connectGPUPorts(system.gpu, system.ruby, options)
 
-GPUMemConfig.setMemoryControlOptions(system, options)
+if options.mem_type == "RubyMemoryControl":
+    GPUMemConfig.setMemoryControlOptions(system, options)
 
 #
 # Finalize setup and benchmark, and then run
@@ -208,7 +216,7 @@ GPUMemConfig.setMemoryControlOptions(system, options)
 root = Root(full_system = False, system = system)
 
 command_line = []
-command_line.append(options.cmd)
+command_line.append(binpath(options.cmd))
 for option in options.options.split():
     command_line.append(option)
 root.system.cpu[0].workload = LiveProcess(cmd = command_line,

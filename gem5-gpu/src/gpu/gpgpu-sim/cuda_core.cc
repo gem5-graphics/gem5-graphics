@@ -34,8 +34,6 @@
 #include "debug/CudaCore.hh"
 #include "debug/CudaCoreAccess.hh"
 #include "debug/CudaCoreFetch.hh"
-#include "debug/CudaCoreMemTrace.hh"
-#include "debug/CudaCoreTick.hh"
 #include "gpu/gpgpu-sim/cuda_core.hh"
 #include "gpu/gpgpu-sim/cuda_gpu.hh"
 #include "mem/page_table.hh"
@@ -127,7 +125,7 @@ CudaCore::getMasterPort(const std::string &if_name, PortID idx)
 }
 
 void
-CudaCore::unserialize(Checkpoint *cp, const std::string &section)
+CudaCore::unserialize(CheckpointIn &cp)
 {
     // Intentionally left blank to keep from trying to read shader header from
     // checkpoint files. Allows for restore into any number of shader cores.
@@ -505,12 +503,12 @@ void
 CudaCore::writebackClear()
 {
    if (writebackBlocked[LSQCntrlPortType::LSQ] >= 0){
-       lsqPorts[writebackBlocked[LSQCntrlPortType::LSQ]]->sendRetry();
+       lsqPorts[writebackBlocked[LSQCntrlPortType::LSQ]]->sendRetryResp();
        writebackBlocked[LSQCntrlPortType::LSQ] = -1;
     }
 
     if (writebackBlocked[LSQCntrlPortType::TEX] >= 0){
-       texPorts[writebackBlocked[LSQCntrlPortType::TEX]]->sendRetry();
+       texPorts[writebackBlocked[LSQCntrlPortType::TEX]]->sendRetryResp();
        writebackBlocked[LSQCntrlPortType::TEX] = -1;
     }
 }
@@ -553,9 +551,9 @@ CudaCore::LSQPort::recvTimingResp(PacketPtr pkt)
 }
 
 void
-CudaCore::LSQPort::recvRetry()
+CudaCore::LSQPort::recvReqRetry()
 {
-    panic("Not sure how to respond to a recvRetry...");
+    panic("Not sure how to respond to a recvReqRetry...");
 }
 
 bool
@@ -566,9 +564,9 @@ CudaCore::LSQControlPort::recvTimingResp(PacketPtr pkt)
 }
 
 void
-CudaCore::LSQControlPort::recvRetry()
+CudaCore::LSQControlPort::recvReqRetry()
 {
-    panic("CudaCore::LSQControlPort::recvRetry() not implemented!");
+    panic("CudaCore::LSQControlPort::recvReqRetry() not implemented!");
 }
 
 bool
@@ -586,7 +584,7 @@ CudaCore::CoreCachePort::recvTimingResp(PacketPtr pkt)
 }
 
 void
-CudaCore::CoreCachePort::recvRetry()
+CudaCore::CoreCachePort::recvReqRetry()
 {
     if(type == CorePortType::Inst){
        core->handleInstRetry();

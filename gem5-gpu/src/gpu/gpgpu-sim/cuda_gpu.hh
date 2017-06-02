@@ -41,7 +41,6 @@
 #include "gpgpu-sim/gpu-sim.h"
 #include "gpu/gpgpu-sim/cuda_core.hh"
 #include "gpu/copy_engine.hh"
-#include "gpu/gpgpu-sim/zunit.hh"
 #include "gpu/shader_mmu.hh"
 #include "params/CudaGPU.hh"
 #include "params/GPGPUSimComponentWrapper.hh"
@@ -50,6 +49,36 @@
 #include "sim/process.hh"
 #include "sim/system.hh"
 #include "stream_manager.h"
+
+
+class ZUnit;
+
+class StreamList : public std::vector<struct CUstream_st*> {
+public:
+    bool find(struct CUstream_st* stream) 
+    {
+        iterator it = begin();
+        while( it != end() ) {
+            if( *it == stream ) 
+                return true;
+            ++it;
+        }
+        return false;
+    }
+
+    void remove(struct CUstream_st* stream)
+    {
+        iterator it = begin();
+        while( it != end() ) {
+            if( *it == stream ) {
+                erase(it);
+                return;
+            }
+            ++it;
+        }
+        assert(0);
+    }
+};
 
 /**
  * A wrapper class to manage the clocking of GPGPU-Sim-side components.
@@ -100,13 +129,21 @@ class GPGPUSimComponentWrapper : public ClockedObject
         }
 
         assert(startCycleFunction);
-        assert(!componentCycleStartEvent.scheduled());
-        schedule(componentCycleStartEvent, start_time);
+        //assert(!componentCycleStartEvent.scheduled());
+        reschedule(componentCycleStartEvent, start_time, true);
 
         if (endCycleFunction) {
-            assert(!componentCycleEndEvent.scheduled());
-            schedule(componentCycleEndEvent, start_time);
+            //assert(!componentCycleEndEvent.scheduled());
+            reschedule(componentCycleEndEvent, start_time, true);
         }
+    }
+
+    bool isScheduled() {
+        return componentCycleStartEvent.scheduled() and componentCycleEndEvent.scheduled();
+    }
+
+    Tick when(){
+       return componentCycleStartEvent.when();
     }
 
   protected:
@@ -314,8 +351,12 @@ class CudaGPU : public ClockedObject
 
     /// The thread context, stream and thread ID currently running on the SPA
     ThreadContext *runningTC;
-    struct CUstream_st *runningStream;
+    struct CUstream_st* runningStream;
     int runningTID;
+
+#if 0  
+
+    struct CUstream_st *runningStream;
     void beginStreamOperation(struct CUstream_st *_stream) {
         // We currently do not support multiple concurrent streams
         if (runningStream || runningTC) {
@@ -330,6 +371,35 @@ class CudaGPU : public ClockedObject
         runningTC = NULL;
         runningTID = -1;
     }
+#else
+
+    StreamList runningStreams;
+    void beginStreamOperation(struct CUstream_st* stream) 
+    {
+        assert( stream );
+        if( runningStreams.find(stream) ) {
+            panic("Already a stream operation running for stream %x (can only run one operation per stream at a time)!\n",
+                stream);
+        }
+        runningStreams.push_back(stream);
+        if( runningTC ) assert( runningTC == stream->getThreadContext() ); // FIXME: Only support a single thread context
+        if( runningTID != -1 ) assert( runningTID == stream->getThreadContext()->threadId() );
+
+        runningTC = stream->getThreadContext();
+        runningTID = runningTC->threadId();
+    }
+    
+    void endStreamOperation(struct CUstream_st* stream) {
+        assert( stream );
+        assert( runningStreams.find(stream) );
+        runningStreams.remove(stream);
+        if( runningStreams.empty() ) {
+            runningTC = NULL;
+            runningTID = -1;
+            running = false;
+        }
+    }
+#endif
     
     /// The thread context for the current graphics operation
     /// NOTE: Different from runningTC, this one used to manage graphics memory ops 
@@ -338,11 +408,11 @@ class CudaGPU : public ClockedObject
 
     //TODO: redo with proper memory management
     class GMemory {
-        static const size_t XLGBLOCK_SIZE  = 6*1024*1024;
+        static const size_t XLGBLOCK_SIZE  = 5*1024*1024; //was 6
         static const size_t XLGBLOCK_COUNT = 1;
-        static const size_t LGBLOCK_SIZE  = 3*1024*1024;
+        static const size_t LGBLOCK_SIZE  = 4*1024*1024;
         static const size_t LGBLOCK_COUNT = 2;
-        static const size_t SGBLOCK_SIZE = 256*1024;
+        static const size_t SGBLOCK_SIZE = 128*1024;
         
     private:
         Addr m_gMemStart;
@@ -380,7 +450,7 @@ class CudaGPU : public ClockedObject
     stream_manager *streamManager;
 
     /// Flag to make sure we don't schedule twice in the same tick
-    bool streamScheduled;
+    //bool streamScheduled;
 
     /// Number of ticks to delay for each stream operation
     /// This is a function of the driver overheads
@@ -449,11 +519,12 @@ class CudaGPU : public ClockedObject
             return false;
         }
         /// For checkpointing
-        void serialize(std::ostream &os);
-        void unserialize(Checkpoint *cp, const std::string &section);
+        void serialize(CheckpointOut &cp) const;
+        void unserialize(CheckpointIn &cp);
     };
     GPUPageTable pageTable;
     bool manageGPUMemory;
+    bool accessHostPageTable;
     AddrRange gpuMemoryRange;
     Addr physicalGPUBrkAddr;
     Addr virtualGPUBrkAddr;
@@ -468,8 +539,8 @@ class CudaGPU : public ClockedObject
     CudaGPU(const Params *p);
 
     /// For checkpointing
-    virtual void serialize(std::ostream &os);
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
+    virtual void serialize(CheckpointOut &cp) const;
+    virtual void unserialize(CheckpointIn &cp);
 
     /// Called after constructor, but before any real simulation
     virtual void startup();
@@ -489,7 +560,7 @@ class CudaGPU : public ClockedObject
         panic("Have not configured threads per multiprocessor!\n");
         return 0;
     }
-    int getSharedMemDelay() { return sharedMemDelay; }
+
     const char* getConfigPath() { return gpgpusimConfigPath.c_str(); }
     RubySystem* getRubySystem() { return ruby; }
     int getSystemCachelineSize() const {return system_cacheline_size;} 
@@ -523,7 +594,10 @@ class CudaGPU : public ClockedObject
     CudaCore *getCudaCore(int coreId);
 
     /// Returns the Z-Unit of this GPU
-    ZUnit * getZUnit(){ return zunit;}
+    ZUnit * getZUnit(){ 
+       //printf("zunit ptr in gpu =%x\n", zunit);
+       return zunit;
+    }
 
     /// Returns size of warp (same for all CUDA cores)
     int getWarpSize() { return warpSize; }
@@ -537,19 +611,21 @@ class CudaGPU : public ClockedObject
     void printPTXFileLineStats();
 
     /// Begins a timing memory copy from src to dst
-    void memcpy(void *src, void *dst, size_t count, struct CUstream_st *stream, stream_operation_type type);
+    bool memcpy(void *src, void *dst, size_t count, struct CUstream_st *stream, stream_operation_type type);
 
     /// Begins a timing memory copy from src to/from the symbol+offset
-    void memcpy_symbol(const char *hostVar, const void *src, size_t count, size_t offset, int to, struct CUstream_st *stream);
-   
+    bool memcpy_to_symbol(const char *hostVar, const void *src, size_t count, size_t offset, struct CUstream_st *stream);
+    bool memcpy_from_symbol(void *dst, const char *hostVar, size_t count, size_t offset, struct CUstream_st *stream);
+ 
     /// Retrieve symbol address
     Addr getSymbolSimAddr(const char *hostVar, size_t offset);
 
     /// Begins a timing memory set of value to dst
-    void memset(Addr dst, int value, size_t count, struct CUstream_st *stream);
+    bool memset(Addr dst, int value, size_t count, struct CUstream_st *stream);
 
     /// Called by the copy engine when a memcpy or memset is complete
     void finishCopyOperation();
+    void finishStreamCopyOperation(CUstream_st* stream);
 
     /// Called from shader TLB to be used for TLB lookups
     /// TODO: Move the thread context handling to GPU context when we get there
@@ -557,8 +633,8 @@ class CudaGPU : public ClockedObject
 
     /// Used when blocking and signaling threads
     std::map<ThreadContext*, Addr> blockedThreads;
-    bool needsToBlock();
-    void blockThread(ThreadContext *tc, Addr signal_ptr);
+    bool needsToBlock(CUstream_st* stream = NULL);
+    void blockThread(ThreadContext *tc, Addr signal_ptr, CUstream_st* stream = NULL);
     void signalThread(ThreadContext *tc, Addr signal_ptr);
     void unblockThread(ThreadContext *tc);
 
@@ -606,12 +682,16 @@ class CudaGPU : public ClockedObject
     void registerDeviceMemory(ThreadContext *tc, Addr vaddr, size_t size);
     void registerDeviceInstText(ThreadContext *tc, Addr vaddr, size_t size);
     bool isManagingGPUMemory() { return manageGPUMemory; }
+    bool isAccessingHostPagetable() { return accessHostPageTable; }
     Addr allocateGPUMemory(size_t size);
 
     /// Statistics for this GPU
     Stats::Scalar numKernelsStarted;
     Stats::Scalar numKernelsCompleted;
     void regStats();
+
+    // Current stream we're blocking on
+    CUstream_st* _currentBlockedStream;
     
     void setGraphicsTC(ThreadContext* tc, int pid){
         DPRINTF(GraphicsMemory, "GraphicsMemory: Setting graphicsTC, TC=%llx, pid=%d\n", tc, pid);

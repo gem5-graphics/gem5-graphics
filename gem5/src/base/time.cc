@@ -117,20 +117,19 @@ Time::time() const
 }
 
 void
-Time::serialize(const std::string &base, ostream &os)
+Time::serialize(const std::string &base, CheckpointOut &cp) const
 {
-    paramOut(os, base + ".sec", sec());
-    paramOut(os, base + ".nsec", nsec());
+    paramOut(cp, base + ".sec", sec());
+    paramOut(cp, base + ".nsec", nsec());
 }
 
 void
-Time::unserialize(const std::string &base, Checkpoint *cp,
-                  const string &section)
+Time::unserialize(const std::string &base, CheckpointIn &cp)
 {
     time_t secs;
     time_t nsecs;
-    paramIn(cp, section, base + ".sec", secs);
-    paramIn(cp, section, base + ".nsec", nsecs);
+    paramIn(cp, base + ".sec", secs);
+    paramIn(cp, base + ".nsec", nsecs);
     sec(secs);
     nsec(nsecs);
 }
@@ -150,18 +149,32 @@ sleep(const Time &time)
 time_t
 mkutctime(struct tm *time)
 {
-    time_t ret;
-    char *tz;
+    // get the current timezone
+    char *tz = getenv("TZ");
 
-    tz = getenv("TZ");
+    // copy the string as the pointer gets invalidated when updating
+    // the environment
+    if (tz) {
+        tz = strdup(tz);
+        if (!tz) {
+            fatal("Failed to reserve memory for UTC time conversion\n");
+        }
+    }
+
+    // change to UTC and get the time
     setenv("TZ", "", 1);
     tzset();
-    ret = mktime(time);
-    if (tz)
+    time_t ret = mktime(time);
+
+    // restore the timezone again
+    if (tz) {
         setenv("TZ", tz, 1);
-    else
+        free(tz);
+    } else {
         unsetenv("TZ");
+    }
     tzset();
+
     return ret;
 }
 

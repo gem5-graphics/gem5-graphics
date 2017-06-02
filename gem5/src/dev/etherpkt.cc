@@ -31,23 +31,40 @@
 #include <iostream>
 
 #include "base/misc.hh"
+#include "base/inet.hh"
 #include "dev/etherpkt.hh"
 #include "sim/serialize.hh"
 
 using namespace std;
 
 void
-EthPacketData::serialize(const string &base, ostream &os)
+EthPacketData::serialize(const string &base, CheckpointOut &cp) const
 {
-    paramOut(os, base + ".length", length);
-    arrayParamOut(os, base + ".data", data, length);
+    paramOut(cp, base + ".length", length);
+    arrayParamOut(cp, base + ".data", data, length);
 }
 
 void
-EthPacketData::unserialize(const string &base, Checkpoint *cp,
-                        const string &section)
+EthPacketData::unserialize(const string &base, CheckpointIn &cp)
 {
-    paramIn(cp, section, base + ".length", length);
+    paramIn(cp, base + ".length", length);
     if (length)
-        arrayParamIn(cp, section, base + ".data", data, length);
+        arrayParamIn(cp, base + ".data", data, length);
 }
+
+void
+EthPacketData::packAddress(uint8_t *src_addr,
+                           uint8_t *dst_addr,
+                           unsigned &nbytes)
+{
+    Net::EthHdr *hdr = (Net::EthHdr *)data;
+    assert(hdr->src().size() == hdr->dst().size());
+    if (nbytes < hdr->src().size())
+        panic("EthPacketData::packAddress() Buffer overflow");
+
+    memcpy(dst_addr, hdr->dst().bytes(), hdr->dst().size());
+    memcpy(src_addr, hdr->src().bytes(), hdr->src().size());
+
+    nbytes = hdr->src().size();
+}
+

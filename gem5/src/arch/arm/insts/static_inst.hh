@@ -42,6 +42,8 @@
 #ifndef __ARCH_ARM_INSTS_STATICINST_HH__
 #define __ARCH_ARM_INSTS_STATICINST_HH__
 
+#include <memory>
+
 #include "arch/arm/faults.hh"
 #include "arch/arm/utility.hh"
 #include "arch/arm/system.hh"
@@ -158,7 +160,7 @@ class ArmStaticInst : public StaticInst
                        const std::string &suffix = "",
                        bool withPred = true,
                        bool withCond64 = false,
-                       ConditionCode cond64 = COND_UC) const;
+                       ConditionCode cond64 = ARM_COND_UC) const;
     void printTarget(std::ostream &os, Addr target,
                      const SymbolTable *symtab) const;
     void printCondition(std::ostream &os, unsigned code,
@@ -357,7 +359,8 @@ class ArmStaticInst : public StaticInst
     inline Fault
     disabledFault() const
     {
-        return new UndefinedInstruction(machInst, false, mnemonic, true);
+        return std::make_shared<UndefinedInstruction>(machInst, false,
+                                                      mnemonic, true);
     }
 
   public:

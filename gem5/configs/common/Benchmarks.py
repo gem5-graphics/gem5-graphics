@@ -31,10 +31,13 @@ from os import environ as env
 from m5.defines import buildEnv
 
 class SysConfig:
-    def __init__(self, script=None, mem=None, disk=None):
+    def __init__(self, script=None, mem=None, disk=None, rootdev=None,
+                 os_type='linux'):
         self.scriptname = script
         self.diskname = disk
         self.memsize = mem
+        self.root = rootdev
+        self.ostype = os_type
 
     def script(self):
         if self.scriptname:
@@ -56,11 +59,20 @@ class SysConfig:
         elif buildEnv['TARGET_ISA'] == 'x86':
             return env.get('LINUX_IMAGE', disk('x86root.img'))
         elif buildEnv['TARGET_ISA'] == 'arm':
-            return env.get('LINUX_IMAGE', disk('linux-arm-ael.img'))
+            return env.get('LINUX_IMAGE', disk('linux-aarch32-ael.img'))
         else:
             print "Don't know what default disk image to use for %s ISA" % \
                 buildEnv['TARGET_ISA']
             exit(1)
+
+    def rootdev(self):
+        if self.root:
+            return self.root
+        else:
+            return '/dev/sda1'
+
+    def os_type(self):
+        return self.ostype
 
 # Benchmarks are defined as a key in a dict which is a list of SysConfigs
 # The first defined machine is the test system, the others are driving systems
@@ -112,32 +124,38 @@ Benchmarks = {
 
     'MutexTest':        [SysConfig('mutex-test.rcS', '128MB')],
     'ArmAndroid-GB':    [SysConfig('null.rcS', '256MB',
-                    'ARMv7a-Gingerbread-Android.SMP.mouse.nolock.clean.img')],
+                    'ARMv7a-Gingerbread-Android.SMP.mouse.nolock.clean.img',
+                    None, 'android-gingerbread')],
     'bbench-gb':        [SysConfig('bbench-gb.rcS', '256MB',
-                          'ARMv7a-Gingerbread-Android.SMP.mouse.nolock.img')],
+                            'ARMv7a-Gingerbread-Android.SMP.mouse.nolock.img',
+                            None, 'android-gingerbread')],
     'ArmAndroid-ICS':   [SysConfig('null.rcS', '256MB',
-                            'ARMv7a-ICS-Android.SMP.nolock.clean.img')],
+                            'ARMv7a-ICS-Android.SMP.nolock.clean.img',
+                            None, 'android-ics')],
     'bbench-ics':       [SysConfig('bbench-ics.rcS', '256MB',
-                            'ARMv7a-ICS-Android.SMP.nolock.img')],
+                            'ARMv7a-ICS-Android.SMP.nolock.img',
+                            None, 'android-ics')],
     'bbench-ics-ruby':       [SysConfig('bbench-ics.rcS', '256MB',
                             'ARMv7a-ICS-Android.SMP.nolock.img')],
     'ArmUbuntu':        [SysConfig('null.rcS', '256MB',
                             'arm-ubuntu-natty-headless.img')],
     'ArmUbuntuRuby':    [SysConfig('null.rcS', '256MB',
                             'arm-ubuntu-natty-headless.img')],
-    'android':            [SysConfig('null.rcS', '256MB', 'ARMv7a-Android-GPU.img')],
-    'android-cp':         [SysConfig('android_ckpt.rcS', '256MB', 'ARMv7a-Android-GPU.img')],
-    'android-cp-emm':     [SysConfig('android_ckpt.rcS', '2GB', 'ARMv7a-Android-GPU.img')],
-    'android-appsscreen': [SysConfig('android_appsscreen.rcS', '256MB', 'ARMv7a-Android-GPU.img')],
-    'android-phone':      [SysConfig('android_phone.rcS', '256MB', 'ARMv7a-Android-GPU.img')],
-    'android-settings':   [SysConfig('android_settings.rcS', '256MB', 'ARMv7a-Android-GPU.img')],
-    'android-sms':        [SysConfig('android_sms.rcS', '256MB', 'ARMv7a-Android-GPU.img')],
-    'android-ab':         [SysConfig('android_angrybirds.rcS', '256MB', 'ARMv7a-Android-GPU.img')],
-    'android-ab-emm':     [SysConfig('android_angrybirds.rcS', '2GB', 'ARMv7a-Android-GPU.img')],
-    'android-l4d':        [SysConfig('android_L4D.rcS', '256MB', 'ARMv7a-Android-GPU.img')],
-    'android-test':       [SysConfig('android_test.rcS', '256MB', 'ARMv7a-Android-GPU.img')],
-    'android-test-emm':   [SysConfig('android_test.rcS', '2GB', 'ARMv7a-Android-GPU.img')],
-    'android-tr-emm':     [SysConfig('android_templerun2.rcS', '2GB', 'ARMv7a-Android-GPU.img')]
+     #Android
+    'android-test-emm':   [SysConfig('android_test.rcS', '2GB', 'ARMv7a-Android-GPU.img', None, 'android-test')],
+    'android':            [SysConfig('null.rcS', '256MB', 'ARMv7a-Android-GPU.img', None, 'android')],
+    'android-cp':         [SysConfig('android_ckpt.rcS', '256MB', 'ARMv7a-Android-GPU.img', None, 'android-cp')],
+    'android-cp-emm':     [SysConfig('android_ckpt.rcS', '2GB', 'ARMv7a-Android-GPU.img', None, 'android-cp-emm')],
+    'android-vr-emm':     [SysConfig('android_ckpt.rcS', '2GB', 'ARMv7a-Android-GPU-VR.img', None, 'android-vr-emm')],
+    'android-appsscreen': [SysConfig('android_appsscreen.rcS', '256MB', 'ARMv7a-Android-GPU.img', None, 'android-appsscreen')],
+    'android-phone':      [SysConfig('android_phone.rcS', '256MB', 'ARMv7a-Android-GPU.img', None, 'android-phone')],
+    'android-settings':   [SysConfig('android_settings.rcS', '256MB', 'ARMv7a-Android-GPU.img', None, 'android-sms')],
+    'android-sms':        [SysConfig('android_sms.rcS', '256MB', 'ARMv7a-Android-GPU.img', None, 'android-ab')],
+    'android-ab':         [SysConfig('android_angrybirds.rcS', '256MB', 'ARMv7a-Android-GPU.img', None, 'android-ab')],
+    'android-ab-emm':     [SysConfig('android_angrybirds.rcS', '2GB', 'ARMv7a-Android-GPU.img', None, 'android-ab-emm')],
+    'android-l4d':        [SysConfig('android_L4D.rcS', '256MB', 'ARMv7a-Android-GPU.img', None, 'android-test')],
+    'android-test':       [SysConfig('android_test.rcS', '256MB', 'ARMv7a-Android-GPU.img', None, 'android-test')],
+    'android-tr-emm':     [SysConfig('android_templerun2.rcS', '2GB', 'ARMv7a-Android-GPU.img', None, 'android-tr-emm')]
 }
 
 benchs = Benchmarks.keys()

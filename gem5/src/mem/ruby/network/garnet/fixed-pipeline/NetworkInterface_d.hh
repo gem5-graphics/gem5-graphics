@@ -43,7 +43,6 @@
 #include "mem/ruby/slicc_interface/Message.hh"
 #include "params/GarnetNetworkInterface_d.hh"
 
-class NetworkMessage;
 class MessageBuffer;
 class flitBuffer_d;
 
@@ -62,6 +61,7 @@ class NetworkInterface_d : public ClockedObject, public Consumer
     void wakeup();
     void addNode(std::vector<MessageBuffer *> &inNode,
                  std::vector<MessageBuffer *> &outNode);
+
     void print(std::ostream& out) const;
     int get_vnet(int vc);
     void init_net_ptr(GarnetNetwork_d *net_ptr) { m_net_ptr = net_ptr; }
@@ -86,7 +86,7 @@ class NetworkInterface_d : public ClockedObject, public Consumer
     // Input Flit Buffers
     // The flit buffers which will serve the Consumer
     std::vector<flitBuffer_d *>   m_ni_buffers;
-    std::vector<RubyTime> m_ni_enqueue_time;
+    std::vector<Cycles> m_ni_enqueue_time;
 
     // The Message buffers that takes messages from the protocol
     std::vector<MessageBuffer *> inNode_ptr;

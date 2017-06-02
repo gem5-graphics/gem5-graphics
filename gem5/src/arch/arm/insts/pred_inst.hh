@@ -48,10 +48,11 @@
 namespace ArmISA
 {
 static inline uint32_t
-rotate_imm(uint32_t immValue, int rotateValue)
+rotate_imm(uint32_t immValue, uint32_t rotateValue)
 {
-    return ((immValue >> (rotateValue & 31)) |
-            (immValue << (32 - (rotateValue & 31))));
+    rotateValue &= 31;
+    return rotateValue == 0 ? immValue :
+        (immValue >> rotateValue) | (immValue << (32 - rotateValue));
 }
 
 static inline uint32_t
@@ -191,7 +192,7 @@ class PredOp : public ArmStaticInst
            ArmStaticInst(mnem, _machInst, __opClass)
     {
         if (machInst.aarch64)
-            condCode = COND_UC;
+            condCode = ARM_COND_UC;
         else if (machInst.itstateMask)
             condCode = (ConditionCode)(uint8_t)machInst.itstateCond;
         else
@@ -311,7 +312,7 @@ class PredMacroOp : public PredOp
     /// Constructor
     PredMacroOp(const char *mnem, ExtMachInst _machInst, OpClass __opClass) :
                 PredOp(mnem, _machInst, __opClass),
-                numMicroops(0)
+                numMicroops(0), microOps(nullptr)
     {
         // We rely on the subclasses of this object to handle the
         // initialization of the micro-operations, since they are

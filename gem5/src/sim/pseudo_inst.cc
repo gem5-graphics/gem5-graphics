@@ -53,6 +53,7 @@
 #include "arch/kernel_stats.hh"
 #include "arch/utility.hh"
 #include "arch/vtophys.hh"
+#include "arch/pseudo_inst.hh"
 #include "base/debug.hh"
 #include "base/output.hh"
 #include "config/the_isa.hh"
@@ -66,6 +67,7 @@
 #include "debug/GraphicsCalls.hh"
 #include "params/BaseCPU.hh"
 #include "sim/full_system.hh"
+#include "sim/process.hh"
 #include "sim/pseudo_inst.hh"
 #include "sim/serialize.hh"
 #include "sim/sim_events.hh"
@@ -81,7 +83,6 @@
 #include "graphics/serialize_graphics.hh"
 #include "graphics/gem5_graphics_calls.h"
 #include "simulate.hh"
-
 
 extern cudaFunc_t gpgpu_funcs[];
 //class CudaGPU; 
@@ -211,6 +212,15 @@ pseudoInst(ThreadContext *tc, uint8_t func, uint8_t subfunc)
         warn("Unimplemented m5 op (0x%x)\n", func);
         break;
 
+      /* SE mode functions */
+      case 0x60: // syscall_func
+        m5Syscall(tc);
+        break;
+
+      case 0x61: // pagefault_func
+        m5PageFault(tc);
+        break;
+
       default:
         warn("Unhandled m5 op: 0x%x\n", func);
         break;
@@ -282,7 +292,7 @@ quiesceNs(ThreadContext *tc, uint64_t ns)
 
     BaseCPU *cpu = tc->getCpuPtr();
 
-    if (!cpu->params()->do_quiesce || ns == 0)
+    if (!cpu->params()->do_quiesce)
         return;
 
     EndQuiesceEvent *quiesceEvent = tc->getQuiesceEvent();
@@ -308,7 +318,7 @@ quiesceCycles(ThreadContext *tc, uint64_t cycles)
 
     BaseCPU *cpu = tc->getCpuPtr();
 
-    if (!cpu->params()->do_quiesce || cycles == 0)
+    if (!cpu->params()->do_quiesce)
         return;
 
     EndQuiesceEvent *quiesceEvent = tc->getQuiesceEvent();

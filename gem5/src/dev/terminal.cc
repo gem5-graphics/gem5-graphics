@@ -34,7 +34,16 @@
  */
 
 #include <sys/ioctl.h>
+
+#if defined(__FreeBSD__)
+#include <termios.h>
+
+#else
 #include <sys/termios.h>
+
+#endif
+#include "dev/terminal.hh"
+
 #include <poll.h>
 #include <unistd.h>
 
@@ -53,7 +62,6 @@
 #include "debug/Terminal.hh"
 #include "debug/TerminalVerbose.hh"
 #include "dev/platform.hh"
-#include "dev/terminal.hh"
 #include "dev/uart.hh"
 
 using namespace std;
@@ -99,8 +107,8 @@ Terminal::DataEvent::process(int revent)
  * Terminal code
  */
 Terminal::Terminal(const Params *p)
-    : SimObject(p), listenEvent(NULL), dataEvent(NULL), number(p->number),
-      data_fd(-1), txbuf(16384), rxbuf(16384), outfile(NULL)
+    : SimObject(p), termDataAvail(NULL), listenEvent(NULL), dataEvent(NULL),
+      number(p->number), data_fd(-1), txbuf(16384), rxbuf(16384), outfile(NULL)
 #if TRACING_ON == 1
       , linebuf(16384)
 #endif
@@ -127,6 +135,17 @@ Terminal::~Terminal()
 
     if (dataEvent)
         delete dataEvent;
+}
+
+void
+Terminal::regDataAvailCallback(Callback *c)
+{
+    // This can happen if the user has connected multiple UARTs to the
+    // same terminal. In that case, each of them tries to register
+    // callbacks.
+    if (termDataAvail)
+        fatal("Terminal already has already been associated with a UART.\n");
+    termDataAvail = c;
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -186,8 +205,12 @@ Terminal::accept()
     write((const uint8_t *)stream.str().c_str(), stream.str().size());
 
     DPRINTFN("attach terminal %d\n", number);
-
-    txbuf.readall(data_fd);
+    char buf[1024];
+    for (size_t i = 0; i < txbuf.size(); i += sizeof(buf)) {
+        const size_t chunk_len(std::min(txbuf.size() - i, sizeof(buf)));
+        txbuf.peek(buf, chunk_len);
+        write((const uint8_t *)buf, chunk_len);
+    }
 }
 
 void
@@ -215,7 +238,8 @@ Terminal::data()
     if (len) {
         rxbuf.write((char *)buf, len);
         // Inform the UART there is data available
-        uart->dataAvailable();
+        assert(termDataAvail);
+        termDataAvail->process();
     }
 }
 
@@ -309,7 +333,7 @@ Terminal::out(char c)
                 DPRINTF(Terminal, "%s\n", buffer);
                 delete [] buffer;
             } else {
-                linebuf.write(c);
+                linebuf.write(&c, 1);
             }
         }
 
@@ -317,7 +341,7 @@ Terminal::out(char c)
     }
 #endif
 
-    txbuf.write(c);
+    txbuf.write(&c, 1);
 
     if (data_fd >= 0)
         write(c);

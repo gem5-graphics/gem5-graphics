@@ -51,10 +51,20 @@ class Decoder
 {
   private:
     //These are defined and documented in decoder_tables.cc
-    static const uint8_t Prefixes[256];
-    static const uint8_t UsesModRM[2][256];
-    static const uint8_t ImmediateType[2][256];
     static const uint8_t SizeTypeToSize[3][10];
+    typedef const uint8_t ByteTable[256];
+    static ByteTable Prefixes;
+
+    static ByteTable UsesModRMOneByte;
+    static ByteTable UsesModRMTwoByte;
+    static ByteTable UsesModRMThreeByte0F38;
+    static ByteTable UsesModRMThreeByte0F3A;
+
+    static ByteTable ImmediateTypeOneByte;
+    static ByteTable ImmediateTypeTwoByte;
+    static ByteTable ImmediateTypeThreeByte0F38;
+    static ByteTable ImmediateTypeThreeByte0F3A;
+    static ByteTable ImmediateTypeVex[10];
 
   protected:
     struct InstBytes
@@ -166,7 +176,13 @@ class Decoder
         ResetState,
         FromCacheState,
         PrefixState,
-        OpcodeState,
+        TwoByteVexState,
+        ThreeByteVexFirstState,
+        ThreeByteVexSecondState,
+        OneByteOpcodeState,
+        TwoByteOpcodeState,
+        ThreeByte0F38OpcodeState,
+        ThreeByte0F3AOpcodeState,
         ModRMState,
         SIBState,
         DisplacementState,
@@ -181,11 +197,23 @@ class Decoder
     State doResetState();
     State doFromCacheState();
     State doPrefixState(uint8_t);
-    State doOpcodeState(uint8_t);
+    State doTwoByteVexState(uint8_t);
+    State doThreeByteVexFirstState(uint8_t);
+    State doThreeByteVexSecondState(uint8_t);
+    State doOneByteOpcodeState(uint8_t);
+    State doTwoByteOpcodeState(uint8_t);
+    State doThreeByte0F38OpcodeState(uint8_t);
+    State doThreeByte0F3AOpcodeState(uint8_t);
     State doModRMState(uint8_t);
     State doSIBState(uint8_t);
     State doDisplacementState();
     State doImmediateState();
+
+    //Process the actual opcode found earlier, using the supplied tables.
+    State processOpcode(ByteTable &immTable, ByteTable &modrmTable,
+                        bool addrSizedImm = false);
+    // Process the opcode found with VEX / XOP prefix.
+    State processExtendedOpcode(ByteTable &immTable);
 
   protected:
     /// Caching for decoded instruction objects.

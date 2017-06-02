@@ -43,7 +43,7 @@
 
 #include "network.hpp"
 
-class FatTree : public Network {
+class FatTree : public ISNetwork {
 
   int _k;
   int _n;

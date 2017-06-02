@@ -46,12 +46,13 @@
 #include <string>
 #include <vector>
 
-#include "dev/arm/generic_timer.hh"
 #include "kern/linux/events.hh"
 #include "params/ArmSystem.hh"
+#include "params/GenericArmSystem.hh"
 #include "sim/sim_object.hh"
 #include "sim/system.hh"
 
+class GenericTimer;
 class ThreadContext;
 
 class ArmSystem : public System
@@ -82,11 +83,6 @@ class ArmSystem : public System
      * True if this system implements the virtualization Extensions
      */
     const bool _haveVirtualization;
-
-    /**
-     * True if this system implements the Generic Timer extension
-     */
-    const bool _haveGenericTimer;
 
     /**
      * Pointer to the Generic Timer wrapper.
@@ -132,15 +128,6 @@ class ArmSystem : public System
      */
     virtual void initState();
 
-    /** Check if an address should be uncacheable until all caches are enabled.
-     * This exits because coherence on some addresses at boot is maintained via
-     * sw coherence until the caches are enbaled. Since we don't support sw
-     * coherence operations in gem5, this is a method that allows a system
-     * type to designate certain addresses that should remain uncachebale
-     * for a while.
-     */
-    virtual bool adderBootUncacheable(Addr a) { return false; }
-
     virtual Addr fixFuncEventAddr(Addr addr)
     {
         // Remove the low bit that thumb symbols have set
@@ -165,20 +152,14 @@ class ArmSystem : public System
       */
     bool haveVirtualization() const { return _haveVirtualization; }
 
-    /** Returns true if this system implements the Generic Timer extension. */
-    bool haveGenericTimer() const { return _haveGenericTimer; }
-
     /** Sets the pointer to the Generic Timer. */
     void setGenericTimer(GenericTimer *generic_timer)
     {
         _genericTimer = generic_timer;
     }
 
-    /** Returns a pointer to the system counter. */
-    GenericTimer::SystemCounter *getSystemCounter() const;
-
-    /** Returns a pointer to the appropriate architected timer. */
-    GenericTimer::ArchTimer *getArchTimer(int cpu_id) const;
+    /** Get a pointer to the system's generic timer model */
+    GenericTimer *getGenericTimer() const { return _genericTimer; }
 
     /** Returns true if the register width of the highest implemented exception
      * level is 64 bits (ARMv8) */
@@ -265,8 +246,25 @@ class ArmSystem : public System
     /** Returns true if ASID is 16 bits for the system of a specific thread
      * context while in AArch64 (ARMv8) */
     static bool haveLargeAsid64(ThreadContext *tc);
+};
 
+class GenericArmSystem : public ArmSystem
+{
+  public:
+    typedef GenericArmSystemParams Params;
+    const Params *
+    params() const
+    {
+        return dynamic_cast<const Params *>(_params);
+    }
+
+    GenericArmSystem(Params *p) : ArmSystem(p) {};
+    virtual ~GenericArmSystem() {};
+
+    /**
+     * Initialise the system
+     */
+    virtual void initState();
 };
 
 #endif
-

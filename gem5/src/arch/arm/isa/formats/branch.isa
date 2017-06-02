@@ -50,7 +50,7 @@ def format ArmBBlxImm() {{
         if (machInst.condCode == 0xF) {
             int32_t imm = (sext<26>(bits(machInst, 23, 0) << 2)) |
                           (bits(machInst, 24) << 1);
-            return new BlxImm(machInst, imm, COND_UC);
+            return new BlxImm(machInst, imm, ARM_COND_UC);
         } else {
             return new B(machInst, sext<26>(bits(machInst, 23, 0) << 2),
                          (ConditionCode)(uint32_t)machInst.condCode);
@@ -63,7 +63,7 @@ def format ArmBlBlxImm() {{
         if (machInst.condCode == 0xF) {
             int32_t imm = (sext<26>(bits(machInst, 23, 0) << 2)) |
                           (bits(machInst, 24) << 1);
-            return new BlxImm(machInst, imm, COND_UC);
+            return new BlxImm(machInst, imm, ARM_COND_UC);
         } else {
             return new Bl(machInst, sext<26>(bits(machInst, 23, 0) << 2),
                           (ConditionCode)(uint32_t)machInst.condCode);
@@ -111,7 +111,7 @@ def format Thumb16CondBranchAndSvc() {{
 
 def format Thumb16UncondBranch() {{
     decode_block = '''
-        return new B(machInst, sext<12>(bits(machInst, 10, 0) << 1), COND_UC);
+        return new B(machInst, sext<12>(bits(machInst, 10, 0) << 1), ARM_COND_UC);
     '''
 }};
 
@@ -216,7 +216,7 @@ def format Thumb32BranchesAndMiscCtrl() {{
                     {
                         return new BxjReg(machInst,
                                  (IntRegIndex)(uint32_t)bits(machInst, 19, 16),
-                                 COND_UC);
+                                 ARM_COND_UC);
                     }
                   case 0x3d:
                     {
@@ -266,7 +266,7 @@ def format Thumb32BranchesAndMiscCtrl() {{
                 const int32_t imm = sext<25>((s << 24) |
                                              (i1 << 23) | (i2 << 22) |
                                              (imm10 << 12) | (imm11 << 1));
-                return new B(machInst, imm, COND_UC);
+                return new B(machInst, imm, ARM_COND_UC);
             }
           case 0x4:
             {
@@ -281,7 +281,7 @@ def format Thumb32BranchesAndMiscCtrl() {{
                 const int32_t imm = sext<25>((s << 24) |
                                              (i1 << 23) | (i2 << 22) |
                                              (imm10h << 12) | (imm10l << 2));
-                return new BlxImm(machInst, imm, COND_UC);
+                return new BlxImm(machInst, imm, ARM_COND_UC);
             }
           case 0x5:
             {
@@ -293,7 +293,7 @@ def format Thumb32BranchesAndMiscCtrl() {{
                 const int32_t imm = sext<25>((s << 24) |
                                              (i1 << 23) | (i2 << 22) |
                                              (imm10 << 12) | (imm11 << 1));
-                return new Bl(machInst, imm, COND_UC);
+                return new Bl(machInst, imm, ARM_COND_UC);
             }
           default:
             break;

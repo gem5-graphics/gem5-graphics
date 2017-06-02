@@ -34,7 +34,7 @@
 #include "batchtrafficmanager.hpp"
 
 BatchTrafficManager::BatchTrafficManager( const Configuration &config, 
-					  const vector<Network *> & net )
+					  const vector<ISNetwork *> & net )
 : TrafficManager(config, net), _last_id(-1), _last_pid(-1), 
    _overall_min_batch_time(0), _overall_avg_batch_time(0), 
    _overall_max_batch_time(0)

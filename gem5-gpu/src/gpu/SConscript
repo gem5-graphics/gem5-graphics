@@ -11,6 +11,7 @@
 # notice, this list of conditions and the following disclaimer in the
 # documentation and/or other materials provided with the distribution;
 # neither the name of the copyright holders nor the names of its
+#
 # contributors may be used to endorse or promote products derived from
 # this software without specific prior written permission.
 #
@@ -28,6 +29,26 @@
 #
 
 Import('*')
+
+import os
+
+mesa_root = os.environ['GPGPUSIM_MESA_ROOT']
+
+env.Append(CXXFLAGS = [
+		     '-I'+mesa_root+'/gem5-gpu/src',
+           '-I'+mesa_root+'/Mesa-7.11.2_GPGPU-Sim/src/mesa',
+		     '-I'+mesa_root+'/Mesa-7.11.2_GPGPU-Sim/src/mapi',
+	        '-I'+mesa_root+'/Mesa-7.11.2_GPGPU-Sim/src/mesa/swrast',
+ 		     '-D_POSIX_SOURCE', '-D_SVID_SOURCE', '-D_BSD_SOURCE',
+           '-D_GNU_SOURCE', '-DPTHREADS', '-DUSE_XSHM', '-DHAVE_POSIX_MEMALIGN'
+           ]) 
+
+env.Replace(LIBPATH = [mesa_root+'/Mesa-7.11.2_GPGPU-Sim/lib64', env['LIBPATH']])
+env.Append(LIBS = ['GL'])
+
+
+
+print "GPGPUSIM_MESA_ROOT: " , mesa_root
 
 SimObject('ShaderLSQ.py')
 SimObject('ShaderTLB.py')

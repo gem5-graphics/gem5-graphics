@@ -27,16 +27,15 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "base/random.hh"
 #include "cpu/testers/rubytest/Check.hh"
 #include "debug/RubyTest.hh"
 #include "mem/ruby/common/SubBlock.hh"
-#include "mem/ruby/system/Sequencer.hh"
-#include "mem/ruby/system/System.hh"
 
 typedef RubyTester::SenderState SenderState;
 
-Check::Check(const Address& address, const Address& pc,
-             int _num_writers, int _num_readers, RubyTester* _tester)
+Check::Check(Addr address, Addr pc, int _num_writers, int _num_readers,
+             RubyTester* _tester)
     : m_num_writers(_num_writers), m_num_readers(_num_readers),
       m_tester_ptr(_tester)
 {
@@ -46,7 +45,8 @@ Check::Check(const Address& address, const Address& pc,
     pickInitiatingNode();
     changeAddress(address);
     m_pc = pc;
-    m_access_mode = RubyAccessMode(random() % RubyAccessMode_NUM);
+    m_access_mode = RubyAccessMode(random_mt.random(0,
+                                                    RubyAccessMode_NUM - 1));
     m_store_count = 0;
 }
 
@@ -57,11 +57,11 @@ Check::initiate()
     debugPrint();
 
     // currently no protocols support prefetches
-    if (false && (random() & 0xf) == 0) {
+    if (false && (random_mt.random(0, 0xf) == 0)) {
         initiatePrefetch(); // Prefetch from random processor
     }
 
-    if (m_tester_ptr->getCheckFlush() && (random() & 0xff) == 0) {
+        if (m_tester_ptr->getCheckFlush() && (random_mt.random(0, 0xff) == 0)) {
         initiateFlush(); // issue a Flush request from random processor
     }
 
@@ -81,7 +81,7 @@ Check::initiatePrefetch()
 {
     DPRINTF(RubyTest, "initiating prefetch\n");
 
-    int index = random() % m_num_readers;
+    int index = random_mt.random(0, m_num_readers - 1);
     MasterPort* port = m_tester_ptr->getReadableCpuPort(index);
 
     Request::Flags flags;
@@ -90,7 +90,7 @@ Check::initiatePrefetch()
     Packet::Command cmd;
 
     // 1 in 8 chance this will be an exclusive prefetch
-    if ((random() & 0x7) != 0) {
+    if (random_mt.random(0, 0x7) != 0) {
         cmd = MemCmd::ReadReq;
 
         // if necessary, make the request an instruction fetch
@@ -103,11 +103,16 @@ Check::initiatePrefetch()
     }
 
     // Prefetches are assumed to be 0 sized
-    Request *req = new Request(m_address.getAddress(), 0, flags,
-            m_tester_ptr->masterId(), curTick(), m_pc.getAddress());
+    Request *req = new Request(m_address, 0, flags,
+            m_tester_ptr->masterId(), curTick(), m_pc);
     req->setThreadContext(index, 0);
 
     PacketPtr pkt = new Packet(req, cmd);
+    // despite the oddity of the 0 size (questionable if this should
+    // even be allowed), a prefetch is still a read and as such needs
+    // a place to store the result
+    uint8_t *data = new uint8_t[1];
+    pkt->dataDynamic(data);
 
     // push the subblock onto the sender state.  The sequencer will
     // update the subblock on the return
@@ -132,13 +137,13 @@ Check::initiateFlush()
 
     DPRINTF(RubyTest, "initiating Flush\n");
 
-    int index = random() % m_num_writers;
+    int index = random_mt.random(0, m_num_writers - 1);
     MasterPort* port = m_tester_ptr->getWritableCpuPort(index);
 
     Request::Flags flags;
 
-    Request *req = new Request(m_address.getAddress(), CHECK_SIZE, flags,
-            m_tester_ptr->masterId(), curTick(), m_pc.getAddress());
+    Request *req = new Request(m_address, CHECK_SIZE, flags,
+            m_tester_ptr->masterId(), curTick(), m_pc);
 
     Packet::Command cmd;
 
@@ -161,18 +166,17 @@ Check::initiateAction()
     DPRINTF(RubyTest, "initiating Action\n");
     assert(m_status == TesterStatus_Idle);
 
-    int index = random() % m_num_writers;
+    int index = random_mt.random(0, m_num_writers - 1);
     MasterPort* port = m_tester_ptr->getWritableCpuPort(index);
 
     Request::Flags flags;
 
     // Create the particular address for the next byte to be written
-    Address writeAddr(m_address.getAddress() + m_store_count);
+    Addr writeAddr(m_address + m_store_count);
 
     // Stores are assumed to be 1 byte-sized
-    Request *req = new Request(writeAddr.getAddress(), 1, flags,
-            m_tester_ptr->masterId(), curTick(),
-                               m_pc.getAddress());
+    Request *req = new Request(writeAddr, 1, flags, m_tester_ptr->masterId(),
+                               curTick(), m_pc);
 
     req->setThreadContext(index, 0);
     Packet::Command cmd;
@@ -185,12 +189,12 @@ Check::initiateAction()
     // }
 
     PacketPtr pkt = new Packet(req, cmd);
-    uint8_t *writeData = new uint8_t;
+    uint8_t *writeData = new uint8_t[1];
     *writeData = m_value + m_store_count;
     pkt->dataDynamic(writeData);
 
     DPRINTF(RubyTest, "data 0x%x check 0x%x\n",
-            *(pkt->getPtr<uint8_t>()), *writeData);
+            *(pkt->getConstPtr<uint8_t>()), *writeData);
 
     // push the subblock onto the sender state.  The sequencer will
     // update the subblock on the return
@@ -222,7 +226,7 @@ Check::initiateCheck()
     DPRINTF(RubyTest, "Initiating Check\n");
     assert(m_status == TesterStatus_Ready);
 
-    int index = random() % m_num_readers;
+    int index = random_mt.random(0, m_num_readers - 1);
     MasterPort* port = m_tester_ptr->getReadableCpuPort(index);
 
     Request::Flags flags;
@@ -233,13 +237,13 @@ Check::initiateCheck()
     }
 
     // Checks are sized depending on the number of bytes written
-    Request *req = new Request(m_address.getAddress(), CHECK_SIZE, flags,
-                               m_tester_ptr->masterId(), curTick(), m_pc.getAddress());
+    Request *req = new Request(m_address, CHECK_SIZE, flags,
+                               m_tester_ptr->masterId(), curTick(), m_pc);
 
     req->setThreadContext(index, 0);
     PacketPtr pkt = new Packet(req, MemCmd::ReadReq);
     uint8_t *dataArray = new uint8_t[CHECK_SIZE];
-    pkt->dataDynamicArray(dataArray);
+    pkt->dataDynamic(dataArray);
 
     // push the subblock onto the sender state.  The sequencer will
     // update the subblock on the return
@@ -266,14 +270,14 @@ Check::initiateCheck()
 }
 
 void
-Check::performCallback(NodeID proc, SubBlock* data, RubyTime curTime)
+Check::performCallback(NodeID proc, SubBlock* data, Cycles curTime)
 {
-    Address address = data->getAddress();
+    Addr address = data->getAddress();
 
     // This isn't exactly right since we now have multi-byte checks
     //  assert(getAddress() == address);
 
-    assert(getAddress().getLineAddress() == address.getLineAddress());
+    assert(makeLineAddress(m_address) == makeLineAddress(address));
     assert(data != NULL);
 
     DPRINTF(RubyTest, "RubyTester Callback\n");
@@ -320,13 +324,13 @@ Check::performCallback(NodeID proc, SubBlock* data, RubyTime curTime)
     }
 
     DPRINTF(RubyTest, "proc: %d, Address: 0x%x\n", proc,
-            getAddress().getLineAddress());
+            makeLineAddress(m_address));
     DPRINTF(RubyTest, "Callback done\n");
     debugPrint();
 }
 
 void
-Check::changeAddress(const Address& address)
+Check::changeAddress(Addr address)
 {
     assert(m_status == TesterStatus_Idle || m_status == TesterStatus_Ready);
     m_status = TesterStatus_Idle;
@@ -339,7 +343,7 @@ Check::pickValue()
 {
     assert(m_status == TesterStatus_Idle);
     m_status = TesterStatus_Idle;
-    m_value = random() & 0xff; // One byte
+    m_value = random_mt.random(0, 0xff); // One byte
     m_store_count = 0;
 }
 
@@ -348,7 +352,7 @@ Check::pickInitiatingNode()
 {
     assert(m_status == TesterStatus_Idle || m_status == TesterStatus_Ready);
     m_status = TesterStatus_Idle;
-    m_initiatingNode = (random() % m_num_writers);
+    m_initiatingNode = (random_mt.random(0, m_num_writers - 1));
     DPRINTF(RubyTest, "picked initiating node %d\n", m_initiatingNode);
     m_store_count = 0;
 }
@@ -370,7 +374,6 @@ Check::debugPrint()
 {
     DPRINTF(RubyTest,
         "[%#x, value: %d, status: %s, initiating node: %d, store_count: %d]\n",
-        m_address.getAddress(), (int)m_value,
-        TesterStatus_to_string(m_status).c_str(),
+        m_address, (int)m_value, TesterStatus_to_string(m_status).c_str(),
         m_initiatingNode, m_store_count);
 }

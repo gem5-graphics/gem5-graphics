@@ -32,24 +32,17 @@ import m5
 from m5.objects import *
 from m5.defines import buildEnv
 
-#
-# Note: the L1 Cache latency is only used by the sequencer on fast path hits
-#
-class L1Cache(RubyCache):
-    latency = 1
+class L1Cache(RubyCache): pass
+class L2Cache(RubyCache): pass
 
-#
-# Note: the L2 Cache latency is not currently used
-#
-class L2Cache(RubyCache):
-    latency = 15
-
-def create_system(options, system, dma_devices, ruby_system):
+def create_system(options, full_system, system, dma_devices, ruby_system):
 
     if not buildEnv['GPGPU_SIM']:
         m5.util.panic("This script requires GPGPU-Sim integration to be built.")
 
     print "Creating system for GPU"
+
+    options.access_backing_store = True
 
     # Run the original protocol script
     buildEnv['PROTOCOL'] = buildEnv['PROTOCOL'][:-7]
@@ -57,7 +50,7 @@ def create_system(options, system, dma_devices, ruby_system):
     exec "import %s" % protocol
     try:
         (cpu_sequencers, dir_cntrls, topology) = \
-            eval("%s.create_system(options, system, dma_devices, ruby_system)" % protocol)
+            eval("%s.create_system(options, full_system, system, dma_devices, ruby_system)" % protocol)
     except:
         print "Error: could not create system for ruby protocol inside fusion system %s" % protocol
         raise
@@ -83,11 +76,11 @@ def create_system(options, system, dma_devices, ruby_system):
         #
         l1i_cache = L1Cache(size = options.sc_l1_size,
                             assoc = options.sc_l1_assoc,
-                            replacement_policy = "LRU",
+                            replacement_policy = LRUReplacementPolicy(),
                             start_index_bit = block_size_bits)
         l1d_cache = L1Cache(size = options.sc_l1_size,
                             assoc = options.sc_l1_assoc,
-                            replacement_policy = "LRU",
+                            replacement_policy = LRUReplacementPolicy(),
                             start_index_bit = block_size_bits)
 
         prefetcher = RubyPrefetcher.Prefetcher()
@@ -96,16 +89,15 @@ def create_system(options, system, dma_devices, ruby_system):
                                       L1Icache = l1i_cache,
                                       L1Dcache = l1d_cache,
                                       l2_select_num_bits = l2_bits,
-                                      send_evictions = (
-                                          options.cpu_type == "detailed"),
                                       prefetcher = prefetcher,
+                                      send_evictions = False,
+                                      transitions_per_cycle = options.ports,
                                       ruby_system = ruby_system,
                                       enable_prefetch = False)
 
         cpu_seq = RubySequencer(version = options.num_cpus + i,
                                 icache = l1i_cache,
                                 dcache = l1d_cache,
-                                access_phys_mem = True,
                                 max_outstanding_requests = options.gpu_l1_buf_depth,
                                 ruby_system = ruby_system,
                                 connect_to_io = False)
@@ -120,6 +112,22 @@ def create_system(options, system, dma_devices, ruby_system):
         cpu_sequencers.append(cpu_seq)
         topology.addController(l1_cntrl)
 
+        # Connect the L1 controllers and the network
+        l1_cntrl.mandatoryQueue = MessageBuffer()
+        l1_cntrl.requestFromL1Cache = MessageBuffer()
+        l1_cntrl.requestFromL1Cache.master = ruby_system.network.slave
+        l1_cntrl.responseFromL1Cache = MessageBuffer()
+        l1_cntrl.responseFromL1Cache.master = ruby_system.network.slave
+        l1_cntrl.unblockFromL1Cache = MessageBuffer()
+        l1_cntrl.unblockFromL1Cache.master = ruby_system.network.slave
+
+        l1_cntrl.optionalQueue = MessageBuffer()
+
+        l1_cntrl.requestToL1Cache = MessageBuffer()
+        l1_cntrl.requestToL1Cache.slave = ruby_system.network.master
+        l1_cntrl.responseToL1Cache = MessageBuffer()
+        l1_cntrl.responseToL1Cache.slave = ruby_system.network.master
+
         cntrl_count += 1
 
     ############################################################################
@@ -130,33 +138,33 @@ def create_system(options, system, dma_devices, ruby_system):
     #       performance (see Section 6.2 of Power et al. HPCA 2014).
     pwd_cache = L1Cache(size = options.pwc_size,
                             assoc = 16, # 64 is fully associative @ 8kB
-                            replacement_policy = "LRU",
+                            replacement_policy = LRUReplacementPolicy(),
                             start_index_bit = block_size_bits,
-                            latency = 8,
                             resourceStalls = False)
     # Small cache since CPU L1 requires I and D
     pwi_cache = L1Cache(size = "512B",
                             assoc = 2,
-                            replacement_policy = "LRU",
+                            replacement_policy = LRUReplacementPolicy(),
                             start_index_bit = block_size_bits,
-                            latency = 8,
                             resourceStalls = False)
 
     prefetcher = RubyPrefetcher.Prefetcher()
 
     l1_cntrl = L1Cache_Controller(version = options.num_cpus + options.num_sc,
-                                  send_evictions = False,
                                   L1Icache = pwi_cache,
                                   L1Dcache = pwd_cache,
                                   l2_select_num_bits = l2_bits,
                                   prefetcher = prefetcher,
+                                  send_evictions = False,
+                                  transitions_per_cycle = options.ports,
                                   ruby_system = ruby_system,
                                   enable_prefetch = False)
 
     cpu_seq = RubySequencer(version = options.num_cpus + options.num_sc,
                             icache = pwd_cache, # Never get data from pwi_cache
                             dcache = pwd_cache,
-                            access_phys_mem = True,
+                            icache_hit_latency = 8,
+                            dcache_hit_latency = 8,
                             max_outstanding_requests = options.gpu_l1_buf_depth,
                             ruby_system = ruby_system,
                             deadlock_threshold = 2000000,
@@ -170,6 +178,22 @@ def create_system(options, system, dma_devices, ruby_system):
 
     topology.addController(l1_cntrl)
 
+    # Connect the L1 controllers and the network
+    l1_cntrl.mandatoryQueue = MessageBuffer()
+    l1_cntrl.requestFromL1Cache = MessageBuffer()
+    l1_cntrl.requestFromL1Cache.master = ruby_system.network.slave
+    l1_cntrl.responseFromL1Cache = MessageBuffer()
+    l1_cntrl.responseFromL1Cache.master = ruby_system.network.slave
+    l1_cntrl.unblockFromL1Cache = MessageBuffer()
+    l1_cntrl.unblockFromL1Cache.master = ruby_system.network.slave
+
+    l1_cntrl.optionalQueue = MessageBuffer()
+
+    l1_cntrl.requestToL1Cache = MessageBuffer()
+    l1_cntrl.requestToL1Cache.slave = ruby_system.network.master
+    l1_cntrl.responseToL1Cache = MessageBuffer()
+    l1_cntrl.responseToL1Cache.slave = ruby_system.network.master
+
 
     # Copy engine cache (make as small as possible, ideally 0)
     l1i_cache = L1Cache(size = "2kB", assoc = 2)
@@ -178,12 +202,12 @@ def create_system(options, system, dma_devices, ruby_system):
     prefetcher = RubyPrefetcher.Prefetcher()
 
     l1_cntrl = L1Cache_Controller(version = options.num_cpus + options.num_sc+1,
-                                  send_evictions = (
-                                      options.cpu_type == "detailed"),
                                   L1Icache = l1i_cache,
                                   L1Dcache = l1d_cache,
                                   l2_select_num_bits = l2_bits,
                                   prefetcher = prefetcher,
+                                  send_evictions = False,
+                                  transitions_per_cycle = options.ports,
                                   ruby_system = ruby_system,
                                   enable_prefetch = False)
 
@@ -193,16 +217,31 @@ def create_system(options, system, dma_devices, ruby_system):
     cpu_seq = RubySequencer(version = options.num_cpus + options.num_sc + 1,
                             icache = l1i_cache,
                             dcache = l1d_cache,
-                            access_phys_mem = True,
                             max_outstanding_requests = 64,
                             ruby_system = ruby_system,
                             connect_to_io = False)
 
     l1_cntrl.sequencer = cpu_seq
 
-    ruby_system.l1_cntrl_ce = l1_cntrl
+    ruby_system.ce_cntrl = l1_cntrl
 
     cpu_sequencers.append(cpu_seq)
     topology.addController(l1_cntrl)
+
+    # Connect the L1 controllers and the network
+    l1_cntrl.mandatoryQueue = MessageBuffer()
+    l1_cntrl.requestFromL1Cache = MessageBuffer()
+    l1_cntrl.requestFromL1Cache.master = ruby_system.network.slave
+    l1_cntrl.responseFromL1Cache = MessageBuffer()
+    l1_cntrl.responseFromL1Cache.master = ruby_system.network.slave
+    l1_cntrl.unblockFromL1Cache = MessageBuffer()
+    l1_cntrl.unblockFromL1Cache.master = ruby_system.network.slave
+
+    l1_cntrl.optionalQueue = MessageBuffer()
+
+    l1_cntrl.requestToL1Cache = MessageBuffer()
+    l1_cntrl.requestToL1Cache.slave = ruby_system.network.master
+    l1_cntrl.responseToL1Cache = MessageBuffer()
+    l1_cntrl.responseToL1Cache.slave = ruby_system.network.master
 
     return (cpu_sequencers, dir_cntrls, topology)

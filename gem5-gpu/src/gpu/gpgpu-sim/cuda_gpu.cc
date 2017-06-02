@@ -74,14 +74,16 @@ CudaGPU::CudaGPU(const Params *p) :
     clkDomain((SrcClockDomain*)p->clk_domain),
     coresWrapper(*p->cores_wrapper), icntWrapper(*p->icnt_wrapper),
     l2Wrapper(*p->l2_wrapper), dramWrapper(*p->dram_wrapper),
-    system(p->sys), warpSize(p->warp_size), sharedMemDelay(p->shared_mem_delay),
+    system(p->sys), warpSize(p->warp_size), 
     gpgpusimConfigPath(p->config_path), unblockNeeded(false), ruby(p->ruby),
     system_cacheline_size(p->system_cacheline_size),
     runningTC(NULL), runningStream(NULL), runningTID(-1), clearTick(0),
     dumpKernelStats(p->dump_kernel_stats),
     dumpGpgpusimStats(p->dump_gpgpusim_stats), pageTable(),
     manageGPUMemory(p->manage_gpu_memory),
-    gpuMemoryRange(p->gpu_memory_range), shaderMMU(p->shader_mmu)
+    accessHostPageTable(p->access_host_pagetable),
+    gpuMemoryRange(p->gpu_memory_range), shaderMMU(p->shader_mmu),
+    _currentBlockedStream(NULL)
 {
     // Register this device as a CUDA-enabled GPU
     cudaDeviceID = registerCudaDevice(this);
@@ -94,12 +96,14 @@ CudaGPU::CudaGPU(const Params *p) :
 
     running = false;
 
-    streamScheduled = false;
-
     restoring = false;
 
-    launchDelay = p->kernel_launch_delay * SimClock::Frequency;
-    returnDelay = p->kernel_return_delay * SimClock::Frequency;
+    if(p->kernel_delay_enabled){
+       launchDelay = p->kernel_launch_delay * SimClock::Frequency;
+       returnDelay = p->kernel_return_delay * SimClock::Frequency;
+    } else {
+       launchDelay = returnDelay = 0;
+    }
 
     // GPU memory handling
     instBaseVaddr = 0;
@@ -109,9 +113,8 @@ CudaGPU::CudaGPU(const Params *p) :
     physicalGPUBrkAddr = gpuMemoryRange.start();
 
     // Initialize GPGPU-Sim
-    theGPU = gem5_ptx_sim_init_perf(&streamManager, getSharedMemDelay(), getConfigPath());
+    theGPU = gem5_ptx_sim_init_perf(&streamManager, this, getConfigPath());
     theGPU->init();
-    theGPU->setCudaGPU(this);
 
     // Set up the component wrappers in order to cycle the GPGPU-Sim
     // shader cores, interconnect, L2 cache and DRAM
@@ -159,7 +162,7 @@ CudaGPU::CudaGPU(const Params *p) :
 
 }
 
-void CudaGPU::serialize(std::ostream &os)
+void CudaGPU::serialize(CheckpointOut &cp) const
 {
     DPRINTF(CudaGPU, "Serializing\n");
     if (running) {
@@ -178,18 +181,18 @@ void CudaGPU::serialize(std::ostream &os)
         stringstream ss;
         ss << i;
         string num = ss.str();
-        paramOut(os, num+"fatBinaries.tid", fatBinaries[i].tid);
-        paramOut(os, num+"fatBinaries.handle", fatBinaries[i].handle);
-        paramOut(os, num+"fatBinaries.sim_fatCubin", fatBinaries[i].sim_fatCubin);
-        paramOut(os, num+"fatBinaries.sim_binSize", fatBinaries[i].sim_binSize);
-        paramOut(os, num+"fatBinaries.sim_alloc_ptr", fatBinaries[i].sim_alloc_ptr);
+        paramOut(cp, num+"fatBinaries.tid", fatBinaries[i].tid);
+        paramOut(cp, num+"fatBinaries.handle", fatBinaries[i].handle);
+        paramOut(cp, num+"fatBinaries.sim_fatCubin", fatBinaries[i].sim_fatCubin);
+        paramOut(cp, num+"fatBinaries.sim_binSize", fatBinaries[i].sim_binSize);
+        paramOut(cp, num+"fatBinaries.sim_alloc_ptr", fatBinaries[i].sim_alloc_ptr);
 
-        paramOut(os, num+"fatBinaries.funcMap.size", fatBinaries[i].funcMap.size());
-        std::map<const void*,string>::iterator it;
+        paramOut(cp, num+"fatBinaries.funcMap.size", fatBinaries[i].funcMap.size());
+        std::map<const void*,string>::const_iterator it = fatBinaries[i].funcMap.begin();
         int j = 0;
-        for (it=fatBinaries[i].funcMap.begin(); it!=fatBinaries[i].funcMap.end(); it++) {
-            paramOut(os, csprintf("%dfatBinaries.funcMap[%d].first", i, j), (uint64_t)it->first);
-            paramOut(os, csprintf("%dfatBinaries.funcMap[%d].second", i, j), it->second);
+        for (; it != fatBinaries[i].funcMap.end(); it++) {
+            paramOut(cp, csprintf("%dfatBinaries.funcMap[%d].first", i, j), (uint64_t)it->first);
+            paramOut(cp, csprintf("%dfatBinaries.funcMap[%d].second", i, j), it->second);
             j++;
         }
     }
@@ -198,19 +201,19 @@ void CudaGPU::serialize(std::ostream &os)
     SERIALIZE_SCALAR(numVars);
     for (int i=0; i<numVars; i++) {
         _CudaVar var = cudaVars[i];
-        paramOut(os, csprintf("cudaVars[%d].sim_deviceAddress", i), var.sim_deviceAddress);
-        paramOut(os, csprintf("cudaVars[%d].deviceName", i), var.deviceName);
-        paramOut(os, csprintf("cudaVars[%d].sim_size", i), var.sim_size);
-        paramOut(os, csprintf("cudaVars[%d].sim_constant", i), var.sim_constant);
-        paramOut(os, csprintf("cudaVars[%d].sim_global", i), var.sim_global);
-        paramOut(os, csprintf("cudaVars[%d].sim_ext", i), var.sim_ext);
-        paramOut(os, csprintf("cudaVars[%d].sim_hostVar", i), var.sim_hostVar);
+        paramOut(cp, csprintf("cudaVars[%d].sim_deviceAddress", i), var.sim_deviceAddress);
+        paramOut(cp, csprintf("cudaVars[%d].deviceName", i), var.deviceName);
+        paramOut(cp, csprintf("cudaVars[%d].sim_size", i), var.sim_size);
+        paramOut(cp, csprintf("cudaVars[%d].sim_constant", i), var.sim_constant);
+        paramOut(cp, csprintf("cudaVars[%d].sim_global", i), var.sim_global);
+        paramOut(cp, csprintf("cudaVars[%d].sim_ext", i), var.sim_ext);
+        paramOut(cp, csprintf("cudaVars[%d].sim_hostVar", i), var.sim_hostVar);
     }
 
-    pageTable.serialize(os);
+    pageTable.serialize(cp);
 }
 
-void CudaGPU::unserialize(Checkpoint *cp, const std::string &section)
+void CudaGPU::unserialize(CheckpointIn &cp)
 {
     DPRINTF(CudaGPU, "UNserializing\n");
 
@@ -232,20 +235,20 @@ void CudaGPU::unserialize(Checkpoint *cp, const std::string &section)
         stringstream ss;
         ss << i;
         string num = ss.str();
-        paramIn(cp, section, num+"fatBinaries.tid", fatBinaries[i].tid);
-        paramIn(cp, section, num+"fatBinaries.handle", fatBinaries[i].handle);
-        paramIn(cp, section, num+"fatBinaries.sim_fatCubin", fatBinaries[i].sim_fatCubin);
-        paramIn(cp, section, num+"fatBinaries.sim_binSize", fatBinaries[i].sim_binSize);
-        paramIn(cp, section, num+"fatBinaries.sim_alloc_ptr", fatBinaries[i].sim_alloc_ptr);
+        paramIn(cp, num+"fatBinaries.tid", fatBinaries[i].tid);
+        paramIn(cp, num+"fatBinaries.handle", fatBinaries[i].handle);
+        paramIn(cp, num+"fatBinaries.sim_fatCubin", fatBinaries[i].sim_fatCubin);
+        paramIn(cp, num+"fatBinaries.sim_binSize", fatBinaries[i].sim_binSize);
+        paramIn(cp, num+"fatBinaries.sim_alloc_ptr", fatBinaries[i].sim_alloc_ptr);
         DPRINTF(CudaGPU, "Got %d %d %d %d\n", fatBinaries[i].handle, fatBinaries[i].sim_fatCubin, fatBinaries[i].sim_binSize, fatBinaries[i].sim_alloc_ptr);
 
         int funcMapSize;
-        paramIn(cp, section, num+"fatBinaries.funcMap.size", funcMapSize);
+        paramIn(cp, num+"fatBinaries.funcMap.size", funcMapSize);
         for (int j=0; j<funcMapSize; j++) {
             uint64_t first;
             string second;
-            paramIn(cp, section, csprintf("%dfatBinaries.funcMap[%d].first", i, j), first);
-            paramIn(cp, section, csprintf("%dfatBinaries.funcMap[%d].second", i, j), second);
+            paramIn(cp, csprintf("%dfatBinaries.funcMap[%d].first", i, j), first);
+            paramIn(cp, csprintf("%dfatBinaries.funcMap[%d].second", i, j), second);
             fatBinaries[i].funcMap[(const void*)first] = second;
         }
     }
@@ -254,16 +257,16 @@ void CudaGPU::unserialize(Checkpoint *cp, const std::string &section)
     UNSERIALIZE_SCALAR(numVars);
     cudaVars.resize(numVars);
     for (int i=0; i<numVars; i++) {
-        paramIn(cp, section, csprintf("cudaVars[%d].sim_deviceAddress", i), cudaVars[i].sim_deviceAddress);
-        paramIn(cp, section, csprintf("cudaVars[%d].deviceName", i), cudaVars[i].deviceName);
-        paramIn(cp, section, csprintf("cudaVars[%d].sim_size", i), cudaVars[i].sim_size);
-        paramIn(cp, section, csprintf("cudaVars[%d].sim_constant", i), cudaVars[i].sim_constant);
-        paramIn(cp, section, csprintf("cudaVars[%d].sim_global", i), cudaVars[i].sim_global);
-        paramIn(cp, section, csprintf("cudaVars[%d].sim_ext", i), cudaVars[i].sim_ext);
-        paramIn(cp, section, csprintf("cudaVars[%d].sim_hostVar", i), cudaVars[i].sim_hostVar);
+        paramIn(cp, csprintf("cudaVars[%d].sim_deviceAddress", i), cudaVars[i].sim_deviceAddress);
+        paramIn(cp, csprintf("cudaVars[%d].deviceName", i), cudaVars[i].deviceName);
+        paramIn(cp, csprintf("cudaVars[%d].sim_size", i), cudaVars[i].sim_size);
+        paramIn(cp, csprintf("cudaVars[%d].sim_constant", i), cudaVars[i].sim_constant);
+        paramIn(cp, csprintf("cudaVars[%d].sim_global", i), cudaVars[i].sim_global);
+        paramIn(cp, csprintf("cudaVars[%d].sim_ext", i), cudaVars[i].sim_ext);
+        paramIn(cp, csprintf("cudaVars[%d].sim_hostVar", i), cudaVars[i].sim_hostVar);
     }
 
-    pageTable.unserialize(cp, section);
+    pageTable.unserialize(cp);
 }
 
 void CudaGPU::startup()
@@ -333,28 +336,34 @@ void CudaGPU::registerCopyEngine(GPUCopyEngine *ce)
 void CudaGPU::streamTick() {
     DPRINTF(CudaGPUTick, "Stream Tick\n");
 
-    streamScheduled = false;
-
     // launch operation on device if one is pending and can be run
     stream_operation op = streamManager->front();
     op.do_operation(theGPU);
 
-    if (streamManager->ready()) {
+    //op.print(stdout);
+
+    if (op.is_done() and streamManager->ready()) {
         schedule(streamTickEvent, curTick() + streamDelay);
-        streamScheduled = true;
     }
 }
 
 void CudaGPU::scheduleStreamEvent() {
-    if (streamScheduled) {
+    if (streamTickEvent.scheduled()) {
         DPRINTF(CudaGPUTick, "Already scheduled a tick, ignoring\n");
         return;
     }
 
     schedule(streamTickEvent, nextCycle());
-    streamScheduled = true;
 }
 
+// FIXME: So, this code doesn't allow another kernel to be scheduled once a previous
+// one already has been scheduled. If already scheduled, each wrapper will be scheduled on its
+// own. So, if we just don't schedule anything, the kernel should run anyway. However, we lose
+// the timing with the launchDelay. If we want to be more accurate, I think the thing to do would
+// be to delay the launch manually and setup the tick events to match whatever the next GPU clock 
+// cycle should be as well as when the kernel should be scheduled.
+//
+// In the meantime, just check if it's already scheduled, if so, do nothing and let it go on its own
 void CudaGPU::beginRunning(Tick stream_queued_time, struct CUstream_st *_stream)
 {
     beginStreamOperation(_stream);
@@ -371,8 +380,39 @@ void CudaGPU::beginRunning(Tick stream_queued_time, struct CUstream_st *_stream)
        theGPU->update_stats();
     }
     numKernelsStarted++;
+        
+    Tick delay = clockPeriod();
+    if ((stream_queued_time + launchDelay) > curTick()) {
+        // Delay launch to the end of the launch delay
+        delay = (stream_queued_time + launchDelay) - curTick();
+    }
+
+    if( running ) {
+        //panic("Should not already be running if we are starting\n");
+        DPRINTF(CudaGPU, "Something is already running on the GPU! Let's do some more work!\n");
+        if(!coresWrapper.isScheduled()) coresWrapper.scheduleEvent(delay);
+        if(!icntWrapper.isScheduled()) icntWrapper.scheduleEvent(delay);
+        if(!l2Wrapper.isScheduled()) l2Wrapper.scheduleEvent(delay);
+        if(!dramWrapper.isScheduled()) dramWrapper.scheduleEvent(delay);
+    } else {
+        running = true;
+        coresWrapper.scheduleEvent(delay);
+        icntWrapper.scheduleEvent(delay);
+        l2Wrapper.scheduleEvent(delay);
+        dramWrapper.scheduleEvent(delay);
+    }
+
+#if 0
+        if( !coresWrapper.isScheduled() ) coresWrapper.scheduleEvent(delay); 
+        if( !icntWrapper.isScheduled() ) icntWrapper.scheduleEvent(delay);
+        if( !l2Wrapper.isScheduled() ) l2Wrapper.scheduleEvent(delay);
+        if( !dramWrapper.isScheduled() ) dramWrapper.scheduleEvent(delay);
+#endif
+
+#if 0    
     if (running) {
-        panic("Should not already be running if we are starting\n");
+        //panic("Should not already be running if we are starting\n");
+        DPRINTF(CudaGPU, "Something is already running on the GPU! Let's do some more work!\n");
     }
     running = true;
 
@@ -386,6 +426,7 @@ void CudaGPU::beginRunning(Tick stream_queued_time, struct CUstream_st *_stream)
     icntWrapper.scheduleEvent(delay);
     l2Wrapper.scheduleEvent(delay);
     dramWrapper.scheduleEvent(delay);
+#endif
 }
 
 void CudaGPU::finishKernel(int grid_id)
@@ -399,6 +440,7 @@ void CudaGPU::processFinishKernelEvent(int grid_id)
 {
     DPRINTF(CudaGPU, "GPU finished a kernel id %d\n", grid_id);
 
+    CUstream_st* stream = streamManager->get_kernel_stream(grid_id);
     streamManager->register_finished_kernel(grid_id);
 
     kernelTimes.push_back(curTick());
@@ -414,9 +456,8 @@ void CudaGPU::processFinishKernelEvent(int grid_id)
 
     scheduleStreamEvent();
 
-    running = false;
+    endStreamOperation(stream);
 
-    endStreamOperation();
     g_renderData.checkEndOfShader(this);
 }
 
@@ -481,32 +522,72 @@ void CudaGPU::printPTXFileLineStats() {
     ptx_line_stats_filename = temp_ptx_line_stats_filename;
 }
 
-void CudaGPU::memcpy(void *src, void *dst, size_t count, struct CUstream_st *_stream, stream_operation_type type) {
-    beginStreamOperation(_stream);
-    copyEngine->memcpy((Addr)src, (Addr)dst, count, type);
+bool CudaGPU::memcpy(void *src, void *dst, size_t count, struct CUstream_st *_stream, stream_operation_type type) {
+    if( copyEngine->Ready() ) {
+        beginStreamOperation(_stream);
+        copyEngine->setCurrentStream(_stream);
+        copyEngine->memcpy((Addr)src, (Addr)dst, count, type);
+        return true;
+    }
+    return false;
 }
 
-void CudaGPU::memcpy_symbol(const char *hostVar, const void *src, size_t count, size_t offset, int to, struct CUstream_st *_stream) {
-    // First, initialize the stream operation
-    beginStreamOperation(_stream);
+bool CudaGPU::memcpy_to_symbol(const char *hostVar, const void *src, size_t count, size_t offset, struct CUstream_st *_stream) {
+    if( copyEngine->Ready() ) {
+        // First, initialize the stream operation
+        beginStreamOperation(_stream);
 
-    // Lookup destination address for transfer:
-    std::string sym_name = gpgpu_ptx_sim_hostvar_to_sym_name(hostVar);
-    std::map<std::string,symbol_table*>::iterator st = g_sym_name_to_symbol_table.find(sym_name.c_str());
-    assert( st != g_sym_name_to_symbol_table.end() );
-    symbol_table *symtab = st->second;
+        // Lookup destination address for transfer:
+        std::string sym_name = gpgpu_ptx_sim_hostvar_to_sym_name(hostVar);
+        std::map<std::string,symbol_table*>::iterator st = g_sym_name_to_symbol_table.find(sym_name.c_str());
+        assert(st != g_sym_name_to_symbol_table.end());
+        symbol_table *symtab = st->second;
 
-    symbol *sym = symtab->lookup(sym_name.c_str());
-    assert(sym);
-    unsigned dst = sym->get_address() + offset;
-    printf("GPGPU-Sim PTX: gpgpu_ptx_sim_memcpy_symbol: copying %zu bytes %s symbol %s+%zu @0x%x ...\n",
-           count, (to ? "to" : "from"), sym_name.c_str(), offset, dst);
+        symbol *sym = symtab->lookup(sym_name.c_str());
+        assert(sym);
+        unsigned dst = sym->get_address() + offset;
+        printf("GPGPU-Sim PTX: gpgpu_ptx_sim_memcpy_symbol: copying %zu bytes to symbol %s+%zu @0x%x ...\n",
+               count, sym_name.c_str(), offset, dst);
 
-    if (to) {
+        copyEngine->setCurrentStream(_stream);
         copyEngine->memcpy((Addr)src, (Addr)dst, count, stream_memcpy_host_to_device);
-    } else {
-        copyEngine->memcpy((Addr)dst, (Addr)src, count, stream_memcpy_device_to_host);
+        return true;
     }
+    return false;
+}
+
+bool CudaGPU::memcpy_from_symbol(void *dst, const char *hostVar, size_t count, size_t offset, struct CUstream_st *_stream) {
+    if( copyEngine->Ready() ) {
+        // First, initialize the stream operation
+        beginStreamOperation(_stream);
+
+        // Lookup destination address for transfer:
+        std::string sym_name = gpgpu_ptx_sim_hostvar_to_sym_name(hostVar);
+        std::map<std::string,symbol_table*>::iterator st = g_sym_name_to_symbol_table.find(sym_name.c_str());
+        assert(st != g_sym_name_to_symbol_table.end());
+        symbol_table *symtab = st->second;
+
+        symbol *sym = symtab->lookup(sym_name.c_str());
+        assert(sym);
+        unsigned src = sym->get_address() + offset;
+        printf("GPGPU-Sim PTX: gpgpu_ptx_sim_memcpy_symbol: copying %zu bytes from symbol %s+%zu @0x%x ...\n",
+               count, sym_name.c_str(), offset, src);
+
+        copyEngine->setCurrentStream(_stream);
+        copyEngine->memcpy((Addr)src, (Addr)dst, count, stream_memcpy_device_to_host);
+        return true;
+    }
+    return false;
+}
+
+bool CudaGPU::memset(Addr dst, int value, size_t count, struct CUstream_st *_stream) {
+    if( copyEngine->Ready() ) {
+        beginStreamOperation(_stream);
+        copyEngine->setCurrentStream(_stream);
+        copyEngine->memset(dst, value, count);
+        return true;
+    } 
+    return false;
 }
 
 Addr CudaGPU::getSymbolSimAddr(const char *hostVar, size_t offset){
@@ -521,26 +602,29 @@ Addr CudaGPU::getSymbolSimAddr(const char *hostVar, size_t offset){
     return dst;
 }
 
-
-void CudaGPU::memset(Addr dst, int value, size_t count, struct CUstream_st *_stream) {
-    beginStreamOperation(_stream);
-    copyEngine->memset(dst, value, count);
-}
-
+//FIXME:
 void CudaGPU::finishCopyOperation()
 {
     runningStream->record_next_done();
     scheduleStreamEvent();
     unblockThread(runningTC);
-    endStreamOperation();
+    //endStreamOperation();
+}
+
+void CudaGPU::finishStreamCopyOperation(CUstream_st* stream)
+{
+    stream->record_next_done();
+    scheduleStreamEvent();
+    unblockThread(runningTC);
+    endStreamOperation(stream);
 }
 
 // TODO: When we move the stream manager into libcuda, this will need to be
 // eliminated, and libcuda will have to decide when to block the calling thread
-bool CudaGPU::needsToBlock()
+bool CudaGPU::needsToBlock(CUstream_st* stream)
 {
-    if (!streamManager->empty()) {
-        DPRINTF(CudaGPU, "Suspend request: Need to activate CPU later\n");
+    if( !streamManager->streamEmpty(stream) ) {
+        DPRINTF(CudaGPU, "Suspend request for stream %x: Need to activate CPU later\n", stream);
         unblockNeeded = true;
         streamManager->print(stdout);
         return true;
@@ -550,9 +634,9 @@ bool CudaGPU::needsToBlock()
     }
 }
 
-void CudaGPU::blockThread(ThreadContext *tc, Addr signal_ptr)
+void CudaGPU::blockThread(ThreadContext *tc, Addr signal_ptr, CUstream_st* stream)
 {
-    if (streamManager->empty()) {
+    if( streamManager->streamEmpty(stream) ) { // NULL stream looks at stream zero
         // It is common in small memcpys for the stream operation to be complete
         // by the time cudaMemcpy calls blockThread. In this case, just signal
         DPRINTF(CudaGPU, "No stream operations to block thread %p. Continuing...\n", tc);
@@ -560,9 +644,14 @@ void CudaGPU::blockThread(ThreadContext *tc, Addr signal_ptr)
         blockedThreads.erase(tc);
         unblockNeeded = false;
     } else {
-        DPRINTF(CudaGPU, "Blocking thread %p for GPU syscall\n", tc);
-        blockedThreads[tc] = signal_ptr;
-        tc->suspend();
+        if (!shaderMMU->isFaultInFlight(tc)) {
+            DPRINTF(CudaGPU, "Blocking thread %p for GPU syscall\n", tc);
+            blockedThreads[tc] = signal_ptr;
+            tc->suspend();
+            _currentBlockedStream = stream; // Register the stream that we're blocking on
+        } else {
+            DPRINTF(CudaGPU, "Pending GPU fault must be handled: Not blocking thread\n");
+        }
     }
 }
 
@@ -587,6 +676,15 @@ void CudaGPU::unblockThread(ThreadContext *tc)
     if (!tc) tc = runningTC;
     if (tc->status() != ThreadContext::Suspended) return;
     assert(unblockNeeded);
+    if( !streamManager->streamEmpty(_currentBlockedStream) ) {
+        // There must be more in the queue of work to complete. Need to
+        // continue blocking
+        if( _currentBlockedStream ) 
+            DPRINTF(CudaGPU, "Still something in stream %x, continuing block\n", _currentBlockedStream);
+        else
+            DPRINTF(CudaGPU, "Still something in stream zero, continuing block\n");
+        return;
+    }
 
     DPRINTF(CudaGPU, "Unblocking thread %p for GPU syscall\n", tc);
     std::map<ThreadContext*, Addr>::iterator tc_iter = blockedThreads.find(tc);
@@ -599,6 +697,7 @@ void CudaGPU::unblockThread(ThreadContext *tc)
 
     blockedThreads.erase(tc);
     unblockNeeded = false;
+    _currentBlockedStream = NULL;
     tc->activate();
 }
 
@@ -670,14 +769,14 @@ Addr CudaGPU::GPUPageTable::addrToPage(Addr addr)
     return addr - offset;
 }
 
-void CudaGPU::GPUPageTable::serialize(std::ostream &os)
+void CudaGPU::GPUPageTable::serialize(CheckpointOut &cp) const
 {
     unsigned int num_ptes = pageMap.size();
     unsigned int index = 0;
     Addr* pagetable_vaddrs = new Addr[num_ptes];
     Addr* pagetable_paddrs = new Addr[num_ptes];
-    std::map<Addr, Addr>::iterator it;
-    for (it = pageMap.begin(); it != pageMap.end(); ++it) {
+    std::map<Addr, Addr>::const_iterator it = pageMap.begin();
+    for (; it != pageMap.end(); ++it) {
         pagetable_vaddrs[index] = (*it).first;
         pagetable_paddrs[index++] = (*it).second;
     }
@@ -688,7 +787,7 @@ void CudaGPU::GPUPageTable::serialize(std::ostream &os)
     delete[] pagetable_paddrs;
 }
 
-void CudaGPU::GPUPageTable::unserialize(Checkpoint *cp, const std::string &section)
+void CudaGPU::GPUPageTable::unserialize(CheckpointIn &cp)
 {
     unsigned int num_ptes = 0;
     UNSERIALIZE_SCALAR(num_ptes);
@@ -705,7 +804,7 @@ void CudaGPU::GPUPageTable::unserialize(Checkpoint *cp, const std::string &secti
 
 void CudaGPU::registerDeviceMemory(ThreadContext *tc, Addr vaddr, size_t size)
 {
-    if (manageGPUMemory) return;
+    if (manageGPUMemory || accessHostPageTable) return;
     DPRINTF(CudaGPUPageTable, "Registering device memory vaddr: %x, size: %d\n", vaddr, size);
     // Get the physical address of full memory allocation (i.e. all pages)
     Addr page_vaddr, page_paddr;

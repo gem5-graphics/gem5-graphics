@@ -33,6 +33,8 @@ from m5.objects import *
 from m5.util.convert import *
 from m5.util import fatal
 
+gpu_core_configs = ['Fermi', 'Maxwell', 'Tegra']
+
 def addGPUOptions(parser):
     parser.add_option("--gpgpusim-config", type="string", default=None, help="Path to the gpgpusim.config to use. This overrides the gpgpusim.config template")
     parser.add_option("--access-host-pagetable", action="store_true", default=False)
@@ -58,7 +60,7 @@ def addGPUOptions(parser):
 
     parser.add_option("--gpu_l1_pagewalkers", type="int", default=32, help="Number of GPU L1 pagewalkers")
 
-    parser.add_option("--sc_zl1_size", default="256kB", help="size of l1 z cache hooked up to each sc")
+    parser.add_option("--sc_zl1_size", default="32kB", help="size of l1 z cache hooked up to each sc")
     parser.add_option("--sc_zl1_assoc", default=4, help="associativity of l1 z cache", type="int")
     parser.add_option("--gpu_zl1_buf_depth", type="int", default=96, help="Number of buffered Z-cache requests")
 
@@ -75,10 +77,10 @@ def addGPUOptions(parser):
     
     parser.add_option("--pwc_size", default="8kB", help="Capacity of the page walk cache")
     parser.add_option("--pwc_assoc", default=16, help="Assoc of the page walk cache")
-    parser.add_option("--pwc_policy", default="LRU", help="Replacement policy of the page walk cache")
+    parser.add_option("--pwc_policy", default= LRUReplacementPolicy(), help="Replacement policy of the page walk cache")
     parser.add_option("--flush_kernel_end", default=False, action="store_true", help="Flush the L1s at the end of each kernel. (Only VI_hammer)")
     #gpu memory
-    parser.add_option("--shMemDelay", default=1, help="delay to access shared memory in gpgpu-sim ticks", type="int")
+    parser.add_option("--gpu_core_config", type="choice", choices=gpu_core_configs, default='Fermi', help="configure the GPU cores like %s" % gpu_core_configs)
     parser.add_option("--gpu-mem-size", default='1GB', help="In split hierarchies, amount of GPU memory")
     parser.add_option("--gpu_mem_ctl_latency", type="int", default=-1, help="GPU memory controller latency in cycles")
     parser.add_option("--gpu_mem_freq", type="string", default=None, help="GPU memory controller frequency")
@@ -89,18 +91,21 @@ def addGPUOptions(parser):
     parser.add_option("--dev-numa-high-bit", type="int", default=0, help="High order address bit to use for device NUMA mapping.")
     parser.add_option("--num-dev-dirs", default=1, help="In split hierarchies, number of device directories", type="int")
     #graphics options
-    parser.add_option("--g_depth_shader", type = "int", default=0, help="Blend in shader")
-    parser.add_option("--g_blend_shader", type = "int", default=1, help="Depth test in shader")
+    parser.add_option("--g_depth_shader", type = "int", default=0, help="depth test in shader")
+    parser.add_option("--g_blend_shader", type = "int", default=1, help="Blend in shader")
     parser.add_option("--g_start_frame", type = "int", default=-1, help="Simulation start frame")
     parser.add_option("--g_end_frame", type = "int", default=-1, help="Simulation end frame")
     parser.add_option("--g_start_call", type = "int", default=0, help="Simulation start draw call")
     parser.add_option("--g_end_call", type = "int", default=-1, help="Simulation end draw call")
-    parser.add_option("--g_raster_h", type = "int", default=4, help="Graphics raster tile height")
-    parser.add_option("--g_raster_w", type = "int", default=8, help="Graphics raster tile width")
+    parser.add_option("--g_raster_th", type = "int", default=32, help="Graphics raster tile height")
+    parser.add_option("--g_raster_tw", type = "int", default=32, help="Graphics raster tile width")
+    parser.add_option("--g_raster_bh", type = "int", default=128, help="Graphics raster block height")
+    parser.add_option("--g_raster_bw", type = "int", default=128, help="Graphics raster block width")
     parser.add_option("--g_cp_start", type = "int", default=-1, help="Graphics checkpoint start frame")
     parser.add_option("--g_cp_end", type = "int", default=-1, help="Graphics checkpoint end frame")
     parser.add_option("--g_cp_period", type = "int", default=5, help="Graphics checkpoint period")
     parser.add_option("--g_skip_cp_frames", type = "int", default=0,  help="Graphics skip rendering checkpoint loading frames")
+    parser.add_option("--ce_buffering", type="int", default=128, help="Maximum cache lines buffered in the GPU CE. 0 implies infinite")
 
 def configureMemorySpaces(options):
     total_mem_range = AddrRange(options.total_mem_size)
@@ -118,7 +123,7 @@ def configureMemorySpaces(options):
         cpu_mem_range = AddrRange(options.total_mem_size)
     else:
         buildEnv['PROTOCOL'] +=  '_fusion'
-    return (cpu_mem_range, gpu_mem_range)
+    return (cpu_mem_range, gpu_mem_range, total_mem_range)
 
 def parseGpgpusimConfig(options):
     # parse gpgpu config file
@@ -128,9 +133,18 @@ def parseGpgpusimConfig(options):
     if options.gpgpusim_config:
         usingTemplate = False
         gpgpusimconfig = os.path.join(os.path.dirname(__file__),'gpu_config/'+options.gpgpusim_config)
+        icntconfig = os.path.join(os.path.dirname(__file__),'gpu_config/'+options.icnt_config)
     else:
-        gpgpusimconfig = os.path.join(os.path.dirname(__file__), 'gpu_config/gpgpusim.config.template')
-        usingTemplate = True
+       usingTemplate = True
+       if options.gpu_core_config == 'Fermi':
+         gpgpusimconfig = os.path.join(os.path.dirname(__file__), 'gpu_config/gpgpusim.fermi.config.template')
+       elif options.gpu_core_config == 'Maxwell':
+         gpgpusimconfig = os.path.join(os.path.dirname(__file__), 'gpu_config/gpgpusim.maxwell.config.template')
+       elif options.gpu_core_config == 'Tegra':
+         gpgpusimconfig = os.path.join(os.path.dirname(__file__), 'gpu_config/gpgpusim.tegra.template')
+       else:
+         gpgpusimconfig = os.path.join(os.path.dirname(__file__), 'gpu_config/gpgpusim.config.template')
+
     if not os.path.isfile(gpgpusimconfig):
         fatal("Unable to find gpgpusim config (%s)" % gpgpusimconfig)
     f = open(gpgpusimconfig, 'r')
@@ -152,8 +166,10 @@ def parseGpgpusimConfig(options):
     config = config.replace("%gEndFrame%",     str(options.g_end_frame) +"\n")
     config = config.replace("%gStartCall%",    str(options.g_start_call) +"\n")
     config = config.replace("%gEndCall%",      str(options.g_end_call) +"\n")
-    config = config.replace("%gRasterH%",      str(options.g_raster_h) +"\n")
-    config = config.replace("%gRasterW%",      str(options.g_raster_w) +"\n")
+    config = config.replace("%gRasterTH%",      str(options.g_raster_th) +"\n")
+    config = config.replace("%gRasterTW%",      str(options.g_raster_tw) +"\n")
+    config = config.replace("%gRasterBH%",      str(options.g_raster_bh) +"\n")
+    config = config.replace("%gRasterBW%",      str(options.g_raster_bw) +"\n")
     config = config.replace("%gCpStart%",      str(options.g_cp_start) +"\n")
     config = config.replace("%gCpEnd%",        str(options.g_cp_end) +"\n")
     config = config.replace("%gCpPeriod%",     str(options.g_cp_period) +"\n")
@@ -227,7 +243,10 @@ def parseGpgpusimConfig(options):
         f.close()
 
         # Read in and modify the interconnect config template
-        icnt_template = os.path.join(os.path.dirname(__file__), 'gpu_config/template_icnt.icnt')
+        if(options.icnt_config):
+           icnt_template = os.path.join(os.path.dirname(__file__), 'gpu_config/'+ options.icnt_config)
+        else: 
+           icnt_template = os.path.join(os.path.dirname(__file__), 'gpu_config/template_icnt.icnt')
         f = open(icnt_template)
         icnt_config = f.read()
         f.close()
@@ -286,7 +305,8 @@ def createGPU(options, gpu_mem_range):
     warps_per_core = options.gpu_threads_per_core / options.gpu_warp_size
     gpu.shader_cores = [CudaCore(id = i, warp_contexts = warps_per_core)
                             for i in xrange(options.num_sc)]
-    gpu.ce = GPUCopyEngine(driver_delay = 5000000)
+    gpu.ce = GPUCopyEngine(driver_delay = 5000000,
+                           buffering = options.ce_buffering)
     gpu.zunit = ZUnit()
 
     for sc in gpu.shader_cores:
@@ -310,9 +330,25 @@ def createGPU(options, gpu_mem_range):
             fatal("gpu_warp_size must divide gpu_threads_per_core evenly.")
         sc.lsq.warp_contexts = warps_per_core
         sc.tex_lq.warp_contexts = warps_per_core
+        if options.gpu_core_config == 'Fermi':
+            # Fermi latency for zero-load independent memory instructions is
+            # roughly 19 total cycles with ~4 cycles for tag access
+            sc.lsq.l1_tag_cycles = 4
+            sc.lsq.latency = 14
+        elif options.gpu_core_config == 'Maxwell':
+            # Maxwell latency for zero-load independent memory instructions is
+            # 8-10 cycles quicker than Fermi, and tag access appears shorter
+            sc.lsq.l1_tag_cycles = 1
+            sc.lsq.latency = 6
+        elif options.gpu_core_config == 'Tegra':
+            #for now copy fermi configs
+            #FIXME
+            sc.lsq.l1_tag_cycles = 1
+            sc.lsq.latency = 6
 
     # This is a stop-gap solution until we implement a better way to register device memory
     if options.access_host_pagetable:
+        gpu.access_host_pagetable = True
         for sc in gpu.shader_cores:
             sc.itb.access_host_pagetable = True
             sc.ttb.access_host_pagetable = True
@@ -320,21 +356,23 @@ def createGPU(options, gpu_mem_range):
             sc.tex_lq.data_tlb.access_host_pagetable = True
         gpu.ce.device_dtb.access_host_pagetable = True
         gpu.ce.host_dtb.access_host_pagetable = True
+        gpu.zunit.ztb.access_host_pagetable = True
 
-    gpu.shared_mem_delay = options.shMemDelay
     gpu.config_path = gpgpusimOptions
     gpu.dump_kernel_stats = options.kernel_stats
     gpu.dump_gpgpusim_stats = options.gpgpusim_stats
 
     return gpu
 
-def connectGPUPorts(gpu, ruby, options):
+def connectGPUPorts(system, gpu, ruby, options):
 
     # for now only VI_fusion has tex and z caches added
     mp = 1
-    if(buildEnv['PROTOCOL'].lower().count("vi")):
+    if(buildEnv['PROTOCOL'].lower().count("vi") and (not options.split)):
       mp = 2
-      gpu.zunit.z_port = ruby._cpu_ports[options.num_cpus+len(gpu.shader_cores)*mp+2].slave
+      idx = options.num_cpus+len(gpu.shader_cores)*mp+2
+      print "connecting zunit to ", idx
+      gpu.zunit.z_port = ruby._cpu_ports[idx].slave
     else:
       #if not VI assert the g_depth_shader option is used
       assert(options.g_depth_shader==1), "No z-cache, g_depth_shader has to be enabled"
@@ -358,7 +396,11 @@ def connectGPUPorts(gpu, ruby, options):
     # is indexed first, then the CE then the Z. 
     #For split address space architectures, there are 2 copy
     # engine caches, and the host-side cache is indexed before the device-side.
-    assert(len(ruby._cpu_ports) == options.num_cpus + options.num_sc*mp + mp +1)
+    try:
+      datapathsCount = len(system.datapaths)
+    except:
+      datapathsCount = 0
+    assert(len(ruby._cpu_ports) == options.num_cpus + options.num_sc*mp + mp +1 + datapathsCount)
 
     # Initialize the MMU, connecting it to either the pagewalk cache port for
     # unified address space, or the copy engine's host-side sequencer port for

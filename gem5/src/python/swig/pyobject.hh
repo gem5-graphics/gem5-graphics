@@ -36,7 +36,12 @@
 #include "sim/sim_object.hh"
 
 extern "C" SimObject *convertSwigSimObjectPtr(PyObject *);
-SimObject *resolveSimObject(const std::string &name);
+
+/** Resolve a SimObject name using the Python configuration */
+class PythonSimObjectResolver : public SimObjectResolver
+{
+    SimObject *resolveSimObject(const std::string &name);
+};
 
 EtherInt * lookupEthPort(SimObject *so, const std::string &name, int i);
 
@@ -53,14 +58,16 @@ serializeAll(const std::string &cpt_dir)
     Serializable::serializeAll(cpt_dir);
 }
 
-inline Checkpoint *
+CheckpointIn *
+getCheckpoint(const std::string &cpt_dir, CheckpointIn::CheckpointFileType type = CheckpointIn::CheckpointFileType::BaseFile);
+/*inline Checkpoint *
 getCheckpoint(const std::string &cpt_dir)
 {
     return new Checkpoint(cpt_dir, Checkpoint::CheckpointFileType::BaseFile);
-}
+}*/
 
 inline void
-unserializeGlobals(Checkpoint *cp)
+unserializeGlobals(CheckpointIn &cp)
 {
     Serializable::unserializeGlobals(cp);
 }
@@ -68,6 +75,6 @@ unserializeGlobals(Checkpoint *cp)
 inline void
 unserializeGraphics(const std::string &cpt_dir)
 {
-   Checkpoint * cp = new Checkpoint(cpt_dir, Checkpoint::CheckpointFileType::GraphicsFile);
-   Serializable::unserializeGraphics(cp);
+   CheckpointIn * cp = getCheckpoint(cpt_dir,CheckpointIn::CheckpointFileType::GraphicsFile);
+   Serializable::unserializeGraphics(*cp);
 }

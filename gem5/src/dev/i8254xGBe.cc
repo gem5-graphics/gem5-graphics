@@ -41,6 +41,7 @@
  */
 
 #include <algorithm>
+#include <memory>
 
 #include "base/inet.hh"
 #include "base/trace.hh"
@@ -57,7 +58,7 @@ using namespace iGbReg;
 using namespace Net;
 
 IGbE::IGbE(const Params *p)
-    : EtherDevice(p), etherInt(NULL),  drainManager(NULL),
+    : EtherDevice(p), etherInt(NULL), cpa(NULL),
       rxFifo(p->rx_fifo_size), txFifo(p->tx_fifo_size), rxTick(false),
       txTick(false), txFifoTick(false), rxDmaPacket(false), pktOffset(0),
       fetchDelay(p->fetch_delay), wbDelay(p->wb_delay), 
@@ -181,8 +182,6 @@ IGbE::read(PacketPtr pkt)
     assert(pkt->getSize() == 4);
 
     DPRINTF(Ethernet, "Read device register %#X\n", daddr);
-
-    pkt->allocate();
 
     //
     // Handle read of register here
@@ -587,7 +586,7 @@ IGbE::write(PacketPtr pkt)
       case REG_RDT:
         regs.rdt = val;
         DPRINTF(EthernetSM, "RXS: RDT Updated.\n");
-        if (getDrainState() == Drainable::Running) {
+        if (drainState() == DrainState::Running) {
             DPRINTF(EthernetSM, "RXS: RDT Fetching Descriptors!\n");
             rxDescCache.fetchDescriptors();
         } else {
@@ -627,7 +626,7 @@ IGbE::write(PacketPtr pkt)
       case REG_TDT:
         regs.tdt = val;
         DPRINTF(EthernetSM, "TXS: TX Tail pointer updated\n");
-        if (getDrainState() == Drainable::Running) {
+        if (drainState() == DrainState::Running) {
             DPRINTF(EthernetSM, "TXS: TDT Fetching Descriptors!\n");
             txDescCache.fetchDescriptors();
         } else {
@@ -821,8 +820,9 @@ IGbE::chkInterrupt()
 template<class T>
 IGbE::DescCache<T>::DescCache(IGbE *i, const std::string n, int s)
     : igbe(i), _name(n), cachePnt(0), size(s), curFetching(0),
-      wbOut(0), pktPtr(NULL), wbDelayEvent(this),
-      fetchDelayEvent(this), fetchEvent(this), wbEvent(this)
+      wbOut(0), moreToWb(false), wbAlignment(0), pktPtr(NULL),
+      wbDelayEvent(this), fetchDelayEvent(this), fetchEvent(this),
+      wbEvent(this)
 {
     fetchBuf = new T[size];
     wbBuf = new T[size];
@@ -905,7 +905,7 @@ void
 IGbE::DescCache<T>::writeback1()
 {
     // If we're draining delay issuing this DMA
-    if (igbe->getDrainState() != Drainable::Running) {
+    if (igbe->drainState() != DrainState::Running) {
         igbe->schedule(wbDelayEvent, curTick() + igbe->wbDelay);
         return;
     }
@@ -986,7 +986,7 @@ void
 IGbE::DescCache<T>::fetchDescriptors1()
 {
     // If we're draining delay issuing this DMA
-    if (igbe->getDrainState() != Drainable::Running) {
+    if (igbe->drainState() != DrainState::Running) {
         igbe->schedule(fetchDelayEvent, curTick() + igbe->fetchDelay);
         return;
     }
@@ -1117,7 +1117,7 @@ IGbE::DescCache<T>::reset()
 
 template<class T>
 void
-IGbE::DescCache<T>::serialize(std::ostream &os)
+IGbE::DescCache<T>::serialize(CheckpointOut &cp) const
 {
     SERIALIZE_SCALAR(cachePnt);
     SERIALIZE_SCALAR(curFetching);
@@ -1128,14 +1128,14 @@ IGbE::DescCache<T>::serialize(std::ostream &os)
     typename CacheType::size_type usedCacheSize = usedCache.size();
     SERIALIZE_SCALAR(usedCacheSize);
     for (typename CacheType::size_type x = 0; x < usedCacheSize; x++) {
-        arrayParamOut(os, csprintf("usedCache_%d", x),
+        arrayParamOut(cp, csprintf("usedCache_%d", x),
                       (uint8_t*)usedCache[x],sizeof(T));
     }
 
     typename CacheType::size_type unusedCacheSize = unusedCache.size();
     SERIALIZE_SCALAR(unusedCacheSize);
     for (typename CacheType::size_type x = 0; x < unusedCacheSize; x++) {
-        arrayParamOut(os, csprintf("unusedCache_%d", x),
+        arrayParamOut(cp, csprintf("unusedCache_%d", x),
                       (uint8_t*)unusedCache[x],sizeof(T));
     }
 
@@ -1152,7 +1152,7 @@ IGbE::DescCache<T>::serialize(std::ostream &os)
 
 template<class T>
 void
-IGbE::DescCache<T>::unserialize(Checkpoint *cp, const std::string &section)
+IGbE::DescCache<T>::unserialize(CheckpointIn &cp)
 {
     UNSERIALIZE_SCALAR(cachePnt);
     UNSERIALIZE_SCALAR(curFetching);
@@ -1165,7 +1165,7 @@ IGbE::DescCache<T>::unserialize(Checkpoint *cp, const std::string &section)
     T *temp;
     for (typename CacheType::size_type x = 0; x < usedCacheSize; x++) {
         temp = new T;
-        arrayParamIn(cp, section, csprintf("usedCache_%d", x),
+        arrayParamIn(cp, csprintf("usedCache_%d", x),
                      (uint8_t*)temp,sizeof(T));
         usedCache.push_back(temp);
     }
@@ -1174,7 +1174,7 @@ IGbE::DescCache<T>::unserialize(Checkpoint *cp, const std::string &section)
     UNSERIALIZE_SCALAR(unusedCacheSize);
     for (typename CacheType::size_type x = 0; x < unusedCacheSize; x++) {
         temp = new T;
-        arrayParamIn(cp, section, csprintf("unusedCache_%d", x),
+        arrayParamIn(cp, csprintf("unusedCache_%d", x),
                      (uint8_t*)temp,sizeof(T));
         unusedCache.push_back(temp);
     }
@@ -1492,7 +1492,7 @@ IGbE::RxDescCache::pktComplete()
 void
 IGbE::RxDescCache::enableSm()
 {
-    if (!igbe->drainManager) {
+    if (igbe->drainState() != DrainState::Draining) {
         igbe->rxTick = true;
         igbe->restartClock();
     }
@@ -1518,18 +1518,18 @@ IGbE::RxDescCache::hasOutstandingEvents()
 }
 
 void
-IGbE::RxDescCache::serialize(std::ostream &os)
+IGbE::RxDescCache::serialize(CheckpointOut &cp) const
 {
-    DescCache<RxDesc>::serialize(os);
+    DescCache<RxDesc>::serialize(cp);
     SERIALIZE_SCALAR(pktDone);
     SERIALIZE_SCALAR(splitCount);
     SERIALIZE_SCALAR(bytesCopied);
 }
 
 void
-IGbE::RxDescCache::unserialize(Checkpoint *cp, const std::string &section)
+IGbE::RxDescCache::unserialize(CheckpointIn &cp)
 {
-    DescCache<RxDesc>::unserialize(cp, section);
+    DescCache<RxDesc>::unserialize(cp);
     UNSERIALIZE_SCALAR(pktDone);
     UNSERIALIZE_SCALAR(splitCount);
     UNSERIALIZE_SCALAR(bytesCopied);
@@ -1540,7 +1540,8 @@ IGbE::RxDescCache::unserialize(Checkpoint *cp, const std::string &section)
 
 IGbE::TxDescCache::TxDescCache(IGbE *i, const std::string n, int s)
     : DescCache<TxDesc>(i,n, s), pktDone(false), isTcp(false),
-      pktWaiting(false), completionAddress(0), completionEnabled(false),
+      pktWaiting(false), pktMultiDesc(false),
+      completionAddress(0), completionEnabled(false),
       useTso(false), tsoHeaderLen(0), tsoMss(0), tsoTotalLen(0), tsoUsedLen(0),
       tsoPrevSeq(0), tsoPktPayloadBytes(0), tsoLoadedHeader(false),
       tsoPktHasHeader(false), tsoDescBytesUsed(0), tsoCopyBytes(0), tsoPkts(0),
@@ -1960,9 +1961,10 @@ IGbE::TxDescCache::actionAfterWb()
 }
 
 void
-IGbE::TxDescCache::serialize(std::ostream &os)
+IGbE::TxDescCache::serialize(CheckpointOut &cp) const
 {
-    DescCache<TxDesc>::serialize(os);
+    DescCache<TxDesc>::serialize(cp);
+
     SERIALIZE_SCALAR(pktDone);
     SERIALIZE_SCALAR(isTcp);
     SERIALIZE_SCALAR(pktWaiting);
@@ -1988,9 +1990,10 @@ IGbE::TxDescCache::serialize(std::ostream &os)
 }
 
 void
-IGbE::TxDescCache::unserialize(Checkpoint *cp, const std::string &section)
+IGbE::TxDescCache::unserialize(CheckpointIn &cp)
 {
-    DescCache<TxDesc>::unserialize(cp, section);
+    DescCache<TxDesc>::unserialize(cp);
+
     UNSERIALIZE_SCALAR(pktDone);
     UNSERIALIZE_SCALAR(isTcp);
     UNSERIALIZE_SCALAR(pktWaiting);
@@ -2028,7 +2031,7 @@ IGbE::TxDescCache::packetAvailable()
 void
 IGbE::TxDescCache::enableSm()
 {
-    if (!igbe->drainManager) {
+    if (igbe->drainState() != DrainState::Draining) {
         igbe->txTick = true;
         igbe->restartClock();
     }
@@ -2048,19 +2051,17 @@ void
 IGbE::restartClock()
 {
     if (!tickEvent.scheduled() && (rxTick || txTick || txFifoTick) &&
-        getDrainState() == Drainable::Running)
+        drainState() == DrainState::Running)
         schedule(tickEvent, clockEdge(Cycles(1)));
 }
 
-unsigned int
-IGbE::drain(DrainManager *dm)
+DrainState
+IGbE::drain()
 {
-    unsigned int count;
-    count = pioPort.drain(dm) + dmaPort.drain(dm);
+    unsigned int count(0);
     if (rxDescCache.hasOutstandingEvents() ||
         txDescCache.hasOutstandingEvents()) {
         count++;
-        drainManager = dm;
     }
 
     txFifoTick = false;
@@ -2072,11 +2073,9 @@ IGbE::drain(DrainManager *dm)
 
     if (count) {
         DPRINTF(Drain, "IGbE not drained\n");
-        setDrainState(Drainable::Draining);
+        return DrainState::Draining;
     } else
-        setDrainState(Drainable::Drained);
-
-    return count;
+        return DrainState::Drained;
 }
 
 void
@@ -2095,7 +2094,7 @@ IGbE::drainResume()
 void
 IGbE::checkDrain()
 {
-    if (!drainManager)
+    if (drainState() != DrainState::Draining)
         return;
 
     txFifoTick = false;
@@ -2104,8 +2103,7 @@ IGbE::checkDrain()
     if (!rxDescCache.hasOutstandingEvents() &&
         !txDescCache.hasOutstandingEvents()) {
         DPRINTF(Drain, "IGbE done draining, processing drain event\n");
-        drainManager->signalDrainDone();
-        drainManager = NULL;
+        signalDrainDone();
     }
 }
 
@@ -2129,7 +2127,7 @@ IGbE::txStateMachine()
         bool success =
 #endif
             txFifo.push(txPacket);
-        txFifoTick = true && !drainManager;
+        txFifoTick = true && drainState() != DrainState::Draining;
         assert(success);
         txPacket = NULL;
         anBegin("TXS", "Desc Writeback");
@@ -2145,7 +2143,7 @@ IGbE::txStateMachine()
     }
 
     if (!txPacket) {
-        txPacket = new EthPacketData(16384);
+        txPacket = std::make_shared<EthPacketData>(16384);
     }
 
     if (!txDescCache.packetWaiting()) {
@@ -2228,7 +2226,7 @@ IGbE::ethRxPkt(EthPacketPtr pkt)
     }
 
     // restart the state machines if they are stopped
-    rxTick = true && !drainManager;
+    rxTick = true && drainState() != DrainState::Draining;
     if ((rxTick || txTick) && !tickEvent.scheduled()) {
         DPRINTF(EthernetSM,
                 "RXS: received packet into fifo, starting ticking\n");
@@ -2389,7 +2387,7 @@ IGbE::txWire()
 
     anPq("TXQ", "TX FIFO Q");
     if (etherInt->sendPacket(txFifo.front())) {
-        cpa->hwQ(CPA::FL_NONE, sys, macAddr, "TXQ", "WireQ", 0);
+        anQ("TXQ", "WireQ");
         if (DTRACE(EthernetSM)) {
             IpPtr ip(txFifo.front());
             if (ip)
@@ -2441,8 +2439,8 @@ IGbE::ethTxDone()
     // restart the tx state machines if they are stopped
     // fifo to send another packet
     // tx sm to put more data into the fifo
-    txFifoTick = true && !drainManager;
-    if (txDescCache.descLeft() != 0 && !drainManager)
+    txFifoTick = true && drainState() != DrainState::Draining;
+    if (txDescCache.descLeft() != 0 && drainState() != DrainState::Draining)
         txTick = true;
 
     restartClock();
@@ -2451,11 +2449,11 @@ IGbE::ethTxDone()
 }
 
 void
-IGbE::serialize(std::ostream &os)
+IGbE::serialize(CheckpointOut &cp) const
 {
-    PciDevice::serialize(os);
+    PciDevice::serialize(cp);
 
-    regs.serialize(os);
+    regs.serialize(cp);
     SERIALIZE_SCALAR(eeOpBits);
     SERIALIZE_SCALAR(eeAddrBits);
     SERIALIZE_SCALAR(eeDataBits);
@@ -2464,13 +2462,13 @@ IGbE::serialize(std::ostream &os)
     SERIALIZE_SCALAR(lastInterrupt);
     SERIALIZE_ARRAY(flash,iGbReg::EEPROM_SIZE);
 
-    rxFifo.serialize("rxfifo", os);
-    txFifo.serialize("txfifo", os);
+    rxFifo.serialize("rxfifo", cp);
+    txFifo.serialize("txfifo", cp);
 
-    bool txPktExists = txPacket;
+    bool txPktExists = txPacket != nullptr;
     SERIALIZE_SCALAR(txPktExists);
     if (txPktExists)
-        txPacket->serialize("txpacket", os);
+        txPacket->serialize("txpacket", cp);
 
     Tick rdtr_time = 0, radv_time = 0, tidv_time = 0, tadv_time = 0,
         inter_time = 0;
@@ -2497,19 +2495,16 @@ IGbE::serialize(std::ostream &os)
 
     SERIALIZE_SCALAR(pktOffset);
 
-    nameOut(os, csprintf("%s.TxDescCache", name()));
-    txDescCache.serialize(os);
-
-    nameOut(os, csprintf("%s.RxDescCache", name()));
-    rxDescCache.serialize(os);
+    txDescCache.serializeSection(cp, "TxDescCache");
+    rxDescCache.serializeSection(cp, "RxDescCache");
 }
 
 void
-IGbE::unserialize(Checkpoint *cp, const std::string &section)
+IGbE::unserialize(CheckpointIn &cp)
 {
-    PciDevice::unserialize(cp, section);
+    PciDevice::unserialize(cp);
 
-    regs.unserialize(cp, section);
+    regs.unserialize(cp);
     UNSERIALIZE_SCALAR(eeOpBits);
     UNSERIALIZE_SCALAR(eeAddrBits);
     UNSERIALIZE_SCALAR(eeDataBits);
@@ -2518,14 +2513,14 @@ IGbE::unserialize(Checkpoint *cp, const std::string &section)
     UNSERIALIZE_SCALAR(lastInterrupt);
     UNSERIALIZE_ARRAY(flash,iGbReg::EEPROM_SIZE);
 
-    rxFifo.unserialize("rxfifo", cp, section);
-    txFifo.unserialize("txfifo", cp, section);
+    rxFifo.unserialize("rxfifo", cp);
+    txFifo.unserialize("txfifo", cp);
 
     bool txPktExists;
     UNSERIALIZE_SCALAR(txPktExists);
     if (txPktExists) {
-        txPacket = new EthPacketData(16384);
-        txPacket->unserialize("txpacket", cp, section);
+        txPacket = std::make_shared<EthPacketData>(16384);
+        txPacket->unserialize("txpacket", cp);
     }
 
     rxTick = true;
@@ -2556,9 +2551,8 @@ IGbE::unserialize(Checkpoint *cp, const std::string &section)
 
     UNSERIALIZE_SCALAR(pktOffset);
 
-    txDescCache.unserialize(cp, csprintf("%s.TxDescCache", section));
-
-    rxDescCache.unserialize(cp, csprintf("%s.RxDescCache", section));
+    txDescCache.unserializeSection(cp, "TxDescCache");
+    rxDescCache.unserializeSection(cp, "RxDescCache");
 }
 
 IGbE *

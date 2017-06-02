@@ -43,8 +43,9 @@
 #include "sim/system.hh"
 
 ThreadState::ThreadState(BaseCPU *cpu, ThreadID _tid, Process *_process)
-    : numInst(0), numOp(0), numLoad(0), _status(ThreadContext::Halted),
-      baseCpu(cpu), _threadId(_tid), lastActivate(0), lastSuspend(0),
+    : numInst(0), numOp(0), numLoad(0), startNumLoad(0),
+      _status(ThreadContext::Halted), baseCpu(cpu),
+      _contextId(0), _threadId(_tid), lastActivate(0), lastSuspend(0),
       profile(NULL), profileNode(NULL), profilePC(0), quiesceEvent(NULL),
       kernelStats(NULL), process(_process), physProxy(NULL), virtProxy(NULL),
       proxy(NULL), funcExeInst(0), storeCondFailures(0)
@@ -62,7 +63,7 @@ ThreadState::~ThreadState()
 }
 
 void
-ThreadState::serialize(std::ostream &os)
+ThreadState::serialize(CheckpointOut &cp) const
 {
     SERIALIZE_ENUM(_status);
     // thread_num and cpu_id are deterministic from the config
@@ -76,11 +77,11 @@ ThreadState::serialize(std::ostream &os)
         quiesceEndTick = quiesceEvent->when();
     SERIALIZE_SCALAR(quiesceEndTick);
     if (kernelStats)
-        kernelStats->serialize(os);
+        kernelStats->serialize(cp);
 }
 
 void
-ThreadState::unserialize(Checkpoint *cp, const std::string &section)
+ThreadState::unserialize(CheckpointIn &cp)
 {
 
     UNSERIALIZE_ENUM(_status);
@@ -95,7 +96,7 @@ ThreadState::unserialize(Checkpoint *cp, const std::string &section)
     if (quiesceEndTick)
         baseCpu->schedule(quiesceEvent, quiesceEndTick);
     if (kernelStats)
-        kernelStats->unserialize(cp, section);
+        kernelStats->unserialize(cp);
 }
 
 void

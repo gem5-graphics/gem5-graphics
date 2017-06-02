@@ -47,7 +47,7 @@ class X86KvmCPU : public BaseKvmCPU
     void startup();
 
     /** @{ */
-    void dump();
+    void dump() const M5_ATTR_OVERRIDE;
     void dumpFpuRegs() const;
     void dumpIntRegs() const;
     void dumpSpecRegs() const;
@@ -233,9 +233,6 @@ class X86KvmCPU : public BaseKvmCPU
      * @param miscreg Register to map the current IO access to.
      */
     void handleIOMiscReg32(int miscreg);
-
-    /** Reusable IO request */
-    Request io_req;
 
     /** Cached intersection of supported MSRs */
     mutable Kvm::MSRIndexVector cachedMsrIntersection;

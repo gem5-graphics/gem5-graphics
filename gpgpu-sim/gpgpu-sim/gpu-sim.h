@@ -400,7 +400,7 @@ private:
 
 class gpgpu_sim : public gpgpu_t {
 public:
-   gpgpu_sim( const gpgpu_sim_config &config , int _sharedMemDelay = 1 );
+   gpgpu_sim( const gpgpu_sim_config &config, CudaGPU *cuda_gpu = NULL );
 
    void set_prop( struct cudaDeviceProp *prop );
 

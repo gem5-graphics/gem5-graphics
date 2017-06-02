@@ -1,12 +1,14 @@
 
 machine(GPUCopyDMA, "VI Copy Engine Controller")
-: Sequencer * sequencer,
-  Cycles request_latency = 6
+: Sequencer * sequencer;
+  Cycles request_latency := 6;
+
+  MessageBuffer * responseFromDir, network="From", virtual_network="1",
+        vnet_type="response";
+  MessageBuffer * reqToDirectory, network="To", virtual_network="0",
+        vnet_type="request";
+
 {
-
-  MessageBuffer responseFromDir, network="From", virtual_network="1", ordered="true", vnet_type="response";
-  MessageBuffer reqToDirectory, network="To", virtual_network="0", ordered="true", vnet_type="request";
-
   state_declaration(State, desc="CE states", default="GPUCopyDMA_State_READY") {
     READY, AccessPermission:Invalid, desc="Ready to accept a new request";
     BUSY_RD, AccessPermission:Busy, desc="Busy: currently processing a request";
@@ -27,10 +29,10 @@ machine(GPUCopyDMA, "VI Copy Engine Controller")
   }
 
   structure(TBETable, external="yes") {
-    TBE lookup(Address);
-    void allocate(Address);
-    void deallocate(Address);
-    bool isPresent(Address);
+    TBE lookup(Addr);
+    void allocate(Addr);
+    void deallocate(Addr);
+    bool isPresent(Addr);
     bool areNSlotsAvailable(int);
   }
   TBETable TBEs, template="<GPUCopyDMA_TBE>", constructor="m_number_of_TBEs";
@@ -38,9 +40,9 @@ machine(GPUCopyDMA, "VI Copy Engine Controller")
   void set_tbe(TBE b);
   void unset_tbe();
 
-  MessageBuffer mandatoryQueue, ordered="false";
+  MessageBuffer mandatoryQueue;
 
-  State getState(TBE tbe, Address addr) {
+  State getState(TBE tbe, Addr addr) {
     if (is_valid(tbe)) {
       return tbe.TBEState;
     }
@@ -49,21 +51,25 @@ machine(GPUCopyDMA, "VI Copy Engine Controller")
     }
   }
 
-  void setState(TBE tbe, Address addr, State state) {
+  void setState(TBE tbe, Addr addr, State state) {
     if (is_valid(tbe)) {
       tbe.TBEState := state;
     }
   }
 
-  AccessPermission getAccessPermission(Address addr) {
+  AccessPermission getAccessPermission(Addr addr) {
     return AccessPermission:NotPresent;
   }
 
-  void setAccessPermission(Address addr, State state) {
+  void setAccessPermission(Addr addr, State state) {
   }
 
-  DataBlock getDataBlock(Address addr), return_by_ref="yes" {
-    error("DMA Controller does not support getDataBlock function.\n");
+  void functionalRead(Addr addr, Packet *pkt) {
+    error("CE does not support functional read.");
+  }
+
+  int functionalWrite(Addr addr, Packet *pkt) {
+    error("CE does not support functional write.");
   }
 
   out_port(reqToDirectory_out, DMARequestMsg, reqToDirectory, desc="...");

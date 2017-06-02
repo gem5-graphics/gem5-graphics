@@ -114,7 +114,7 @@ ostream * gWatchOut;
 
 bool Simulate( BookSimConfig const & config )
 {
-  vector<Network *> net;
+  vector<ISNetwork *> net;
 
   int subnets = config.GetInt("subnets");
   /*To include a new network, must register the network here
@@ -124,7 +124,7 @@ bool Simulate( BookSimConfig const & config )
   for (int i = 0; i < subnets; ++i) {
     ostringstream name;
     name << "network_" << i;
-    net[i] = Network::New( config, name.str() );
+    net[i] = ISNetwork::New( config, name.str() );
   }
 
   /*tcc and characterize are legacy

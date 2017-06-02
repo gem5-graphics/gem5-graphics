@@ -1,4 +1,4 @@
-# Copyright (c) 2012-2013 ARM Limited
+# Copyright (c) 2012-2013, 2015 ARM Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -47,9 +47,9 @@ from m5.defines import buildEnv
 from m5.params import *
 from m5.proxy import *
 
-from Bus import CoherentBus
+from XBar import L2XBar
 from InstTracer import InstTracer
-from ExeTracer import ExeTracer
+from CPUTracers import ExeTracer
 from MemObject import MemObject
 from ClockDomain import *
 
@@ -214,9 +214,6 @@ class BaseCPU(MemObject):
 
     if buildEnv['TARGET_ISA'] in ['x86', 'arm']:
         _cached_ports += ["itb.walker.port", "dtb.walker.port"]
-        if buildEnv['TARGET_ISA'] in ['arm']:
-            _cached_ports += ["istage2_mmu.stage2_tlb.walker.port",
-                              "dstage2_mmu.stage2_tlb.walker.port"]
 
     _uncached_slave_ports = []
     _uncached_master_ports = []
@@ -273,42 +270,22 @@ class BaseCPU(MemObject):
             if iwc and dwc:
                 self.itb_walker_cache = iwc
                 self.dtb_walker_cache = dwc
-                if buildEnv['TARGET_ISA'] in ['arm']:
-                    self.itb_walker_cache_bus = CoherentBus()
-                    self.dtb_walker_cache_bus = CoherentBus()
-                    self.itb_walker_cache_bus.master = iwc.cpu_side
-                    self.dtb_walker_cache_bus.master = dwc.cpu_side
-                    self.itb.walker.port = self.itb_walker_cache_bus.slave
-                    self.dtb.walker.port = self.dtb_walker_cache_bus.slave
-                    self.istage2_mmu.stage2_tlb.walker.port = self.itb_walker_cache_bus.slave
-                    self.dstage2_mmu.stage2_tlb.walker.port = self.dtb_walker_cache_bus.slave
-                else:
-                    self.itb.walker.port = iwc.cpu_side
-                    self.dtb.walker.port = dwc.cpu_side
+                self.itb.walker.port = iwc.cpu_side
+                self.dtb.walker.port = dwc.cpu_side
                 self._cached_ports += ["itb_walker_cache.mem_side", \
                                        "dtb_walker_cache.mem_side"]
             else:
                 self._cached_ports += ["itb.walker.port", "dtb.walker.port"]
-
-                if buildEnv['TARGET_ISA'] in ['arm']:
-                    self._cached_ports += ["istage2_mmu.stage2_tlb.walker.port", \
-                                           "dstage2_mmu.stage2_tlb.walker.port"]
 
             # Checker doesn't need its own tlb caches because it does
             # functional accesses only
             if self.checker != NULL:
                 self._cached_ports += ["checker.itb.walker.port", \
                                        "checker.dtb.walker.port"]
-                if buildEnv['TARGET_ISA'] in ['arm']:
-                    self._cached_ports += ["checker.istage2_mmu.stage2_tlb.walker.port", \
-                                           "checker.dstage2_mmu.stage2_tlb.walker.port"]
 
     def addTwoLevelCacheHierarchy(self, ic, dc, l2c, iwc = None, dwc = None):
         self.addPrivateSplitL1Caches(ic, dc, iwc, dwc)
-        # Set a width of 32 bytes (256-bits), which is four times that
-        # of the default bus. The clock of the CPU is inherited by
-        # default.
-        self.toL2Bus = CoherentBus(width = 32)
+        self.toL2Bus = L2XBar()
         self.connectCachedPorts(self.toL2Bus)
         self.l2cache = l2c
         self.toL2Bus.master = self.l2cache.cpu_side

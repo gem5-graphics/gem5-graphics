@@ -74,7 +74,7 @@ class LockedAddr {
     Addr addr;
 
     // locking hw context
-    const int contextId;
+    const ContextID contextId;
 
     static Addr mask(Addr paddr) { return (paddr & ~Addr_Mask); }
 
@@ -193,6 +193,11 @@ class AbstractMemory : public MemObject
 
     AbstractMemory(const Params* p);
     virtual ~AbstractMemory() {}
+
+    /**
+     * Initialise this memory.
+     */
+    void init();
 
     /**
      * See if this is a null memory that should never store data and

@@ -1042,11 +1042,11 @@ def format Thumb16SpecDataAndBx() {{
             if (bits(machInst, 7) == 0) {
                 return new BxReg(machInst,
                                  (IntRegIndex)(uint32_t)bits(machInst, 6, 3),
-                                 COND_UC);
+                                 ARM_COND_UC);
             } else {
                 return new BlxReg(machInst,
                                   (IntRegIndex)(uint32_t)bits(machInst, 6, 3),
-                                  COND_UC);
+                                  ARM_COND_UC);
             }
         }
     }

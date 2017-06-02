@@ -34,6 +34,7 @@
  * DP83820 ethernet controller.  Does not support priority queueing
  */
 #include <deque>
+#include <memory>
 #include <string>
 
 #include "base/debug.hh"
@@ -51,6 +52,7 @@
 
 // clang complains about std::set being overloaded with Packet::set if
 // we open up the entire namespace std
+using std::make_shared;
 using std::min;
 using std::ostream;
 using std::string;
@@ -183,8 +185,6 @@ Tick
 NSGigE::read(PacketPtr pkt)
 {
     assert(ioEnable);
-
-    pkt->allocate();
 
     //The mask is to give you only the offset into the device register file
     Addr daddr = pkt->getAddr() & 0xfff;
@@ -732,8 +732,8 @@ NSGigE::write(PacketPtr pkt)
                         = (uint8_t)(reg >> 8);
                     break;
                 }
-                panic("writing RFDR for something other than pattern matching\
-                    or hashing! %#x\n", rfaddr);
+                panic("writing RFDR for something other than pattern matching "
+                    "or hashing! %#x\n", rfaddr);
             }
 
           case BRAR:
@@ -1068,7 +1068,7 @@ NSGigE::doRxDmaRead()
     assert(rxDmaState == dmaIdle || rxDmaState == dmaReadWaiting);
     rxDmaState = dmaReading;
 
-    if (dmaPending() || getDrainState() != Drainable::Running)
+    if (dmaPending() || drainState() != DrainState::Running)
         rxDmaState = dmaReadWaiting;
     else
         dmaRead(rxDmaAddr, rxDmaLen, &rxDmaReadEvent, (uint8_t*)rxDmaData);
@@ -1099,7 +1099,7 @@ NSGigE::doRxDmaWrite()
     assert(rxDmaState == dmaIdle || rxDmaState == dmaWriteWaiting);
     rxDmaState = dmaWriting;
 
-    if (dmaPending() || getDrainState() != Running)
+    if (dmaPending() || drainState() != DrainState::Running)
         rxDmaState = dmaWriteWaiting;
     else
         dmaWrite(rxDmaAddr, rxDmaLen, &rxDmaWriteEvent, (uint8_t*)rxDmaData);
@@ -1515,7 +1515,7 @@ NSGigE::doTxDmaRead()
     assert(txDmaState == dmaIdle || txDmaState == dmaReadWaiting);
     txDmaState = dmaReading;
 
-    if (dmaPending() || getDrainState() != Running)
+    if (dmaPending() || drainState() != DrainState::Running)
         txDmaState = dmaReadWaiting;
     else
         dmaRead(txDmaAddr, txDmaLen, &txDmaReadEvent, (uint8_t*)txDmaData);
@@ -1546,7 +1546,7 @@ NSGigE::doTxDmaWrite()
     assert(txDmaState == dmaIdle || txDmaState == dmaWriteWaiting);
     txDmaState = dmaWriting;
 
-    if (dmaPending() || getDrainState() != Running)
+    if (dmaPending() || drainState() != DrainState::Running)
         txDmaState = dmaWriteWaiting;
     else
         dmaWrite(txDmaAddr, txDmaLen, &txDmaWriteEvent, (uint8_t*)txDmaData);
@@ -1676,7 +1676,7 @@ NSGigE::txKick()
       case txFifoBlock:
         if (!txPacket) {
             DPRINTF(EthernetSM, "****starting the tx of a new packet****\n");
-            txPacket = new EthPacketData(16384);
+            txPacket = make_shared<EthPacketData>(16384);
             txPacketBufPtr = txPacket->data;
         }
 
@@ -2123,10 +2123,10 @@ NSGigE::drainResume()
 //
 //
 void
-NSGigE::serialize(ostream &os)
+NSGigE::serialize(CheckpointOut &cp) const
 {
     // Serialize the PciDevice base class
-    PciDevice::serialize(os);
+    PciDevice::serialize(cp);
 
     /*
      * Finalize any DMA events now.
@@ -2179,25 +2179,25 @@ NSGigE::serialize(ostream &os)
     /*
      * Serialize the data Fifos
      */
-    rxFifo.serialize("rxFifo", os);
-    txFifo.serialize("txFifo", os);
+    rxFifo.serialize("rxFifo", cp);
+    txFifo.serialize("txFifo", cp);
 
     /*
      * Serialize the various helper variables
      */
-    bool txPacketExists = txPacket;
+    bool txPacketExists = txPacket != nullptr;
     SERIALIZE_SCALAR(txPacketExists);
     if (txPacketExists) {
         txPacket->length = txPacketBufPtr - txPacket->data;
-        txPacket->serialize("txPacket", os);
+        txPacket->serialize("txPacket", cp);
         uint32_t txPktBufPtr = (uint32_t) (txPacketBufPtr - txPacket->data);
         SERIALIZE_SCALAR(txPktBufPtr);
     }
 
-    bool rxPacketExists = rxPacket;
+    bool rxPacketExists = rxPacket != nullptr;
     SERIALIZE_SCALAR(rxPacketExists);
     if (rxPacketExists) {
-        rxPacket->serialize("rxPacket", os);
+        rxPacket->serialize("rxPacket", cp);
         uint32_t rxPktBufPtr = (uint32_t) (rxPacketBufPtr - rxPacket->data);
         SERIALIZE_SCALAR(rxPktBufPtr);
     }
@@ -2295,10 +2295,10 @@ NSGigE::serialize(ostream &os)
 }
 
 void
-NSGigE::unserialize(Checkpoint *cp, const std::string &section)
+NSGigE::unserialize(CheckpointIn &cp)
 {
     // Unserialize the PciDevice base class
-    PciDevice::unserialize(cp, section);
+    PciDevice::unserialize(cp);
 
     UNSERIALIZE_SCALAR(regs.command);
     UNSERIALIZE_SCALAR(regs.config);
@@ -2343,8 +2343,8 @@ NSGigE::unserialize(Checkpoint *cp, const std::string &section)
     /*
      * unserialize the data fifos
      */
-    rxFifo.unserialize("rxFifo", cp, section);
-    txFifo.unserialize("txFifo", cp, section);
+    rxFifo.unserialize("rxFifo", cp);
+    txFifo.unserialize("txFifo", cp);
 
     /*
      * unserialize the various helper variables
@@ -2352,8 +2352,8 @@ NSGigE::unserialize(Checkpoint *cp, const std::string &section)
     bool txPacketExists;
     UNSERIALIZE_SCALAR(txPacketExists);
     if (txPacketExists) {
-        txPacket = new EthPacketData(16384);
-        txPacket->unserialize("txPacket", cp, section);
+        txPacket = make_shared<EthPacketData>(16384);
+        txPacket->unserialize("txPacket", cp);
         uint32_t txPktBufPtr;
         UNSERIALIZE_SCALAR(txPktBufPtr);
         txPacketBufPtr = (uint8_t *) txPacket->data + txPktBufPtr;
@@ -2364,8 +2364,8 @@ NSGigE::unserialize(Checkpoint *cp, const std::string &section)
     UNSERIALIZE_SCALAR(rxPacketExists);
     rxPacket = 0;
     if (rxPacketExists) {
-        rxPacket = new EthPacketData(16384);
-        rxPacket->unserialize("rxPacket", cp, section);
+        rxPacket = make_shared<EthPacketData>(16384);
+        rxPacket->unserialize("rxPacket", cp);
         uint32_t rxPktBufPtr;
         UNSERIALIZE_SCALAR(rxPktBufPtr);
         rxPacketBufPtr = (uint8_t *) rxPacket->data + rxPktBufPtr;

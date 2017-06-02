@@ -35,7 +35,7 @@ external_type(uint32_t, primitive="yes");
 external_type(uint64, primitive="yes");
 external_type(PacketPtr, primitive="yes");
 external_type(Packet, primitive="yes");
-external_type(Address);
+external_type(Addr, primitive="yes");
 external_type(Cycles, primitive="yes", default="Cycles(0)");
 
 structure(DataBlock, external = "yes", desc="..."){
@@ -43,8 +43,8 @@ structure(DataBlock, external = "yes", desc="..."){
   void copyPartial(DataBlock, int, int);
 }
 
-bool testAndRead(Address addr, DataBlock datablk, Packet *pkt);
-bool testAndWrite(Address addr, DataBlock datablk, Packet *pkt);
+bool testAndRead(Addr addr, DataBlock datablk, Packet *pkt);
+bool testAndWrite(Addr addr, DataBlock datablk, Packet *pkt);
 
 // AccessPermission
 // The following five states define the access permission of all memory blocks.
@@ -116,6 +116,7 @@ enumeration(TransitionResult, desc="...") {
   Valid,         desc="Valid transition";
   ResourceStall, desc="Stalled due to insufficient resources";
   ProtocolStall, desc="Protocol specified stall";
+  Reject,        desc="Rejected because of a type mismatch";
 }
 
 // RubyRequestType
@@ -138,6 +139,9 @@ enumeration(RubyRequestType, desc="...", default="RubyRequestType_NULL") {
   FLUSHALL,          desc="Flush everything from the cache";
   LD_Bypass,         desc="Load, but bypass the L1";
   ST_Bypass,         desc="Store, but bypass the L1";
+  Release,           desc="Release operation";
+  Acquire,           desc="Acquire opertion";
+  AcquireRelease,    desc="Acquire and Release opertion";
 }
 
 enumeration(SequencerRequestType, desc="...", default="SequencerRequestType_NULL") {
@@ -214,14 +218,15 @@ enumeration(PrefetchBit, default="PrefetchBit_No", desc="...") {
 
 // CacheMsg
 structure(SequencerMsg, desc="...", interface="Message") {
-  Address LineAddress,       desc="Line address for this request";
-  Address PhysicalAddress,   desc="Physical address for this request";
+  Addr LineAddress,       desc="Line address for this request";
+  Addr PhysicalAddress,   desc="Physical address for this request";
   SequencerRequestType Type,     desc="Type of request (LD, ST, etc)";
-  Address ProgramCounter,    desc="Program counter of the instruction that caused the miss";
+  Addr ProgramCounter,    desc="Program counter of the instruction that caused the miss";
   RubyAccessMode AccessMode, desc="user/supervisor access type";
   DataBlock DataBlk,         desc="Data";
   int Len,                   desc="size in bytes of access";
   PrefetchBit Prefetch,      desc="Is this a prefetch request";
+  MessageSizeType MessageSize;
 
   bool functionalRead(Packet *pkt) {
     return testAndRead(PhysicalAddress, DataBlk, pkt);

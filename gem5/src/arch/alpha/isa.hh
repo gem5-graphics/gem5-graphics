@@ -73,7 +73,7 @@ namespace AlphaISA
 
       public:
 
-        MiscReg readMiscRegNoEffect(int misc_reg, ThreadID tid = 0);
+        MiscReg readMiscRegNoEffect(int misc_reg, ThreadID tid = 0) const;
         MiscReg readMiscReg(int misc_reg, ThreadContext *tc, ThreadID tid = 0);
 
         void setMiscRegNoEffect(int misc_reg, const MiscReg &val,
@@ -92,8 +92,8 @@ namespace AlphaISA
             memset(ipr, 0, sizeof(ipr));
         }
 
-        void serialize(std::ostream &os);
-        void unserialize(Checkpoint *cp, const std::string &section);
+        void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
+        void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
 
         int
         flattenIntIndex(int reg) const

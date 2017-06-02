@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013 ARM Limited
+ * Copyright (c) 2012-2015 ARM Limited
  * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
@@ -45,20 +45,19 @@
  * Definitions of a simple cache block class.
  */
 
-#ifndef __CACHE_BLK_HH__
-#define __CACHE_BLK_HH__
+#ifndef __MEM_CACHE_BLK_HH__
+#define __MEM_CACHE_BLK_HH__
 
 #include <list>
 
 #include "base/printable.hh"
 #include "mem/packet.hh"
 #include "mem/request.hh"
-#include "sim/core.hh"          // for Tick
 
 /**
  * Cache block status bit assignments
  */
-enum CacheBlkStatusBits {
+enum CacheBlkStatusBits : unsigned {
     /** valid, readable */
     BlkValid =          0x01,
     /** write permission */
@@ -67,12 +66,10 @@ enum CacheBlkStatusBits {
     BlkReadable =       0x04,
     /** dirty (modified) */
     BlkDirty =          0x08,
-    /** block was referenced */
-    BlkReferenced =     0x10,
     /** block was a hardware prefetch yet unaccessed*/
     BlkHWPrefetched =   0x20,
     /** block holds data from the secure memory space */
-    BlkSecure =         0x40
+    BlkSecure =         0x40,
 };
 
 /**
@@ -98,7 +95,7 @@ class CacheBlk
      */
     uint8_t *data;
     /** the number of bytes stored in this block. */
-    int size;
+    unsigned size;
 
     /** block state: OR of CacheBlkStatusBit */
     typedef unsigned State;
@@ -110,16 +107,16 @@ class CacheBlk
     Tick whenReady;
 
     /**
-     * The set this block belongs to.
+     * The set and way this block belongs to.
      * @todo Move this into subclasses when we fix CacheTags to use them.
      */
-    int set;
+    int set, way;
 
     /** whether this block has been touched */
     bool isTouched;
 
     /** Number of references to this block since it was brought in. */
-    int refCount;
+    unsigned refCount;
 
     /** holds the source requestor ID for this block. */
     int srcMasterId;
@@ -133,12 +130,12 @@ class CacheBlk
      */
     class Lock {
       public:
-        int contextId;     // locking context
+        ContextID contextId;     // locking context
         Addr lowAddr;      // low address of lock range
         Addr highAddr;     // high address of lock range
 
         // check for matching execution context
-        bool matchesContext(Request *req)
+        bool matchesContext(const RequestPtr req) const
         {
             Addr req_low = req->getPaddr();
             Addr req_high = req_low + req->getSize() -1;
@@ -146,7 +143,7 @@ class CacheBlk
                    (req_low >= lowAddr) && (req_high <= highAddr);
         }
 
-        bool overlapping(Request *req)
+        bool overlapping(const RequestPtr req) const
         {
             Addr req_low = req->getPaddr();
             Addr req_high = req_low + req->getSize() - 1;
@@ -154,7 +151,7 @@ class CacheBlk
             return (req_low <= highAddr) && (req_high >= lowAddr);
         }
 
-        Lock(Request *req)
+        Lock(const RequestPtr req)
             : contextId(req->contextId()),
               lowAddr(req->getPaddr()),
               highAddr(lowAddr + req->getSize() - 1)
@@ -171,29 +168,13 @@ class CacheBlk
     CacheBlk()
         : task_id(ContextSwitchTaskId::Unknown),
           asid(-1), tag(0), data(0) ,size(0), status(0), whenReady(0),
-          set(-1), isTouched(false), refCount(0),
+          set(-1), way(-1), isTouched(false), refCount(0),
           srcMasterId(Request::invldMasterId),
           tickInserted(0)
     {}
 
-    /**
-     * Copy the state of the given block into this one.
-     * @param rhs The block to copy.
-     * @return a const reference to this block.
-     */
-    const CacheBlk& operator=(const CacheBlk& rhs)
-    {
-        asid = rhs.asid;
-        tag = rhs.tag;
-        data = rhs.data;
-        size = rhs.size;
-        status = rhs.status;
-        whenReady = rhs.whenReady;
-        set = rhs.set;
-        refCount = rhs.refCount;
-        task_id = rhs.task_id;
-        return *this;
-    }
+    CacheBlk(const CacheBlk&) = delete;
+    CacheBlk& operator=(const CacheBlk&) = delete;
 
     /**
      * Checks the write permissions of this block.
@@ -246,15 +227,6 @@ class CacheBlk
     }
 
     /**
-     * Check if this block has been referenced.
-     * @return True if the block has been referenced.
-     */
-    bool isReferenced() const
-    {
-        return (status & BlkReferenced) != 0;
-    }
-
-    /**
      * Check if this block was the result of a hardware prefetch, yet to
      * be touched.
      * @return True if the block was a hardware prefetch, unaccesed.
@@ -282,21 +254,21 @@ class CacheBlk
     void trackLoadLocked(PacketPtr pkt)
     {
         assert(pkt->isLLSC());
-        lockList.push_front(Lock(pkt->req));
+        lockList.emplace_front(pkt->req);
     }
 
     /**
      * Clear the list of valid load locks.  Should be called whenever
      * block is written to or invalidated.
      */
-    void clearLoadLocks(Request *req = NULL)
+    void clearLoadLocks(RequestPtr req = nullptr)
     {
         if (!req) {
             // No request, invaldate all locks to this line
             lockList.clear();
         } else {
             // Only invalidate locks that overlap with this request
-            std::list<Lock>::iterator lock_itr = lockList.begin();
+            auto lock_itr = lockList.begin();
             while (lock_itr != lockList.end()) {
                 if (lock_itr->overlapping(req)) {
                     lock_itr = lockList.erase(lock_itr);
@@ -350,16 +322,19 @@ class CacheBlk
      */
     bool checkWrite(PacketPtr pkt)
     {
-        Request *req = pkt->req;
+        // common case
+        if (!pkt->isLLSC() && lockList.empty())
+            return true;
+
+        RequestPtr req = pkt->req;
+
         if (pkt->isLLSC()) {
             // it's a store conditional... have to check for matching
             // load locked.
             bool success = false;
 
-            for (std::list<Lock>::iterator i = lockList.begin();
-                 i != lockList.end(); ++i)
-            {
-                if (i->matchesContext(req)) {
+            for (const auto& l : lockList) {
+                if (l.matchesContext(req)) {
                     // it's a store conditional, and as far as the memory
                     // system can tell, the requesting context's lock is
                     // still valid.
@@ -397,63 +372,19 @@ class CacheBlkPrintWrapper : public Printable
 };
 
 /**
- * Wrap a method and present it as a cache block visitor.
- *
- * For example the forEachBlk method in the tag arrays expects a
- * callable object/function as their parameter. This class wraps a
- * method in an object and presents  callable object that adheres to
- * the cache block visitor protocol.
+ * Base class for cache block visitor, operating on the cache block
+ * base class (later subclassed for the various tag classes). This
+ * visitor class is used as part of the forEachBlk interface in the
+ * tag classes.
  */
-template <typename T, typename BlkType>
-class CacheBlkVisitorWrapper
+class CacheBlkVisitor
 {
   public:
-    typedef bool (T::*visitorPtr)(BlkType &blk);
 
-    CacheBlkVisitorWrapper(T &_obj, visitorPtr _visitor)
-        : obj(_obj), visitor(_visitor) {}
+    CacheBlkVisitor() {}
+    virtual ~CacheBlkVisitor() {}
 
-    bool operator()(BlkType &blk) {
-        return (obj.*visitor)(blk);
-    }
-
-  private:
-    T &obj;
-    visitorPtr visitor;
+    virtual bool operator()(CacheBlk &blk) = 0;
 };
 
-/**
- * Cache block visitor that determines if there are dirty blocks in a
- * cache.
- *
- * Use with the forEachBlk method in the tag array to determine if the
- * array contains dirty blocks.
- */
-template <typename BlkType>
-class CacheBlkIsDirtyVisitor
-{
-  public:
-    CacheBlkIsDirtyVisitor()
-        : _isDirty(false) {}
-
-    bool operator()(BlkType &blk) {
-        if (blk.isDirty()) {
-            _isDirty = true;
-            return false;
-        } else {
-            return true;
-        }
-    }
-
-    /**
-     * Does the array contain a dirty line?
-     *
-     * \return true if yes, false otherwise.
-     */
-    bool isDirty() const { return _isDirty; };
-
-  private:
-    bool _isDirty;
-};
-
-#endif //__CACHE_BLK_HH__
+#endif //__MEM_CACHE_BLK_HH__

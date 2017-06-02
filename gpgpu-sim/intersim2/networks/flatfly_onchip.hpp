@@ -33,7 +33,7 @@
 #include "intersim2/routefunc.hpp"
 #include "network.hpp"
 
-class FlatFlyOnChip : public Network {
+class FlatFlyOnChip : public ISNetwork {
 
   int _m;
   int _n;

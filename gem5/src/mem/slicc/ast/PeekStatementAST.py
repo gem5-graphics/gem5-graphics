@@ -1,3 +1,4 @@
+# Copyright (c) 2013 Advanced Micro Devices, Inc.
 # Copyright (c) 1999-2008 Mark D. Hill and David A. Wood
 # Copyright (c) 2009 The Hewlett-Packard Development Company
 # All rights reserved.
@@ -55,14 +56,19 @@ class PeekStatementAST(StatementAST):
         self.queue_name.assertType("InPort")
 
         # Declare the new "in_msg_ptr" variable
-        mtid = msg_type.ident
+        mtid = msg_type.c_ident
         qcode = self.queue_name.var.code
         code('''
 {
     // Declare message
     const $mtid* in_msg_ptr M5_VAR_USED;
     in_msg_ptr = dynamic_cast<const $mtid *>(($qcode).${{self.method}}());
-    assert(in_msg_ptr != NULL); // Check the cast result
+    if (in_msg_ptr == NULL) {
+        // If the cast fails, this is the wrong inport (wrong message type).
+        // Throw an exception, and the caller will decide to either try a
+        // different inport or punt.
+        throw RejectException();
+    }
 ''')
 
         if self.pairs.has_key("block_on"):

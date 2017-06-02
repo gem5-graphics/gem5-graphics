@@ -41,7 +41,7 @@
 #include "packet_reply_info.hpp"
 
 TrafficManager * TrafficManager::New(Configuration const & config,
-                                     vector<Network *> const & net)
+                                     vector<ISNetwork *> const & net)
 {
     TrafficManager * result = NULL;
     string sim_type = config.GetStr("sim_type");
@@ -58,7 +58,7 @@ TrafficManager * TrafficManager::New(Configuration const & config,
     return result;
 }
 
-TrafficManager::TrafficManager( const Configuration &config, const vector<Network *> & net )
+TrafficManager::TrafficManager( const Configuration &config, const vector<ISNetwork *> & net )
     : Module( 0, "traffic_manager" ), _net(net), _empty_network(false), _deadlock_timer(0), _reset_time(0), _drain_time(-1), _cur_id(0), _cur_pid(0), _time(0)
 {
 

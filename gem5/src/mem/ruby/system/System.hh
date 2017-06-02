@@ -37,17 +37,15 @@
 
 #include "base/callback.hh"
 #include "base/output.hh"
-#include "mem/packet.hh"
 #include "mem/ruby/profiler/Profiler.hh"
-#include "mem/ruby/recorder/CacheRecorder.hh"
 #include "mem/ruby/slicc_interface/AbstractController.hh"
-#include "mem/ruby/system/MemoryControl.hh"
-#include "mem/ruby/system/MemoryVector.hh"
-#include "mem/ruby/system/SparseMemory.hh"
+#include "mem/ruby/system/CacheRecorder.hh"
+#include "mem/packet.hh"
 #include "params/RubySystem.hh"
 #include "sim/clocked_object.hh"
 
 class Network;
+class AbstractController;
 
 class RubySystem : public ClockedObject
 {
@@ -57,12 +55,12 @@ class RubySystem : public ClockedObject
       public:
         RubyEvent(RubySystem* _ruby_system)
         {
-            ruby_system = _ruby_system;
+            m_ruby_system = _ruby_system;
         }
       private:
         void process();
 
-        RubySystem* ruby_system;
+        RubySystem* m_ruby_system;
     };
 
     friend class RubyEvent;
@@ -76,8 +74,13 @@ class RubySystem : public ClockedObject
     static int getRandomization() { return m_randomization; }
     static uint32_t getBlockSizeBytes() { return m_block_size_bytes; }
     static uint32_t getBlockSizeBits() { return m_block_size_bits; }
-    static uint64_t getMemorySizeBytes() { return m_memory_size_bytes; }
     static uint32_t getMemorySizeBits() { return m_memory_size_bits; }
+    static bool getWarmupEnabled() { return m_warmup_enabled; }
+    static bool getCooldownEnabled() { return m_cooldown_enabled; }
+
+    SimpleMemory *getPhysMem() { return m_phys_mem; }
+    Cycles getStartCycle() { return m_start_cycle; }
+    const bool getAccessBackingStore() { return m_access_backing_store; }
 
     // Public Methods
     Profiler*
@@ -87,19 +90,14 @@ class RubySystem : public ClockedObject
         return m_profiler;
     }
 
-    MemoryVector*
-    getMemoryVector()
-    {
-        assert(m_mem_vec != NULL);
-        return m_mem_vec;
-    }
-
     void regStats() { m_profiler->regStats(name()); }
     void collateStats() { m_profiler->collateStats(); }
     void resetStats();
 
-    void serialize(std::ostream &os);
-    void unserialize(Checkpoint *cp, const std::string &section);
+    void memWriteback();
+    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
+    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
+    void drainResume() M5_ATTR_OVERRIDE;
     void process();
     void startup();
     bool functionalRead(Packet *ptr);
@@ -107,8 +105,6 @@ class RubySystem : public ClockedObject
 
     void registerNetwork(Network*);
     void registerAbstractController(AbstractController*);
-    void registerSparseMemory(SparseMemory*);
-    void registerMemController(MemoryControl *mc);
 
     bool eventQueueEmpty() { return eventq->empty(); }
     void enqueueRubyEvent(Tick tick)
@@ -122,11 +118,15 @@ class RubySystem : public ClockedObject
     RubySystem(const RubySystem& obj);
     RubySystem& operator=(const RubySystem& obj);
 
-    void readCompressedTrace(std::string filename,
-                             uint8_t *&raw_data,
-                             uint64& uncompressed_trace_size);
-    void writeCompressedTrace(uint8_t *raw_data, std::string file,
-                              uint64 uncompressed_trace_size);
+    void makeCacheRecorder(uint8_t *uncompressed_trace,
+                           uint64_t cache_trace_size,
+                           uint64_t block_size_bytes);
+
+    static void readCompressedTrace(std::string filename,
+                                    uint8_t *&raw_data,
+                                    uint64_t &uncompressed_trace_size);
+    static void writeCompressedTrace(uint8_t *raw_data, std::string file,
+                                     uint64_t uncompressed_trace_size);
 
   private:
     // configuration parameters
@@ -134,31 +134,33 @@ class RubySystem : public ClockedObject
     static bool m_randomization;
     static uint32_t m_block_size_bytes;
     static uint32_t m_block_size_bits;
-    static uint64_t m_memory_size_bytes;
     static uint32_t m_memory_size_bits;
 
+    static bool m_warmup_enabled;
+    static unsigned m_systems_to_warmup;
+    static bool m_cooldown_enabled;
+    SimpleMemory *m_phys_mem;
+    const bool m_access_backing_store;
+
     Network* m_network;
-    std::vector<MemoryControl *> m_memory_controller_vec;
     std::vector<AbstractController *> m_abs_cntrl_vec;
+    Cycles m_start_cycle;
 
   public:
     Profiler* m_profiler;
-    MemoryVector* m_mem_vec;
-    bool m_warmup_enabled;
-    bool m_cooldown_enabled;
     CacheRecorder* m_cache_recorder;
-    std::vector<SparseMemory*> m_sparse_memory_vector;
+    std::vector<std::map<uint32_t, AbstractController *> > m_abstract_controls;
 };
 
 class RubyStatsCallback : public Callback
 {
   private:
-    RubySystem *ruby_system;
+    RubySystem *m_ruby_system;
 
   public:
     virtual ~RubyStatsCallback() {}
-    RubyStatsCallback(RubySystem *system) : ruby_system(system) {}
-    void process() { ruby_system->collateStats(); }
+    RubyStatsCallback(RubySystem *system) : m_ruby_system(system) {}
+    void process() { m_ruby_system->collateStats(); }
 };
 
 #endif // __MEM_RUBY_SYSTEM_SYSTEM_HH__

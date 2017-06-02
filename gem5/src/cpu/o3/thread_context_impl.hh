@@ -84,7 +84,7 @@ O3ThreadContext<Impl>::takeOverFrom(ThreadContext *old_context)
 
 template <class Impl>
 void
-O3ThreadContext<Impl>::activate(Cycles delay)
+O3ThreadContext<Impl>::activate()
 {
     DPRINTF(O3CPU, "Calling activate on Thread Context %d\n",
             threadId());
@@ -96,12 +96,12 @@ O3ThreadContext<Impl>::activate(Cycles delay)
     thread->setStatus(ThreadContext::Active);
 
     // status() == Suspended
-    cpu->activateContext(thread->threadId(), delay);
+    cpu->activateContext(thread->threadId());
 }
 
 template <class Impl>
 void
-O3ThreadContext<Impl>::suspend(Cycles delay)
+O3ThreadContext<Impl>::suspend()
 {
     DPRINTF(O3CPU, "Calling suspend on Thread Context %d\n",
             threadId());
@@ -118,10 +118,9 @@ O3ThreadContext<Impl>::suspend(Cycles delay)
 
 template <class Impl>
 void
-O3ThreadContext<Impl>::halt(Cycles delay)
+O3ThreadContext<Impl>::halt()
 {
-    DPRINTF(O3CPU, "Calling halt on Thread Context %d\n",
-            threadId());
+    DPRINTF(O3CPU, "Calling halt on Thread Context %d\n", threadId());
 
     if (thread->status() == ThreadContext::Halted)
         return;
@@ -305,6 +304,13 @@ O3ThreadContext<Impl>::setMiscRegNoEffect(int misc_reg, const MiscReg &val)
     cpu->setMiscRegNoEffect(misc_reg, val, thread->threadId());
 
     conditionalSquash();
+}
+
+template <class Impl>
+void
+O3ThreadContext<Impl>::setMiscRegActuallyNoEffect(int misc_reg, const MiscReg &val)
+{
+    cpu->setMiscRegNoEffect(misc_reg, val, thread->threadId());
 }
 
 #endif//__CPU_O3_THREAD_CONTEXT_IMPL_HH__

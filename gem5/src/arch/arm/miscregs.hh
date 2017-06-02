@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 ARM Limited
+ * Copyright (c) 2010-2015 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -53,25 +53,6 @@ class ThreadContext;
 
 namespace ArmISA
 {
-    enum ConditionCode {
-        COND_EQ  =   0,
-        COND_NE, //  1
-        COND_CS, //  2
-        COND_CC, //  3
-        COND_MI, //  4
-        COND_PL, //  5
-        COND_VS, //  6
-        COND_VC, //  7
-        COND_HI, //  8
-        COND_LS, //  9
-        COND_GE, // 10
-        COND_LT, // 11
-        COND_GT, // 12
-        COND_LE, // 13
-        COND_AL, // 14
-        COND_UC  // 15
-    };
-
     enum MiscRegIndex {
         MISCREG_CPSR = 0,               //   0
         MISCREG_SPSR,                   //   1
@@ -682,25 +663,29 @@ namespace ArmISA
         MISCREG_CPUMERRSR_EL1,          // 596
         MISCREG_L2MERRSR_EL1,           // 597
         MISCREG_CBAR_EL1,               // 598
+        MISCREG_CONTEXTIDR_EL2,         // 599
 
         // Dummy registers
-        MISCREG_NOP,                    // 599
-        MISCREG_RAZ,                    // 600
-        MISCREG_CP14_UNIMPL,            // 601
-        MISCREG_CP15_UNIMPL,            // 602
-        MISCREG_A64_UNIMPL,             // 603
-        MISCREG_UNKNOWN,                // 604
+        MISCREG_NOP,                    // 600
+        MISCREG_RAZ,                    // 601
+        MISCREG_CP14_UNIMPL,            // 602
+        MISCREG_CP15_UNIMPL,            // 603
+        MISCREG_A64_UNIMPL,             // 604
+        MISCREG_UNKNOWN,                // 605
 
         // GPU fault register
-        MISCREG_GPU_FAULT,              // 605
-        MISCREG_GPU_FAULTADDR,          // 606
-        MISCREG_GPU_FAULTCODE,          // 607
+        MISCREG_GPU_FAULT,              // 606
+        MISCREG_GPU_FAULTADDR,          // 607
+        MISCREG_GPU_FAULTCODE,          // 608
+        MISCREG_GPU_FAULT_RSP,          // 609
 
-        NUM_MISCREGS                    // 608
+        NUM_MISCREGS                    // 610
     };
 
     enum MiscRegInfo {
         MISCREG_IMPLEMENTED,
+        MISCREG_UNVERIFIABLE,   // Does the value change on every read (e.g. a
+                                // arch generic counter)
         MISCREG_WARN_NOT_FAIL,  // If MISCREG_IMPLEMENTED is deasserted, it
                                 // tells whether the instruction should raise a
                                 // warning or fail
@@ -1366,6 +1351,7 @@ namespace ArmISA
         "cpumerrsr_el1",
         "l2merrsr_el1",
         "cbar_el1",
+        "contextidr_el2",
 
         // Dummy registers
         "nop",
@@ -1378,7 +1364,8 @@ namespace ArmISA
         // GPU fault registers
         "gpuf",
         "gpufaddr",
-        "gpufcode"
+        "gpufcode",
+        "gpufrsp"
     };
 
     static_assert(sizeof(miscRegName) / sizeof(*miscRegName) == NUM_MISCREGS,
@@ -1725,6 +1712,30 @@ namespace ArmISA
         Bitfield<20> tbi;
     EndBitUnion(TTBCR)
 
+    // Fields of TCR_EL{1,2,3} (mostly overlapping)
+    // TCR_EL1 is natively 64 bits, the others are 32 bits
+    BitUnion64(TCR)
+        Bitfield<5, 0> t0sz;
+        Bitfield<7> epd0; // EL1
+        Bitfield<9, 8> irgn0;
+        Bitfield<11, 10> orgn0;
+        Bitfield<13, 12> sh0;
+        Bitfield<15, 14> tg0;
+        Bitfield<18, 16> ps;
+        Bitfield<20> tbi; // EL2/EL3
+        Bitfield<21, 16> t1sz; // EL1
+        Bitfield<22> a1; // EL1
+        Bitfield<23> epd1; // EL1
+        Bitfield<25, 24> irgn1; // EL1
+        Bitfield<27, 26> orgn1; // EL1
+        Bitfield<29, 28> sh1; // EL1
+        Bitfield<31, 30> tg1; // EL1
+        Bitfield<34, 32> ips; // EL1
+        Bitfield<36> as; // EL1
+        Bitfield<37> tbi0; // EL1
+        Bitfield<38> tbi1; // EL1
+    EndBitUnion(TCR)
+
     BitUnion32(HTCR)
         Bitfield<2, 0> t0sz;
         Bitfield<9, 8> irgn0;
@@ -1849,7 +1860,7 @@ namespace ArmISA
    * May need to increase to more bits if more than 1 GPU is in the system
    */
    BitUnion64(GPUFaultReg)
-      Bitfield<0> inFault;
+      Bitfield<1, 0> inFault;
    EndBitUnion(GPUFaultReg)
 
    BitUnion64(GPUFaultCode)
@@ -1859,6 +1870,9 @@ namespace ArmISA
       Bitfield<3> reserved;
       Bitfield<4> fetch;
    EndBitUnion(GPUFaultCode)
+
+   BitUnion64(GPUFaultRSPReg)
+   EndBitUnion(GPUFaultRSPReg)
 
     // Checks read access permissions to coproc. registers
     bool canReadCoprocReg(MiscRegIndex reg, SCR scr, CPSR cpsr,
@@ -1879,14 +1893,14 @@ namespace ArmISA
     // Uses just the scr.ns bit to pre flatten the misc regs. This is useful
     // for MCR/MRC instructions
     int
-    flattenMiscRegNsBanked(int reg, ThreadContext *tc);
+    flattenMiscRegNsBanked(MiscRegIndex reg, ThreadContext *tc);
 
     // Flattens a misc reg index using the specified security state. This is
     // used for opperations (eg address translations) where the security
     // state of the register access may differ from the current state of the
     // processor
     int
-    flattenMiscRegNsBanked(int reg, ThreadContext *tc, bool ns);
+    flattenMiscRegNsBanked(MiscRegIndex reg, ThreadContext *tc, bool ns);
 
     // Takes a misc reg index and returns the root reg if its one of a set of
     // banked registers

@@ -43,8 +43,9 @@ ShaderLSQ::ShaderLSQ(Params *p)
       perWarpInstructionQueues(p->warp_contexts),
       perWarpOutstandingAccesses(p->warp_contexts),
       overallLatencyCycles(p->latency), l1TagAccessCycles(p->l1_tag_cycles),
-      tlb(p->data_tlb), injectWidth(p->inject_width), mshrsFull(false),
-      ejectWidth(p->eject_width), cacheLineAddrMaskBits(-1),
+      tlb(p->data_tlb), sublineBytes(p->subline_bytes),
+      nextAllowedInject(Cycles(0)), injectWidth(p->inject_width),
+      mshrsFull(false), ejectWidth(p->eject_width), cacheLineAddrMaskBits(-1),
       lastWarpInstBufferChange(0), numActiveWarpInstBuffers(0),
       dispatchInstEvent(this), injectAccessesEvent(this),
       ejectAccessesEvent(this), commitInstEvent(this)
@@ -145,7 +146,7 @@ ShaderLSQ::LanePort::recvFunctional(PacketPtr pkt)
 }
 
 void
-ShaderLSQ::LanePort::recvRetry()
+ShaderLSQ::LanePort::recvRespRetry()
 {
     lsq->retryCommitWarpInst();
 }
@@ -183,9 +184,9 @@ ShaderLSQ::ControlPort::recvFunctional(PacketPtr pkt)
 }
 
 void
-ShaderLSQ::ControlPort::recvRetry()
+ShaderLSQ::ControlPort::recvRespRetry()
 {
-    panic("ShaderLSQ::ControlPort::recvRetry() not implemented!\n");
+    panic("ShaderLSQ::ControlPort::recvRespRetry() not implemented!\n");
 }
 
 bool
@@ -195,7 +196,7 @@ ShaderLSQ::CachePort::recvTimingResp(PacketPtr pkt)
 }
 
 void
-ShaderLSQ::CachePort::recvRetry()
+ShaderLSQ::CachePort::recvReqRetry()
 {
     lsq->scheduleRetryInject();
 }
@@ -255,6 +256,10 @@ ShaderLSQ::addLaneRequest(int lane_id, PacketPtr pkt)
         // TODO: Consider putting in a per-warp limitation on number of
         // concurrent warp instructions in the LSQ
         if (availableWarpInstBufs.empty()) {
+            // Simple deadlock detection
+            if (ticksToCycles(curTick() - lastWarpInstBufferChange) > Cycles(1000000)) {
+                panic("LSQ deadlocked by running out of buffers!");
+            }
             return false;
         }
 
@@ -378,7 +383,7 @@ ShaderLSQ::finishTranslation(WholeTranslationState *state)
     // Initialize the packet using the translated access and in the case that
     // this is a write access, set the data to be sent to cache
     PacketPtr pkt = mem_access;
-    pkt->reinitFromRequest();
+    mem_access->reinitFromRequest();
     if (pkt->isWrite()) {
         mem_access->moveDataToPacket();
     } else {
@@ -425,6 +430,7 @@ ShaderLSQ::injectCacheAccesses()
     unsigned num_injected = 0;
     WarpInstBuffer::CoalescedAccess *mem_access = injectBuffer.front();
     while (!injectBuffer.empty() && num_injected < injectWidth &&
+           curCycle() >= nextAllowedInject &&
            curCycle() >= mem_access->getInjectCycle()) {
 
         Addr line_addr = addrToLine(mem_access->req->getPaddr());
@@ -459,6 +465,12 @@ ShaderLSQ::injectCacheAccesses()
                         mem_access->getWarpBuffer()->getInstTypeString(),
                         mem_access->req->getPaddr());
                 blockedLineAddrs[line_addr] = true;
+                if (mem_access->isWrite()) {
+                    // Block issue while the store data is being serialized
+                    // through the port to the cache (1 cyc/subline)
+                    unsigned num_sublines = mem_access->getSize() / sublineBytes;
+                    nextAllowedInject = Cycles(curCycle() + num_sublines);
+                }
                 injectBuffer.pop_front();
                 num_injected++;
                 perWarpOutstandingAccesses[mem_access->getWarpId()]++;
@@ -677,7 +689,7 @@ ShaderLSQ::commitWarpInst()
     } else if (warp_inst->isAtomic()) {
         warpLatencyAtomic.sample(ticksToCycles(warp_inst->getLatency()));
     } else {
-        assert(warp_inst->isFence());
+        panic("Don't know how to record latency for this instruction\n");
     }
 
     warp_inst->resetState();

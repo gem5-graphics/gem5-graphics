@@ -938,13 +938,21 @@ public:
            
             if(depthEnabled){
                ss<<".reg ." << dsize << " %oldDepth, %depth;\n";
+               ss<<".reg .u32" << "%tmpCol1, %tmpCol2;";
                ss<<"mul.f32 tempReg0, %fragment_position.z, 0f477fff00; //depth * (2^16)-1\n";
                ss<<"cvt.rni." << dsize << ".f32 %depth, tempReg0;\n";
+               ss<<".reg .pred wr, wr2;\n";
+               ss<<"depthTest:\n";
+               ss<<"ld.global.u32 %tmpCol1, [p_result_data];\n";
                ss<<"atom.global."<< depthFunc1 <<"." << dsize << " %oldDepth, [p_depth_data], %depth;\n";
-               //ss<<"printf.u64 1, p_depth_data;\n";
-               //ss<<"ld.global." << dsize << " %oldDepth, [p_depth_data];\n";
-               ss<<".reg .pred wr;\n";
                ss<<"setp." << depthFunc2 << "." << dsize << " wr, %depth, %oldDepth;\n";
+
+               ss<<"@!wr bra done;\n";
+               ss<<"atom.global.cas.u32  %tmpCol2,[p_result_data], %tmpCol1,%bgra;\n";
+               ss<<"setp.eq.u32 wr2, %tmpCol1, %tmpCol2;\n";
+               ss<<"@wr2 bra done;\n";
+               ss<<"bra depthTest;\n";
+
                if(blendingEnabled){
                   if(inShaderBlending){
                       ss<<".reg .u32 %framebuffer;\n";
@@ -953,7 +961,6 @@ public:
                   }
                }
                ss<<"@wr st.global.u32 [p_result_data], %bgra;\n";
-               ss<<"@wr st.global."<< dsize <<" [p_depth_data], %depth;\n";
             } else {
                if(blendingEnabled){
                   if(inShaderBlending){
@@ -964,7 +971,7 @@ public:
                }
                ss<<"st.global.u32 [p_result_data], %bgra;";
             }
-            
+            ss<<"done:\n"; 
             lowerInstructionsList[i]=ss.str();
         }
     }

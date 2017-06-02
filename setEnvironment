@@ -1,0 +1,39 @@
+#!/bin/bash
+
+echo Using MESA+GPGPUSIM!
+export LD_LIBRARY_PATH=$PWD/Mesa-7.11.2_GPGPU-Sim/lib64
+#:$LD_LIBRARY_PATH
+
+export GPGPUSIM_MESA_ROOT=$PWD
+export MESA_GPGPUSIM_DEBUG="$1"
+
+export PATH=$PATH:$PWD/cgToolkit/usr/bin
+export PATH=$PATH:$PWD/shader_to_ptx/arb_to_ptx
+
+alias nvp1_glsl='cgc -oglsl -profile arbvp1'
+alias nfp1_glsl='cgc -oglsl -profile arbfp1'
+
+#forcing mesa to use shader programs
+#export MESA_TNL_PROG=1
+#export MESA_TEX_PROG=1
+export MESA_GLX_FORCE_ALPHA=1
+#export M5_PATH=/home/ayub/perforce/ayub_aamodt-pc10/gpgpu_sim_research/gem5+graphics/gem5/gem5-dev/system
+export M5_PATH=/home/ayub/perforce/ayub_aamodt-pc10/gpgpu_sim_research/android_images
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ayub/perforce/ayub_aamodt-pc10/gpgpu_sim_research/gem5+graphics/android_sources/jb_4.2.2_r1/android_4.2.2_r1-dev/out/host/linux-x86/lib
+export CUDAHOME=~/nvcuda/3.2/cuda
+export CUDA_INSTALL_PATH=~/nvcuda/3.2/cuda
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$CUDA_INSTALL_PATH/lib
+export PATH=$PATH:~/nvcuda/3.2/cuda/bin
+export NVIDIA_CUDA_SDK_LOCATION=/extra/ayub/NVIDIA_GPU_Computing_SDK/3.2/C
+
+#ALADDIN 
+export BOOST_ROOT=$PWD/boost_1_55_0
+export LD_LIBRARY_PATH=$BOOST_ROOT/stage/lib:$LD_LIBRARY_PATH
+
+export LLVM_HOME=$PWD/clang+llvm-3.4
+export PATH=$LLVM_HOME/bin:$PATH
+export LD_LIBRARY_PATH=$LLVM_HOME/lib/:$LD_LIBRARY_PATH
+
+export TRACER_HOME=$PWD/LLVM-Tracer/build
+export ALADDIN_HOME=$PWD/gem5/src/aladdin
+

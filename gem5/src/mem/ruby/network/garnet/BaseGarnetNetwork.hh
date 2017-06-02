@@ -41,16 +41,16 @@
 #include "mem/ruby/network/fault_model/FaultModel.hh"
 #include "params/BaseGarnetNetwork.hh"
 
-class BaseGarnetNetwork : public Network 
+class BaseGarnetNetwork : public Network
 {
   public:
     typedef BaseGarnetNetworkParams Params;
     BaseGarnetNetwork(const Params *p);
 
     void init();
-    int getNiFlitSize() {return m_ni_flit_size; }
-    int getVCsPerVnet() {return m_vcs_per_vnet; }
-    bool isFaultModelEnabled() {return m_enable_fault_model;}
+    int getNiFlitSize() { return m_ni_flit_size; }
+    int getVCsPerVnet() { return m_vcs_per_vnet; }
+    bool isFaultModelEnabled() { return m_enable_fault_model; }
     FaultModel* fault_model;
 
     void increment_injected_flits(int vnet) { m_flits_injected[vnet]++; }
@@ -68,12 +68,11 @@ class BaseGarnetNetwork : public Network
         m_queueing_latency[vnet] += latency;
     }
 
-    // returns the queue requested for the given component
-    MessageBuffer* getToNetQueue(NodeID id, bool ordered, int network_num,
-                                 std::string vnet_type);
-    MessageBuffer* getFromNetQueue(NodeID id, bool ordered, int network_num,
-                                   std::string vnet_type);
-
+    // set the queue
+    void setToNetQueue(NodeID id, bool ordered, int network_num,
+                       std::string vnet_type, MessageBuffer *b);
+    void setFromNetQueue(NodeID id, bool ordered, int network_num,
+                         std::string vnet_type, MessageBuffer *b);
 
     bool isVNetOrdered(int vnet) { return m_ordered[vnet]; }
     bool validVirtualNetwork(int vnet) { return m_in_use[vnet]; }

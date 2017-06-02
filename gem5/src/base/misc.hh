@@ -39,41 +39,59 @@
  *
  * Authors: Nathan Binkert
  *          Dave Greene
+ *          Andreas Sandberg
  */
 
 #ifndef __BASE_MISC_HH__
 #define __BASE_MISC_HH__
 
+#include <cassert>
+#include <iostream>
+
 #include "base/compiler.hh"
 #include "base/cprintf.hh"
-#include "base/varargs.hh"
 
 #if defined(__SUNPRO_CC)
 #define __FUNCTION__ "how to fix me?"
 #endif
 
+void __exit_epilogue(int code,
+                     const char *func, const char *file, int line,
+                     const char *format) M5_ATTR_NORETURN;
+
 // General exit message, these functions will never return and will
 // either abort() if code is < 0 or exit with the code if >= 0
-void __exit_message(const char *prefix, int code,
-    const char *func, const char *file, int line,
-    const char *format, CPRINTF_DECLARATION) M5_ATTR_NORETURN;
-
-void __exit_message(const char *prefix, int code,
-    const char *func, const char *file, int line,
-    const std::string &format, CPRINTF_DECLARATION) M5_ATTR_NORETURN;
-
-inline void
+template<typename ...Args> void
 __exit_message(const char *prefix, int code,
-    const char *func, const char *file, int line,
-    const std::string& format, CPRINTF_DEFINITION)
+               const char *func, const char *file, int line,
+               const char *format, const Args &...args) M5_ATTR_NORETURN;
+template<typename ...Args> void
+__exit_message(const char *prefix, int code,
+               const char *func, const char *file, int line,
+               const std::string &format, const Args &...args) M5_ATTR_NORETURN;
+
+template<typename ...Args> void
+__exit_message(const char *prefix, int code,
+               const char *func, const char *file, int line,
+               const char *format, const Args &...args)
 {
-    __exit_message(prefix, code, func, file, line, format.c_str(),
-                   VARARGS_ALLARGS);
+    std::cerr << prefix << ": ";
+    ccprintf(std::cerr, format, args...);
+
+    __exit_epilogue(code, func, file, line, format);
 }
 
-M5_PRAGMA_NORETURN(__exit_message)
-#define exit_message(prefix, code, ...)                            \
-    __exit_message(prefix, code, __FUNCTION__, __FILE__, __LINE__, \
+template<typename ...Args> void
+__exit_message(const char *prefix, int code,
+               const char *func, const char *file, int line,
+               const std::string &format, const Args &...args)
+{
+    __exit_message(prefix, code, func, file, line, format.c_str(),
+                   args...);
+}
+
+#define exit_message(prefix, code, ...)                                 \
+    __exit_message(prefix, code, __FUNCTION__, __FILE__, __LINE__,      \
                    __VA_ARGS__)
 
 //
@@ -126,17 +144,28 @@ M5_PRAGMA_NORETURN(__exit_message)
 
 
 void
-__base_message(std::ostream &stream, const char *prefix, bool verbose,
-          const char *func, const char *file, int line,
-          const char *format, CPRINTF_DECLARATION);
+__base_message_epilogue(std::ostream &stream, bool verbose,
+                        const char *func, const char *file, int line,
+                        const char *format);
 
-inline void
+template<typename ...Args> void
 __base_message(std::ostream &stream, const char *prefix, bool verbose,
-          const char *func, const char *file, int line,
-          const std::string &format, CPRINTF_DECLARATION)
+               const char *func, const char *file, int line,
+               const char *format, const Args &...args)
+{
+    stream << prefix << ": ";
+    ccprintf(stream, format, args...);
+
+    __base_message_epilogue(stream, verbose, func, file, line, format);
+}
+
+template<typename ...Args> void
+__base_message(std::ostream &stream, const char *prefix, bool verbose,
+               const char *func, const char *file, int line,
+               const std::string &format, const Args &...args)
 {
     __base_message(stream, prefix, verbose, func, file, line, format.c_str(),
-              VARARGS_ALLARGS);
+                   args...);
 }
 
 #define base_message(stream, prefix, verbose, ...)                      \
@@ -188,6 +217,20 @@ extern bool want_hack, hack_verbose;
     cond_message_once(want_info, std::cout, "info", info_verbose, __VA_ARGS__)
 #define hack_once(...) \
     cond_message_once(want_hack, std::cerr, "hack", hack_verbose, __VA_ARGS__)
+
+/**
+ * Conditional warning macro that checks the supplied condition and
+ * only prints a warning if the condition is true. Useful to replace
+ * if + warn.
+ *
+ * @param cond Condition that is checked; if true -> warn
+ * @param ...  Printf-based format string with arguments, extends printout.
+ */
+#define warn_if(cond, ...) \
+    do { \
+        if ((cond)) \
+            warn(__VA_ARGS__); \
+    } while (0)
 
 /**
  * The chatty assert macro will function like a normal assert, but will allow the

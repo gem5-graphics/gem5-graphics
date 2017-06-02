@@ -3,6 +3,7 @@ import os
 # lanuage type for each file extension
 lang_types = {
     '.c'     : "C",
+    '.cl'    : "C",
     '.h'     : "C",
     '.cc'    : "C++",
     '.hh'    : "C++",
@@ -30,6 +31,7 @@ lang_types = {
     '.el'    : "lisp",
     '.txt'   : "text",
     '.tex'   : "tex",
+    '.mk'    : "make",
     }
 
 # languages based on file prefix

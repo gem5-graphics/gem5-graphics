@@ -38,26 +38,42 @@
 #include "params/ShaderMMU.hh"
 #include "sim/full_system.hh"
 
-#ifdef TARGET_ARM
+#if THE_ISA == ARM_ISA
     // TODO: To enable full-system mode ARM interrupts may require including
     // an ARM instruction with a GPU interrupt handler
-#else
+#elif THE_ISA == X86_ISA
     #include "arch/x86/generated/decoder.hh"
+#else
+    #error Currently gem5-gpu is only known to support x86 and ARM
 #endif
 
 using namespace std;
 using namespace TheISA;
 
 ShaderMMU::ShaderMMU(const Params *p) :
-    ClockedObject(p), pagewalkers(p->pagewalkers), latency(p->latency),
-    outstandingFaultStatus(FaultStatus::NoFault), curOutstandingWalks(0),
-    prefetchBufferSize(p->prefetch_buffer_size)
+    ClockedObject(p), pagewalkers(p->pagewalkers),
+#if THE_ISA == ARM_ISA
+    stage2MMU(p->stage2_mmu),
+#endif
+    latency(p->latency), startMissEvent(this), faultTimeoutEvent(this),
+    faultTimeoutCycles(1000000), outstandingFaultStatus(FaultStatus::NoFault),
+    curOutstandingWalks(0), prefetchBufferSize(p->prefetch_buffer_size)
 {
     activeWalkers.resize(pagewalkers.size());
     if (p->l2_tlb_entries > 0) {
         tlb = new TLBMemory(p->l2_tlb_entries, p->l2_tlb_assoc);
     } else {
         tlb = NULL;
+    }
+
+    pagewalkEvents.resize(pagewalkers.size());
+    for (unsigned pw_id = 0; pw_id < pagewalkers.size(); pw_id++) {
+        TheISA::TLB* pw = pagewalkers[pw_id];
+        pagewalkerIndices[pw] = pw_id;
+        pagewalkEvents[pw_id] = new StartPagewalkEvent(this, pw);
+#if THE_ISA == ARM_ISA
+        pw->setMMU(stage2MMU, pw_id);
+#endif
     }
 }
 
@@ -66,82 +82,101 @@ ShaderMMU::~ShaderMMU()
     if (tlb) {
         delete tlb;
     }
+    for (unsigned pw_id = 0; pw_id < pagewalkers.size(); pw_id++) {
+        delete pagewalkEvents[pw_id];
+    }
 }
 
 void
 ShaderMMU::beginTLBMiss(ShaderTLB *req_tlb, BaseTLB::Translation *translation,
                         RequestPtr req, BaseTLB::Mode mode, ThreadContext *tc)
 {
-    TLBMissEvent *e = new TLBMissEvent(this,
-                                       req_tlb, translation, req, mode, tc);
-    schedule(e, clockEdge(Cycles(latency)));
+    // Wrap the translation in another class so we can catch the insertion
+    TranslationRequest *wrapped_translation = new TranslationRequest(this,
+              req_tlb, translation, req, mode, tc, clockEdge(Cycles(latency)));
+
+    startMisses.push(wrapped_translation);
+    if (!startMissEvent.scheduled()) {
+        schedule(startMissEvent, startMisses.front()->getStartTick());
+    }
 }
 
 void
-ShaderMMU::handleTLBMiss(ShaderTLB *req_tlb, BaseTLB::Translation *translation,
-                         RequestPtr req, BaseTLB::Mode mode, ThreadContext *tc)
+ShaderMMU::handleTLBMiss()
 {
-    Addr ppn;
+    TranslationRequest *translation_request = startMisses.front();
+    startMisses.pop();
+
+    assert(!startMissEvent.scheduled());
+    if (!startMisses.empty()) {
+        schedule(startMissEvent, startMisses.front()->getStartTick());
+    }
+
+    ShaderTLB *req_tlb = translation_request->origTLB;
+    BaseTLB::Translation *translation = translation_request->wrappedTranslation;
+    RequestPtr req = translation_request->req;
+    BaseTLB::Mode mode = translation_request->mode;
+    ThreadContext *tc = translation_request->tc;
+
+    Addr pp_base;
     Addr offset = req->getVaddr() % TheISA::PageBytes;
-    Addr vpn = req->getVaddr() - offset;
+    Addr vp_base = req->getVaddr() - offset;
 
     // Check the L2 TLB
-    if (tlb && tlb->lookup(vpn, ppn, req_tlb)) {
+    if (tlb && tlb->lookup(vp_base, pp_base, req_tlb)) {
         // Found in the L2 TLB
         l2hits++;
-        req->setPaddr(ppn + offset);
-        req_tlb->insert(vpn, ppn);
+        req->setPaddr(pp_base + offset);
+        req_tlb->insert(vp_base, pp_base);
         translation->finish(NoFault, req, tc, mode);
+        delete translation_request;
         return;
     }
 
     // Check for a hit in the prefetch buffers
-    auto it = prefetchBuffer.find(vpn);
+    auto it = prefetchBuffer.find(vp_base);
     if (it != prefetchBuffer.end()) {
         // Hit in the prefetch buffer
         prefetchHits++;
-        ppn = it->second.ppn;
+        pp_base = it->second.ppBase;
         if (tlb) {
-            tlb->insert(vpn, ppn);
+            tlb->insert(vp_base, pp_base);
         }
-        req->setPaddr(ppn + offset);
-        req_tlb->insert(vpn, ppn);
+        req->setPaddr(pp_base + offset);
+        req_tlb->insert(vp_base, pp_base);
         translation->finish(NoFault, req, tc, mode);
         // Remove from prefetchBuffer
         prefetchBuffer.erase(it);
         // This was a hit in the prefetch buffer, so we must have done the
         // right thing, Let's see if we get lucky again.
-        tryPrefetch(vpn, tc);
+        tryPrefetch(vp_base, tc);
+        delete translation_request;
         return;
     }
 
-    // Wrap the translation in another class so we can catch the insertion
-    TranslationRequest *wrappedTranslation =
-            new TranslationRequest(this, req_tlb, translation, req, mode, tc);
-
-    DPRINTF(ShaderMMU, "Inserting request for vpn %#x. %d outstanding\n", vpn,
-            outstandingWalks[vpn].size());
-    outstandingWalks[vpn].push_back(wrappedTranslation);
+    DPRINTF(ShaderMMU, "Inserting request for vp base %#x. %d outstanding\n",
+            vp_base, outstandingWalks[vp_base].size());
+    outstandingWalks[vp_base].push_back(translation_request);
     totalRequests++;
 
-    if (outstandingWalks[vpn].size() == 1) {
-        TLB *walker = getFreeWalker();
-        if (walker == NULL) {
-            DPRINTF(ShaderMMU, "Adding request for vpn  %#x to the pending walks\n", vpn);
-            DPRINTF(ShaderMMU, "Number of pending walks %d\n", pendingWalks.size());
-            pendingWalks.push(wrappedTranslation);
-        } else {
-            DPRINTF(ShaderMMU, "Walking for %#x\n", vpn);
-            wrappedTranslation->walk(walker);
-            // Try to prefetch on demand misses (but wait until the demand
-            // walk has started.)
-            tryPrefetch(vpn, tc);
-        }
+    if (outstandingWalks[vp_base].size() == 1) {
+       TLB *walker = getFreeWalker();
+       if (walker == NULL) {
+          DPRINTF(ShaderMMU, "Adding request for vp base  %#x to the pending walks\n", vp_base);
+          DPRINTF(ShaderMMU, "Number of pending walks %d\n", pendingWalks.size());
+          pendingWalks.push(translation_request);
+       } else {
+          DPRINTF(ShaderMMU, "Walking for %#x\n", vp_base);
+          schedulePagewalk(walker, translation_request);
+          // Try to prefetch on demand misses (but wait until the demand
+          // walk has started.)
+          tryPrefetch(vp_base, tc);
+       }
     }
 }
 
 
-void
+/*void
 ShaderMMU::handlePendingWalks(){
     TLB *walker = getFreeWalker();
     if (!pendingWalks.empty() and (walker!=NULL)) {
@@ -151,17 +186,22 @@ ShaderMMU::handlePendingWalks(){
         t->walk(walker);
         pendingWalks.pop();
     }
-}
+}*/
 
 void
 ShaderMMU::finishWalk(TranslationRequest *translation, Fault fault)
 {
     pagewalkLatency.sample(curCycle() - translation->beginWalk);
     setWalkerFree(translation->pageWalker);
+    translation->pageWalker = NULL;
 
     if (!pendingWalks.empty()) {
-        TLBPendingWalks * pendWalks = new TLBPendingWalks(this);
-        schedule(pendWalks, clockEdge(Cycles(1)));
+        TLB *walker = getFreeWalker();
+        TranslationRequest *t = pendingWalks.front();
+        schedulePagewalk(walker, t);
+        pendingWalks.pop();
+        //TLBPendingWalks * pendWalks = new TLBPendingWalks(this);
+        //schedule(pendWalks, clockEdge(Cycles(1)));
     }
     
     RequestPtr req = translation->req;
@@ -171,20 +211,21 @@ ShaderMMU::finishWalk(TranslationRequest *translation, Fault fault)
         req->getVaddr() == outstandingFaultInfo->req->getVaddr()) {
         DPRINTF(ShaderMMU, "Walk finished for retry of %#x\n", req->getVaddr());
         if (fault != NoFault) {
-            DPRINTF(ShaderMMU, "Got another fault!\n");
-            outstandingFaultStatus = FaultStatus::InKernel;
-            // No need to invoke another page fault if this wasn't satisfied
-            // We could have been notified at the end of some other interrrupt
-            // Or the kernel could be in the middle of segfault, etc.
-            retryFailures++;
-            return;
+            panic("GPU encountered another fault for faulted address.\n"
+                  "      Likely a GPU-triggered segfault for: %#x, pc: %#x",
+                  req->getVaddr(), req->getPC());
         } else {
             DPRINTF(ShaderMMU, "Retry successful\n");
             outstandingFaultStatus = FaultStatus::NoFault;
             ThreadContext *tc = translation->tc;
-            GPUFaultReg faultReg = tc->readMiscRegNoEffect(MISCREG_GPU_FAULT);
-            faultReg.inFault = 0;
-            tc->setMiscRegNoEffect(MISCREG_GPU_FAULT, faultReg);
+            GPUFaultReg fault_reg = tc->readMiscRegNoEffect(MISCREG_GPU_FAULT);
+            fault_reg.inFault = 0;
+            // HACK! Setting CPU registers is a convenient way to communicate
+            // page fault information to the CPU rather than implementing full
+            // memory-mapped device registers. However, setting registers can
+            // cause erratic CPU behavior, such as pipeline flushes. Use extreme
+            // care/testing when changing these.
+            tc->setMiscRegActuallyNoEffect(MISCREG_GPU_FAULT, fault_reg);
             if (!pendingFaults.empty()) {
                 TranslationRequest *pending = pendingFaults.front();
                 DPRINTF(ShaderMMU, "Invoking pending fault %#x\n",
@@ -214,44 +255,130 @@ void
 ShaderMMU::finalizeTranslation(TranslationRequest *translation)
 {
     RequestPtr req = translation->req;
-    Addr vpn = translation->vpn;
-    Addr ppn = req->getPaddr() - req->getPaddr() % TheISA::PageBytes;
+    Addr vp_base = translation->vpBase;
+    Addr pp_base = req->getPaddr() - req->getPaddr() % TheISA::PageBytes;
 
-    DPRINTF(ShaderMMU, "Walk complete for VPN %#x to PPN %#x\n", vpn, ppn);
+    DPRINTF(ShaderMMU, "Walk complete for VP %#x to PP %#x\n", vp_base, pp_base);
 
+    list<TranslationRequest*> &walks = outstandingWalks[vp_base];
+    assert(walks.front() == translation);
+    walks.pop_front();
+
+    // First, complete the walked translation
+    if (translation->prefetch) {
+        // Only insert into pf buffer if no other requests were made to this
+        // virtual page before the prefetch completed
+        if (walks.size() == 0) {
+            insertPrefetch(vp_base, pp_base);
+        }
+        delete translation->req;
+    } else {
+        // Insert the mapping into the TLB. This only needs to happen once
+        if (tlb) {
+            tlb->insert(vp_base, pp_base);
+        }
+        // Insert into L1 TLB
+        translation->origTLB->insert(vp_base, pp_base);
+        // Forward the translation on
+        translation->wrappedTranslation->finish(NoFault, translation->req,
+                                           translation->tc, translation->mode);
+    }
+
+    // Next, complete any queued translations for this same page
+    DPRINTF(ShaderMMU, "Walk satisfies %d other requests\n", walks.size());
     list<TranslationRequest*>::iterator it;
-    list<TranslationRequest*> &walks = outstandingWalks[vpn];
-    DPRINTF(ShaderMMU, "Walk satifies %d outstanding reqs\n", walks.size());
     for (it = walks.begin(); it != walks.end(); it++) {
         TranslationRequest *t = (*it);
+        // Prefetches should not have been queued
+        assert(!t->prefetch);
+        assert(t != translation);
 
-        RequestPtr match_req = t->req;
-        if (match_req != translation->req) {
-            Addr offset = match_req->getVaddr() % TheISA::PageBytes;
-            match_req->setPaddr(ppn + offset);
-        }
+        // Set the physical address to complete the translation
+        Addr offset = t->req->getVaddr() % TheISA::PageBytes;
+        t->req->setPaddr(pp_base + offset);
 
-        if (t->prefetch && match_req == translation->req) {
-            // Only insert into pf buffer if no other requests were made to this
-            // vpn before the prefetch completed
-            if (walks.size() == 1) {
-                insertPrefetch(vpn, ppn);
-            }
-            delete t->req;
-        } else {
-            // insert the mapping into the TLB
-            if (tlb) {
-                tlb->insert(vpn, ppn);
-            }
-            // Insert into L1 TLB
-            t->origTLB->insert(vpn, ppn);
-            // Forward the translation on
-            t->wrappedTranslation->finish(NoFault, match_req, t->tc,
-                                          t->mode);
-        }
+        // Insert into L1 TLB
+        t->origTLB->insert(vp_base, pp_base);
+        // Forward the translation on
+        t->wrappedTranslation->finish(NoFault, t->req, t->tc, t->mode);
+
         delete t;
     }
-    outstandingWalks.erase(vpn);
+    delete translation;
+    outstandingWalks.erase(vp_base);
+}
+
+void
+ShaderMMU::raisePageFaultInterrupt(ThreadContext *tc)
+{
+    // NOTE: This function must run through to completion. Otherwise, the
+    // outstanding fault may never get raised, and thus, the waiting GPU
+    // may deadlock.
+    assert(outstandingFaultInfo);
+    assert(outstandingFaultStatus == FaultStatus::InKernel);
+
+    DPRINTF(ShaderMMU, "Raising interrupt for page fault at addr: %#x\n",
+            outstandingFaultInfo->req->getVaddr());
+
+    outstandingFaultStatus = FaultStatus::InKernel;
+
+    GPUFaultReg fault_reg = tc->readMiscRegNoEffect(MISCREG_GPU_FAULT);
+    assert(fault_reg.inFault == 0);
+    fault_reg.inFault = 1;
+
+    GPUFaultCode code = 0;
+    code.write = (outstandingFaultInfo->mode == BaseTLB::Write);
+    code.user = 1;
+
+    GPUFaultRSPReg fault_rsp = tc->readMiscRegNoEffect(MISCREG_GPU_FAULT_RSP);
+    fault_rsp = 0;
+
+    // HACK! Setting CPU registers is a convenient way to communicate page
+    // fault information to the CPU rather than implementing full memory-mapped
+    // device registers. However, setting registers can cause erratic CPU
+    // behavior, such as pipeline flushes. Use extreme care/testing when
+    // changing these.
+    tc->setMiscRegActuallyNoEffect(MISCREG_GPU_FAULT, fault_reg);
+    tc->setMiscRegActuallyNoEffect(MISCREG_GPU_FAULTADDR,
+                                   outstandingFaultInfo->req->getVaddr());
+    tc->setMiscRegActuallyNoEffect(MISCREG_GPU_FAULTCODE, code);
+    tc->setMiscRegActuallyNoEffect(MISCREG_GPU_FAULT_RSP, fault_rsp);
+
+#if THE_ISA == ARM_ISA
+    panic("You must be executing in FullSystem mode with ARM:\n"
+          "ShaderMMU cannot yet handle ARM page faults");
+    // TODO: Add interrupt called "triggerGPUInterrupt()" to the ARM
+    // interrupts device
+#elif THE_ISA == X86_ISA
+    Interrupts *interrupts = tc->getCpuPtr()->getInterruptController();
+    interrupts->triggerGPUInterrupt();
+#endif
+
+    // Schedule a timeout event to ensure that it does not get randomly
+    // dropped. Currently, this is for debugging purposes only (e.g. CPU thread
+    // gets swapped or descheduled, or a simulator bug drops the fault).
+    assert(!faultTimeoutEvent.scheduled());
+    faultTimeoutEvent.setTC(tc);
+    schedule(faultTimeoutEvent, clockEdge(faultTimeoutCycles));
+}
+
+void
+ShaderMMU::faultTimeout(ThreadContext *tc)
+{
+    warn("Fault is timing out!");
+    if (outstandingFaultStatus == FaultStatus::InKernel) {
+        warn("Fault status: InKernel");
+    } else if (outstandingFaultStatus == FaultStatus::Retrying) {
+        warn("Fault status: Retrying");
+    } else {
+        warn("Fault status: None");
+    }
+    panic("Fault outstanding for %d cycles!\n"
+          "TC: tc: %p, fault reg: %x, fault addr: %x, fault code: %x, fault RSP: %x\n",
+          faultTimeoutCycles, tc, tc->readMiscRegNoEffect(MISCREG_GPU_FAULT),
+          tc->readMiscRegNoEffect(MISCREG_GPU_FAULTADDR),
+          tc->readMiscRegNoEffect(MISCREG_GPU_FAULTCODE),
+          tc->readMiscRegNoEffect(MISCREG_GPU_FAULT_RSP));
 }
 
 void
@@ -259,14 +386,14 @@ ShaderMMU::handlePageFault(TranslationRequest *translation)
 {
     if (!FullSystem) {
         panic("Page fault handling (addr: %#x, pc: %#x) not available in SE "
-              "mode: No interrupt handler!\n", translation->vpn,
+              "mode: No interrupt handler!\n", translation->vpBase,
               translation->req->getPC());
     }
     if (translation->prefetch) {
         DPRINTF(ShaderMMU, "Ignoring since fault on prefetch\n");
         prefetchFaults++;
         TranslationRequest *new_translation = NULL;
-        list<TranslationRequest*> &walks = outstandingWalks[translation->vpn];
+        list<TranslationRequest*> &walks = outstandingWalks[translation->vpBase];
         if (walks.size() != 1) {
             DPRINTF(ShaderMMU, "Well this is complicated. Prefetch fault for"
                                 "real request.\n");
@@ -275,7 +402,7 @@ ShaderMMU::handlePageFault(TranslationRequest *translation)
             delete translation->req;
             delete translation;
         } else {
-            outstandingWalks.erase(translation->vpn);
+            outstandingWalks.erase(translation->vpBase);
             delete translation->req;
             delete translation;
             return;
@@ -302,75 +429,65 @@ ShaderMMU::handlePageFault(TranslationRequest *translation)
 
     outstandingFaultInfo->beginFault = curCycle();
 
-    GPUFaultReg faultReg = tc->readMiscRegNoEffect(MISCREG_GPU_FAULT);
-    assert(faultReg.inFault == 0);
-
-    GPUFaultCode code = 0;
-    code.write = (translation->mode == BaseTLB::Write);
-    code.user = 1;
-    faultReg.inFault = 1;
-
-    tc->setMiscRegNoEffect(MISCREG_GPU_FAULT, faultReg);
-    tc->setMiscRegNoEffect(MISCREG_GPU_FAULTADDR, translation->req->getVaddr());
-    tc->setMiscRegNoEffect(MISCREG_GPU_FAULTCODE, code);
-
-#ifdef TARGET_ARM
-    panic("You must be executing in FullSystem mode with ARM:\n"
-          "ShaderMMU cannot yet handle ARM page faults");
-    // TODO: Add interrupt called "triggerGPUInterrupt()" to the ARM
-    // interrupts device
-#else
-    // Delay the fault if the thread is in kernel mode
-    HandyM5Reg m5reg = tc->readMiscRegNoEffect(MISCREG_M5_REG);
-    if (m5reg.cpl != 3) {
-        DPRINTF(ShaderMMU, "Not invoking fault in kernel mode. Waiting.\n");
-        outstandingFaultStatus = FaultStatus::Pending;
-        return;
-    }
-
-    Interrupts *interrupts = tc->getCpuPtr()->getInterruptController();
-    interrupts->triggerGPUInterrupt();
-#endif
+    raisePageFaultInterrupt(tc);
 }
 
 void
 ShaderMMU::handleFinishPageFault(ThreadContext *tc)
 {
-    assert(((GPUFaultReg)tc->readMiscRegNoEffect(MISCREG_GPU_FAULT)).inFault == 1);
-
-    DPRINTF(ShaderMMU, "Handling a finish page fault event\n");
+    if (!faultTimeoutEvent.scheduled()) {
+        panic("faultTimeoutEvent not scheduled!\n");
+    }
+    deschedule(faultTimeoutEvent);
 
     assert(outstandingFaultStatus != FaultStatus::NoFault);
 
-#ifdef TARGET_ARM
+    // The CPU sets inFault = 2 when it begins the page fault handler. If this
+    // register is not set to 2, the CPU has triggered this handler incorrectly
+    // somehow. Fail and print the incorrect value.
+    GPUFaultReg fault_reg = tc->readMiscRegNoEffect(MISCREG_GPU_FAULT);
+    if (fault_reg.inFault != 2) {
+        panic("GPU page fault register status incorrect (%u)!\n",
+              fault_reg.inFault);
+    }
+
+    Addr returning_rsp = 0;
+
+    // Do ISA-specific register reads and sanity checks
+#if THE_ISA == ARM_ISA
     panic("You must be executing in FullSystem mode with ARM ISA:\n"
           "ShaderMMU cannot yet handle ARM page faults");
     // TODO: Add interrupt called "triggerGPUInterrupt()" to the ARM
     // interrupts device
     // TODO: Add sanity check for correct page table
-#else
-    if (outstandingFaultStatus == FaultStatus::Pending) {
-        DPRINTF(ShaderMMU, "Invoking the pending fault\n");
-        outstandingFaultStatus = FaultStatus::InKernel;
-        Interrupts *interrupts = tc->getCpuPtr()->getInterruptController();
-        interrupts->triggerGPUInterrupt();
-        return;
-    }
-
+#elif THE_ISA == X86_ISA
     // Sanity check the CR2 register
     Addr cr2 = tc->readMiscRegNoEffect(MISCREG_CR2);
     if (cr2 != outstandingFaultInfo->req->getVaddr()) {
         warn("Handle finish page fault with wrong CR2\n");
         return;
     }
+
+    returning_rsp = tc->readIntReg(INTREG_RSP);
 #endif
 
+    // TODO: This test may be ISA-specific to x86. Test this when we get to
+    // that point.
+    Addr faulting_rsp = tc->readMiscRegNoEffect(MISCREG_GPU_FAULT_RSP);
+    if (returning_rsp != faulting_rsp) {
+        warn("RSPs do not match... probably segfault! Returning RSP: %x, "
+             "Fault RSP: %x", returning_rsp, faulting_rsp);
+    }
+
+    DPRINTF(ShaderMMU,
+            "Handling a finish page fault event. SP: %x\n", returning_rsp);
+
     if (outstandingFaultStatus == FaultStatus::Retrying) {
-        DPRINTF(ShaderMMU, "Already retrying. Maybe queue another?'\n");
+        DPRINTF(ShaderMMU, "Already retrying. Maybe queue another?\n");
         return;
     }
 
-    DPRINTF(ShaderMMU, "Retying pagetable walk for %#x\n",
+    DPRINTF(ShaderMMU, "Retrying pagetable walk for %#x\n",
                         outstandingFaultInfo->req->getVaddr());
     outstandingFaultStatus = FaultStatus::Retrying;
 
@@ -384,25 +501,25 @@ ShaderMMU::handleFinishPageFault(ThreadContext *tc)
         // May want to push this to the front in the future to decrease latency
         pendingWalks.push(outstandingFaultInfo);
     } else {
-        outstandingFaultInfo->walk(walker);
+        schedulePagewalk(walker, outstandingFaultInfo);
     }
+}
+
+bool
+ShaderMMU::isFaultInFlight(ThreadContext *tc)
+{
+    GPUFaultReg fault_reg = tc->readMiscRegNoEffect(MISCREG_GPU_FAULT);
+    return (fault_reg.inFault != 0) && (outstandingFaultStatus == FaultStatus::InKernel);
 }
 
 void
 ShaderMMU::setWalkerFree(TLB *walker)
 {
-    int i;
-    for (i=0; i<pagewalkers.size(); i++) {
-        if (pagewalkers[i] == walker) {
-            DPRINTF(ShaderMMU, "Setting walker %d free\n", i);
-            assert(activeWalkers[i] == true);
-            activeWalkers[i] = false;
-            break;
-        }
-    }
-    if (i == pagewalkers.size()) {
-        panic("Could not find walker!");
-    }
+    unsigned pw_id = pagewalkerIndices[walker];
+    assert(pagewalkers[pw_id] == walker);
+    assert(activeWalkers[pw_id] == true);
+    activeWalkers[pw_id] = false;
+
     curOutstandingWalks--;
 }
 
@@ -426,7 +543,7 @@ ShaderMMU::getFreeWalker()
 }
 
 void
-ShaderMMU::tryPrefetch(Addr vpn, ThreadContext *tc)
+ShaderMMU::tryPrefetch(Addr vp_base, ThreadContext *tc)
 {
     // If not using a prefetcher, skip this function.
     if (prefetchBufferSize == 0) {
@@ -434,7 +551,7 @@ ShaderMMU::tryPrefetch(Addr vpn, ThreadContext *tc)
     }
 
     // If this address has already been prefetched, skip
-    auto it = prefetchBuffer.find(vpn);
+    auto it = prefetchBuffer.find(vp_base);
     if (it != prefetchBuffer.end()) {
         return;
     }
@@ -443,15 +560,15 @@ ShaderMMU::tryPrefetch(Addr vpn, ThreadContext *tc)
         return;
     }
 
-    Addr next_vpn = vpn + TheISA::PageBytes;
-    Addr ppn;
-    if (tlb && tlb->lookup(next_vpn, ppn, false)) {
-        // This vpn already in the TLB, no need to prefetch
+    Addr next_vp_base = vp_base + TheISA::PageBytes;
+    Addr pp_base;
+    if (tlb && tlb->lookup(next_vp_base, pp_base, false)) {
+        // This vp already in the TLB, no need to prefetch
         return;
     }
 
-    if (outstandingWalks.find(next_vpn) != outstandingWalks.end()) {
-        // Already walking for this vpn, no need to prefetch
+    if (outstandingWalks.find(next_vp_base) != outstandingWalks.end()) {
+        // Already walking for this vp, no need to prefetch
         return;
     }
 
@@ -459,22 +576,22 @@ ShaderMMU::tryPrefetch(Addr vpn, ThreadContext *tc)
 
     // Prefetch the next PTE into the TLB.
     Request::Flags flags;
-    RequestPtr req = new Request(0, next_vpn, 4, flags, 0, 0, 0, 0);
+    RequestPtr req = new Request(0, next_vp_base, 4, flags, 0, 0, 0, 0);
     TranslationRequest *translation = new TranslationRequest(this, NULL, NULL,
                                         req, BaseTLB::Read, tc, true);
-    outstandingWalks[next_vpn].push_back(translation);
+    outstandingWalks[next_vp_base].push_back(translation);
     TLB *walker = getFreeWalker();
     assert(walker != NULL); // Should never try to issue a prefetch in this case
 
-    DPRINTF(ShaderMMU, "Prefetching translation for %#x.\n", next_vpn);
-    translation->walk(walker);
+    DPRINTF(ShaderMMU, "Prefetching translation for %#x.\n", next_vp_base);
+    schedulePagewalk(walker, translation);
 }
 
 void
-ShaderMMU::insertPrefetch(Addr vpn, Addr ppn)
+ShaderMMU::insertPrefetch(Addr vp_base, Addr pp_base)
 {
-    DPRINTF(ShaderMMU, "Inserting %#x->%#x into pf buffer\n", vpn, ppn);
-    assert(vpn % TheISA::PageBytes == 0);
+    DPRINTF(ShaderMMU, "Inserting %#x->%#x into pf buffer\n", vp_base, pp_base);
+    assert(vp_base % TheISA::PageBytes == 0);
     // Insert into prefetch buffer
     if (prefetchBuffer.size() >= prefetchBufferSize) {
         // evict unused entry from prefetch buffer
@@ -489,9 +606,9 @@ ShaderMMU::insertPrefetch(Addr vpn, Addr ppn)
         assert(minTick != curTick() && min != prefetchBuffer.end());
         prefetchBuffer.erase(min);
     }
-    GPUTlbEntry &e = prefetchBuffer[vpn];
-    e.vpn = vpn;
-    e.ppn = ppn;
+    GPUTlbEntry &e = prefetchBuffer[vp_base];
+    e.vpBase = vp_base;
+    e.ppBase = pp_base;
     e.setMRU();
     assert(prefetchBuffer.size() <= prefetchBufferSize);
 }
@@ -510,10 +627,6 @@ ShaderMMU::regStats()
     totalRequests
         .name(name()+".totalRequests")
         .desc("Total number of requests")
-        ;
-    retryFailures
-        .name(name()+".retryFailures")
-        .desc("Times the retry walk after a pagefault failed")
         ;
     l2hits
         .name(name()+".l2hits")
@@ -554,22 +667,23 @@ ShaderMMU::regStats()
 
 ShaderMMU::TranslationRequest::TranslationRequest(ShaderMMU *_mmu,
     ShaderTLB *_tlb, BaseTLB::Translation *translation,
-    RequestPtr _req, BaseTLB::Mode _mode, ThreadContext *_tc, bool prefetch)
-            : mmu(_mmu), origTLB(_tlb),
+    RequestPtr _req, BaseTLB::Mode _mode, ThreadContext *_tc, Tick start_tick,
+    bool prefetch)
+            : mmu(_mmu), origTLB(_tlb), pageWalker(NULL),
               wrappedTranslation(translation), req(_req), mode(_mode), tc(_tc),
-              beginFault(0), prefetch(prefetch)
+              beginFault(0), startTick(start_tick), prefetch(prefetch)
 {
-    vpn = req->getVaddr() - req->getVaddr() % TheISA::PageBytes;
+    vpBase = req->getVaddr() - req->getVaddr() % TheISA::PageBytes;
 }
 
 ShaderMMU *ShaderMMUParams::create() {
     return new ShaderMMU(this);
 }
 
-#ifdef TARGET_ARM
+#if THE_ISA == ARM_ISA
     // TODO: Need to define an analogous function to be called from an ARM
     // instruction at the end of the interrupt handler
-#else
+#elif THE_ISA == X86_ISA
 
 // Global function which the x86 microop gpufinishfault calls.
 namespace X86ISAInst {

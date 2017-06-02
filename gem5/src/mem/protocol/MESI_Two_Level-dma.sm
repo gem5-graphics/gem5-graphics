@@ -28,13 +28,14 @@
  */
 
 machine(DMA, "DMA Controller")
-: DMASequencer * dma_sequencer,
-  Cycles request_latency = 6
+: DMASequencer * dma_sequencer;
+  Cycles request_latency := 6;
+
+  MessageBuffer * responseFromDir, network="From", virtual_network="1",
+        vnet_type="response";
+  MessageBuffer * requestToDir, network="To", virtual_network="0",
+        vnet_type="request";
 {
-
-  MessageBuffer responseFromDir, network="From", virtual_network="1", ordered="true", vnet_type="response";
-  MessageBuffer reqToDirectory, network="To", virtual_network="0", ordered="false", vnet_type="request";
-
   state_declaration(State, desc="DMA states", default="DMA_State_READY") {
     READY, AccessPermission:Invalid, desc="Ready to accept a new request";
     BUSY_RD, AccessPermission:Busy, desc="Busy: currently processing a request";
@@ -48,33 +49,33 @@ machine(DMA, "DMA Controller")
     Ack,          desc="DMA write to memory completed";
   }
 
-  structure(DMASequencer, external="yes") {
-    void ackCallback();
-    void dataCallback(DataBlock);
-  }
-
-  MessageBuffer mandatoryQueue, ordered="false";
+  MessageBuffer mandatoryQueue;
   State cur_state;
 
-  State getState(Address addr) {
+  State getState(Addr addr) {
     return cur_state;
   }
-  void setState(Address addr, State state) {
-  cur_state := state;
+
+  void setState(Addr addr, State state) {
+    cur_state := state;
   }
 
-  AccessPermission getAccessPermission(Address addr) {
+  AccessPermission getAccessPermission(Addr addr) {
     return AccessPermission:NotPresent;
   }
 
-  void setAccessPermission(Address addr, State state) {
+  void setAccessPermission(Addr addr, State state) {
   }
 
-  DataBlock getDataBlock(Address addr), return_by_ref="yes" {
-    error("DMA does not support get data block.");
+  void functionalRead(Addr addr, Packet *pkt) {
+    error("DMA does not support functional read.");
   }
 
-  out_port(reqToDirectory_out, RequestMsg, reqToDirectory, desc="...");
+  int functionalWrite(Addr addr, Packet *pkt) {
+    error("DMA does not support functional write.");
+  }
+
+  out_port(requestToDir_out, RequestMsg, requestToDir, desc="...");
 
   in_port(dmaRequestQueue_in, SequencerMsg, mandatoryQueue, desc="...") {
     if (dmaRequestQueue_in.isReady()) {
@@ -94,9 +95,9 @@ machine(DMA, "DMA Controller")
     if (dmaResponseQueue_in.isReady()) {
       peek( dmaResponseQueue_in, ResponseMsg) {
         if (in_msg.Type == CoherenceResponseType:ACK) {
-          trigger(Event:Ack, makeLineAddress(in_msg.Addr));
+          trigger(Event:Ack, makeLineAddress(in_msg.addr));
         } else if (in_msg.Type == CoherenceResponseType:DATA) {
-          trigger(Event:Data, makeLineAddress(in_msg.Addr));
+          trigger(Event:Data, makeLineAddress(in_msg.addr));
         } else {
           error("Invalid response type");
         }
@@ -106,8 +107,8 @@ machine(DMA, "DMA Controller")
 
   action(s_sendReadRequest, "s", desc="Send a DMA read request to memory") {
     peek(dmaRequestQueue_in, SequencerMsg) {
-      enqueue(reqToDirectory_out, RequestMsg, request_latency) {
-        out_msg.Addr := in_msg.PhysicalAddress;
+      enqueue(requestToDir_out, RequestMsg, request_latency) {
+        out_msg.addr := in_msg.PhysicalAddress;
         out_msg.Type := CoherenceRequestType:DMA_READ;
         out_msg.DataBlk := in_msg.DataBlk;
         out_msg.Len := in_msg.Len;
@@ -119,8 +120,8 @@ machine(DMA, "DMA Controller")
 
   action(s_sendWriteRequest, "\s", desc="Send a DMA write request to memory") {
     peek(dmaRequestQueue_in, SequencerMsg) {
-      enqueue(reqToDirectory_out, RequestMsg, request_latency) {
-          out_msg.Addr := in_msg.PhysicalAddress;
+      enqueue(requestToDir_out, RequestMsg, request_latency) {
+          out_msg.addr := in_msg.PhysicalAddress;
           out_msg.Type := CoherenceRequestType:DMA_WRITE;
           out_msg.DataBlk := in_msg.DataBlk;
           out_msg.Len := in_msg.Len;

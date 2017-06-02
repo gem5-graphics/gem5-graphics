@@ -80,7 +80,7 @@ class DRAMSim2 : public AbstractMemory
 
         bool recvTimingReq(PacketPtr pkt);
 
-        void recvRetry();
+        void recvRespRetry();
 
         AddrRangeList getAddrRanges() const;
 
@@ -102,6 +102,11 @@ class DRAMSim2 : public AbstractMemory
      * Are we waiting for a retry for sending a response.
      */
     bool retryResp;
+
+    /**
+     * Keep track of when the wrapper is started.
+     */
+    Tick startTick;
 
     /**
      * Keep track of what packets are outstanding per
@@ -126,12 +131,6 @@ class DRAMSim2 : public AbstractMemory
      * responses back without any flow control.
      */
     std::deque<PacketPtr> responseQueue;
-
-    /**
-     * If we need to drain, keep the drain manager around until we're
-     * done here.
-     */
-    DrainManager *drainManager;
 
     unsigned int nbrOutstanding() const;
 
@@ -190,7 +189,7 @@ class DRAMSim2 : public AbstractMemory
      */
     void writeComplete(unsigned id, uint64_t addr, uint64_t cycle);
 
-    unsigned int drain(DrainManager* dm);
+    DrainState drain() M5_ATTR_OVERRIDE;
 
     virtual BaseSlavePort& getSlavePort(const std::string& if_name,
                                         PortID idx = InvalidPortID);
@@ -203,7 +202,7 @@ class DRAMSim2 : public AbstractMemory
     Tick recvAtomic(PacketPtr pkt);
     void recvFunctional(PacketPtr pkt);
     bool recvTimingReq(PacketPtr pkt);
-    void recvRetry();
+    void recvRespRetry();
 
 };
 

@@ -59,9 +59,7 @@ def bitfield LEGACY_ADDR legacy.addr;
 def bitfield LEGACY_SEG legacy.seg;
 
 // Pieces of the opcode
-def bitfield OPCODE_NUM opcode.num;
-def bitfield OPCODE_PREFIXA opcode.prefixA;
-def bitfield OPCODE_PREFIXB opcode.prefixB;
+def bitfield OPCODE_TYPE opcode.type;
 def bitfield OPCODE_OP opcode.op;
 //The top 5 bits of the opcode tend to split the instructions into groups
 def bitfield OPCODE_OP_TOP5 opcode.op.top5;
@@ -89,3 +87,12 @@ def bitfield STACKSIZE stackSize;
 def bitfield MODE mode;
 def bitfield MODE_MODE mode.mode;
 def bitfield MODE_SUBMODE mode.submode;
+
+def bitfield VEX_R vex.first.r;
+def bitfield VEX_X vex.first.x;
+def bitfield VEX_B vex.first.b;
+def bitfield VEX_MAP vex.first.map_select;
+def bitfield VEX_W vex.second.w;
+def bitfield VEX_VVVV vex.second.vvvv;
+def bitfield VEX_L vex.second.l;
+def bitfield VEX_PP vex.second.pp;

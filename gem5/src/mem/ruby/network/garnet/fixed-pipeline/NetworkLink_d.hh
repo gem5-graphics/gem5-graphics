@@ -37,7 +37,6 @@
 #include "mem/ruby/common/Consumer.hh"
 #include "mem/ruby/network/garnet/fixed-pipeline/flitBuffer_d.hh"
 #include "mem/ruby/network/garnet/NetworkHeader.hh"
-#include "mem/ruby/network/orion/NetworkPower.hh"
 #include "params/NetworkLink_d.hh"
 #include "sim/clocked_object.hh"
 
@@ -55,10 +54,6 @@ class NetworkLink_d : public ClockedObject, public Consumer
     void print(std::ostream& out) const{}
     int get_id(){return m_id;}
     void wakeup();
-
-    void calculate_power(double);
-    double get_dynamic_power() const { return m_power_dyn; }
-    double get_static_power()const { return m_power_sta; }
 
     unsigned int getLinkUtilization() const { return m_link_utilized; }
     const std::vector<unsigned int> & getVcLoad() const { return m_vc_load; }
@@ -79,14 +74,10 @@ class NetworkLink_d : public ClockedObject, public Consumer
     flitBuffer_d *linkBuffer;
     Consumer *link_consumer;
     flitBuffer_d *link_srcQueue;
-    int m_flit_width;
 
     // Statistical variables
     unsigned int m_link_utilized;
     std::vector<unsigned int> m_vc_load;
-
-    double m_power_dyn;
-    double m_power_sta;
 };
 
 #endif // __MEM_RUBY_NETWORK_GARNET_FIXED_PIPELINE_NETWORK_LINK_D_HH__

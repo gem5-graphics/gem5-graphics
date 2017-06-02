@@ -42,7 +42,7 @@ class AlphaLiveProcess : public LiveProcess
   protected:
     AlphaLiveProcess(LiveProcessParams *params, ObjectFile *objFile);
 
-    void loadState(Checkpoint *cp);
+    void loadState(CheckpointIn &cp) M5_ATTR_OVERRIDE;
     void initState();
 
     void argsInit(int intSize, int pageSize);
@@ -54,5 +54,8 @@ class AlphaLiveProcess : public LiveProcess
     void setSyscallArg(ThreadContext *tc, int i, AlphaISA::IntReg val);
     void setSyscallReturn(ThreadContext *tc, SyscallReturn return_value);
 };
+
+/* No architectural page table defined for this ISA */
+typedef NoArchPageTable ArchPageTable;
 
 #endif // __ARCH_ALPHA_PROCESS_HH__

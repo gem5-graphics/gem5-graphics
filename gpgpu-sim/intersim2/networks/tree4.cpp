@@ -53,7 +53,7 @@
 #include "tree4.hpp"
 
 Tree4::Tree4( const Configuration& config, const string & name )
-: Network ( config, name )
+: ISNetwork ( config, name )
 {
   _ComputeSize( config );
   _Alloc( );

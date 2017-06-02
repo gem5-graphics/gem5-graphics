@@ -33,20 +33,12 @@ import VI_hammer
 from m5.objects import *
 from m5.defines import buildEnv
 from Cluster import Cluster
+from Ruby import send_evicts
 
-#
-# Note: the L1 Cache latency is only used by the sequencer on fast path hits
-#
-class L1Cache(RubyCache):
-    latency = 1
+class L1Cache(RubyCache): pass
+class L2Cache(RubyCache): pass
 
-#
-# Note: the L2 Cache latency is not currently used
-#
-class L2Cache(RubyCache):
-    latency = 15
-
-def create_system(options, system, dma_devices, ruby_system):
+def create_system(options, full_system, system, dma_devices, ruby_system):
 
     if not buildEnv['GPGPU_SIM']:
         m5.util.panic("This script requires GPGPU-Sim integration to be built.")
@@ -54,6 +46,7 @@ def create_system(options, system, dma_devices, ruby_system):
     # Run the protocol script to setup CPU cluster, directory and DMA
     (all_sequencers, dir_cntrls, dma_cntrls, cpu_cluster) = \
                                         VI_hammer.create_system(options,
+                                                                full_system,
                                                                 system,
                                                                 dma_devices,
                                                                 ruby_system)
@@ -63,7 +56,21 @@ def create_system(options, system, dma_devices, ruby_system):
     #
     # Build GPU cluster
     #
-    gpu_cluster = Cluster(intBW = 32, extBW = 32)
+    # Empirically, Fermi per-core bandwidth peaks at roughly 23GB/s
+    # (32B/cycle @ 772MHz). Use ~16B per Ruby cycle to match this. Maxwell
+    # per-core bandwidth peaks at 40GB/s (42B/cycle @ 1029MHz). Use ~24B per
+    # Ruby cycle to match this.
+    if options.gpu_core_config == 'Fermi':
+        l1_cluster_bw = 16
+    elif options.gpu_core_config == 'Maxwell':
+        l1_cluster_bw = 24
+    elif options.gpu_core_config == 'Tegra':
+        #FIXME using Fermi for now
+        l1_cluster_bw = 16
+    else:
+        m5.util.fatal("Unknown GPU core config: %s" % options.gpu_core_config)
+
+    gpu_cluster = Cluster(intBW = l1_cluster_bw, extBW = l1_cluster_bw)
     gpu_cluster.disableConnectToParent()
 
     l2_bits = int(math.log(options.gpu_num_l2caches, 2))
@@ -89,17 +96,7 @@ def create_system(options, system, dma_devices, ruby_system):
         #
         data_cache = L1Cache(size = options.sc_l1_size,
                             assoc = options.sc_l1_assoc,
-                            replacement_policy = "LRU",
-                            start_index_bit = block_size_bits,
-                            dataArrayBanks = 4,
-                            tagArrayBanks = 4,
-                            dataAccessLatency = 4,
-                            tagAccessLatency = 4,
-                            resourceStalls = False)
-
-        tex_cache = L1Cache(size = options.sc_tl1_size,
-                            assoc = options.sc_tl1_assoc,
-                            replacement_policy = "LRU",
+                            replacement_policy = LRUReplacementPolicy(),
                             start_index_bit = block_size_bits,
                             dataArrayBanks = 4,
                             tagArrayBanks = 4,
@@ -111,31 +108,41 @@ def create_system(options, system, dma_devices, ruby_system):
                                   cache = data_cache,
                                   l2_select_num_bits = l2_bits,
                                   num_l2 = options.gpu_num_l2caches,
+                                  transitions_per_cycle = options.ports,
                                   issue_latency = l1_to_l2_noc_latency,
                                   number_of_TBEs = options.gpu_l1_buf_depth,
-                                  ruby_system = ruby_system)
-
-        tex_l1_cntrl = GPUL1Cache_Controller(version = i*2+1,
-                                  cache = data_cache,
-                                  l2_select_num_bits = l2_bits,
-                                  num_l2 = options.gpu_num_l2caches,
-                                  issue_latency = l1_to_l2_noc_latency,
-                                  number_of_TBEs = options.gpu_tl1_buf_depth,
                                   ruby_system = ruby_system)
 
         data_gpu_seq = RubySequencer(version = options.num_cpus + i*2,
                             icache = data_cache,
                             dcache = data_cache,
-                            access_phys_mem = True,
                             max_outstanding_requests = options.gpu_l1_buf_depth,
                             ruby_system = ruby_system,
                             deadlock_threshold = 2000000,
                             connect_to_io = False)
 
+        tex_cache = L1Cache(size = options.sc_tl1_size,
+                            assoc = options.sc_tl1_assoc,
+                            replacement_policy = LRUReplacementPolicy(),
+                            start_index_bit = block_size_bits,
+                            dataArrayBanks = 4,
+                            tagArrayBanks = 4,
+                            dataAccessLatency = 4,
+                            tagAccessLatency = 4,
+                            resourceStalls = False)
+
+        tex_l1_cntrl = GPUL1Cache_Controller(version = i*2+1,
+                                  cache = tex_cache,
+                                  l2_select_num_bits = l2_bits,
+                                  num_l2 = options.gpu_num_l2caches,
+								          transitions_per_cycle = options.ports,
+                                  issue_latency = l1_to_l2_noc_latency,
+                                  number_of_TBEs = options.gpu_tl1_buf_depth,
+                                  ruby_system = ruby_system)
+
         tex_gpu_seq = RubySequencer(version = options.num_cpus + i*2+1,
                             icache = tex_cache,
                             dcache = tex_cache,
-                            access_phys_mem = True,
                             max_outstanding_requests = options.gpu_tl1_buf_depth,
                             ruby_system = ruby_system,
                             deadlock_threshold = 2000000,
@@ -157,6 +164,20 @@ def create_system(options, system, dma_devices, ruby_system):
         gpu_cluster.add(data_l1_cntrl)
         gpu_cluster.add(tex_l1_cntrl)
 
+        # Connect the controllers to the network
+        data_l1_cntrl.requestFromL1Cache = MessageBuffer(ordered = True)
+        data_l1_cntrl.requestFromL1Cache.master = ruby_system.network.slave
+        data_l1_cntrl.responseToL1Cache = MessageBuffer(ordered = True)
+        data_l1_cntrl.responseToL1Cache.slave = ruby_system.network.master
+        data_l1_cntrl.mandatoryQueue = MessageBuffer()
+
+        tex_l1_cntrl.requestFromL1Cache = MessageBuffer(ordered = True)
+        tex_l1_cntrl.requestFromL1Cache.master = ruby_system.network.slave
+        tex_l1_cntrl.responseToL1Cache = MessageBuffer(ordered = True)
+        tex_l1_cntrl.responseToL1Cache.slave = ruby_system.network.master
+        tex_l1_cntrl.mandatoryQueue = MessageBuffer()
+
+
     l2_index_start = block_size_bits + l2_bits
     # Use L2 cache and interconnect latencies to calculate protocol latencies
     # NOTES! 1) These latencies are in Ruby (cache) cycles, not SM cycles
@@ -167,6 +188,19 @@ def create_system(options, system, dma_devices, ruby_system):
     l2_cache_access_latency = 30 # ~10 GPU cycles
     l2_to_l1_noc_latency = per_hop_interconnect_latency * num_dance_hall_hops
     l2_to_mem_noc_latency = 125 # ~40 GPU cycles
+    # Empirically, Fermi per-L2 bank bandwidth peaks at roughly 66GB/s
+    # (92B/cycle @ 772MHz). Use ~34B per Ruby cycle to match this. Maxwell
+    # per-L2 bank bandwidth peaks at 123GB/s (128B/cycle @ 1029MHz). Use ~64B
+    # per Ruby cycle to match this.
+    if options.gpu_core_config == 'Fermi':
+        l2_cluster_bw = 34
+    elif options.gpu_core_config == 'Maxwell':
+        l2_cluster_bw = 68
+    elif options.gpu_core_config == 'Tegra':
+        #FIXME using Fermi configs for now
+        l2_cluster_bw = 34
+    else:
+        m5.util.fatal("Unknown GPU core config: %s" % options.gpu_core_config)
 
     l2_clusters = []
     for i in xrange(options.gpu_num_l2caches):
@@ -176,7 +210,7 @@ def create_system(options, system, dma_devices, ruby_system):
         l2_cache = L2Cache(size = options.sc_l2_size,
                            assoc = options.sc_l2_assoc,
                            start_index_bit = l2_index_start,
-                           replacement_policy = "LRU",
+                           replacement_policy = LRUReplacementPolicy(),
                            dataArrayBanks = 4,
                            tagArrayBanks = 4,
                            dataAccessLatency = 4,
@@ -185,6 +219,7 @@ def create_system(options, system, dma_devices, ruby_system):
 
         l2_cntrl = GPUL2Cache_Controller(version = i,
                                 L2cache = l2_cache,
+                                transitions_per_cycle = options.ports,
                                 l2_response_latency = l2_cache_access_latency +
                                                       l2_to_l1_noc_latency,
                                 l2_request_latency = l2_to_mem_noc_latency,
@@ -192,10 +227,29 @@ def create_system(options, system, dma_devices, ruby_system):
                                 ruby_system = ruby_system)
 
         exec("ruby_system.l2_cntrl%d = l2_cntrl" % i)
-        l2_cluster = Cluster(intBW = 32, extBW = 32)
+        l2_cluster = Cluster(intBW = l2_cluster_bw, extBW = l2_cluster_bw)
         l2_cluster.add(l2_cntrl)
         gpu_cluster.add(l2_cluster)
         l2_clusters.append(l2_cluster)
+
+        # Connect the controller to the network
+        l2_cntrl.responseToL1Cache = MessageBuffer(ordered = True)
+        l2_cntrl.responseToL1Cache.master = ruby_system.network.slave
+        l2_cntrl.requestFromCache = MessageBuffer()
+        l2_cntrl.requestFromCache.master = ruby_system.network.slave
+        l2_cntrl.responseFromCache = MessageBuffer()
+        l2_cntrl.responseFromCache.master = ruby_system.network.slave
+        l2_cntrl.unblockFromCache = MessageBuffer()
+        l2_cntrl.unblockFromCache.master = ruby_system.network.slave
+
+        l2_cntrl.requestFromL1Cache = MessageBuffer(ordered = True)
+        l2_cntrl.requestFromL1Cache.slave = ruby_system.network.master
+        l2_cntrl.forwardToCache = MessageBuffer()
+        l2_cntrl.forwardToCache.slave = ruby_system.network.master
+        l2_cntrl.responseToCache = MessageBuffer()
+        l2_cntrl.responseToCache.slave = ruby_system.network.master
+
+        l2_cntrl.triggerQueue = MessageBuffer()
 
     ############################################################################
     # Pagewalk cache
@@ -207,21 +261,18 @@ def create_system(options, system, dma_devices, ruby_system):
                             assoc = options.pwc_assoc, 
                             replacement_policy = options.pwc_policy,
                             start_index_bit = block_size_bits,
-                            latency = 8,
                             resourceStalls = False)
     # Small cache since CPU L1 requires I and D
     pwi_cache = L1Cache(size = "512B",
                             assoc = 2,
-                            replacement_policy = "LRU",
+                            replacement_policy = LRUReplacementPolicy(),
                             start_index_bit = block_size_bits,
-                            latency = 8,
                             resourceStalls = False)
 
     # Small cache since CPU L1 controller requires L2
     l2_cache = L2Cache(size = "512B",
                            assoc = 2,
                            start_index_bit = block_size_bits,
-                           latency = 1,
                            resourceStalls = False)
 
     l1_cntrl = L1Cache_Controller(version = options.num_cpus,
@@ -229,6 +280,7 @@ def create_system(options, system, dma_devices, ruby_system):
                                   L1Dcache = pwd_cache,
                                   L2cache = l2_cache,
                                   send_evictions = False,
+                                  transitions_per_cycle = options.ports,
                                   issue_latency = l1_to_l2_noc_latency,
                                   cache_response_latency = 1,
                                   l2_cache_hit_latency = 1,
@@ -238,7 +290,8 @@ def create_system(options, system, dma_devices, ruby_system):
     cpu_seq = RubySequencer(version = options.num_cpus + options.num_sc*2,
                             icache = pwd_cache, # Never get data from pwi_cache
                             dcache = pwd_cache,
-                            access_phys_mem = True,
+                            dcache_hit_latency = 8,
+                            icache_hit_latency = 8,
                             max_outstanding_requests = options.gpu_l1_buf_depth,
                             ruby_system = ruby_system,
                             deadlock_threshold = 2000000,
@@ -252,6 +305,24 @@ def create_system(options, system, dma_devices, ruby_system):
 
     gpu_cluster.add(l1_cntrl)
 
+    # Connect the L1 controller and the network
+    # Connect the buffers from the controller to network
+    l1_cntrl.requestFromCache = MessageBuffer()
+    l1_cntrl.requestFromCache.master = ruby_system.network.slave
+    l1_cntrl.responseFromCache = MessageBuffer()
+    l1_cntrl.responseFromCache.master = ruby_system.network.slave
+    l1_cntrl.unblockFromCache = MessageBuffer()
+    l1_cntrl.unblockFromCache.master = ruby_system.network.slave
+
+    # Connect the buffers from the network to the controller
+    l1_cntrl.forwardToCache = MessageBuffer()
+    l1_cntrl.forwardToCache.slave = ruby_system.network.master
+    l1_cntrl.responseToCache = MessageBuffer()
+    l1_cntrl.responseToCache.slave = ruby_system.network.master
+
+    l1_cntrl.mandatoryQueue = MessageBuffer()
+    l1_cntrl.triggerQueue = MessageBuffer()
+
 
     #
     # Create controller for the copy engine to connect to in GPU cluster
@@ -259,37 +330,66 @@ def create_system(options, system, dma_devices, ruby_system):
     #
     cache = L1Cache(size = "4096B", assoc = 2)
 
+    # Setting options.ce_buffering = 0 indicates that the CE can use infinite
+    # buffering, but we need to specify a finite number of outstandng accesses
+    # that the CE is allowed to issue. Just set it to some large number greater
+    # than normal memory access latencies to ensure that the sequencer could
+    # service one access per cycle.
+    max_out_reqs = options.ce_buffering
+    if max_out_reqs == 0:
+        max_out_reqs = 1024
+
     gpu_ce_seq = RubySequencer(version = options.num_cpus + options.num_sc*2 +1,
                                icache = cache,
                                dcache = cache,
-                               access_phys_mem = True,
-                               max_outstanding_requests = 64,
+                               max_outstanding_requests = max_out_reqs,
                                support_inst_reqs = False,
                                ruby_system = ruby_system,
                                connect_to_io = False)
 
     gpu_ce_cntrl = GPUCopyDMA_Controller(version = 0,
                                   sequencer = gpu_ce_seq,
-                                  number_of_TBEs = 256,
+                                  transitions_per_cycle = options.ports,
+                                  number_of_TBEs = max_out_reqs,
                                   ruby_system = ruby_system)
 
-    ruby_system.l1_cntrl_ce = gpu_ce_cntrl
+    gpu_ce_cntrl.responseFromDir = MessageBuffer(ordered = True)
+    gpu_ce_cntrl.responseFromDir.slave = ruby_system.network.master
+    gpu_ce_cntrl.reqToDirectory = MessageBuffer(ordered = True)
+    gpu_ce_cntrl.reqToDirectory.master = ruby_system.network.slave
+
+    gpu_ce_cntrl.mandatoryQueue = MessageBuffer()
+
+    ruby_system.ce_cntrl = gpu_ce_cntrl
 
     all_sequencers.append(gpu_ce_seq)
+
+    # To limit the copy engine's bandwidth, we add it to a limited bandwidth
+    # cluster. Approximate settings are as follows (assuming 2GHz Ruby clock):
+    #   PCIe v1.x x16 effective bandwidth ~= 4GB/s: intBW = 3, extBW = 3
+    #   PCIe v2.x x16 effective bandwidth ~= 8GB/s: intBW = 5, extBW = 5
+    #   PCIe v3.x x16 effective bandwidth ~= 16GB/s: intBW = 10, extBW = 10
+    #   PCIe v4.x x16 effective bandwidth ~= 32GB/s: intBW = 21, extBW = 21
+    # NOTE: Bandwidth may bottleneck at other parts of the memory hierarchy,
+    # so bandwidth considerations should be made in other parts of the memory
+    # hierarchy also.
+    gpu_ce_cluster = Cluster(intBW = 10, extBW = 10)
+    gpu_ce_cluster.add(gpu_ce_cntrl)
+
 
     #z cache
     z_cache = L1Cache(size = options.sc_zl1_size,
           assoc = options.sc_zl1_assoc,
-          replacement_policy = "LRU",
+          replacement_policy = LRUReplacementPolicy(),
           start_index_bit = block_size_bits,
-          dataArrayBanks = 4,
-          tagArrayBanks = 4,
-          dataAccessLatency = 4,
-          tagAccessLatency = 4,
+          dataArrayBanks = 8,
+          tagArrayBanks = 8,
+          dataAccessLatency = 1,
+          tagAccessLatency = 1,
           resourceStalls = False)
 
     z_cntrl = GPUL1Cache_Controller(version = options.num_sc*2,
-          cache = data_cache,
+          cache = z_cache,
           l2_select_num_bits = l2_bits,
           num_l2 = options.gpu_num_l2caches,
           issue_latency = l1_to_l2_noc_latency,
@@ -299,20 +399,89 @@ def create_system(options, system, dma_devices, ruby_system):
     z_seq = RubySequencer(version = options.num_cpus + options.num_sc*2+2,
           icache = z_cache,
           dcache = z_cache,
-          access_phys_mem = True,
           max_outstanding_requests = options.gpu_zl1_buf_depth,
           ruby_system = ruby_system,
           deadlock_threshold = 2000000,
           connect_to_io = False)
-   
+
     z_cntrl.sequencer = z_seq
-    ruby_system.z1_cntrl = z_cntrl
+    ruby_system.l1z_cntrl = z_cntrl
+
     all_sequencers.append(z_seq)
     gpu_cluster.add(z_cntrl)
+   
+    z_cntrl.requestFromL1Cache = MessageBuffer(ordered = True)
+    z_cntrl.requestFromL1Cache.master = ruby_system.network.slave
+    z_cntrl.responseToL1Cache = MessageBuffer(ordered = True)
+    z_cntrl.responseToL1Cache.slave = ruby_system.network.master
 
-    #
+    z_cntrl.mandatoryQueue = MessageBuffer()
+    #z cache
+
+    acl_cntrls = []
+    if options.accel_cfg_file:
+        for idx, datapath in enumerate(system.datapaths):
+          acl_cache = L1Cache(size = str(datapath.cacheSize),
+                assoc = datapath.cacheAssoc,
+                replacement_policy = LRUReplacementPolicy(),
+                start_index_bit = block_size_bits,
+                dataAccessLatency = datapath.cacheHitLatency)
+          acli_cache = L1Cache(size = "512B",
+                assoc = 2,
+                replacement_policy = LRUReplacementPolicy(),
+                start_index_bit = block_size_bits,
+                dataAccessLatency = datapath.cacheHitLatency)
+
+          #l2 cache to satisfy ruby
+          l2_cache = L2Cache(size = "512B",
+                           #size = str(datapath.cacheSize),
+                           assoc = 2,
+                           #assoc = datapath.cacheAssoc,
+                           start_index_bit = block_size_bits)
+         
+          assert (not options.is_perfect_cache) #TODO: handle this option
+
+          acl_cntrl = L1Cache_Controller(version = options.num_cpus+idx+1,
+                L1Dcache = acl_cache,
+                L1Icache = acli_cache, #never used
+                L2cache = l2_cache,
+                no_mig_atomic = not options.allow_atomic_migration,
+                send_evictions = send_evicts(options),
+                transitions_per_cycle = options.ports,
+                ruby_system = ruby_system)
+
+          acl_seq = RubySequencer(version = options.num_cpus + options.num_sc*2+3+idx,
+                icache = acl_cache,
+                dcache = acl_cache,
+                ruby_system = ruby_system,
+                deadlock_threshold = 2000000)
+        
+          # Connect the L1 controller and the network
+          # Connect the buffers from the controller to network
+          acl_cntrl.requestFromCache = MessageBuffer()
+          acl_cntrl.requestFromCache.master = ruby_system.network.slave
+          acl_cntrl.responseFromCache = MessageBuffer()
+          acl_cntrl.responseFromCache.master = ruby_system.network.slave
+          acl_cntrl.unblockFromCache = MessageBuffer()
+          acl_cntrl.unblockFromCache.master = ruby_system.network.slave
+
+          # Connect the buffers from the network to the controller
+          acl_cntrl.forwardToCache = MessageBuffer()
+          acl_cntrl.forwardToCache.slave = ruby_system.network.master
+          acl_cntrl.responseToCache = MessageBuffer()
+          acl_cntrl.responseToCache.slave = ruby_system.network.master
+
+          acl_cntrl.mandatoryQueue = MessageBuffer()
+          acl_cntrl.triggerQueue = MessageBuffer()
+
+          acl_cntrl.sequencer = acl_seq
+          exec("ruby_system.acl_cntrl%02d = acl_cntrl" % idx)
+          all_sequencers.append(acl_seq)
+          acl_cntrls.append(acl_cntrl)
+
+
     complete_cluster = Cluster(intBW = 32, extBW = 32)
-    complete_cluster.add(gpu_ce_cntrl)
+    complete_cluster.add(gpu_ce_cluster)
     complete_cluster.add(cpu_cluster)
     complete_cluster.add(gpu_cluster)
 
@@ -320,6 +489,9 @@ def create_system(options, system, dma_devices, ruby_system):
         complete_cluster.add(cntrl)
 
     for cntrl in dma_cntrls:
+        complete_cluster.add(cntrl)
+
+    for cntrl in acl_cntrls:
         complete_cluster.add(cntrl)
 
     for cluster in l2_clusters:

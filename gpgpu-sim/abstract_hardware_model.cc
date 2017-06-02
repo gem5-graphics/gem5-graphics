@@ -36,6 +36,8 @@
 #include "option_parser.h"
 #include <algorithm>
 
+#include "gpu/gpgpu-sim/cuda_gpu.hh"
+
 extern gpgpu_sim *g_the_gpu;
 
 unsigned mem_access_t::sm_next_access_uid = 0;   
@@ -91,8 +93,8 @@ void gpgpu_functional_sim_config::ptx_set_tex_cache_linesize(unsigned linesize)
    m_texcache_linesize = linesize;
 }
 
-gpgpu_t::gpgpu_t( const gpgpu_functional_sim_config &config, int _sharedMemDelay )
-    : sharedMemDelay(_sharedMemDelay), m_function_model_config(config)
+gpgpu_t::gpgpu_t( const gpgpu_functional_sim_config &config, CudaGPU *cuda_gpu )
+    : gem5CudaGPU(cuda_gpu), m_function_model_config(config)
 {
    m_global_mem = NULL; // Accesses to global memory should go through gem5-gpu
    m_tex_mem =  new gem5memorySpace(); // Accesses to texture memory should go through gem5-gpu
@@ -154,7 +156,6 @@ void warp_inst_t::set_active( const active_mask_t &active ) {
 void warp_inst_t::do_atomic(bool forceDo) {
     do_atomic( m_warp_active_mask,forceDo );
 }
-
 
 void warp_inst_t::do_atomic( const active_mask_t& access_mask,bool forceDo ) {
     assert( m_isatomic && (!m_empty||forceDo) );
@@ -313,7 +314,7 @@ void warp_inst_t::generate_mem_accesses()
             }
         }
         assert( total_accesses > 0 && total_accesses <= m_config->warp_size );
-        cycles = total_accesses * g_the_gpu->sharedMemDelay; // shared memory conflicts modeled as larger initiation interval
+        cycles = total_accesses + m_config->gpgpu_shmem_access_latency; // shared memory conflicts modeled as larger initiation interval
         ptx_file_line_stats_add_smem_bank_conflict( pc, total_accesses );
         break;
     }
@@ -417,6 +418,7 @@ void warp_inst_t::memory_coalescing_arch_13( bool is_write, mem_access_type acce
 
 
             assert(num_accesses <= MAX_ACCESSES_PER_INSN_PER_THREAD);
+
             for(unsigned access=0; access<num_accesses; access++) {
                 new_addr_type addr = m_per_scalar_thread[thread].memreqaddr[access];
                 new_addr_type block_address = line_size_based_tag_func(addr,segment_size);
@@ -759,6 +761,7 @@ void simt_stack::update( simt_mask_t &thread_done, addr_vector_t &next_pc, addre
     		new_stack_entry.m_type = STACK_ENTRY_TYPE_CALL;
     		m_stack.push_back(new_stack_entry);
     		return;
+
     	}else if(next_inst_op == RET_OPS && top_type==STACK_ENTRY_TYPE_CALL){
     		// pop the CALL Entry
     		assert(num_divergent_paths == 1);

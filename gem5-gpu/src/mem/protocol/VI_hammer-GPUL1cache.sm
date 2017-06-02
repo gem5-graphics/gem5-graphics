@@ -1,17 +1,20 @@
 
 machine(GPUL1Cache, "VI GPU L1 Cache")
-: Sequencer * sequencer,
-  CacheMemory * cache,
-  int l2_select_num_bits,
-  int num_l2,
-  Cycles issue_latency = 2,
+: Sequencer * sequencer;
+  CacheMemory * cache;
+  int l2_select_num_bits;
+  int num_l2;
+  Cycles issue_latency := 2;
+
+
+   // NETWORK BUFFERS
+  MessageBuffer * requestFromL1Cache, network="To", virtual_network="7",
+        vnet_type="request";
+
+  MessageBuffer * responseToL1Cache, network="From", virtual_network="6",
+        vnet_type="response";
+
 {
-
-  // NETWORK BUFFERS
-  MessageBuffer requestFromL1Cache, network="To", virtual_network="7", ordered="true", vnet_type="request";
-
-  MessageBuffer responseToL1Cache, network="From", virtual_network="6", ordered="true", vnet_type="response";
-
   // STATES
   state_declaration(State, desc="Cache states") {
     I, AccessPermission:Invalid, desc="Not Present/Invalid";
@@ -52,7 +55,7 @@ machine(GPUL1Cache, "VI GPU L1 Cache")
 
   // STRUCTURE DEFINITIONS
 
-  MessageBuffer mandatoryQueue, ordered="false";
+  MessageBuffer mandatoryQueue;
 
   // CacheEntry
   structure(Entry, desc="...", interface="AbstractCacheEntry") {
@@ -69,10 +72,10 @@ machine(GPUL1Cache, "VI GPU L1 Cache")
   }
 
   structure(TBETable, external="yes") {
-    TBE lookup(Address);
-    void allocate(Address);
-    void deallocate(Address);
-    bool isPresent(Address);
+    TBE lookup(Addr);
+    void allocate(Addr);
+    void deallocate(Addr);
+    bool isPresent(Addr);
   }
 
 
@@ -89,10 +92,10 @@ machine(GPUL1Cache, "VI GPU L1 Cache")
   void set_tbe(TBE b);
   void unset_tbe();
   void wakeUpAllBuffers();
-  void wakeUpBuffers(Address a);
+  void wakeUpBuffers(Addr a);
   void profileMsgDelay(int virtualNetworkType, Cycles b);
 
-  Entry getCacheEntry(Address address), return_by_pointer="yes" {
+  Entry getCacheEntry(Addr address), return_by_pointer="yes" {
     return static_cast(Entry, "pointer", cache.lookup(address));
   }
 
@@ -100,7 +103,7 @@ machine(GPUL1Cache, "VI GPU L1 Cache")
   int l2_select_low_bit, default="RubySystem::getBlockSizeBits()";
 
   // External functions
-  MachineID getL2ID(Address num, int num_l2s, int select_bits, int select_start_bit);
+  MachineID getL2ID(Addr num, int num_l2s, int select_bits, int select_start_bit);
 
   // FUNCTIONS
   Event mandatory_request_type_to_event(RubyRequestType type) {
@@ -122,7 +125,7 @@ machine(GPUL1Cache, "VI GPU L1 Cache")
     }
   }
 
-  State getState(TBE tbe, Entry cache_entry, Address addr) {
+  State getState(TBE tbe, Entry cache_entry, Addr addr) {
 
     if (is_valid(tbe)) {
       return tbe.TBEState;
@@ -135,7 +138,7 @@ machine(GPUL1Cache, "VI GPU L1 Cache")
     }
   }
 
-  void setState(TBE tbe, Entry cache_entry, Address addr, State state) {
+  void setState(TBE tbe, Entry cache_entry, Addr addr, State state) {
 
     if (is_valid(tbe)) {
       tbe.TBEState := state;
@@ -146,7 +149,7 @@ machine(GPUL1Cache, "VI GPU L1 Cache")
     }
   }
 
-  AccessPermission getAccessPermission(Address addr) {
+  AccessPermission getAccessPermission(Addr addr) {
     TBE tbe := TBEs[addr];
     if(is_valid(tbe)) {
       return GPUL1Cache_State_to_permission(tbe.TBEState);
@@ -160,41 +163,57 @@ machine(GPUL1Cache, "VI GPU L1 Cache")
     return AccessPermission:NotPresent;
   }
 
-  void setAccessPermission(Entry cache_entry, Address addr, State state) {
+  void setAccessPermission(Entry cache_entry, Addr addr, State state) {
     if (is_valid(cache_entry)) {
       cache_entry.changePermission(GPUL1Cache_State_to_permission(state));
     }
   }
 
-  DataBlock getDataBlock(Address addr), return_by_ref="yes" {
+  void functionalRead(Addr addr, Packet *pkt) {
     Entry cache_entry := getCacheEntry(addr);
     if(is_valid(cache_entry)) {
-        return cache_entry.DataBlk;
+      testAndRead(addr, cache_entry.DataBlk, pkt);
+    } else {
+      TBE tbe := TBEs[addr];
+      if(is_valid(tbe)) {
+        testAndRead(addr, tbe.DataBlk, pkt);
+      } else {
+        error("Missing data block");
+      }
+    }
+  }
+
+  int functionalWrite(Addr addr, Packet *pkt) {
+    int num_functional_writes := 0;
+
+    Entry cache_entry := getCacheEntry(addr);
+    if(is_valid(cache_entry)) {
+      num_functional_writes := num_functional_writes +
+        testAndWrite(addr, cache_entry.DataBlk, pkt);
+      return num_functional_writes;
     }
 
     TBE tbe := TBEs[addr];
-    if(is_valid(tbe)) {
-      return tbe.DataBlk;
-    }
-
-    error("Missing data block");
+    num_functional_writes := num_functional_writes +
+      testAndWrite(addr, tbe.DataBlk, pkt);
+    return num_functional_writes;
   }
 
-  void recordRequestType(RequestType type, Address addr) {
+  void recordRequestType(RequestType type, Addr addr) {
     if (type == RequestType:DataArrayRead) {
-      cache.recordRequestType(CacheRequestType:DataArrayRead);
+      cache.recordRequestType(CacheRequestType:DataArrayRead, addr);
     } else if (type == RequestType:DataArrayWrite) {
-      cache.recordRequestType(CacheRequestType:DataArrayWrite);
+      cache.recordRequestType(CacheRequestType:DataArrayWrite, addr);
     } else if (type == RequestType:TagArrayRead) {
-      cache.recordRequestType(CacheRequestType:TagArrayRead);
+      cache.recordRequestType(CacheRequestType:TagArrayRead, addr);
     } else if (type == RequestType:TagArrayWrite) {
-      cache.recordRequestType(CacheRequestType:TagArrayWrite);
+      cache.recordRequestType(CacheRequestType:TagArrayWrite, addr);
     } else {
       error("Bad request type passed to recordRequestType");
     }
   }
 
-  bool checkResourceAvailable(RequestType type, Address addr) {
+  bool checkResourceAvailable(RequestType type, Addr addr) {
     if (type == RequestType:DataArrayRead) {
       return cache.checkResourceAvailable(CacheResourceType:DataArray, addr);
     } else if (type == RequestType:DataArrayWrite) {
@@ -214,10 +233,10 @@ machine(GPUL1Cache, "VI GPU L1 Cache")
 
   in_port(responseNetwork_in, ResponseMsgVI, responseToL1Cache) {
     if (responseNetwork_in.isReady()) {
-      peek(responseNetwork_in, ResponseMsgVI, block_on="Addr") {
+      peek(responseNetwork_in, ResponseMsgVI, block_on="addr") {
 
-        Entry cache_entry := getCacheEntry(in_msg.Addr);
-        TBE tbe := TBEs[in_msg.Addr];
+        Entry cache_entry := getCacheEntry(in_msg.addr);
+        TBE tbe := TBEs[in_msg.addr];
 
         if (in_msg.Type == CoherenceResponseTypeVI:DATA) {
           //
@@ -227,15 +246,15 @@ machine(GPUL1Cache, "VI GPU L1 Cache")
           // trigger will need to be moved back to the request side for eager
           // cache frame allocation. 
           //
-          if (cache.cacheAvail(in_msg.Addr) == false) {
-            trigger(Event:Replacement, cache.cacheProbe(in_msg.Addr),
-                    getCacheEntry(cache.cacheProbe(in_msg.Addr)),
-                    TBEs[cache.cacheProbe(in_msg.Addr)]);
+          if (cache.cacheAvail(in_msg.addr) == false) {
+            trigger(Event:Replacement, cache.cacheProbe(in_msg.addr),
+                    getCacheEntry(cache.cacheProbe(in_msg.addr)),
+                    TBEs[cache.cacheProbe(in_msg.addr)]);
           } else {
-            trigger(Event:Data, in_msg.Addr, cache_entry, tbe);
+            trigger(Event:Data, in_msg.addr, cache_entry, tbe);
           }
         } else if (in_msg.Type == CoherenceResponseTypeVI:WB_ACK) {
-          trigger(Event:Write_Ack, in_msg.Addr, cache_entry, tbe);
+          trigger(Event:Write_Ack, in_msg.addr, cache_entry, tbe);
         } else {
           error("Unexpected message");
         }
@@ -264,7 +283,7 @@ machine(GPUL1Cache, "VI GPU L1 Cache")
 
   action(a_issueRequest, "a", desc="Issue a request") {
     enqueue(requestNetwork_out, RequestMsgVI, issue_latency) {
-      out_msg.Addr := address;
+      out_msg.addr := address;
       out_msg.Type := CoherenceRequestTypeVI:GET;
       out_msg.Requestor := machineID;
       out_msg.Destination.add(getL2ID(address, num_l2, l2_select_num_bits, l2_select_low_bit));
@@ -275,14 +294,14 @@ machine(GPUL1Cache, "VI GPU L1 Cache")
   action(b_issuePUT, "b", desc="Issue a PUT request") {
     peek(mandatoryQueue_in, RubyRequest) {
       enqueue(requestNetwork_out, RequestMsgVI, issue_latency) {
-        out_msg.Addr := address;
+        out_msg.addr := address;
         out_msg.Type := CoherenceRequestTypeVI:PUT;
         out_msg.Requestor := machineID;
         out_msg.Destination.add(getL2ID(address, num_l2, l2_select_num_bits, l2_select_low_bit));
         out_msg.MessageSize := MessageSizeType:Data;
         // must write the data to the message so the L2 will have the right data
         in_msg.writeData(out_msg.DataBlk);
-        out_msg.Offset := addressOffset(in_msg.PhysicalAddress);
+        out_msg.Offset := getOffset(in_msg.PhysicalAddress);
         out_msg.Size := in_msg.Size;
         DPRINTF(RubySlicc, "%s: offset: %d, size: %d\n", address, out_msg.Offset, out_msg.Size);
       }

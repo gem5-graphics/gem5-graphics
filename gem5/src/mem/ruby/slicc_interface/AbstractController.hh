@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009 Mark D. Hill and David A. Wood
+ * Copyright (c) 2009-2014 Mark D. Hill and David A. Wood
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,26 +29,35 @@
 #ifndef __MEM_RUBY_SLICC_INTERFACE_ABSTRACTCONTROLLER_HH__
 #define __MEM_RUBY_SLICC_INTERFACE_ABSTRACTCONTROLLER_HH__
 
+#include <exception>
 #include <iostream>
 #include <string>
 
 #include "base/callback.hh"
 #include "mem/protocol/AccessPermission.hh"
-#include "mem/ruby/buffers/MessageBuffer.hh"
 #include "mem/ruby/common/Address.hh"
 #include "mem/ruby/common/Consumer.hh"
 #include "mem/ruby/common/DataBlock.hh"
 #include "mem/ruby/common/Histogram.hh"
+#include "mem/ruby/common/MachineID.hh"
+#include "mem/ruby/network/MessageBuffer.hh"
 #include "mem/ruby/network/Network.hh"
-#include "mem/ruby/recorder/CacheRecorder.hh"
-#include "mem/ruby/system/MachineID.hh"
+#include "mem/ruby/system/CacheRecorder.hh"
 #include "mem/packet.hh"
+#include "mem/qport.hh"
 #include "params/RubyController.hh"
-#include "sim/clocked_object.hh"
+#include "mem/mem_object.hh"
 
 class Network;
 
-class AbstractController : public ClockedObject, public Consumer
+// used to communicate that an in_port peeked the wrong message type
+class RejectException: public std::exception
+{
+    virtual const char* what() const throw()
+    { return "Port rejected message based on type"; }
+};
+
+class AbstractController : public MemObject, public Consumer
 {
   public:
     typedef RubyControllerParams Params;
@@ -62,14 +71,12 @@ class AbstractController : public ClockedObject, public Consumer
     void initNetworkPtr(Network* net_ptr) { m_net_ptr = net_ptr; }
 
     // return instance name
-    void blockOnQueue(Address, MessageBuffer*);
-    void unblock(Address);
+    void blockOnQueue(Addr, MessageBuffer*);
+    void unblock(Addr);
 
     virtual MessageBuffer* getMandatoryQueue() const = 0;
-    virtual const std::string toString() const = 0;  // returns text version of
-                                                     // controller type
-    virtual AccessPermission getAccessPermission(const Address& addr) = 0;
-    virtual DataBlock& getDataBlock(const Address& addr) = 0;
+    virtual MessageBuffer* getMemoryQueue() const = 0;
+    virtual AccessPermission getAccessPermission(const Addr &addr) = 0;
 
     virtual void print(std::ostream & out) const = 0;
     virtual void wakeup() = 0;
@@ -79,17 +86,18 @@ class AbstractController : public ClockedObject, public Consumer
     virtual void recordCacheTrace(int cntrl, CacheRecorder* tr) = 0;
     virtual Sequencer* getSequencer() const = 0;
 
-    //! These functions are used by ruby system to read/write the message
-    //! queues that exist with in the controller.
-    //! The boolean return value indicates if the read was performed
-    //! successfully.
-    virtual bool functionalReadBuffers(PacketPtr&) = 0;
+    //! These functions are used by ruby system to read/write the data blocks
+    //! that exist with in the controller.
+    virtual void functionalRead(const Addr &addr, PacketPtr) = 0;
+    void functionalMemoryRead(PacketPtr);
     //! The return value indicates the number of messages written with the
     //! data from the packet.
-    virtual uint32_t functionalWriteBuffers(PacketPtr&) = 0;
+    virtual int functionalWriteBuffers(PacketPtr&) = 0;
+    virtual int functionalWrite(const Addr &addr, PacketPtr) = 0;
+    int functionalMemoryWrite(PacketPtr);
 
     //! Function for enqueuing a prefetch request
-    virtual void enqueuePrefetch(const Address&, const RubyRequestType&)
+    virtual void enqueuePrefetch(const Addr &, const RubyRequestType&)
     { fatal("Prefetches not implemented!");}
 
     //! Function for collating statistics from all the controllers of this
@@ -98,6 +106,20 @@ class AbstractController : public ClockedObject, public Consumer
     virtual void collateStats()
     {fatal("collateStats() should be overridden!");}
 
+    //! Initialize the message buffers.
+    virtual void initNetQueues() = 0;
+
+    /** A function used to return the port associated with this bus object. */
+    BaseMasterPort& getMasterPort(const std::string& if_name,
+                                  PortID idx = InvalidPortID);
+
+    void queueMemoryRead(const MachineID &id, Addr addr, Cycles latency);
+    void queueMemoryWrite(const MachineID &id, Addr addr, Cycles latency,
+                          const DataBlock &block);
+    void queueMemoryWritePartial(const MachineID &id, Addr addr, Cycles latency,
+                                 const DataBlock &block, int size);
+    void recvTimingResp(PacketPtr pkt);
+
   public:
     MachineID getMachineID() const { return m_machineID; }
 
@@ -105,28 +127,15 @@ class AbstractController : public ClockedObject, public Consumer
     Stats::Histogram& getDelayVCHist(uint32_t index)
     { return *(m_delayVCHistogram[index]); }
 
-    MessageBuffer *getPeerQueue(uint32_t pid)
-    {
-        std::map<uint32_t, MessageBuffer *>::iterator it =
-                                        peerQueueMap.find(pid);
-        assert(it != peerQueueMap.end());
-        return (*it).second;
-    }
-
   protected:
     //! Profiles original cache requests including PUTs
     void profileRequest(const std::string &request);
     //! Profiles the delay associated with messages.
     void profileMsgDelay(uint32_t virtualNetwork, Cycles delay);
 
-    //! Function for connecting peer controllers
-    void connectWithPeer(AbstractController *);
-    virtual void getQueuesFromPeer(AbstractController *)
-    { fatal("getQueuesFromPeer() should be called only if implemented!"); }
-
-    void stallBuffer(MessageBuffer* buf, Address addr);
-    void wakeUpBuffers(Address addr);
-    void wakeUpAllBuffers(Address addr);
+    void stallBuffer(MessageBuffer* buf, Addr addr);
+    void wakeUpBuffers(Addr addr);
+    void wakeUpAllBuffers(Addr addr);
     void wakeUpAllBuffers();
 
   protected:
@@ -134,12 +143,16 @@ class AbstractController : public ClockedObject, public Consumer
     MachineID m_machineID;
     NodeID m_clusterID;
 
+    // MasterID used by some components of gem5.
+    MasterID m_masterId;
+
     Network* m_net_ptr;
     bool m_is_blocking;
-    std::map<Address, MessageBuffer*> m_block_map;
+    std::map<Addr, MessageBuffer*> m_block_map;
 
     typedef std::vector<MessageBuffer*> MsgVecType;
-    typedef std::map< Address, MsgVecType* > WaitingBufType;
+    typedef std::set<MessageBuffer*> MsgBufType;
+    typedef std::map<Addr, MsgVecType* > WaitingBufType;
     WaitingBufType m_waiting_buffers;
 
     unsigned int m_in_ports;
@@ -148,9 +161,6 @@ class AbstractController : public ClockedObject, public Consumer
     int m_transitions_per_cycle;
     unsigned int m_buffer_size;
     Cycles m_recycle_latency;
-
-    //! Map from physical network number to the Message Buffer.
-    std::map<uint32_t, MessageBuffer*> peerQueueMap;
 
     //! Counter for the number of cycles when the transitions carried out
     //! were equal to the maximum allowed
@@ -172,6 +182,43 @@ class AbstractController : public ClockedObject, public Consumer
         virtual ~StatsCallback() {}
         StatsCallback(AbstractController *_ctr) : ctr(_ctr) {}
         void process() {ctr->collateStats();}
+    };
+
+    /**
+     * Port that forwards requests and receives responses from the
+     * memory controller.  It has a queue of packets not yet sent.
+     */
+    class MemoryPort : public QueuedMasterPort
+    {
+      private:
+        // Packet queues used to store outgoing requests and snoop responses.
+        ReqPacketQueue reqQueue;
+        SnoopRespPacketQueue snoopRespQueue;
+
+        // Controller that operates this port.
+        AbstractController *controller;
+
+      public:
+        MemoryPort(const std::string &_name, AbstractController *_controller,
+                   const std::string &_label);
+
+        // Function for receiving a timing response from the peer port.
+        // Currently the pkt is handed to the coherence controller
+        // associated with this port.
+        bool recvTimingResp(PacketPtr pkt);
+    };
+
+    /* Master port to the memory controller. */
+    MemoryPort memoryPort;
+
+    // State that is stored in packets sent to the memory controller.
+    struct SenderState : public Packet::SenderState
+    {
+        // Id of the machine from which the request originated.
+        MachineID id;
+
+        SenderState(MachineID _id) : id(_id)
+        {}
     };
 };
 

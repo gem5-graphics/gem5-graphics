@@ -42,6 +42,8 @@ using namespace std;
 //
 FuncUnit::FuncUnit()
 {
+    opLatencies.fill(0);
+    pipelined.fill(false);
     capabilityList.reset();
 }
 
@@ -52,7 +54,7 @@ FuncUnit::FuncUnit(const FuncUnit &fu)
 
     for (int i = 0; i < Num_OpClasses; ++i) {
         opLatencies[i] = fu.opLatencies[i];
-        issueLatencies[i] = fu.issueLatencies[i];
+        pipelined[i] = fu.pipelined[i];
     }
 
     capabilityList = fu.capabilityList;
@@ -60,15 +62,15 @@ FuncUnit::FuncUnit(const FuncUnit &fu)
 
 
 void
-FuncUnit::addCapability(OpClass cap, unsigned oplat, unsigned issuelat)
+FuncUnit::addCapability(OpClass cap, unsigned oplat, bool pipeline)
 {
-    if (issuelat == 0 || oplat == 0)
+    if (oplat == 0)
         panic("FuncUnit:  you don't really want a zero-cycle latency do you?");
 
     capabilityList.set(cap);
 
     opLatencies[cap] = oplat;
-    issueLatencies[cap] = issuelat;
+    pipelined[cap] = pipeline;
 }
 
 bool
@@ -89,10 +91,10 @@ FuncUnit::opLatency(OpClass cap)
     return opLatencies[cap];
 }
 
-unsigned
-FuncUnit::issueLatency(OpClass capability)
+bool
+FuncUnit::isPipelined(OpClass capability)
 {
-    return issueLatencies[capability];
+    return pipelined[capability];
 }
 
 ////////////////////////////////////////////////////////////////////////////

@@ -166,7 +166,7 @@ void gpgpu_t::gpgpu_ptx_sim_bindTextureToArray(const struct textureReference* te
 
    printf("GPGPU-Sim PTX:   Tx = %d; Ty = %d, Tx_numbits = %d, Ty_numbits = %d\n", Tx, Ty, intLOGB2(Tx), intLOGB2(Ty));
    printf("GPGPU-Sim PTX:   Texel size = %d bytes; texel_size_numbits = %d\n", texel_size, intLOGB2(texel_size));
-   printf("GPGPU-Sim PTX:   Binding texture to array starting at devPtr32 = 0x%x\n", array->devPtr32);
+   printf("GPGPU-Sim PTX:   Binding texture to array starting at devPtr = 0x%x\n", array->devPtr);
    printf("GPGPU-Sim PTX:   Texel size = %d bytes\n", texel_size);
    struct textureInfo* texInfo = (struct textureInfo*) malloc(sizeof(struct textureInfo)); 
    texInfo->Tx = Tx;
@@ -734,6 +734,26 @@ void ptx_instruction::set_opcode_and_latency()
 		   break;
 	   }
 	   break;
+   case REM_OP:
+       // Integer only int div latency
+       op = SFU_OP;
+       switch(get_type()){
+       case F64_TYPE:
+       case FF64_TYPE:
+       case F32_TYPE:
+           panic("REM_OP must be int type, not: %d\n", get_type());
+           break;
+       case B32_TYPE:
+       case U32_TYPE:
+       case S32_TYPE:
+           latency = int_latency[4];
+           initiation_interval = int_init[4];
+           break;
+       default:
+           panic("Unknown REM_OP type: %d\n", get_type());
+           break;
+       }
+       break;
    case SQRT_OP: case SIN_OP: case COS_OP: case EX2_OP: case LG2_OP: case RSQRT_OP: case RCP_OP:
 	   //Using double to approximate those
 	  latency = dp_latency[2];

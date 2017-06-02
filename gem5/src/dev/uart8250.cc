@@ -36,7 +36,6 @@
 #include <vector>
 
 #include "base/inifile.hh"
-#include "base/str.hh"        // for to_number
 #include "base/trace.hh"
 #include "config/the_isa.hh"
 #include "debug/Uart.hh"
@@ -114,7 +113,6 @@ Uart8250::read(PacketPtr pkt)
     assert(pkt->getSize() == 1);
 
     Addr daddr = pkt->getAddr() - pioAddr;
-    pkt->allocate();
 
     DPRINTF(Uart, " read register %#x\n", daddr);
 
@@ -294,7 +292,7 @@ Uart8250::getAddrRanges() const
 }
 
 void
-Uart8250::serialize(ostream &os)
+Uart8250::serialize(CheckpointOut &cp) const
 {
     SERIALIZE_SCALAR(status);
     SERIALIZE_SCALAR(IER);
@@ -316,7 +314,7 @@ Uart8250::serialize(ostream &os)
 }
 
 void
-Uart8250::unserialize(Checkpoint *cp, const std::string &section)
+Uart8250::unserialize(CheckpointIn &cp)
 {
     UNSERIALIZE_SCALAR(status);
     UNSERIALIZE_SCALAR(IER);

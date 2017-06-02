@@ -33,6 +33,7 @@
 #include "sim/sim_events.hh"
 
 GlobalSimLoopExitEvent *simulate(Tick num_cycles = MaxTick);
+extern GlobalSimLoopExitEvent *simulate_limit_event;
 
 class CheckPointRequest_t{
 public:

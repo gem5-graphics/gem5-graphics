@@ -47,7 +47,7 @@
 #include "qtree.hpp"
 
 QTree::QTree( const Configuration& config, const string & name )
-: Network ( config, name )
+: ISNetwork ( config, name )
 {
   _ComputeSize( config );
   _Alloc( );

@@ -41,8 +41,11 @@
 #ifndef __SIM_VOLTAGE_DOMAIN_HH__
 #define __SIM_VOLTAGE_DOMAIN_HH__
 
+#include <vector>
+
 #include "base/statistics.hh"
 #include "params/VoltageDomain.hh"
+#include "sim/clock_domain.hh"
 #include "sim/sim_object.hh"
 
 /**
@@ -52,40 +55,105 @@
  */
 class VoltageDomain : public SimObject
 {
+  public:
 
-  private:
+    typedef VoltageDomainParams Params;
+    VoltageDomain(const Params *p);
+
+    typedef SrcClockDomain::PerfLevel PerfLevel;
 
     /**
-     * The voltage of the domain expressed in Volts
+     * Get the current voltage.
+     *
+     * @return Voltage of the domain
      */
-    double _voltage;
+    double voltage() const { return voltageOpPoints[_perfLevel]; }
+
+    /**
+     * Get the voltage at specified performance level.
+     *
+     * @param perf_level Performance level for which the voltage is requested
+     * @return Voltage of the domain at specified performance level
+     */
+    double voltage(PerfLevel perf_level) const
+    {
+        chatty_assert(perf_level < numVoltages(), "VoltageDomain %s "\
+                      "request for voltage perf level %u is outside "\
+                      "of numVoltages %u", name(), perf_level,
+                      numVoltages());
+        return voltageOpPoints[perf_level];
+    }
+
+    uint32_t numVoltages() const { return (uint32_t)voltageOpPoints.size(); }
+
+    /**
+     * Set the voltage point of the domain.
+     * @param Voltage value to be set
+     */
+    void perfLevel(PerfLevel perf_level);
+
+    /**
+     * Get the voltage point of the domain.
+     * @param Voltage value to be set
+     */
+    PerfLevel perfLevel() const { return _perfLevel; }
+
+    /**
+     * Register a SrcClockDomain with this voltage domain.
+     * @param src_clock_domain The SrcClockDomain to register.
+     */
+    void registerSrcClockDom(SrcClockDomain *src_clock_dom) {
+        assert(src_clock_dom->voltageDomain() == this);
+        srcClockChildren.push_back(src_clock_dom);
+    }
+
+    /**
+     * Startup has all SrcClockDomains registered with this voltage domain, so
+     * try to make sure that all perf level requests from them are met.
+     */
+    void startup();
+
+    /**
+     * Recomputes the highest (fastest, i.e., numerically lowest) requested
+     * performance level of all associated clock domains, and updates the
+     * performance level of this voltage domain to match.  This means that for
+     * two connected clock domains, one fast and one slow, the voltage domain
+     * will provide the voltage associated with the fast DVFS operation point.
+     * Must be called whenever a clock domain decides to swtich its performance
+     * level.
+     *
+     * @return True, if the voltage was actually changed.
+     */
+    bool sanitiseVoltages();
+
+    void regStats();
+
+    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
+    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
+
+  private:
+    typedef std::vector<double> Voltages;
+    /**
+     * List of possible minimum voltage at each of the frequency operational
+     * points, should be in descending order and same size as freqOpPoints.
+     * An empty list corresponds to default voltage specified for the voltage
+     * domain its clock domain belongs. The same voltage is applied for each
+     * freqOpPoints, overall implying NO DVS
+     */
+    const Voltages voltageOpPoints;
+    PerfLevel _perfLevel;
 
     /**
      * Stat for reporting voltage of the domain
      */
     Stats::Value currentVoltage;
 
-  public:
-
-    typedef VoltageDomainParams Params;
-    VoltageDomain(const Params *p);
-
     /**
-     * Get the current volate.
-     *
-     * @return Voltage of the domain
+     * List of associated SrcClockDomains that are connected to this voltage
+     * domain.
      */
-    inline double voltage() const { return _voltage; }
-
-    /**
-     * Set the voltage of the domain.
-     *
-     * @param Voltage value to be set
-     */
-    void voltage(double voltage);
-
-    void regStats();
-
+    typedef std::vector<SrcClockDomain *> SrcClockChildren;
+    SrcClockChildren srcClockChildren;
 };
 
 #endif

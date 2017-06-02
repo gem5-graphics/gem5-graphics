@@ -34,21 +34,14 @@ import m5
 from m5.objects import *
 from m5.defines import buildEnv
 from Ruby import create_topology
+from Ruby import send_evicts
 
 #
-# Note: the L1 Cache latency is only used by the sequencer on fast path hits
+# Declare caches used by the protocol
 #
-class L0Cache(RubyCache):
-    latency = 1
-
-class L1Cache(RubyCache):
-    latency = 5
-
-#
-# Note: the L2 Cache latency is not currently used
-#
-class L2Cache(RubyCache):
-    latency = 15
+class L0Cache(RubyCache): pass
+class L1Cache(RubyCache): pass
+class L2Cache(RubyCache): pass
 
 def define_options(parser):
     parser.add_option("--num-clusters", type="int", default=1,
@@ -56,7 +49,7 @@ def define_options(parser):
             caches private to clusters")
     return
 
-def create_system(options, system, dma_ports, ruby_system):
+def create_system(options, full_system, system, dma_ports, ruby_system):
 
     if buildEnv['PROTOCOL'] != 'MESI_Three_Level':
         fatal("This script requires the MESI_Three_Level protocol to be built.")
@@ -94,17 +87,22 @@ def create_system(options, system, dma_ports, ruby_system):
             # First create the Ruby objects associated with this cpu
             #
             l0i_cache = L0Cache(size = '4096B', assoc = 1, is_icache = True,
-                start_index_bit = block_size_bits, replacement_policy="LRU")
+                start_index_bit = block_size_bits,
+                replacement_policy = LRUReplacementPolicy())
 
             l0d_cache = L0Cache(size = '4096B', assoc = 1, is_icache = False,
-                start_index_bit = block_size_bits, replacement_policy="LRU")
+                start_index_bit = block_size_bits,
+                replacement_policy = LRUReplacementPolicy())
 
             l0_cntrl = L0Cache_Controller(version = i*num_cpus_per_cluster + j,
                           Icache = l0i_cache, Dcache = l0d_cache,
-                          send_evictions = (options.cpu_type == "detailed"),
+                          send_evictions = send_evicts(options),
+                          clk_domain=system.cpu[i].clk_domain,
                           ruby_system = ruby_system)
 
-            cpu_seq = RubySequencer(version = i, icache = l0i_cache,
+            cpu_seq = RubySequencer(version = i * num_cpus_per_cluster + j,
+                        icache = l0i_cache,
+                        clk_domain=system.cpu[i].clk_domain,
                         dcache = l0d_cache, ruby_system = ruby_system)
 
             l0_cntrl.sequencer = cpu_seq
@@ -127,7 +125,27 @@ def create_system(options, system, dma_ports, ruby_system):
             cpu_sequencers.append(cpu_seq)
             l0_cntrl_nodes.append(l0_cntrl)
             l1_cntrl_nodes.append(l1_cntrl)
-            l0_cntrl.peer = l1_cntrl
+
+            # Connect the L0 and L1 controllers
+            l0_cntrl.mandatoryQueue = MessageBuffer()
+            l0_cntrl.bufferToL1 = MessageBuffer(ordered = True)
+            l1_cntrl.bufferFromL0 = l0_cntrl.bufferToL1
+            l0_cntrl.bufferFromL1 = MessageBuffer(ordered = True)
+            l1_cntrl.bufferToL0 = l0_cntrl.bufferFromL1
+
+            # Connect the L1 controllers and the network
+            l1_cntrl.requestToL2 = MessageBuffer()
+            l1_cntrl.requestToL2.master = ruby_system.network.slave
+            l1_cntrl.responseToL2 = MessageBuffer()
+            l1_cntrl.responseToL2.master = ruby_system.network.slave
+            l1_cntrl.unblockToL2 = MessageBuffer()
+            l1_cntrl.unblockToL2.master = ruby_system.network.slave
+
+            l1_cntrl.requestFromL2 = MessageBuffer()
+            l1_cntrl.requestFromL2.slave = ruby_system.network.master
+            l1_cntrl.responseFromL2 = MessageBuffer()
+            l1_cntrl.responseFromL2.slave = ruby_system.network.master
+
 
         for j in xrange(num_l2caches_per_cluster):
             l2_cache = L2Cache(size = options.l2_size,
@@ -144,6 +162,21 @@ def create_system(options, system, dma_ports, ruby_system):
                         i * num_l2caches_per_cluster + j))
             l2_cntrl_nodes.append(l2_cntrl)
 
+            # Connect the L2 controllers and the network
+            l2_cntrl.DirRequestFromL2Cache = MessageBuffer()
+            l2_cntrl.DirRequestFromL2Cache.master = ruby_system.network.slave
+            l2_cntrl.L1RequestFromL2Cache = MessageBuffer()
+            l2_cntrl.L1RequestFromL2Cache.master = ruby_system.network.slave
+            l2_cntrl.responseFromL2Cache = MessageBuffer()
+            l2_cntrl.responseFromL2Cache.master = ruby_system.network.slave
+
+            l2_cntrl.unblockToL2Cache = MessageBuffer()
+            l2_cntrl.unblockToL2Cache.slave = ruby_system.network.master
+            l2_cntrl.L1RequestToL2Cache = MessageBuffer()
+            l2_cntrl.L1RequestToL2Cache.slave = ruby_system.network.master
+            l2_cntrl.responseToL2Cache = MessageBuffer()
+            l2_cntrl.responseToL2Cache.slave = ruby_system.network.master
+
     phys_mem_size = sum(map(lambda r: r.size(), system.mem_ranges))
     assert(phys_mem_size % options.num_dirs == 0)
     mem_module_size = phys_mem_size / options.num_dirs
@@ -159,27 +192,26 @@ def create_system(options, system, dma_ports, ruby_system):
         #
         # Create the Ruby objects associated with the directory controller
         #
-
-        mem_cntrl = RubyMemoryControl(
-                              clk_domain = ruby_system.memctrl_clk_domain,
-                              version = i,
-                              ruby_system = ruby_system)
-
         dir_size = MemorySize('0B')
         dir_size.value = mem_module_size
 
         dir_cntrl = Directory_Controller(version = i,
-                                         directory = \
-                                         RubyDirectoryMemory(version = i,
-                                                             size = dir_size,
-                                                             use_map =
-                                                           options.use_map),
-                                         memBuffer = mem_cntrl,
+                                         directory = RubyDirectoryMemory(
+                                             version = i, size = dir_size),
                                          transitions_per_cycle = options.ports,
                                          ruby_system = ruby_system)
 
         exec("ruby_system.dir_cntrl%d = dir_cntrl" % i)
         dir_cntrl_nodes.append(dir_cntrl)
+
+        # Connect the directory controllers and the network
+        dir_cntrl.requestToDir = MessageBuffer()
+        dir_cntrl.requestToDir.slave = ruby_system.network.master
+        dir_cntrl.responseToDir = MessageBuffer()
+        dir_cntrl.responseToDir.slave = ruby_system.network.master
+        dir_cntrl.responseFromDir = MessageBuffer()
+        dir_cntrl.responseFromDir.master = ruby_system.network.slave
+        dir_cntrl.responseFromMemory = MessageBuffer()
 
     for i, dma_port in enumerate(dma_ports):
         #
@@ -197,11 +229,36 @@ def create_system(options, system, dma_ports, ruby_system):
         exec("ruby_system.dma_cntrl%d.dma_sequencer.slave = dma_port" % i)
         dma_cntrl_nodes.append(dma_cntrl)
 
+        # Connect the dma controller to the network
+        dma_cntrl.mandatoryQueue = MessageBuffer()
+        dma_cntrl.responseFromDir = MessageBuffer(ordered = True)
+        dma_cntrl.responseFromDir.slave = ruby_system.network.master
+        dma_cntrl.requestToDir = MessageBuffer()
+        dma_cntrl.requestToDir.master = ruby_system.network.slave
+
     all_cntrls = l0_cntrl_nodes + \
                  l1_cntrl_nodes + \
                  l2_cntrl_nodes + \
                  dir_cntrl_nodes + \
                  dma_cntrl_nodes
+
+    # Create the io controller and the sequencer
+    if full_system:
+        io_seq = DMASequencer(version=len(dma_ports), ruby_system=ruby_system)
+        ruby_system._io_port = io_seq
+        io_controller = DMA_Controller(version = len(dma_ports),
+                                       dma_sequencer = io_seq,
+                                       ruby_system = ruby_system)
+        ruby_system.io_controller = io_controller
+
+        # Connect the dma controller to the network
+        io_controller.mandatoryQueue = MessageBuffer()
+        io_controller.responseFromDir = MessageBuffer(ordered = True)
+        io_controller.responseFromDir.slave = ruby_system.network.master
+        io_controller.requestToDir = MessageBuffer()
+        io_controller.requestToDir.master = ruby_system.network.slave
+
+        all_cntrls = all_cntrls + [io_controller]
 
     topology = create_topology(all_cntrls, options)
     return (cpu_sequencers, dir_cntrl_nodes, topology)

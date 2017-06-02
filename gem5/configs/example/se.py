@@ -62,6 +62,13 @@ import MemConfig
 from Caches import *
 from cpu2000 import *
 
+# Check if KVM support has been enabled, we might need to do VM
+# configuration if that's the case.
+have_kvm_support = 'BaseKvmCPU' in globals()
+def is_kvm_cpu(cpu_class):
+    return have_kvm_support and cpu_class != None and \
+        issubclass(cpu_class, BaseKvmCPU)
+
 def get_processes(options):
     """Interprets provided options and returns a list of processes"""
 
@@ -87,6 +94,10 @@ def get_processes(options):
         process.executable = wrkld
         process.cwd = os.getcwd()
 
+        if options.env:
+            with open(options.env, 'r') as f:
+                process.env = [line.rstrip() for line in f]
+
         if len(pargs) > idx:
             process.cmd = [wrkld] + pargs[idx].split()
         else:
@@ -103,7 +114,7 @@ def get_processes(options):
         idx += 1
 
     if options.smt:
-        assert(options.cpu_type == "detailed" or options.cpu_type == "inorder")
+        assert(options.cpu_type == "detailed")
         return multiprocesses, idx
     else:
         return multiprocesses, 1
@@ -187,6 +198,15 @@ system.cpu_clk_domain = SrcClockDomain(clock = options.cpu_clock,
 for cpu in system.cpu:
     cpu.clk_domain = system.cpu_clk_domain
 
+if is_kvm_cpu(CPUClass) or is_kvm_cpu(FutureClass):
+    if buildEnv['TARGET_ISA'] == 'x86':
+        system.vm = KvmVM()
+        for process in multiprocesses:
+            process.useArchPT = True
+            process.kvmInSE = True
+    else:
+        fatal("KvmCPU can only be used in SE mode with x86")
+
 # Sanity check
 if options.fastmem:
     if CPUClass != AtomicSimpleCPU:
@@ -213,8 +233,7 @@ for i in xrange(np):
         system.cpu[i].fastmem = True
 
     if options.simpoint_profile:
-        system.cpu[i].simpoint_profile = True
-        system.cpu[i].simpoint_interval = options.simpoint_interval
+        system.cpu[i].addSimPointProbe(options.simpoint_interval)
 
     if options.checker:
         system.cpu[i].addCheckerCpu()
@@ -226,15 +245,11 @@ if options.ruby:
         print >> sys.stderr, "Ruby requires TimingSimpleCPU or O3CPU!!"
         sys.exit(1)
 
-    # Use SimpleMemory with the null option since this memory is only used
-    # for determining which addresses are within the range of the memory.
-    # No space allocation is required.
-    system.physmem = SimpleMemory(range=AddrRange(options.mem_size),
-                              null = True)
-    options.use_map = True
-    Ruby.create_system(options, system)
+    Ruby.create_system(options, False, system)
     assert(options.num_cpus == len(system.ruby._cpu_ports))
 
+    system.ruby.clk_domain = SrcClockDomain(clock = options.ruby_clock,
+                                        voltage_domain = system.voltage_domain)
     for i in xrange(np):
         ruby_port = system.ruby._cpu_ports[i]
 
@@ -254,7 +269,7 @@ if options.ruby:
             system.cpu[i].dtb.walker.port = ruby_port.slave
 else:
     MemClass = Simulation.setMemClass(options)
-    system.membus = CoherentBus()
+    system.membus = SystemXBar()
     system.system_port = system.membus.slave
     CacheConfig.config_cache(options, system)
     MemConfig.config_mem(options, system)

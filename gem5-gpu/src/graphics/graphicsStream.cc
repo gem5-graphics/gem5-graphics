@@ -14,7 +14,9 @@ graphicsStream* graphicsStream::get(int tid, int pid) {
             inform("ThreadId=%d, failed to open Unix Stream connection with renderer\n", tid);
             exit(1);
         }
+        SocketStream::incSockets();
         graphicsStream * gstream = new graphicsStream(unix_stream, tid, pid);
+        SocketStream::regMainSocket(unix_stream->getSocketNum());
         m_connStreams[pid][tid] = gstream;
     }
     //now it should be either already existing or just has been established

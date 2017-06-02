@@ -102,31 +102,49 @@ void gem5GraphicsCalls_t::executeGraphicsCommand(ThreadContext *tc, uint64_t gpu
         DPRINTF(GraphicsCalls, "gem5pipe:  gpusysno writeFully\n");
         helper.readBlob(buf_val, iobuffer, buf_len);
         CALL_GSERIALIZE;
+        assert(SocketStream::bytesSentFromMain == 0);
+        assert(SocketStream::currentMainWriteSocket == -1);
+        SocketStream::bytesSentFromMain = buf_len;
+        SocketStream::currentMainWriteSocket = stream->getSocketNum();
         uint32_t ret = stream->writeFully(iobuffer, buf_len);
         DPRINTF(GraphicsCalls, "gem5pipe:  writeFully returned %d\n", ret);
-        while(!SocketStream::allRenderSocketsReady());
+        SocketStream::lockMainThread();
+        while(!SocketStream::allRenderSocketsReady()); //wait till all other threads are waiting
         helper.setReturn((uint8_t*) & ret, sizeof (uint32_t));
     } else if (gpusysno == gem5_readFully) {
-        DPRINTF(GraphicsCalls, "gem5pipe: gpusysno readFully\n");
-        const uint8_t* ret = stream->readFully(iobuffer, buf_len);
-        CALL_GSERIALIZE;
-        while(!SocketStream::allRenderSocketsReady());
-        helper.writeBlob(buf_val, iobuffer, buf_len);
-        DPRINTF(GraphicsCalls, "gem5pipe: readfully buffer value is %d \n", *((uint32_t*) iobuffer));
-        DPRINTF(GraphicsCalls, "gem5pipe: readFully returned %x\n", (uint64_t) ret);
-        if (ret == iobuffer)
-            helper.setReturn((uint8_t*) & buf_val, sizeof (uint32_t));
-        else if (ret == NULL) {
-            uint32_t nret = (uint32_t) NULL;
-            helper.setReturn((uint8_t*) & nret, sizeof (uint32_t));
-        } else {
-            DPRINTF(GraphicsCalls, "gem5pipe: unexpected return value for readFully\n");
-            exit(1);
-        }
+       DPRINTF(GraphicsCalls, "gem5pipe: gpusysno readFully\n");
+       if(buf_len > 0) {
+          SocketStream::currentMainReadSocket = stream->getSocketNum();
+          const uint8_t* ret = stream->readFully(iobuffer, buf_len);
+          SocketStream::currentMainReadSocket = -1;
+          CALL_GSERIALIZE;
+          int newByteCount = SocketStream::bytesSentToMain - buf_len;
+          assert(newByteCount >= 0);
+          bool cond = (SocketStream::bytesSentToMain == SocketStream::totalBytesSentToMain) and (buf_len > 0);
+          if(cond){
+             SocketStream::readUnlock();
+             SocketStream::lockMainThread();
+          }
+          while(!SocketStream::allRenderSocketsReady());
+          SocketStream::bytesSentToMain = newByteCount;
+
+          helper.writeBlob(buf_val, iobuffer, buf_len);
+          DPRINTF(GraphicsCalls, "gem5pipe: readfully buffer value is %d \n", *((uint32_t*) iobuffer));
+          DPRINTF(GraphicsCalls, "gem5pipe: readFully returned %x\n", (uint64_t) ret);
+          if (ret == iobuffer)
+             helper.setReturn((uint8_t*) & buf_val, sizeof (uint32_t));
+          else if (ret == NULL) {
+             uint32_t nret = (uint32_t) NULL;
+             helper.setReturn((uint8_t*) & nret, sizeof (uint32_t));
+          } else {
+             DPRINTF(GraphicsCalls, "gem5pipe: unexpected return value for readFully\n");
+             exit(1);
+          }
+       }
     } else if (gpusysno == gem5_read) {
         panic("Unexpected stream read from guest system\n");
     } else if (gpusysno == gem5_recv) {
-        panic("Unexpected stream read from guest system\n");
+        panic("Unexpected stream recv from guest system\n");
     } else {
         panic("Unexpected stream command\n");
     }

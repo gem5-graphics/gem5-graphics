@@ -70,9 +70,8 @@ struct PacketFifoEntry
         priv = -1;
     }
 
-    void serialize(const std::string &base, std::ostream &os);
-    void unserialize(const std::string &base, Checkpoint *cp,
-                     const std::string &section);
+    void serialize(const std::string &base, CheckpointOut &cp) const;
+    void unserialize(const std::string &base, CheckpointIn &cp);
 };
 
 class PacketFifo
@@ -81,6 +80,7 @@ class PacketFifo
 
     typedef std::list<PacketFifoEntry> fifo_list;
     typedef fifo_list::iterator iterator;
+    typedef fifo_list::const_iterator const_iterator;
 
   protected:
     std::list<PacketFifoEntry> fifo;
@@ -112,6 +112,9 @@ class PacketFifo
 
     iterator begin() { return fifo.begin(); }
     iterator end() { return fifo.end(); }
+
+    const_iterator begin() const { return fifo.begin(); }
+    const_iterator end() const { return fifo.end(); }
 
     EthPacketPtr front() { return fifo.begin()->packet; }
 
@@ -172,25 +175,25 @@ class PacketFifo
 
     bool copyout(void *dest, unsigned offset, unsigned len);
 
-    int countPacketsBefore(iterator i)
+    int countPacketsBefore(const_iterator i) const
     {
         if (i == fifo.end())
             return 0;
         return i->number - fifo.begin()->number;
     }
 
-    int countPacketsAfter(iterator i)
+    int countPacketsAfter(const_iterator i) const
     {
-        iterator end = fifo.end();
+        auto end = fifo.end();
         if (i == end)
             return 0;
         return (--end)->number - i->number;
     }
 
-    void check()
+    void check() const
     {
         unsigned total = 0;
-        for (iterator i = begin(); i != end(); ++i)
+        for (auto i = begin(); i != end(); ++i)
             total += i->packet->length + i->slack;
 
         if (total != _size)
@@ -201,9 +204,8 @@ class PacketFifo
  * Serialization stuff
  */
   public:
-    void serialize(const std::string &base, std::ostream &os);
-    void unserialize(const std::string &base,
-                     Checkpoint *cp, const std::string &section);
+    void serialize(const std::string &base, CheckpointOut &cp) const;
+    void unserialize(const std::string &base, CheckpointIn &cp);
 };
 
 #endif // __DEV_PKTFIFO_HH__

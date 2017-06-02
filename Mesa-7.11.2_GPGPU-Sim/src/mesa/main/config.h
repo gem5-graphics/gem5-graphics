@@ -168,7 +168,7 @@
 #endif
 
 /** Maxmimum size for CVA.  May be overridden by the drivers.  */
-#define MAX_ARRAY_LOCK_SIZE 3000
+#define MAX_ARRAY_LOCK_SIZE 9000
 
 /** Subpixel precision for antialiasing, window coordinate snapping */
 #define SUB_PIXEL_BITS 4

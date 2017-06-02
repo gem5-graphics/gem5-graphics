@@ -62,13 +62,7 @@ def macroop IRET_PROT {
     # Read the handy m5 register for use later
     rdm5reg t4
 
-    # check if this was a GPU fault and notify the GPU.
-    rdval t5, "InstRegIndex(MISCREG_GPU_FAULT)"
-    andi t0, t5, 1, flags=(EZF,)
-    br label("notGPUFaultFallThrough"), flags=(CEZF,)
-    gpufaultfinish
 
-notGPUFaultFallThrough:
 ###
 ### Handle if we're returning to virtual 8086 mode.
 ###
@@ -134,7 +128,7 @@ processCSDescriptor:
     # if temp_RIP > CS.limit throw #GP(0)
     rdlimit t6, cs, dataSize=8
     sub t0, t1, t6, flags=(ECF,)
-    fault "new GeneralProtection(0)", flags=(CECF,)
+    fault "std::make_shared<GeneralProtection>(0)", flags=(CECF,)
 
     #(temp_CPL!=CPL)
     srli t7, t4, 4
@@ -143,6 +137,13 @@ processCSDescriptor:
     br label("doPopStackStuff"), flags=(nCEZF,)
     # We can modify user visible state here because we're know
     # we're done with things that can fault.
+
+    # gem5-gpu: Grab the old return stack pointer into t6, then pop the
+    # old stack. Must save the stack pointer to ensure the thread knows
+    # precisely when it needs to to notify the GPU. Do this before popping
+    # the stack pointer!
+    ld t6, ss, [1, t0, rsp], "3 * env.dataSize", dataSize=ssz
+
     addi rsp, rsp, "3 * env.stackSize"
     br label("fallThroughPopStackStuff")
 
@@ -152,7 +153,7 @@ doPopStackStuffAndCheckRIP:
     # if t7 isn't 0 or -1, it wasn't canonical.
     br label("doPopStackStuff"), flags=(CEZF,)
     addi t0, t7, 1, flags=(EZF,), dataSize=ssz
-    fault "new GeneralProtection(0)", flags=(nCEZF,)
+    fault "std::make_shared<GeneralProtection>(0)", flags=(nCEZF,)
 
 doPopStackStuff:
     #    POP.v temp_RSP
@@ -211,6 +212,20 @@ fallThroughPopStackStuff:
     #}
 
 skipSegmentSquashing:
+
+    # Check if this was a GPU fault and if so, notify the GPU.
+    rdval t5, "InstRegIndex(MISCREG_GPU_FAULT)"
+    andi t0, t5, 2, flags=(EZF,)
+    br label("notGPUFaultFallThrough"), flags=(CEZF,)
+    # At this point, t6 *should* contain the old stack pointer from where the
+    # fault was raised, no matter how the microcode reached this GPU check. If
+    # t6 is equal to the GPU faulting RSP, notify the GPU of finished fault!
+    rdval t5, "InstRegIndex(MISCREG_GPU_FAULT_RSP)"
+    xor t5, t5, t6, flags=(EZF,)
+    br label("notGPUFaultFallThrough"), flags=(nCEZF,)
+    gpufaultfinish
+
+notGPUFaultFallThrough:
 
     # Ignore this for now.
     #RFLAGS.v = temp_RFLAGS

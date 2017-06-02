@@ -74,22 +74,22 @@ testPredicate(uint32_t nz, uint32_t c, uint32_t v, ConditionCode code)
 
     switch (code)
     {
-        case COND_EQ: return  z;
-        case COND_NE: return !z;
-        case COND_CS: return  c;
-        case COND_CC: return !c;
-        case COND_MI: return  n;
-        case COND_PL: return !n;
-        case COND_VS: return  v;
-        case COND_VC: return !v;
-        case COND_HI: return  (c && !z);
-        case COND_LS: return !(c && !z);
-        case COND_GE: return !(n ^ v);
-        case COND_LT: return  (n ^ v);
-        case COND_GT: return !(n ^ v || z);
-        case COND_LE: return  (n ^ v || z);
-        case COND_AL: return true;
-        case COND_UC: return true;
+        case ARM_COND_EQ: return  z;
+        case ARM_COND_NE: return !z;
+        case ARM_COND_CS: return  c;
+        case ARM_COND_CC: return !c;
+        case ARM_COND_MI: return  n;
+        case ARM_COND_PL: return !n;
+        case ARM_COND_VS: return  v;
+        case ARM_COND_VC: return !v;
+        case ARM_COND_HI: return  (c && !z);
+        case ARM_COND_LS: return !(c && !z);
+        case ARM_COND_GE: return !(n ^ v);
+        case ARM_COND_LT: return  (n ^ v);
+        case ARM_COND_GT: return !(n ^ v || z);
+        case ARM_COND_LE: return  (n ^ v || z);
+        case ARM_COND_AL: return true;
+        case ARM_COND_UC: return true;
         default:
             panic("Unhandled predicate condition: %d\n", code);
     }
@@ -104,7 +104,7 @@ void zeroRegisters(TC *tc);
 
 inline void startupCPU(ThreadContext *tc, int cpuId)
 {
-    tc->activate(Cycles(0));
+    tc->activate();
 }
 
 void copyRegs(ThreadContext *src, ThreadContext *dest);
@@ -168,6 +168,8 @@ bool isBigEndian64(ThreadContext *tc);
  * @param el The controlled exception level.
  * @return The purified address.
  */
+Addr purifyTaggedAddr(Addr addr, ThreadContext *tc, ExceptionLevel el,
+                      TTBCR tcr);
 Addr purifyTaggedAddr(Addr addr, ThreadContext *tc, ExceptionLevel el);
 
 static inline bool
@@ -279,7 +281,7 @@ uint64_t getArgument(ThreadContext *tc, int &number, uint16_t size, bool fp);
 void skipFunction(ThreadContext *tc);
 
 inline void
-advancePC(PCState &pc, const StaticInstPtr inst)
+advancePC(PCState &pc, const StaticInstPtr &inst)
 {
     inst->advancePC(pc);
 }

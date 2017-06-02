@@ -69,8 +69,6 @@ Pl050::read(PacketPtr pkt)
     assert(pkt->getAddr() >= pioAddr && pkt->getAddr() < pioAddr + pioSize);
 
     Addr daddr = pkt->getAddr() - pioAddr;
-    pkt->allocate();
-
 
     uint32_t data = 0;
 
@@ -310,7 +308,7 @@ Pl050::keyPress(uint32_t key, bool down)
 }
 
 void
-Pl050::serialize(std::ostream &os)
+Pl050::serialize(CheckpointOut &cp) const
 {
     uint8_t ctrlreg = control;
     SERIALIZE_SCALAR(ctrlreg);
@@ -329,11 +327,11 @@ Pl050::serialize(std::ostream &os)
     SERIALIZE_SCALAR(shiftDown);
     SERIALIZE_SCALAR(driverInitialized);
 
-    arrayParamOut(os, "rxQueue", rxQueue);
+    SERIALIZE_CONTAINER(rxQueue);
 }
 
 void
-Pl050::unserialize(Checkpoint *cp, const std::string &section)
+Pl050::unserialize(CheckpointIn &cp)
 {
     uint8_t ctrlreg;
     UNSERIALIZE_SCALAR(ctrlreg);
@@ -357,7 +355,7 @@ Pl050::unserialize(Checkpoint *cp, const std::string &section)
     UNSERIALIZE_SCALAR(shiftDown);
     UNSERIALIZE_SCALAR(driverInitialized);
 
-    arrayParamIn(cp, section, "rxQueue", rxQueue);
+    UNSERIALIZE_CONTAINER(rxQueue);
 }
 
 

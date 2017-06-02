@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2014 Advanced Micro Devices, Inc.
  * Copyright (c) 2012 ARM Limited
  * All rights reserved
  *
@@ -46,6 +47,7 @@
 #include <unistd.h>
 
 #include <cstdio>
+#include <map>
 #include <string>
 
 #include "base/loader/object_file.hh"
@@ -55,6 +57,7 @@
 #include "config/the_isa.hh"
 #include "cpu/thread_context.hh"
 #include "mem/page_table.hh"
+#include "mem/multi_level_page_table.hh"
 #include "mem/se_translating_port_proxy.hh"
 #include "params/LiveProcess.hh"
 #include "params/Process.hh"
@@ -75,6 +78,7 @@
 #include "arch/mips/linux/process.hh"
 #elif THE_ISA == ARM_ISA
 #include "arch/arm/linux/process.hh"
+#include "arch/arm/freebsd/process.hh"
 #elif THE_ISA == X86_ISA
 #include "arch/x86/linux/process.hh"
 #elif THE_ISA == POWER_ISA
@@ -91,6 +95,7 @@ using namespace TheISA;
 int num_processes = 0;
 
 template<class IntType>
+
 AuxVector<IntType>::AuxVector(IntType type, IntType val)
 {
     a_type = TheISA::htog(type);
@@ -100,76 +105,82 @@ AuxVector<IntType>::AuxVector(IntType type, IntType val)
 template struct AuxVector<uint32_t>;
 template struct AuxVector<uint64_t>;
 
+static int
+openFile(const string& filename, int flags, mode_t mode)
+{
+    int sim_fd = open(filename.c_str(), flags, mode);
+    if (sim_fd != -1)
+        return sim_fd;
+    fatal("Unable to open %s with mode %O", filename, mode);
+}
+
+static int
+openInputFile(const string &filename)
+{
+    return openFile(filename, O_RDONLY, 0);
+}
+
+static int
+openOutputFile(const string &filename)
+{
+    return openFile(filename, O_WRONLY | O_CREAT | O_TRUNC, 0664);
+}
+
 Process::Process(ProcessParams * params)
     : SimObject(params), system(params->system),
+      brk_point(0), stack_base(0), stack_size(0), stack_min(0),
       max_stack_size(params->max_stack_size),
+      next_thread_stack_base(0),
       M5_pid(system->allocatePID()),
-      pTable(new PageTable(name(), M5_pid)),
+      useArchPT(params->useArchPT),
+      kvmInSE(params->kvmInSE),
+      pTable(useArchPT ?
+        static_cast<PageTableBase *>(new ArchPageTable(name(), M5_pid, system)) :
+        static_cast<PageTableBase *>(new FuncPageTable(name(), M5_pid)) ),
       initVirtMem(system->getSystemPort(), this,
-                  SETranslatingPortProxy::Always)
+                  SETranslatingPortProxy::Always),
+      fd_array(make_shared<array<FDEntry, NUM_FDS>>()),
+      imap {{"",       -1},
+            {"cin",    STDIN_FILENO},
+            {"stdin",  STDIN_FILENO}},
+      oemap{{"",       -1},
+            {"cout",   STDOUT_FILENO},
+            {"stdout", STDOUT_FILENO},
+            {"cerr",   STDERR_FILENO},
+            {"stderr", STDERR_FILENO}}
 {
-    string in = params->input;
-    string out = params->output;
-    string err = params->errout;
+    int sim_fd;
+    std::map<string,int>::iterator it;
 
-    // initialize file descriptors to default: same as simulator
-    int stdin_fd, stdout_fd, stderr_fd;
-
-    if (in == "stdin" || in == "cin")
-        stdin_fd = STDIN_FILENO;
-    else if (in == "None")
-        stdin_fd = -1;
+    // Search through the input options and set fd if match is found;
+    // otherwise, open an input file and seek to location.
+    FDEntry *fde_stdin = getFDEntry(STDIN_FILENO);
+    if ((it = imap.find(params->input)) != imap.end())
+        sim_fd = it->second;
     else
-        stdin_fd = Process::openInputFile(in);
+        sim_fd = openInputFile(params->input);
+    fde_stdin->set(sim_fd, params->input, O_RDONLY, -1, false);
 
-    if (out == "stdout" || out == "cout")
-        stdout_fd = STDOUT_FILENO;
-    else if (out == "stderr" || out == "cerr")
-        stdout_fd = STDERR_FILENO;
-    else if (out == "None")
-        stdout_fd = -1;
+    // Search through the output/error options and set fd if match is found;
+    // otherwise, open an output file and seek to location.
+    FDEntry *fde_stdout = getFDEntry(STDOUT_FILENO);
+    if ((it = oemap.find(params->output)) != oemap.end())
+        sim_fd = it->second;
     else
-        stdout_fd = Process::openOutputFile(out);
+        sim_fd = openOutputFile(params->output);
+    fde_stdout->set(sim_fd, params->output, O_WRONLY | O_CREAT | O_TRUNC,
+                    0664, false);
 
-    if (err == "stdout" || err == "cout")
-        stderr_fd = STDOUT_FILENO;
-    else if (err == "stderr" || err == "cerr")
-        stderr_fd = STDERR_FILENO;
-    else if (err == "None")
-        stderr_fd = -1;
-    else if (err == out)
-        stderr_fd = stdout_fd;
+    FDEntry *fde_stderr = getFDEntry(STDERR_FILENO);
+    if (params->output == params->errout)
+        // Reuse the same file descriptor if these match.
+        sim_fd = fde_stdout->fd;
+    else if ((it = oemap.find(params->errout)) != oemap.end())
+        sim_fd = it->second;
     else
-        stderr_fd = Process::openOutputFile(err);
-
-    // initialize first 3 fds (stdin, stdout, stderr)
-    Process::FdMap *fdo = &fd_map[STDIN_FILENO];
-    fdo->fd = stdin_fd;
-    fdo->filename = in;
-    fdo->flags = O_RDONLY;
-    fdo->mode = -1;
-    fdo->fileOffset = 0;
-
-    fdo =  &fd_map[STDOUT_FILENO];
-    fdo->fd = stdout_fd;
-    fdo->filename = out;
-    fdo->flags =  O_WRONLY | O_CREAT | O_TRUNC;
-    fdo->mode = 0774;
-    fdo->fileOffset = 0;
-
-    fdo = &fd_map[STDERR_FILENO];
-    fdo->fd = stderr_fd;
-    fdo->filename = err;
-    fdo->flags = O_WRONLY;
-    fdo->mode = -1;
-    fdo->fileOffset = 0;
-
-
-    // mark remaining fds as free
-    for (int i = 3; i <= MAX_FD; ++i) {
-        fdo = &fd_map[i];
-        fdo->fd = -1;
-    }
+        sim_fd = openOutputFile(params->errout);
+    fde_stderr->set(sim_fd, params->errout, O_WRONLY | O_CREAT | O_TRUNC,
+                    0664, false);
 
     mmap_start = mmap_end = 0;
     nxm_start = nxm_end = 0;
@@ -188,49 +199,19 @@ Process::regStats()
         ;
 }
 
-//
-// static helper functions
-//
-int
-Process::openInputFile(const string &filename)
+void
+Process::inheritFDArray(Process *p)
 {
-    int fd = open(filename.c_str(), O_RDONLY);
-
-    if (fd == -1) {
-        perror(NULL);
-        cerr << "unable to open \"" << filename << "\" for reading\n";
-        fatal("can't open input file");
-    }
-
-    return fd;
-}
-
-
-int
-Process::openOutputFile(const string &filename)
-{
-    int fd = open(filename.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0664);
-
-    if (fd == -1) {
-        perror(NULL);
-        cerr << "unable to open \"" << filename << "\" for writing\n";
-        fatal("can't open output file");
-    }
-
-    return fd;
+    fd_array = p->fd_array;
 }
 
 ThreadContext *
 Process::findFreeContext()
 {
-    int size = contextIds.size();
-    ThreadContext *tc;
-    for (int i = 0; i < size; ++i) {
-        tc = system->getThreadContext(contextIds[i]);
-        if (tc->status() == ThreadContext::Halted) {
-            // inactive context, free to use
+    for (int id : contextIds) {
+        ThreadContext *tc = system->getThreadContext(id);
+        if (tc->status() == ThreadContext::Halted)
             return tc;
-        }
     }
     return NULL;
 }
@@ -245,91 +226,74 @@ Process::initState()
     ThreadContext *tc = system->getThreadContext(contextIds[0]);
 
     // mark this context as active so it will start ticking.
-    tc->activate(Cycles(0));
+    tc->activate();
+
+    pTable->initState(tc);
 }
 
-// map simulator fd sim_fd to target fd tgt_fd
-void
-Process::dup_fd(int sim_fd, int tgt_fd)
+DrainState
+Process::drain()
 {
-    if (tgt_fd < 0 || tgt_fd > MAX_FD)
-        panic("Process::dup_fd tried to dup past MAX_FD (%d)", tgt_fd);
-
-    Process::FdMap *fdo = &fd_map[tgt_fd];
-    fdo->fd = sim_fd;
+    findFileOffsets();
+    return DrainState::Drained;
 }
 
-
-// generate new target fd for sim_fd
 int
-Process::alloc_fd(int sim_fd, string filename, int flags, int mode, bool pipe)
+Process::allocFD(int sim_fd, const string& filename, int flags, int mode,
+                 bool pipe)
 {
-    // in case open() returns an error, don't allocate a new fd
     if (sim_fd == -1)
         return -1;
 
-    // find first free target fd
-    for (int free_fd = 0; free_fd <= MAX_FD; ++free_fd) {
-        Process::FdMap *fdo = &fd_map[free_fd];
-        if (fdo->fd == -1) {
-            fdo->fd = sim_fd;
-            fdo->filename = filename;
-            fdo->mode = mode;
-            fdo->fileOffset = 0;
-            fdo->flags = flags;
-            fdo->isPipe = pipe;
-            fdo->readPipeSource = 0;
+    for (int free_fd = 0; free_fd < fd_array->size(); free_fd++) {
+        FDEntry *fde = getFDEntry(free_fd);
+        if (fde->isFree()) {
+            fde->set(sim_fd, filename, flags, mode, pipe);
             return free_fd;
         }
     }
 
-    panic("Process::alloc_fd: out of file descriptors!");
+    fatal("Out of target file descriptors");
 }
 
-
-// free target fd (e.g., after close)
 void
-Process::free_fd(int tgt_fd)
+Process::resetFDEntry(int tgt_fd)
 {
-    Process::FdMap *fdo = &fd_map[tgt_fd];
-    if (fdo->fd == -1)
-        warn("Process::free_fd: request to free unused fd %d", tgt_fd);
+    FDEntry *fde = getFDEntry(tgt_fd);
+    assert(fde->fd > -1);
 
-    fdo->fd = -1;
-    fdo->filename = "NULL";
-    fdo->mode = 0;
-    fdo->fileOffset = 0;
-    fdo->flags = 0;
-    fdo->isPipe = false;
-    fdo->readPipeSource = 0;
+    fde->reset();
 }
 
-
-// look up simulator fd for given target fd
 int
-Process::sim_fd(int tgt_fd)
+Process::getSimFD(int tgt_fd)
 {
-    if (tgt_fd < 0 || tgt_fd > MAX_FD)
-        return -1;
-
-    return fd_map[tgt_fd].fd;
+    FDEntry *entry = getFDEntry(tgt_fd);
+    return entry ? entry->fd : -1;
 }
 
-Process::FdMap *
-Process::sim_fd_obj(int tgt_fd)
+FDEntry *
+Process::getFDEntry(int tgt_fd)
 {
-    if (tgt_fd < 0 || tgt_fd > MAX_FD)
-        return NULL;
+    assert(0 <= tgt_fd && tgt_fd < fd_array->size());
+    return &(*fd_array)[tgt_fd];
+}
 
-    return &fd_map[tgt_fd];
+int
+Process::getTgtFD(int sim_fd)
+{
+    for (int index = 0; index < fd_array->size(); index++)
+        if ((*fd_array)[index].fd == sim_fd)
+            return index;
+    return -1;
 }
 
 void
 Process::allocateMem(Addr vaddr, int64_t size, bool clobber)
 {
-    int npages = divCeil(size, (int64_t)VMPageSize);
+    int npages = divCeil(size, (int64_t)PageBytes);
     Addr paddr = system->allocPhysPages(npages);
-    pTable->map(vaddr, paddr, size, clobber);
+    pTable->map(vaddr, paddr, size, clobber ? PageTableBase::Clobber : 0);
 }
 
 bool
@@ -338,7 +302,7 @@ Process::fixupStackFault(Addr vaddr)
     // Check if this is already on the stack and there's just no page there
     // yet.
     if (vaddr >= stack_min && vaddr < stack_base) {
-        allocateMem(roundDown(vaddr, VMPageSize), VMPageSize);
+        allocateMem(roundDown(vaddr, PageBytes), PageBytes);
         return true;
     }
 
@@ -357,147 +321,94 @@ Process::fixupStackFault(Addr vaddr)
     return false;
 }
 
-// find all offsets for currently open files and save them
 void
-Process::fix_file_offsets()
+Process::fixFileOffsets()
 {
-    Process::FdMap *fdo_stdin = &fd_map[STDIN_FILENO];
-    Process::FdMap *fdo_stdout = &fd_map[STDOUT_FILENO];
-    Process::FdMap *fdo_stderr = &fd_map[STDERR_FILENO];
-    string in = fdo_stdin->filename;
-    string out = fdo_stdout->filename;
-    string err = fdo_stderr->filename;
+    auto seek = [] (FDEntry *fde)
+    {
+        if (lseek(fde->fd, fde->fileOffset, SEEK_SET) < 0)
+            fatal("Unable to see to location in %s", fde->filename);
+    };
 
-    // initialize file descriptors to default: same as simulator
-    int stdin_fd, stdout_fd, stderr_fd;
+    std::map<string,int>::iterator it;
 
-    if (in == "stdin" || in == "cin")
-        stdin_fd = STDIN_FILENO;
-    else if (in == "None")
-        stdin_fd = -1;
-    else {
-        // open standard in and seek to the right location
-        stdin_fd = Process::openInputFile(in);
-        if (lseek(stdin_fd, fdo_stdin->fileOffset, SEEK_SET) < 0)
-            panic("Unable to seek to correct location in file: %s", in);
+    // Search through the input options and set fd if match is found;
+    // otherwise, open an input file and seek to location.
+    FDEntry *fde_stdin = getFDEntry(STDIN_FILENO);
+    if ((it = imap.find(fde_stdin->filename)) != imap.end()) {
+        fde_stdin->fd = it->second;
+    } else {
+        fde_stdin->fd = openInputFile(fde_stdin->filename);
+        seek(fde_stdin);
     }
 
-    if (out == "stdout" || out == "cout")
-        stdout_fd = STDOUT_FILENO;
-    else if (out == "stderr" || out == "cerr")
-        stdout_fd = STDERR_FILENO;
-    else if (out == "None")
-        stdout_fd = -1;
-    else {
-        stdout_fd = Process::openOutputFile(out);
-        if (lseek(stdout_fd, fdo_stdout->fileOffset, SEEK_SET) < 0)
-            panic("Unable to seek to correct location in file: %s", out);
+    // Search through the output/error options and set fd if match is found;
+    // otherwise, open an output file and seek to location.
+    FDEntry *fde_stdout = getFDEntry(STDOUT_FILENO);
+    if ((it = oemap.find(fde_stdout->filename)) != oemap.end()) {
+        fde_stdout->fd = it->second;
+    } else {
+        fde_stdout->fd = openOutputFile(fde_stdout->filename);
+        seek(fde_stdout);
     }
 
-    if (err == "stdout" || err == "cout")
-        stderr_fd = STDOUT_FILENO;
-    else if (err == "stderr" || err == "cerr")
-        stderr_fd = STDERR_FILENO;
-    else if (err == "None")
-        stderr_fd = -1;
-    else if (err == out)
-        stderr_fd = stdout_fd;
-    else {
-        stderr_fd = Process::openOutputFile(err);
-        if (lseek(stderr_fd, fdo_stderr->fileOffset, SEEK_SET) < 0)
-            panic("Unable to seek to correct location in file: %s", err);
+    FDEntry *fde_stderr = getFDEntry(STDERR_FILENO);
+    if (fde_stdout->filename == fde_stderr->filename) {
+        // Reuse the same file descriptor if these match.
+        fde_stderr->fd = fde_stdout->fd;
+    } else if ((it = oemap.find(fde_stderr->filename)) != oemap.end()) {
+        fde_stderr->fd = it->second;
+    } else {
+        fde_stderr->fd = openOutputFile(fde_stderr->filename);
+        seek(fde_stderr);
     }
 
-    fdo_stdin->fd = stdin_fd;
-    fdo_stdout->fd = stdout_fd;
-    fdo_stderr->fd = stderr_fd;
+    for (int tgt_fd = 3; tgt_fd < fd_array->size(); tgt_fd++) {
+        FDEntry *fde = getFDEntry(tgt_fd);
+        if (fde->fd == -1)
+            continue;
 
+        if (fde->isPipe) {
+            if (fde->filename == "PIPE-WRITE")
+                continue;
+            assert(fde->filename == "PIPE-READ");
 
-    for (int free_fd = 3; free_fd <= MAX_FD; ++free_fd) {
-        Process::FdMap *fdo = &fd_map[free_fd];
-        if (fdo->fd != -1) {
-            if (fdo->isPipe){
-                if (fdo->filename == "PIPE-WRITE")
-                    continue;
-                else {
-                    assert (fdo->filename == "PIPE-READ");
-                    //create a new pipe
-                    int fds[2];
-                    int pipe_retval = pipe(fds);
+            int fds[2];
+            if (pipe(fds) < 0)
+                fatal("Unable to create new pipe");
 
-                    if (pipe_retval < 0) {
-                        // error
-                        panic("Unable to create new pipe.");
-                    }
-                    fdo->fd = fds[0]; //set read pipe
-                    Process::FdMap *fdo_write = &fd_map[fdo->readPipeSource];
-                    if (fdo_write->filename != "PIPE-WRITE")
-                        panic ("Couldn't find write end of the pipe");
+            fde->fd = fds[0];
 
-                    fdo_write->fd = fds[1];//set write pipe
-               }
-            } else {
-                //Open file
-                int fd = open(fdo->filename.c_str(), fdo->flags, fdo->mode);
-
-                if (fd == -1)
-                    panic("Unable to open file: %s", fdo->filename);
-                fdo->fd = fd;
-
-                //Seek to correct location before checkpoint
-                if (lseek(fd,fdo->fileOffset, SEEK_SET) < 0)
-                    panic("Unable to seek to correct location in file: %s",
-                          fdo->filename);
-            }
+            FDEntry *fde_write = getFDEntry(fde->readPipeSource);
+            assert(
+                    fde_write->filename == "PIPE-WRITE");
+            fde_write->fd = fds[1];
+        } else {
+            fde->fd = openFile(fde->filename.c_str(), fde->flags, fde->mode);
+            seek(fde);
         }
     }
 }
 
 void
-Process::find_file_offsets()
+Process::findFileOffsets()
 {
-    for (int free_fd = 0; free_fd <= MAX_FD; ++free_fd) {
-        Process::FdMap *fdo = &fd_map[free_fd];
-        if (fdo->fd != -1) {
-            fdo->fileOffset = lseek(fdo->fd, 0, SEEK_CUR);
-        } else {
-                fdo->filename = "NULL";
-                fdo->fileOffset = 0;
-        }
+    for (auto& fde : *fd_array) {
+        if (fde.fd != -1)
+            fde.fileOffset = lseek(fde.fd, 0, SEEK_CUR);
     }
 }
 
 void
 Process::setReadPipeSource(int read_pipe_fd, int source_fd)
 {
-    Process::FdMap *fdo = &fd_map[read_pipe_fd];
-    fdo->readPipeSource = source_fd;
+    FDEntry *fde = getFDEntry(read_pipe_fd);
+    assert(source_fd >= -1);
+    fde->readPipeSource = source_fd;
 }
 
 void
-Process::FdMap::serialize(std::ostream &os)
-{
-    SERIALIZE_SCALAR(fd);
-    SERIALIZE_SCALAR(isPipe);
-    SERIALIZE_SCALAR(filename);
-    SERIALIZE_SCALAR(flags);
-    SERIALIZE_SCALAR(readPipeSource);
-    SERIALIZE_SCALAR(fileOffset);
-}
-
-void
-Process::FdMap::unserialize(Checkpoint *cp, const std::string &section)
-{
-    UNSERIALIZE_SCALAR(fd);
-    UNSERIALIZE_SCALAR(isPipe);
-    UNSERIALIZE_SCALAR(filename);
-    UNSERIALIZE_SCALAR(flags);
-    UNSERIALIZE_SCALAR(readPipeSource);
-    UNSERIALIZE_SCALAR(fileOffset);
-}
-
-void
-Process::serialize(std::ostream &os)
+Process::serialize(CheckpointOut &cp) const
 {
     SERIALIZE_SCALAR(brk_point);
     SERIALIZE_SCALAR(stack_base);
@@ -508,18 +419,16 @@ Process::serialize(std::ostream &os)
     SERIALIZE_SCALAR(mmap_end);
     SERIALIZE_SCALAR(nxm_start);
     SERIALIZE_SCALAR(nxm_end);
-    find_file_offsets();
-    pTable->serialize(os);
-    for (int x = 0; x <= MAX_FD; x++) {
-        nameOut(os, csprintf("%s.FdMap%d", name(), x));
-        fd_map[x].serialize(os);
+    pTable->serialize(cp);
+    for (int x = 0; x < fd_array->size(); x++) {
+        (*fd_array)[x].serializeSection(cp, csprintf("FDEntry%d", x));
     }
     SERIALIZE_SCALAR(M5_pid);
 
 }
 
 void
-Process::unserialize(Checkpoint *cp, const std::string &section)
+Process::unserialize(CheckpointIn &cp)
 {
     UNSERIALIZE_SCALAR(brk_point);
     UNSERIALIZE_SCALAR(stack_base);
@@ -530,23 +439,25 @@ Process::unserialize(Checkpoint *cp, const std::string &section)
     UNSERIALIZE_SCALAR(mmap_end);
     UNSERIALIZE_SCALAR(nxm_start);
     UNSERIALIZE_SCALAR(nxm_end);
-    pTable->unserialize(cp, section);
-    for (int x = 0; x <= MAX_FD; x++) {
-        fd_map[x].unserialize(cp, csprintf("%s.FdMap%d", section, x));
+    pTable->unserialize(cp);
+    for (int x = 0; x < fd_array->size(); x++) {
+        FDEntry *fde = getFDEntry(x);
+        fde->unserializeSection(cp, csprintf("FDEntry%d", x));
     }
-    fix_file_offsets();
+    fixFileOffsets();
     UNSERIALIZE_OPT_SCALAR(M5_pid);
     // The above returns a bool so that you could do something if you don't
     // find the param in the checkpoint if you wanted to, like set a default
-    // but in this case we'll just stick with the instantianted value if not
-    // found.   
+    // but in this case we'll just stick with the instantiated value if not
+    // found.
 }
 
 
 bool
-Process::map(Addr vaddr, Addr paddr, int size)
+Process::map(Addr vaddr, Addr paddr, int size, bool cacheable)
 {
-    pTable->map(vaddr, paddr, size);
+    pTable->map(vaddr, paddr, size,
+                cacheable ? 0 : PageTableBase::Uncacheable);
     return true;
 }
 
@@ -558,16 +469,14 @@ Process::map(Addr vaddr, Addr paddr, int size)
 ////////////////////////////////////////////////////////////////////////
 
 
-LiveProcess::LiveProcess(LiveProcessParams * params, ObjectFile *_objFile)
+LiveProcess::LiveProcess(LiveProcessParams *params, ObjectFile *_objFile)
     : Process(params), objFile(_objFile),
-      argv(params->cmd), envp(params->env), cwd(params->cwd)
+      argv(params->cmd), envp(params->env), cwd(params->cwd),
+      __uid(params->uid), __euid(params->euid),
+      __gid(params->gid), __egid(params->egid),
+      __pid(params->pid), __ppid(params->ppid),
+      drivers(params->drivers)
 {
-    __uid = params->uid;
-    __euid = params->euid;
-    __gid = params->gid;
-    __egid = params->egid;
-    __pid = params->pid;
-    __ppid = params->ppid;
 
     // load up symbols, if any... these may be used for debugging or
     // profiling.
@@ -600,6 +509,19 @@ LiveProcess::getSyscallArg(ThreadContext *tc, int &i, int width)
 {
     return getSyscallArg(tc, i);
 }
+
+
+EmulatedDriver *
+LiveProcess::findDriver(std::string filename)
+{
+    for (EmulatedDriver *d : drivers) {
+        if (d->match(filename))
+            return d;
+    }
+
+    return NULL;
+}
+
 
 LiveProcess *
 LiveProcess::create(LiveProcessParams * params)
@@ -710,6 +632,15 @@ LiveProcess::create(LiveProcessParams * params)
         } else {
             process = new ArmLinuxProcess32(params, objFile,
                                             objFile->getArch());
+        }
+        break;
+      case ObjectFile::FreeBSD:
+        if (arch == ObjectFile::Arm64) {
+            process = new ArmFreebsdProcess64(params, objFile,
+                                              objFile->getArch());
+        } else {
+            process = new ArmFreebsdProcess32(params, objFile,
+                                              objFile->getArch());
         }
         break;
       case ObjectFile::LinuxArmOABI:

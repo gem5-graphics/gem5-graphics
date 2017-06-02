@@ -52,7 +52,7 @@ protected:
   
 public:
   
-  GPUTrafficManager( const Configuration &config, const vector<Network *> & net );
+  GPUTrafficManager( const Configuration &config, const vector<ISNetwork *> & net );
   virtual ~GPUTrafficManager( );
   
   // correspond to TrafficManger::Run/SingleSim

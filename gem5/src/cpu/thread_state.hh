@@ -56,24 +56,24 @@ class Checkpoint;
  *  memory, quiesce events, and certain stats.  This can be expanded
  *  to hold more thread-specific stats within it.
  */
-struct ThreadState {
+struct ThreadState : public Serializable {
     typedef ThreadContext::Status Status;
 
     ThreadState(BaseCPU *cpu, ThreadID _tid, Process *_process);
 
     virtual ~ThreadState();
 
-    void serialize(std::ostream &os);
+    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
 
-    void unserialize(Checkpoint *cp, const std::string &section);
+    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
 
     int cpuId() const { return baseCpu->cpuId(); }
 
     uint32_t socketId() const { return baseCpu->socketId(); }
 
-    int contextId() const { return _contextId; }
+    ContextID contextId() const { return _contextId; }
 
-    void setContextId(int id) { _contextId = id; }
+    void setContextId(ContextID id) { _contextId = id; }
 
     void setThreadId(ThreadID id) { _threadId = id; }
 
@@ -153,7 +153,7 @@ struct ThreadState {
     BaseCPU *baseCpu;
 
     // system wide HW context id
-    int _contextId;
+    ContextID _contextId;
 
     // Index of hardware thread context on the CPU that this represents.
     ThreadID _threadId;

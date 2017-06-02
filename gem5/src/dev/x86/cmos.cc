@@ -113,23 +113,29 @@ X86ISA::Cmos::writeRegister(uint8_t reg, uint8_t val)
 }
 
 void
-X86ISA::Cmos::serialize(std::ostream &os)
+X86ISA::Cmos::startup()
+{
+    rtc.startup();
+}
+
+void
+X86ISA::Cmos::serialize(CheckpointOut &cp) const
 {
     SERIALIZE_SCALAR(address);
     SERIALIZE_ARRAY(regs, numRegs);
 
     // Serialize the timer
-    rtc.serialize("rtc", os);
+    rtc.serialize("rtc", cp);
 }
 
 void
-X86ISA::Cmos::unserialize(Checkpoint *cp, const std::string &section)
+X86ISA::Cmos::unserialize(CheckpointIn &cp)
 {
     UNSERIALIZE_SCALAR(address);
     UNSERIALIZE_ARRAY(regs, numRegs);
 
     // Serialize the timer
-    rtc.unserialize("rtc", cp, section);
+    rtc.unserialize("rtc", cp);
 }
 
 X86ISA::Cmos *

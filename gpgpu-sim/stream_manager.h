@@ -29,6 +29,7 @@
 #define STREAM_MANAGER_H_INCLUDED
 
 #include "abstract_hardware_model.h"
+#include "cpu/thread_context.hh"
 #include "gpgpu-sim/gpu-sim.h"
 #include <list>
 #include <time.h>
@@ -270,6 +271,8 @@ public:
     void setThreadContext(ThreadContext *_tc) { tc = _tc; }
     ThreadContext *getThreadContext() { return tc; }
 
+    // FIXME:
+    void clearPending() { assert( m_pending ); m_pending = false; }
 private:
     unsigned m_uid;
     static unsigned sm_next_stream_uid;
@@ -286,6 +289,7 @@ public:
     stream_manager( gpgpu_sim *gpu, bool cuda_launch_blocking );
     bool register_finished_kernel(unsigned grid_uid  );
     bool check_finished_kernel(  );
+    CUstream_st* get_kernel_stream(unsigned grid_uid);
     stream_operation front();
     bool ready();
     void add_stream( CUstream_st *stream );
@@ -296,6 +300,8 @@ public:
     void print( FILE *fp);
     void push( stream_operation op );
     bool operation(bool * sim);
+    bool streamEmpty(CUstream_st *stream);
+    bool streamZeroEmpty();
 private:
     void print_impl( FILE *fp);
 

@@ -39,6 +39,7 @@
 #include "dev/etherdevice.hh"
 #include "dev/etherobject.hh"
 #endif
+#include "mem/ruby/slicc_interface/AbstractController.hh"
 #include "mem/mem_object.hh"
 #include "python/swig/pyobject.hh"
 #include "sim/full_system.hh"
@@ -98,6 +99,22 @@ connectPorts(SimObject *o1, const std::string &name1, int i1,
         }
     }
 #endif
+
+    // These could be MessageBuffers from the ruby memory system. If so, they
+    // need not be connected to anything currently.
+    MessageBuffer *mb1, *mb2;
+    mb1 = dynamic_cast<MessageBuffer*>(o1);
+    mb2 = dynamic_cast<MessageBuffer*>(o2);
+
+    if (mb1 || mb2) {
+        // No need to connect anything here currently. MessageBuffer
+        // connections in Python only serve to print the connections in
+        // the config output.
+        // TODO: Add real ports to MessageBuffers and use MemObject connect
+        // code below to bind MessageBuffer senders and receivers
+        return 1;
+    }
+
     MemObject *mo1, *mo2;
     mo1 = dynamic_cast<MemObject*>(o1);
     mo2 = dynamic_cast<MemObject*>(o2);
@@ -135,9 +152,12 @@ extern "C" SimObject *convertSwigSimObjectPtr(PyObject *);
 // these in sim/main.cc as well that are handled without this define.
 #define PCC(s)  const_cast<char *>(s)
 
+/** Single instance of PythonSimObjectResolver as its action is effectively
+ *  static but SimObjectResolver can use a non-persistent object */
+PythonSimObjectResolver pythonSimObjectResolver;
 
 SimObject *
-resolveSimObject(const string &name)
+PythonSimObjectResolver::resolveSimObject(const string &name)
 {
     PyObject *module = PyImport_ImportModule(PCC("m5.SimObject"));
     if (module == NULL)
@@ -165,4 +185,10 @@ resolveSimObject(const string &name)
     Py_DECREF(ptr);
 
     return obj;
+}
+
+CheckpointIn *
+getCheckpoint(const std::string &cpt_dir, CheckpointIn::CheckpointFileType type)
+{
+    return new CheckpointIn(cpt_dir, pythonSimObjectResolver, type);
 }

@@ -53,7 +53,7 @@ ISA::params() const
 }
 
 void
-ISA::serialize(std::ostream &os)
+ISA::serialize(CheckpointOut &cp) const
 {
     SERIALIZE_SCALAR(fpcr);
     SERIALIZE_SCALAR(uniq);
@@ -63,7 +63,7 @@ ISA::serialize(std::ostream &os)
 }
 
 void
-ISA::unserialize(Checkpoint *cp, const std::string &section)
+ISA::unserialize(CheckpointIn &cp)
 {
     UNSERIALIZE_SCALAR(fpcr);
     UNSERIALIZE_SCALAR(uniq);
@@ -74,7 +74,7 @@ ISA::unserialize(Checkpoint *cp, const std::string &section)
 
 
 MiscReg
-ISA::readMiscRegNoEffect(int misc_reg, ThreadID tid)
+ISA::readMiscRegNoEffect(int misc_reg, ThreadID tid) const
 {
     switch (misc_reg) {
       case MISCREG_FPCR:

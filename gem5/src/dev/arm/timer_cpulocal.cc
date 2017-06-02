@@ -75,8 +75,7 @@ CpuLocalTimer::read(PacketPtr pkt)
     assert(pkt->getAddr() >= pioAddr && pkt->getAddr() < pioAddr + pioSize);
     assert(pkt->getSize() == 4);
     Addr daddr = pkt->getAddr() - pioAddr;
-    pkt->allocate();
-    int cpu_id = pkt->req->contextId();
+    ContextID cpu_id = pkt->req->contextId();
     DPRINTF(Timer, "Reading from CpuLocalTimer at offset: %#x\n", daddr);
     assert(cpu_id >= 0);
     assert(cpu_id < CPU_MAX);
@@ -154,8 +153,7 @@ CpuLocalTimer::write(PacketPtr pkt)
     assert(pkt->getAddr() >= pioAddr && pkt->getAddr() < pioAddr + pioSize);
     assert(pkt->getSize() == 4);
     Addr daddr = pkt->getAddr() - pioAddr;
-    pkt->allocate();
-    int cpu_id = pkt->req->contextId();
+    ContextID cpu_id = pkt->req->contextId();
     DPRINTF(Timer, "Writing to CpuLocalTimer at offset: %#x\n", daddr);
     assert(cpu_id >= 0);
     assert(cpu_id < CPU_MAX);
@@ -337,7 +335,7 @@ CpuLocalTimer::Timer::watchdogAtZero()
 }
 
 void
-CpuLocalTimer::Timer::serialize(std::ostream &os)
+CpuLocalTimer::Timer::serialize(CheckpointOut &cp) const
 {
     DPRINTF(Checkpoint, "Serializing Arm CpuLocalTimer\n");
     SERIALIZE_SCALAR(intNumTimer);
@@ -375,7 +373,7 @@ CpuLocalTimer::Timer::serialize(std::ostream &os)
 }
 
 void
-CpuLocalTimer::Timer::unserialize(Checkpoint *cp, const std::string &section)
+CpuLocalTimer::Timer::unserialize(CheckpointIn &cp)
 {
     DPRINTF(Checkpoint, "Unserializing Arm CpuLocalTimer\n");
 
@@ -418,20 +416,17 @@ CpuLocalTimer::Timer::unserialize(Checkpoint *cp, const std::string &section)
 
 
 void
-CpuLocalTimer::serialize(std::ostream &os)
+CpuLocalTimer::serialize(CheckpointOut &cp) const
 {
-    for (int i = 0; i < CPU_MAX; i++) {
-        nameOut(os, csprintf("%s.timer%d", name(), i));
-        localTimer[i].serialize(os);
-    }
+    for (int i = 0; i < CPU_MAX; i++)
+        localTimer[i].serializeSection(cp, csprintf("timer%d", i));
 }
 
 void
-CpuLocalTimer::unserialize(Checkpoint *cp, const std::string &section)
+CpuLocalTimer::unserialize(CheckpointIn &cp)
 {
-    for (int i = 0; i < CPU_MAX; i++) {
-        localTimer[i].unserialize(cp, csprintf("%s.timer%d", section, i));
-    }
+    for (int i = 0; i < CPU_MAX; i++)
+        localTimer[i].unserializeSection(cp, csprintf("timer%d", i));
 }
 
 CpuLocalTimer *

@@ -44,7 +44,6 @@
 #include "debug/Timer.hh"
 #include "dev/arm/amba_device.hh"
 #include "dev/arm/rtc_pl031.hh"
-#include "dev/mc146818.hh"
 #include "mem/packet.hh"
 #include "mem/packet_access.hh"
 
@@ -62,7 +61,6 @@ PL031::read(PacketPtr pkt)
     assert(pkt->getAddr() >= pioAddr && pkt->getAddr() < pioAddr + pioSize);
     assert(pkt->getSize() == 4);
     Addr daddr = pkt->getAddr() - pioAddr;
-    pkt->allocate();
     uint32_t data;
 
     DPRINTF(Timer, "Reading from RTC at offset: %#x\n", daddr);
@@ -125,7 +123,6 @@ PL031::write(PacketPtr pkt)
     assert(pkt->getAddr() >= pioAddr && pkt->getAddr() < pioAddr + pioSize);
     assert(pkt->getSize() == 4);
     Addr daddr = pkt->getAddr() - pioAddr;
-    pkt->allocate();
     DPRINTF(Timer, "Writing to RTC at offset: %#x\n", daddr);
 
     switch (daddr) {
@@ -195,7 +192,7 @@ PL031::counterMatch()
 }
 
 void
-PL031::serialize(std::ostream &os)
+PL031::serialize(CheckpointOut &cp) const
 {
     DPRINTF(Checkpoint, "Serializing Arm PL031\n");
     SERIALIZE_SCALAR(timeVal);
@@ -217,7 +214,7 @@ PL031::serialize(std::ostream &os)
 }
 
 void
-PL031::unserialize(Checkpoint *cp, const std::string &section)
+PL031::unserialize(CheckpointIn &cp)
 {
     DPRINTF(Checkpoint, "Unserializing Arm PL031\n");
 

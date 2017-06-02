@@ -48,9 +48,10 @@ Decoder::doResetState()
 
     emi.rex = 0;
     emi.legacy = 0;
-    emi.opcode.num = 0;
+    emi.vex = 0;
+
+    emi.opcode.type = BadOpcode;
     emi.opcode.op = 0;
-    emi.opcode.prefixA = emi.opcode.prefixB = 0;
 
     immediateCollected = 0;
     emi.immediate = 0;
@@ -94,8 +95,30 @@ Decoder::process()
           case PrefixState:
             state = doPrefixState(nextByte);
             break;
-          case OpcodeState:
-            state = doOpcodeState(nextByte);
+
+          case TwoByteVexState:
+            state = doTwoByteVexState(nextByte);
+            break;
+
+          case ThreeByteVexFirstState:
+            state = doThreeByteVexFirstState(nextByte);
+            break;
+
+          case ThreeByteVexSecondState:
+            state = doThreeByteVexSecondState(nextByte);
+            break;
+
+          case OneByteOpcodeState:
+            state = doOneByteOpcodeState(nextByte);
+            break;
+          case TwoByteOpcodeState:
+            state = doTwoByteOpcodeState(nextByte);
+            break;
+          case ThreeByte0F38OpcodeState:
+            state = doThreeByte0F38OpcodeState(nextByte);
+            break;
+          case ThreeByte0F3AOpcodeState:
+            state = doThreeByte0F3AOpcodeState(nextByte);
             break;
           case ModRMState:
             state = doModRMState(nextByte);
@@ -198,91 +221,251 @@ Decoder::doPrefixState(uint8_t nextByte)
         DPRINTF(Decoder, "Found Rex prefix %#x.\n", nextByte);
         emi.rex = nextByte;
         break;
-      case 0:
-        nextState = OpcodeState;
+
+      case Vex2Prefix:
+        DPRINTF(Decoder, "Found VEX two-byte prefix %#x.\n", nextByte);
+        emi.vex.zero = nextByte;
+        nextState = TwoByteVexState;
         break;
+
+      case Vex3Prefix:
+        DPRINTF(Decoder, "Found VEX three-byte prefix %#x.\n", nextByte);
+        emi.vex.zero = nextByte;
+        nextState = ThreeByteVexFirstState;
+        break;
+
+      case 0:
+        nextState = OneByteOpcodeState;
+        break;
+
       default:
         panic("Unrecognized prefix %#x\n", nextByte);
     }
     return nextState;
 }
 
-//Load all the opcodes (currently up to 2) and then figure out
-//what immediate and/or ModRM is needed.
 Decoder::State
-Decoder::doOpcodeState(uint8_t nextByte)
+Decoder::doTwoByteVexState(uint8_t nextByte)
+{
+    assert(emi.vex.zero == 0xc5);
+    consumeByte();
+    TwoByteVex tbe = 0;
+    tbe.first = nextByte;
+
+    emi.vex.first.r = tbe.first.r;
+    emi.vex.first.x = 1;
+    emi.vex.first.b = 1;
+    emi.vex.first.map_select = 1;
+
+    emi.vex.second.w = 0;
+    emi.vex.second.vvvv = tbe.first.vvvv;
+    emi.vex.second.l = tbe.first.l;
+    emi.vex.second.pp = tbe.first.pp;
+
+    emi.opcode.type = Vex;
+    return OneByteOpcodeState;
+}
+
+Decoder::State
+Decoder::doThreeByteVexFirstState(uint8_t nextByte)
+{
+    consumeByte();
+    emi.vex.first = nextByte;
+    return ThreeByteVexSecondState;
+}
+
+Decoder::State
+Decoder::doThreeByteVexSecondState(uint8_t nextByte)
+{
+    consumeByte();
+    emi.vex.second = nextByte;
+    emi.opcode.type = Vex;
+    return OneByteOpcodeState;
+}
+
+// Load the first opcode byte. Determine if there are more opcode bytes, and
+// if not, what immediate and/or ModRM is needed.
+Decoder::State
+Decoder::doOneByteOpcodeState(uint8_t nextByte)
 {
     State nextState = ErrorState;
-    emi.opcode.num++;
-    //We can't handle 3+ byte opcodes right now
-    assert(emi.opcode.num < 4);
     consumeByte();
-    if(emi.opcode.num == 1 && nextByte == 0x0f)
-    {
-        nextState = OpcodeState;
-        DPRINTF(Decoder, "Found two byte opcode.\n");
-        emi.opcode.prefixA = nextByte;
-    }
-    else if(emi.opcode.num == 2 && (nextByte == 0x38 || nextByte == 0x3A))
-    {
-        nextState = OpcodeState;
-        DPRINTF(Decoder, "Found three byte opcode.\n");
-        emi.opcode.prefixB = nextByte;
-    }
-    else
-    {
-        DPRINTF(Decoder, "Found opcode %#x.\n", nextByte);
+
+    if (emi.vex.zero != 0) {
+        DPRINTF(Decoder, "Found VEX opcode %#x.\n", nextByte);
+        emi.opcode.op = nextByte;
+        const uint8_t opcode_map = emi.vex.first.map_select;
+        nextState = processExtendedOpcode(ImmediateTypeVex[opcode_map]);
+    } else if (nextByte == 0x0f) {
+        nextState = TwoByteOpcodeState;
+        DPRINTF(Decoder, "Found opcode escape byte %#x.\n", nextByte);
+    } else {
+        DPRINTF(Decoder, "Found one byte opcode %#x.\n", nextByte);
+        emi.opcode.type = OneByteOpcode;
         emi.opcode.op = nextByte;
 
-        //Figure out the effective operand size. This can be overriden to
-        //a fixed value at the decoder level.
-        int logOpSize;
-        if (emi.rex.w)
-            logOpSize = 3; // 64 bit operand size
-        else if (emi.legacy.op)
-            logOpSize = altOp;
-        else
-            logOpSize = defOp;
+        nextState = processOpcode(ImmediateTypeOneByte, UsesModRMOneByte,
+                                  nextByte >= 0xA0 && nextByte <= 0xA3);
+    }
+    return nextState;
+}
 
-        //Set the actual op size
-        emi.opSize = 1 << logOpSize;
+// Load the second opcode byte. Determine if there are more opcode bytes, and
+// if not, what immediate and/or ModRM is needed.
+Decoder::State
+Decoder::doTwoByteOpcodeState(uint8_t nextByte)
+{
+    State nextState = ErrorState;
+    consumeByte();
+    if (nextByte == 0x38) {
+        nextState = ThreeByte0F38OpcodeState;
+        DPRINTF(Decoder, "Found opcode escape byte %#x.\n", nextByte);
+    } else if (nextByte == 0x3a) {
+        nextState = ThreeByte0F3AOpcodeState;
+        DPRINTF(Decoder, "Found opcode escape byte %#x.\n", nextByte);
+    } else {
+        DPRINTF(Decoder, "Found two byte opcode %#x.\n", nextByte);
+        emi.opcode.type = TwoByteOpcode;
+        emi.opcode.op = nextByte;
 
-        //Figure out the effective address size. This can be overriden to
-        //a fixed value at the decoder level.
-        int logAddrSize;
-        if(emi.legacy.addr)
-            logAddrSize = altAddr;
-        else
-            logAddrSize = defAddr;
+        nextState = processOpcode(ImmediateTypeTwoByte, UsesModRMTwoByte);
+    }
+    return nextState;
+}
 
-        //Set the actual address size
-        emi.addrSize = 1 << logAddrSize;
+// Load the third opcode byte and determine what immediate and/or ModRM is
+// needed.
+Decoder::State
+Decoder::doThreeByte0F38OpcodeState(uint8_t nextByte)
+{
+    consumeByte();
 
-        //Figure out the effective stack width. This can be overriden to
-        //a fixed value at the decoder level.
-        emi.stackSize = 1 << stack;
+    DPRINTF(Decoder, "Found three byte 0F38 opcode %#x.\n", nextByte);
+    emi.opcode.type = ThreeByte0F38Opcode;
+    emi.opcode.op = nextByte;
 
-        //Figure out how big of an immediate we'll retreive based
-        //on the opcode.
-        int immType = ImmediateType[emi.opcode.num - 1][nextByte];
-        if (emi.opcode.num == 1 && nextByte >= 0xA0 && nextByte <= 0xA3)
-            immediateSize = SizeTypeToSize[logAddrSize - 1][immType];
-        else
-            immediateSize = SizeTypeToSize[logOpSize - 1][immType];
+    return processOpcode(ImmediateTypeThreeByte0F38, UsesModRMThreeByte0F38);
+}
 
-        //Determine what to expect next
-        if (UsesModRM[emi.opcode.num - 1][nextByte]) {
-            nextState = ModRMState;
+// Load the third opcode byte and determine what immediate and/or ModRM is
+// needed.
+Decoder::State
+Decoder::doThreeByte0F3AOpcodeState(uint8_t nextByte)
+{
+    consumeByte();
+
+    DPRINTF(Decoder, "Found three byte 0F3A opcode %#x.\n", nextByte);
+    emi.opcode.type = ThreeByte0F3AOpcode;
+    emi.opcode.op = nextByte;
+
+    return processOpcode(ImmediateTypeThreeByte0F3A, UsesModRMThreeByte0F3A);
+}
+
+// Generic opcode processing which determines the immediate size, and whether
+// or not there's a modrm byte.
+Decoder::State
+Decoder::processOpcode(ByteTable &immTable, ByteTable &modrmTable,
+                       bool addrSizedImm)
+{
+    State nextState = ErrorState;
+    const uint8_t opcode = emi.opcode.op;
+
+    //Figure out the effective operand size. This can be overriden to
+    //a fixed value at the decoder level.
+    int logOpSize;
+    if (emi.rex.w)
+        logOpSize = 3; // 64 bit operand size
+    else if (emi.legacy.op)
+        logOpSize = altOp;
+    else
+        logOpSize = defOp;
+
+    //Set the actual op size
+    emi.opSize = 1 << logOpSize;
+
+    //Figure out the effective address size. This can be overriden to
+    //a fixed value at the decoder level.
+    int logAddrSize;
+    if(emi.legacy.addr)
+        logAddrSize = altAddr;
+    else
+        logAddrSize = defAddr;
+
+    //Set the actual address size
+    emi.addrSize = 1 << logAddrSize;
+
+    //Figure out the effective stack width. This can be overriden to
+    //a fixed value at the decoder level.
+    emi.stackSize = 1 << stack;
+
+    //Figure out how big of an immediate we'll retreive based
+    //on the opcode.
+    int immType = immTable[opcode];
+    if (addrSizedImm)
+        immediateSize = SizeTypeToSize[logAddrSize - 1][immType];
+    else
+        immediateSize = SizeTypeToSize[logOpSize - 1][immType];
+
+    //Determine what to expect next
+    if (modrmTable[opcode]) {
+        nextState = ModRMState;
+    } else {
+        if(immediateSize) {
+            nextState = ImmediateState;
         } else {
-            if(immediateSize) {
-                nextState = ImmediateState;
-            } else {
-                instDone = true;
-                nextState = ResetState;
-            }
+            instDone = true;
+            nextState = ResetState;
         }
     }
     return nextState;
+}
+
+Decoder::State
+Decoder::processExtendedOpcode(ByteTable &immTable)
+{
+    //Figure out the effective operand size. This can be overriden to
+    //a fixed value at the decoder level.
+    int logOpSize;
+    if (emi.vex.second.w)
+        logOpSize = 3; // 64 bit operand size
+    else if (emi.vex.second.pp == 1)
+        logOpSize = altOp;
+    else
+        logOpSize = defOp;
+
+    //Set the actual op size
+    emi.opSize = 1 << logOpSize;
+
+    //Figure out the effective address size. This can be overriden to
+    //a fixed value at the decoder level.
+    int logAddrSize;
+    if(emi.legacy.addr)
+        logAddrSize = altAddr;
+    else
+        logAddrSize = defAddr;
+
+    //Set the actual address size
+    emi.addrSize = 1 << logAddrSize;
+
+    //Figure out the effective stack width. This can be overriden to
+    //a fixed value at the decoder level.
+    emi.stackSize = 1 << stack;
+
+    //Figure out how big of an immediate we'll retreive based
+    //on the opcode.
+    const uint8_t opcode = emi.opcode.op;
+
+    if (emi.vex.zero == 0xc5 || emi.vex.zero == 0xc4) {
+        int immType = immTable[opcode];
+        // Assume 64-bit mode;
+        immediateSize = SizeTypeToSize[2][immType];
+    }
+
+    if (opcode == 0x77) {
+        instDone = true;
+        return ResetState;
+    }
+    return ModRMState;
 }
 
 //Get the ModRM byte and determine what displacement, if any, there is.
@@ -292,8 +475,7 @@ Decoder::State
 Decoder::doModRMState(uint8_t nextByte)
 {
     State nextState = ErrorState;
-    ModRM modRM;
-    modRM = nextByte;
+    ModRM modRM = nextByte;
     DPRINTF(Decoder, "Found modrm byte %#x.\n", nextByte);
     if (defOp == 1) {
         //figure out 16 bit displacement size
@@ -315,7 +497,7 @@ Decoder::doModRMState(uint8_t nextByte)
 
     // The "test" instruction in group 3 needs an immediate, even though
     // the other instructions with the same actual opcode don't.
-    if (emi.opcode.num == 1 && (modRM.reg & 0x6) == 0) {
+    if (emi.opcode.type == OneByteOpcode && (modRM.reg & 0x6) == 0) {
        if (emi.opcode.op == 0xF6)
            immediateSize = 1;
        else if (emi.opcode.op == 0xF7)

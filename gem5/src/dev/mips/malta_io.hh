@@ -51,9 +51,6 @@
  */
 class MaltaIO : public BasicPioDevice
 {
-  private:
-    struct tm tm;
-
   protected:
 
     class RTC : public MC146818
@@ -133,18 +130,13 @@ class MaltaIO : public BasicPioDevice
     /** Clear an Interrupt to the CPU */
     void clearIntr(uint8_t interrupt);
 
-    /**
-     * Serialize this object to the given output stream.
-     * @param os The stream to serialize to.
-     */
-    virtual void serialize(std::ostream &os);
+    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
+    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
 
     /**
-     * Reconstruct the state of this object from a checkpoint.
-     * @param cp The checkpoint use.
-     * @param section The section name of this object
+     * Start running.
      */
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
+    virtual void startup();
 
 };
 

@@ -71,7 +71,7 @@ Ruby.define_options(parser)
 #system options
 options.ruby = True
 #options.cpu_type = "detailed" #for an OOO core, timing for an inorder core
-options.num_cpus = 1
+options.num_cpus = 4
 options.cpu_clock = '1.2GHz'
 
 
@@ -126,12 +126,9 @@ options.shMemDelay = 1
 
 #System memory conifg tbd
 options.mem_type = "RubyLPDDR3_1600_x32"
-#options.total_mem_size = "2112MB"
-#options.total_mem_size = "3136MB"
-#options.total_mem_size = '4GB'
+options.total_mem_size = "2112MB"
 options.num_dev_dirs = 0
-options.num_dirs = 1
-options.mem_channels = options.num_dirs;
+options.num_dirs = 2
 
 if args:
     print "Error: script doesn't take any positional arguments"
@@ -269,10 +266,7 @@ for (i, cpu) in enumerate(system.cpu):
 #
 GPUConfig.connectGPUPorts(system.gpu, system.ruby, options)
 
-if(options.mem_type.lower().count('ruby')):
-   GPUMemConfig.setDRAMMemoryControlOptions(system, options)
-else:
-   GPUMemConfig.setMemoryControlOptions(system, options)
+GPUMemConfig.setDRAMMemoryControlOptions(system, options)
 
 #
 # Finalize setup and run

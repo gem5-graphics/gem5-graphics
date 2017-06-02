@@ -98,7 +98,7 @@ class ShaderLSQ : public MemObject
         virtual bool recvTimingReq(PacketPtr pkt);
         virtual Tick recvAtomic(PacketPtr pkt);
         virtual void recvFunctional(PacketPtr pkt);
-        virtual void recvRetry();
+        virtual void recvRespRetry();
         virtual AddrRangeList getAddrRanges() const;
 
     };
@@ -119,7 +119,7 @@ class ShaderLSQ : public MemObject
         virtual bool recvTimingReq(PacketPtr pkt);
         virtual Tick recvAtomic(PacketPtr pkt);
         virtual void recvFunctional(PacketPtr pkt);
-        virtual void recvRetry();
+        virtual void recvRespRetry();
         virtual AddrRangeList getAddrRanges() const;
 
     };
@@ -142,7 +142,7 @@ class ShaderLSQ : public MemObject
             : MasterPort(_name, owner), lsq(owner) {}
 
         bool recvTimingResp(PacketPtr pkt);
-        void recvRetry();
+        void recvReqRetry();
     };
     CachePort cachePort;
 
@@ -201,6 +201,10 @@ class ShaderLSQ : public MemObject
     // Data TLB to translate coalesced virtual to physical addresses
     ShaderTLB *tlb;
 
+    // Use this cycle specifier to block inject for variable issue latency
+    // e.g. Fermi and Maxwell store issue is 1 cycle per cache subline
+    unsigned sublineBytes;
+    Cycles nextAllowedInject;
     // Number of accesses that can be injected into L1 cache per cycle
     unsigned injectWidth;
     // Buffer to hold accesses to be sent to the cache

@@ -62,6 +62,7 @@ void m5_panic(void);
 void m5_work_begin(uint64_t workid, uint64_t threadid);
 void m5_work_end(uint64_t workid, uint64_t threadid);
 void m5_gpu(uint64_t __gpusysno, uint64_t call_params);
+void m5_util(uint64_t reqId, uint64_t call_params);
 
 // These operations are for critical path annotation
 void m5a_bsm(char *sm, const void *id, int flags);

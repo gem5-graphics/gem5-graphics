@@ -82,7 +82,7 @@ CopyEngine::CopyEngineChannel::CopyEngineChannel(CopyEngine *_ce, int cid)
       ce(_ce), channelId(cid), busy(false), underReset(false),
     refreshNext(false), latBeforeBegin(ce->params()->latBeforeBegin),
     latAfterCompletion(ce->params()->latAfterCompletion),
-    completionDataReg(0), nextState(Idle), drainManager(NULL),
+    completionDataReg(0), nextState(Idle),
     fetchCompleteEvent(this), addrCompleteEvent(this),
     readCompleteEvent(this), writeCompleteEvent(this),
     statusCompleteEvent(this)
@@ -140,12 +140,12 @@ CopyEngine::CopyEngineChannel::recvCommand()
         cr.status.dma_transfer_status(0);
         nextState = DescriptorFetch;
         fetchAddress = cr.descChainAddr;
-        if (ce->getDrainState() == Drainable::Running)
+        if (ce->drainState() == DrainState::Running)
             fetchDescriptor(cr.descChainAddr);
     } else if (cr.command.append_dma()) {
         if (!busy) {
             nextState = AddressFetch;
-            if (ce->getDrainState() == Drainable::Running)
+            if (ce->drainState() == DrainState::Running)
                 fetchNextAddr(lastDescriptorAddr);
         } else
             refreshNext = true;
@@ -181,8 +181,6 @@ CopyEngine::read(PacketPtr pkt)
     }
 
     DPRINTF(DMACopyEngine, "Read device register %#X size: %d\n", daddr, size);
-
-    pkt->allocate();
 
     ///
     /// Handle read of register here
@@ -637,68 +635,45 @@ CopyEngine::CopyEngineChannel::fetchAddrComplete()
 bool
 CopyEngine::CopyEngineChannel::inDrain()
 {
-    if (ce->getDrainState() == Drainable::Draining) {
+    if (drainState() == DrainState::Draining) {
         DPRINTF(Drain, "CopyEngine done draining, processing drain event\n");
-        assert(drainManager);
-        drainManager->signalDrainDone();
-        drainManager = NULL;
+        signalDrainDone();
     }
 
-    return ce->getDrainState() != Drainable::Running;
+    return ce->drainState() != DrainState::Running;
 }
 
-unsigned int
-CopyEngine::CopyEngineChannel::drain(DrainManager *dm)
+DrainState
+CopyEngine::CopyEngineChannel::drain()
 {
-    if (nextState == Idle || ce->getDrainState() != Drainable::Running)
-        return 0;
-    unsigned int count = 1;
-    count += cePort.drain(dm);
-
-    DPRINTF(Drain, "CopyEngineChannel not drained\n");
-    this->drainManager = dm;
-    return count;
-}
-
-unsigned int
-CopyEngine::drain(DrainManager *dm)
-{
-    unsigned int count;
-    count = pioPort.drain(dm) + dmaPort.drain(dm) + configPort.drain(dm);
-    for (int x = 0;x < chan.size(); x++)
-        count += chan[x]->drain(dm);
-
-    if (count)
-        setDrainState(Draining);
-    else
-        setDrainState(Drained);
-
-    DPRINTF(Drain, "CopyEngine not drained\n");
-    return count;
-}
-
-void
-CopyEngine::serialize(std::ostream &os)
-{
-    PciDevice::serialize(os);
-    regs.serialize(os);
-    for (int x =0; x < chan.size(); x++) {
-        nameOut(os, csprintf("%s.channel%d", name(), x));
-        chan[x]->serialize(os);
+    if (nextState == Idle || ce->drainState() != DrainState::Running) {
+        return DrainState::Drained;
+    } else {
+        DPRINTF(Drain, "CopyEngineChannel not drained\n");
+        return DrainState::Draining;
     }
 }
 
 void
-CopyEngine::unserialize(Checkpoint *cp, const std::string &section)
+CopyEngine::serialize(CheckpointOut &cp) const
 {
-    PciDevice::unserialize(cp, section);
-    regs.unserialize(cp, section);
+    PciDevice::serialize(cp);
+    regs.serialize(cp);
+    for (int x =0; x < chan.size(); x++)
+        chan[x]->serializeSection(cp, csprintf("channel%d", x));
+}
+
+void
+CopyEngine::unserialize(CheckpointIn &cp)
+{
+    PciDevice::unserialize(cp);
+    regs.unserialize(cp);
     for (int x = 0; x < chan.size(); x++)
-        chan[x]->unserialize(cp, csprintf("%s.channel%d", section, x));
+        chan[x]->unserializeSection(cp, csprintf("channel%d", x));
 }
 
 void
-CopyEngine::CopyEngineChannel::serialize(std::ostream &os)
+CopyEngine::CopyEngineChannel::serialize(CheckpointOut &cp) const
 {
     SERIALIZE_SCALAR(channelId);
     SERIALIZE_SCALAR(busy);
@@ -709,13 +684,13 @@ CopyEngine::CopyEngineChannel::serialize(std::ostream &os)
     SERIALIZE_SCALAR(fetchAddress);
     int nextState = this->nextState;
     SERIALIZE_SCALAR(nextState);
-    arrayParamOut(os, "curDmaDesc", (uint8_t*)curDmaDesc, sizeof(DmaDesc));
+    arrayParamOut(cp, "curDmaDesc", (uint8_t*)curDmaDesc, sizeof(DmaDesc));
     SERIALIZE_ARRAY(copyBuffer, ce->params()->XferCap);
-    cr.serialize(os);
+    cr.serialize(cp);
 
 }
 void
-CopyEngine::CopyEngineChannel::unserialize(Checkpoint *cp, const std::string &section)
+CopyEngine::CopyEngineChannel::unserialize(CheckpointIn &cp)
 {
     UNSERIALIZE_SCALAR(channelId);
     UNSERIALIZE_SCALAR(busy);
@@ -727,9 +702,9 @@ CopyEngine::CopyEngineChannel::unserialize(Checkpoint *cp, const std::string &se
     int nextState;
     UNSERIALIZE_SCALAR(nextState);
     this->nextState = (ChannelState)nextState;
-    arrayParamIn(cp, section, "curDmaDesc", (uint8_t*)curDmaDesc, sizeof(DmaDesc));
+    arrayParamIn(cp, "curDmaDesc", (uint8_t*)curDmaDesc, sizeof(DmaDesc));
     UNSERIALIZE_ARRAY(copyBuffer, ce->params()->XferCap);
-    cr.unserialize(cp, section);
+    cr.unserialize(cp);
 
 }
 
@@ -758,15 +733,6 @@ CopyEngine::CopyEngineChannel::restartStateMachine()
         panic("Unknown state for CopyEngineChannel\n");
     }
 }
-
-void
-CopyEngine::drainResume()
-{
-    Drainable::drainResume();
-    for (int x = 0;x < chan.size(); x++)
-        chan[x]->drainResume();
-}
-
 
 void
 CopyEngine::CopyEngineChannel::drainResume()

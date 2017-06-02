@@ -81,7 +81,7 @@ private:
 
     protected:
         virtual bool recvTimingResp(PacketPtr pkt);
-        virtual void recvRetry();
+        virtual void recvReqRetry();
         virtual Tick recvAtomic(PacketPtr pkt);
         virtual void recvFunctional(PacketPtr pkt);
         void setStalled(PacketPtr pkt)
@@ -118,6 +118,9 @@ private:
 private:
     CudaGPU *cudaGPU;
 
+    unsigned cacheLineSize;
+    unsigned bufferDepth;
+    bool buffersFull();
     void tick();
 
     int driverDelay;
@@ -161,7 +164,12 @@ private:
     };
     std::vector<MemCpyStats> memCpyStats;
 
+    CUstream_st* _currentStream;
+
 public:
+    //Now have the copy manager attached to a stream, not the CudaGPU 
+    void setCurrentStream(CUstream_st* s) { _currentStream = s; }
+    CUstream_st* getCurrentStream() const { return _currentStream; }
 
     GPUCopyEngine(const Params *p);
     virtual BaseMasterPort& getMasterPort(const std::string &if_name, PortID idx = -1);
@@ -169,6 +177,8 @@ public:
     int memcpy(Addr src, Addr dst, size_t length, stream_operation_type type);
     int memset(Addr dst, int value, size_t length);
     void recvPacket(PacketPtr pkt);
+
+    bool Ready() const { return !running; }
 
     /** This function is used by the page table walker to determine if it could
     * translate the a pending request or if the underlying request has been
@@ -179,6 +189,12 @@ public:
     bool isSquashed() const { return false; }
 
     void cePrintStats(std::ostream& out);
+
+    Stats::Scalar numOperations;
+    Stats::Scalar bytesRead;
+    Stats::Scalar bytesWritten;
+    Stats::Scalar operationTimeTicks;
+    void regStats();
 };
 
 #endif

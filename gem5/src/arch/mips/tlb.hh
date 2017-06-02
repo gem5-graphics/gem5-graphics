@@ -37,6 +37,7 @@
 
 #include <map>
 
+#include "arch/generic/tlb.hh"
 #include "arch/mips/isa_traits.hh"
 #include "arch/mips/pagetable.hh"
 #include "arch/mips/utility.hh"
@@ -44,9 +45,7 @@
 #include "base/statistics.hh"
 #include "mem/request.hh"
 #include "params/MipsTLB.hh"
-#include "sim/fault_fwd.hh"
 #include "sim/sim_object.hh"
-#include "sim/tlb.hh"
 
 class ThreadContext;
 
@@ -108,8 +107,8 @@ class TLB : public BaseTLB
     static Fault checkCacheability(RequestPtr &req);
 
     // Checkpointing
-    void serialize(std::ostream &os);
-    void unserialize(Checkpoint *cp, const std::string &section);
+    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
+    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
 
     void regStats();
 

@@ -30,34 +30,41 @@
 #define __MEM_RUBY_SLICC_INTERFACE_MESSAGE_HH__
 
 #include <iostream>
+#include <memory>
+#include <stack>
 
-#include "base/refcnt.hh"
 #include "mem/packet.hh"
+#include "mem/protocol/MessageSizeType.hh"
+#include "mem/ruby/common/NetDest.hh"
 
 class Message;
-typedef RefCountingPtr<Message> MsgPtr;
+typedef std::shared_ptr<Message> MsgPtr;
 
-class Message : public RefCounted
+class Message
 {
   public:
     Message(Tick curTime)
         : m_time(curTime),
           m_LastEnqueueTime(curTime),
-          m_DelayedTicks(0)
+          m_DelayedTicks(0), m_msg_counter(0)
     { }
 
     Message(const Message &other)
         : m_time(other.m_time),
           m_LastEnqueueTime(other.m_LastEnqueueTime),
-          m_DelayedTicks(other.m_DelayedTicks)
+          m_DelayedTicks(other.m_DelayedTicks),
+          m_msg_counter(other.m_msg_counter)
     { }
 
     virtual ~Message() { }
 
-    virtual Message* clone() const = 0;
+    virtual MsgPtr clone() const = 0;
     virtual void print(std::ostream& out) const = 0;
-    virtual void setIncomingLink(int) {}
-    virtual void setVnet(int) {}
+
+    virtual const MessageSizeType& getMessageSize() const
+    { panic("MessageSizeType() called on wrong message!"); }
+    virtual MessageSizeType& getMessageSize()
+    { panic("MessageSizeType() called on wrong message!"); }
 
     /**
      * The two functions below are used for reading / writing the message
@@ -67,9 +74,7 @@ class Message : public RefCounted
      * implement these methods.
      */
     virtual bool functionalRead(Packet *pkt) = 0;
-    //{ fatal("Read functional access not implemented!"); }
     virtual bool functionalWrite(Packet *pkt) = 0;
-    //{ fatal("Write functional access not implemented!"); }
 
     //! Update the delay this message has experienced so far.
     void updateDelayedTicks(Tick curTime)
@@ -84,13 +89,42 @@ class Message : public RefCounted
     const Tick getLastEnqueueTime() const {return m_LastEnqueueTime;}
 
     const Tick& getTime() const { return m_time; }
-    void setTime(const Tick& new_time) { m_time = new_time; }
+    void setMsgCounter(uint64_t c) { m_msg_counter = c; }
+    uint64_t getMsgCounter() const { return m_msg_counter; }
+
+    // Functions related to network traversal
+    virtual const NetDest& getDestination() const
+    { panic("getDestination() called on wrong message!"); }
+    virtual NetDest& getDestination()
+    { panic("getDestination() called on wrong message!"); }
+
+    int getIncomingLink() const { return incoming_link; }
+    void setIncomingLink(int link) { incoming_link = link; }
+    int getVnet() const { return vnet; }
+    void setVnet(int net) { vnet = net; }
 
   private:
-    Tick m_time;
+    const Tick m_time;
     Tick m_LastEnqueueTime; // my last enqueue time
     Tick m_DelayedTicks; // my delayed cycles
+    uint64_t m_msg_counter; // FIXME, should this be a 64-bit value?
+
+    // Variables for required network traversal
+    int incoming_link;
+    int vnet;
 };
+
+inline bool
+operator>(const MsgPtr &lhs, const MsgPtr &rhs)
+{
+    const Message *l = lhs.get();
+    const Message *r = rhs.get();
+
+    if (l->getLastEnqueueTime() == r->getLastEnqueueTime()) {
+        return l->getMsgCounter() > r->getMsgCounter();
+    }
+    return l->getLastEnqueueTime() > r->getLastEnqueueTime();
+}
 
 inline std::ostream&
 operator<<(std::ostream& out, const Message& obj)

@@ -44,6 +44,7 @@
 
 #include "base/random.hh"
 #include "mem/simple_mem.hh"
+#include "debug/Drain.hh"
 
 using namespace std;
 
@@ -52,13 +53,15 @@ SimpleMemory::SimpleMemory(const SimpleMemoryParams* p) :
     port(name() + ".port", *this), latency(p->latency),
     latency_var(p->latency_var), bandwidth(p->bandwidth), isBusy(false),
     retryReq(false), retryResp(false),
-    releaseEvent(this), dequeueEvent(this), drainManager(NULL)
+    releaseEvent(this), dequeueEvent(this)
 {
 }
 
 void
 SimpleMemory::init()
 {
+    AbstractMemory::init();
+
     // allow unconnected memories as this is used in several ruby
     // systems at the moment
     if (port.isConnected()) {
@@ -80,9 +83,13 @@ SimpleMemory::recvFunctional(PacketPtr pkt)
 
     functionalAccess(pkt);
 
+    bool done = false;
+    auto p = packetQueue.begin();
     // potentially update the packets in our packet queue as well
-    for (auto i = packetQueue.begin(); i != packetQueue.end(); ++i)
-        pkt->checkFunctional(i->pkt);
+    while (!done && p != packetQueue.end()) {
+        done = pkt->checkFunctional(p->pkt);
+        ++p;
+    }
 
     pkt->popLabel();
 }
@@ -118,7 +125,7 @@ SimpleMemory::recvTimingReq(PacketPtr pkt)
     }
 
     // @todo someone should pay for this
-    pkt->busFirstWordDelay = pkt->busLastWordDelay = 0;
+    pkt->headerDelay = pkt->payloadDelay = 0;
 
     // update the release time according to the bandwidth limit, and
     // do so with respect to the time it takes to finish this request
@@ -154,7 +161,7 @@ SimpleMemory::recvTimingReq(PacketPtr pkt)
         // to keep things simple (and in order), we put the packet at
         // the end even if the latency suggests it should be sent
         // before the packet(s) before it
-        packetQueue.push_back(DeferredPacket(pkt, curTick() + getLatency()));
+        packetQueue.emplace_back(pkt, curTick() + getLatency());
         if (!retryResp && !dequeueEvent.scheduled())
             schedule(dequeueEvent, packetQueue.back().tick);
     } else {
@@ -171,7 +178,7 @@ SimpleMemory::release()
     isBusy = false;
     if (retryReq) {
         retryReq = false;
-        port.sendRetry();
+        port.sendRetryReq();
     }
 }
 
@@ -193,9 +200,9 @@ SimpleMemory::dequeue()
             // already have an event scheduled, so use re-schedule
             reschedule(dequeueEvent,
                        std::max(packetQueue.front().tick, curTick()), true);
-        } else if (drainManager) {
-            drainManager->signalDrainDone();
-            drainManager = NULL;
+        } else if (drainState() == DrainState::Draining) {
+            DPRINTF(Drain, "Draining of SimpleMemory complete\n");
+            signalDrainDone();
         }
     }
 }
@@ -208,7 +215,7 @@ SimpleMemory::getLatency() const
 }
 
 void
-SimpleMemory::recvRetry()
+SimpleMemory::recvRespRetry()
 {
     assert(retryResp);
 
@@ -225,22 +232,15 @@ SimpleMemory::getSlavePort(const std::string &if_name, PortID idx)
     }
 }
 
-unsigned int
-SimpleMemory::drain(DrainManager *dm)
+DrainState
+SimpleMemory::drain()
 {
-    int count = 0;
-
-    // also track our internal queue
     if (!packetQueue.empty()) {
-        count += 1;
-        drainManager = dm;
+        DPRINTF(Drain, "SimpleMemory Queue has requests, waiting to drain\n");
+        return DrainState::Draining;
+    } else {
+        return DrainState::Drained;
     }
-
-    if (count)
-        setDrainState(Drainable::Draining);
-    else
-        setDrainState(Drainable::Drained);
-    return count;
 }
 
 SimpleMemory::MemoryPort::MemoryPort(const std::string& _name,
@@ -275,9 +275,9 @@ SimpleMemory::MemoryPort::recvTimingReq(PacketPtr pkt)
 }
 
 void
-SimpleMemory::MemoryPort::recvRetry()
+SimpleMemory::MemoryPort::recvRespRetry()
 {
-    memory.recvRetry();
+    memory.recvRespRetry();
 }
 
 SimpleMemory*

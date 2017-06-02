@@ -181,7 +181,7 @@ class Interrupts : public BasicPioDevice, IntDevice
     bool
     getRegArrayBit(ApicRegIndex base, uint8_t vector)
     {
-        return bits(regs[base + (vector / 32)], vector % 5);
+        return bits(regs[base + (vector / 32)], vector % 32);
     }
 
     void requestInterrupt(uint8_t vector, uint8_t deliveryMode, bool level);
@@ -300,9 +300,8 @@ class Interrupts : public BasicPioDevice, IntDevice
     /*
      * Serialization.
      */
-
-    virtual void serialize(std::ostream &os);
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
+    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
+    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
 
     /*
      * Old functions needed for compatability but which will be phased out

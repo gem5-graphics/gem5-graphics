@@ -45,19 +45,15 @@ class RubyPort(MemObject):
     mem_slave_port = SlavePort("Ruby memory port")
 
     using_ruby_tester = Param.Bool(False, "")
-    access_phys_mem = Param.Bool(False,
-        "should the rubyport atomically update phys_mem")
-    ruby_system = Param.RubySystem("")
+    ruby_system = Param.RubySystem(Parent.any, "")
     system = Param.System(Parent.any, "system object")
     support_data_reqs = Param.Bool(True, "data cache requests supported")
     support_inst_reqs = Param.Bool(True, "inst cache requests supported")
 
-
 class RubyPortProxy(RubyPort):
     type = 'RubyPortProxy'
     cxx_header = "mem/ruby/system/RubyPortProxy.hh"
-    access_phys_mem = True
-    
+
 class RubySequencer(RubyPort):
     type = 'RubySequencer'
     cxx_class = 'Sequencer'
@@ -65,6 +61,12 @@ class RubySequencer(RubyPort):
 
     icache = Param.RubyCache("")
     dcache = Param.RubyCache("")
+    # Cache latencies currently assessed at the beginning of each access
+    # NOTE: Setting these values to a value greater than one will result in
+    # O3 CPU pipeline bubbles and negatively impact performance
+    # TODO: Latencies should be migrated into each top-level cache controller
+    icache_hit_latency = Param.Cycles(1, "Inst cache hit latency")
+    dcache_hit_latency = Param.Cycles(1, "Data cache hit latency")
     max_outstanding_requests = Param.Int(16,
         "max requests (incl. prefetches) outstanding")
     deadlock_threshold = Param.Cycles(500000,
@@ -75,7 +77,12 @@ class RubySequencer(RubyPort):
     # further decisions about GPU, copy engine IO capabilities are made
     connect_to_io = Param.Bool(True, "Whether to connect to IO")
 
-class DMASequencer(RubyPort):
+class DMASequencer(MemObject):
     type = 'DMASequencer'
     cxx_header = "mem/ruby/system/DMASequencer.hh"
-    access_phys_mem = True
+
+    version = Param.Int(0, "")
+    slave = SlavePort("Device slave port")
+    using_ruby_tester = Param.Bool(False, "")
+    ruby_system = Param.RubySystem(Parent.any, "")
+    system = Param.System(Parent.any, "system object")

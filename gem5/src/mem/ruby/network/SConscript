@@ -35,9 +35,11 @@ if env['PROTOCOL'] == 'None':
 
 SimObject('BasicLink.py')
 SimObject('BasicRouter.py')
+SimObject('MessageBuffer.py')
 SimObject('Network.py')
 
 Source('BasicLink.cc')
 Source('BasicRouter.cc')
+Source('MessageBuffer.cc')
 Source('Network.cc')
 Source('Topology.cc')

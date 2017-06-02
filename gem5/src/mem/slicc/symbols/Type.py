@@ -43,11 +43,6 @@ class Enumeration(PairContainer):
         super(Enumeration, self).__init__(pairs)
         self.ident = ident
 
-class Method(object):
-    def __init__(self, return_type, param_types):
-        self.return_type = return_type
-        self.param_types = param_types
-
 class Type(Symbol):
     def __init__(self, table, ident, location, pairs, machine=None):
         super(Type, self).__init__(table, ident, location, pairs)
@@ -66,10 +61,8 @@ class Type(Symbol):
         # check for interface that this Type implements
         if "interface" in self:
             interface = self["interface"]
-            if interface in ("Message", "NetworkMessage"):
+            if interface in ("Message"):
                 self["message"] = "yes"
-            if interface == "NetworkMessage":
-                self["networkmessage"] = "yes"
 
         # FIXME - all of the following id comparisons are fragile hacks
         if self.ident in ("CacheMemory"):
@@ -96,20 +89,13 @@ class Type(Symbol):
         self.statePermPairs = []
 
         self.data_members = orderdict()
-
-        # Methods
         self.methods = {}
-        self.functions = {}
-
-        # Enums
         self.enums = orderdict()
 
     @property
     def isPrimitive(self):
         return "primitive" in self
-    @property
-    def isNetworkMessage(self):
-        return "networkmessage" in self
+
     @property
     def isMessage(self):
         return "message" in self
@@ -160,23 +146,12 @@ class Type(Symbol):
     def statePermPairAdd(self, state_name, perm_name):
         self.statePermPairs.append([state_name, perm_name])
 
-    def addMethod(self, name, return_type, param_type_vec):
-        ident = self.methodId(name, param_type_vec)
+    def addFunc(self, func):
+        ident = self.methodId(func.ident, func.param_types)
         if ident in self.methods:
             return False
 
-        self.methods[ident] = Method(return_type, param_type_vec)
-        return True
-
-    # Ideally either this function or the one above should exist. But
-    # methods and functions have different structures right now.
-    # Hence, these are different, at least for the time being.
-    def addFunc(self, func):
-        ident = self.methodId(func.ident, func.param_types)
-        if ident in self.functions:
-            return False
-
-        self.functions[ident] = func
+        self.methods[ident] = func
         return True
 
     def addEnum(self, ident, pairs):
@@ -304,7 +279,16 @@ $klass ${{self.c_ident}}$parent
             code('}')
 
         # create a clone member
-        code('''
+        if self.isMessage:
+            code('''
+MsgPtr
+clone() const
+{
+     return std::shared_ptr<Message>(new ${{self.c_ident}}(*this));
+}
+''')
+        else:
+            code('''
 ${{self.c_ident}}*
 clone() const
 {
@@ -379,9 +363,9 @@ set${{dm.ident}}(const ${{dm.type.c_ident}}& local_${{dm.ident}})
 
                 code('$const${{dm.type.c_ident}} m_${{dm.ident}}$init;')
 
-        # Prototypes for functions defined for the Type
-        for item in self.functions:
-            proto = self.functions[item].prototype
+        # Prototypes for methods defined for the Type
+        for item in self.methods:
+            proto = self.methods[item].prototype
             if proto:
                 code('$proto')
 
@@ -412,9 +396,9 @@ operator<<(std::ostream& out, const ${{self.c_ident}}& obj)
  */
 
 #include <iostream>
+#include <memory>
 
 #include "mem/protocol/${{self.c_ident}}.hh"
-#include "mem/ruby/common/Global.hh"
 #include "mem/ruby/system/System.hh"
 
 using namespace std;
@@ -433,8 +417,6 @@ ${{self.c_ident}}::print(ostream& out) const
         for dm in self.data_members.values():
             code('out << "${{dm.ident}} = " << m_${{dm.ident}} << " ";''')
 
-        if self.isMessage:
-            code('out << "Time = " << g_system_ptr->clockPeriod() * getTime() << " ";')
         code.dedent()
 
         # Trailer
@@ -442,9 +424,9 @@ ${{self.c_ident}}::print(ostream& out) const
     out << "]";
 }''')
 
-        # print the code for the functions in the type
-        for item in self.functions:
-            code(self.functions[item].generateCode())
+        # print the code for the methods in the type
+        for item in self.methods:
+            code(self.methods[item].generateCode())
 
         code.write(path, "%s.cc" % self.c_ident)
 
@@ -469,6 +451,7 @@ ${{self.c_ident}}::print(ostream& out) const
         if self.isMachineType:
             code('#include "base/misc.hh"')
             code('#include "mem/ruby/common/Address.hh"')
+            code('#include "mem/ruby/common/TypeDefines.hh"')
             code('struct MachineID;')
 
         code('''
@@ -485,8 +468,8 @@ enum ${{self.c_ident}} {
         # For each field
         for i,(ident,enum) in enumerate(self.enums.iteritems()):
             desc = enum.get("desc", "No description avaliable")
-            if i == 0: 
-                init = ' = %s_FIRST' % self.c_ident 
+            if i == 0:
+                init = ' = %s_FIRST' % self.c_ident
             else:
                 init = ''
             code('${{self.c_ident}}_${{enum.ident}}$init, /**< $desc */')
@@ -517,7 +500,7 @@ int ${{self.c_ident}}_base_count(const ${{self.c_ident}}& obj);
             for enum in self.enums.itervalues():
                 if enum.ident == "DMA":
                     code('''
-MachineID map_Address_to_DMA(const Address &addr);
+MachineID map_Address_to_DMA(const Addr &addr);
 ''')
                 code('''
 
@@ -585,7 +568,7 @@ AccessPermission ${{self.c_ident}}_to_permission(const ${{self.c_ident}}& obj)
             for enum in self.enums.itervalues():
                 if enum.get("Primary"):
                     code('#include "mem/protocol/${{enum.ident}}_Controller.hh"')
-            code('#include "mem/ruby/system/MachineID.hh"')
+            code('#include "mem/ruby/common/MachineID.hh"')
 
         code('''
 // Code for output operator
@@ -768,7 +751,7 @@ ${{self.c_ident}}_base_count(const ${{self.c_ident}}& obj)
                 if enum.ident == "DMA":
                     code('''
 MachineID
-map_Address_to_DMA(const Address &addr)
+map_Address_to_DMA(const Addr &addr)
 {
       MachineID dma = {MachineType_DMA, 0};
       return dma;

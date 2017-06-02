@@ -1,5 +1,5 @@
 # Copyright (c) 2006-2008 The Regents of The University of Michigan
-# Copyright (c) 2012-2013 Mark D. Hill and David A. Wood
+# Copyright (c) 2012-2015 Mark D. Hill and David A. Wood
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -73,15 +73,22 @@ if buildEnv['TARGET_ISA'] not in ["x86", "arm"]:
 #
 # CPU type configuration
 #
-if options.cpu_type != "timing" and options.cpu_type != "detailed":
-    print "Warning: gem5-gpu only works with timing and detailed CPUs. Defaulting to timing"
-    options.cpu_type = "timing"
+if options.cpu_type != "timing" and options.cpu_type != "TimingSimpleCPU" \
+    and options.cpu_type != "detailed" and options.cpu_type != "DerivO3CPU":
+    print "Warning: gem5-gpu only known to work with timing and detailed CPUs: Proceed at your own risk!"
 (CPUClass, test_mem_mode, FutureClass) = Simulation.setCPUClass(options)
+
+# If fast-forwarding, set the fast-forward CPU and mem mode for
+# timing rather than atomic
+if options.fast_forward:
+    assert(CPUClass == AtomicSimpleCPU)
+    assert(test_mem_mode == "atomic")
+    CPUClass, test_mem_mode = Simulation.getCPUClass("TimingSimpleCPU")
 
 #
 # Memory space configuration
 #
-(cpu_mem_range, gpu_mem_range) = GPUConfig.configureMemorySpaces(options)
+(cpu_mem_range, gpu_mem_range, total_mem_range) = GPUConfig.configureMemorySpaces(options)
 
 #
 # Setup benchmark to be run
@@ -117,7 +124,7 @@ system = System(cpu = [CPUClass(cpu_id = i,
 system.voltage_domain = VoltageDomain(voltage = options.sys_voltage)
 
 # Create a source clock for the system and set the clock period
-system.clk_domain = SrcClockDomain(clock =  options.sys_clock,
+system.clk_domain = SrcClockDomain(clock = options.sys_clock,
                                    voltage_domain = system.voltage_domain)
 
 # Create a CPU voltage domain
@@ -128,9 +135,6 @@ system.cpu_clk_domain = SrcClockDomain(clock = options.cpu_clock,
                                        voltage_domain =
                                        system.cpu_voltage_domain)
 
-mem_ctrls = [SimpleMemory(range = cpu_mem_range)]
-system.mem_ctrls = mem_ctrls
-
 Simulation.setWorkCountOptions(system, options)
 
 #
@@ -138,19 +142,23 @@ Simulation.setWorkCountOptions(system, options)
 #
 system.gpu = GPUConfig.createGPU(options, gpu_mem_range)
 
-if options.split:
-    system.gpu_physmem = SimpleMemory(range = gpu_mem_range)
-    system.mem_ranges.append(gpu_mem_range)
-
 #
 # Setup Ruby
 #
 system.ruby_clk_domain = SrcClockDomain(clock = options.ruby_clock,
                                         voltage_domain = system.voltage_domain)
-Ruby.create_system(options, system)
+Ruby.create_system(options, False, system)
 
 system.gpu.ruby = system.ruby
 system.ruby.clk_domain = system.ruby_clk_domain
+
+if options.split:
+    if options.access_backing_store:
+        #
+        # Reset Ruby's phys_mem to add the device memory range
+        #
+        system.ruby.phys_mem = SimpleMemory(range=total_mem_range,
+                                            in_addr_map=False)
 
 #
 # Connect CPU ports
@@ -173,14 +181,13 @@ for (i, cpu) in enumerate(system.cpu):
         cpu.interrupts.int_master = ruby_port.slave
         cpu.interrupts.int_slave = ruby_port.master
 
-    system.ruby._cpu_ports[i].access_phys_mem = True
-
 #
 # Connect GPU ports
 #
 GPUConfig.connectGPUPorts(system.gpu, system.ruby, options)
 
-GPUMemConfig.setMemoryControlOptions(system, options)
+if options.mem_type == "RubyMemoryControl":
+    GPUMemConfig.setMemoryControlOptions(system, options)
 
 #
 # Finalize setup and run

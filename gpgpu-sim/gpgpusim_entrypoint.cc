@@ -190,7 +190,7 @@ gpgpu_sim *gpgpu_ptx_sim_init_perf()
    return g_the_gpu;
 }
 
-gpgpu_sim *gem5_ptx_sim_init_perf(stream_manager **p_stream_manager, int sharedMemDelay, const char *config_path)
+gpgpu_sim *gem5_ptx_sim_init_perf(stream_manager **p_stream_manager, CudaGPU *cuda_gpu, const char *config_path)
 {
    print_splash();
    read_sim_environment_variables();
@@ -211,7 +211,7 @@ gpgpu_sim *gem5_ptx_sim_init_perf(stream_manager **p_stream_manager, int sharedM
    assert(setlocale(LC_NUMERIC,"C"));
    g_the_gpu_config.init();
 
-   g_the_gpu = new gpgpu_sim(g_the_gpu_config, sharedMemDelay);
+   g_the_gpu = new gpgpu_sim(g_the_gpu_config, cuda_gpu);
    g_stream_manager = new stream_manager(g_the_gpu,g_cuda_launch_blocking);
 
    g_simulation_starttime = time((time_t *)NULL);

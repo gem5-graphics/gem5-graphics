@@ -35,11 +35,11 @@ class StallAndWaitStatementAST(StatementAST):
         self.address = address
         
     def __repr__(self):
-        return "[StallAndWaitStatementAst: %r]" % self.variable
+        return "[StallAndWaitStatementAst: %r]" % self.in_port
 
     def generate(self, code, return_type):
         self.in_port.assertType("InPort")
-        self.address.assertType("Address")
+        self.address.assertType("Addr")
 
         in_port_code = self.in_port.var.code
         address_code = self.address.var.code

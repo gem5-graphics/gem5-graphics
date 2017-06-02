@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2014 Advanced Micro Devices, Inc.
  * Copyright (c) 2003 The Regents of The University of Michigan
  * All rights reserved.
  *
@@ -32,10 +33,11 @@
 
 /**
  * @file
- * Definitions of page table.
+ * Definitions of functional page table.
  */
 #include <fstream>
 #include <map>
+#include <memory>
 #include <string>
 
 #include "base/bitfield.hh"
@@ -50,42 +52,41 @@
 using namespace std;
 using namespace TheISA;
 
-PageTable::PageTable(const std::string &__name, uint64_t _pid, Addr _pageSize)
-    : pageSize(_pageSize), offsetMask(mask(floorLog2(_pageSize))),
-      pid(_pid), _name(__name)
+FuncPageTable::FuncPageTable(const std::string &__name,
+                             uint64_t _pid, Addr _pageSize)
+        : PageTableBase(__name, _pid, _pageSize)
 {
-    assert(isPowerOf2(pageSize));
-    pTableCache[0].valid = false;
-    pTableCache[1].valid = false;
-    pTableCache[2].valid = false;
 }
 
-PageTable::~PageTable()
+FuncPageTable::~FuncPageTable()
 {
 }
 
 void
-PageTable::map(Addr vaddr, Addr paddr, int64_t size, bool clobber)
+FuncPageTable::map(Addr vaddr, Addr paddr, int64_t size, uint64_t flags)
 {
+    bool clobber = flags & Clobber;
     // starting address must be page aligned
     assert(pageOffset(vaddr) == 0);
 
-    DPRINTF(MMU, "Allocating Page: %#x-%#x\n", vaddr, vaddr+ size);
+    DPRINTF(MMU, "PageTable: Allocating Page: %#x-%#x\n", vaddr, vaddr+ size);
 
     for (; size > 0; size -= pageSize, vaddr += pageSize, paddr += pageSize) {
         if (!clobber && (pTable.find(vaddr) != pTable.end())) {
             // already mapped
-            fatal("PageTable::allocate: address 0x%x already mapped", vaddr);
+            fatal("FuncPageTable::allocate: addr 0x%x already mapped", vaddr);
         }
 
-        pTable[vaddr] = TheISA::TlbEntry(pid, vaddr, paddr);
+        pTable[vaddr] = TheISA::TlbEntry(pid, vaddr, paddr,
+                                         flags & Uncacheable,
+                                         flags & ReadOnly);
         eraseCacheEntry(vaddr);
         updateCache(vaddr, pTable[vaddr]);
     }
 }
 
 void
-PageTable::remap(Addr vaddr, int64_t size, Addr new_vaddr)
+FuncPageTable::remap(Addr vaddr, int64_t size, Addr new_vaddr)
 {
     assert(pageOffset(vaddr) == 0);
     assert(pageOffset(new_vaddr) == 0);
@@ -93,7 +94,9 @@ PageTable::remap(Addr vaddr, int64_t size, Addr new_vaddr)
     DPRINTF(MMU, "moving pages from vaddr %08p to %08p, size = %d\n", vaddr,
             new_vaddr, size);
 
-    for (; size > 0; size -= pageSize, vaddr += pageSize, new_vaddr += pageSize) {
+    for (; size > 0;
+         size -= pageSize, vaddr += pageSize, new_vaddr += pageSize)
+    {
         assert(pTable.find(vaddr) != pTable.end());
 
         pTable[new_vaddr] = pTable[vaddr];
@@ -105,7 +108,7 @@ PageTable::remap(Addr vaddr, int64_t size, Addr new_vaddr)
 }
 
 void
-PageTable::unmap(Addr vaddr, int64_t size)
+FuncPageTable::unmap(Addr vaddr, int64_t size)
 {
     assert(pageOffset(vaddr) == 0);
 
@@ -120,7 +123,7 @@ PageTable::unmap(Addr vaddr, int64_t size)
 }
 
 bool
-PageTable::isUnmapped(Addr vaddr, int64_t size)
+FuncPageTable::isUnmapped(Addr vaddr, int64_t size)
 {
     // starting address must be page aligned
     assert(pageOffset(vaddr) == 0);
@@ -135,7 +138,7 @@ PageTable::isUnmapped(Addr vaddr, int64_t size)
 }
 
 bool
-PageTable::lookup(Addr vaddr, TheISA::TlbEntry &entry)
+FuncPageTable::lookup(Addr vaddr, TheISA::TlbEntry &entry)
 {
     Addr page_addr = pageAlign(vaddr);
 
@@ -164,20 +167,20 @@ PageTable::lookup(Addr vaddr, TheISA::TlbEntry &entry)
 }
 
 bool
-PageTable::translate(Addr vaddr, Addr &paddr)
+PageTableBase::translate(Addr vaddr, Addr &paddr)
 {
     TheISA::TlbEntry entry;
     if (!lookup(vaddr, entry)) {
-        DPRINTF(MMU, "Couldn't Translate: %#x\n", vaddr);
+        DPRINTF(MMU, "PageTable: Couldn't Translate: %#x\n", vaddr);
         return false;
     }
     paddr = pageOffset(vaddr) + entry.pageStart();
-    DPRINTF(MMU, "Translating: %#x->%#x\n", vaddr, paddr);
+    DPRINTF(MMU, "PageTable: Translating: %#x->%#x\n", vaddr, paddr);
     return true;
 }
 
 Fault
-PageTable::translate(RequestPtr req)
+PageTableBase::translate(RequestPtr req)
 {
     Addr paddr;
     assert(pageAlign(req->getVaddr() + req->getSize() - 1)
@@ -194,44 +197,37 @@ PageTable::translate(RequestPtr req)
 }
 
 void
-PageTable::serialize(std::ostream &os)
+FuncPageTable::serialize(CheckpointOut &cp) const
 {
-    paramOut(os, "ptable.size", pTable.size());
+    paramOut(cp, "ptable.size", pTable.size());
 
     PTable::size_type count = 0;
+    for (auto &pte : pTable) {
+        ScopedCheckpointSection sec(cp, csprintf("Entry%d", count++));
 
-    PTableItr iter = pTable.begin();
-    PTableItr end = pTable.end();
-    while (iter != end) {
-        os << "\n[" << csprintf("%s.Entry%d", name(), count) << "]\n";
-
-        paramOut(os, "vaddr", iter->first);
-        iter->second.serialize(os);
-
-        ++iter;
-        ++count;
+        paramOut(cp, "vaddr", pte.first);
+        pte.second.serialize(cp);
     }
     assert(count == pTable.size());
 }
 
 void
-PageTable::unserialize(Checkpoint *cp, const std::string &section)
+FuncPageTable::unserialize(CheckpointIn &cp)
 {
-    int i = 0, count;
-    paramIn(cp, section, "ptable.size", count);
+    int count;
+    paramIn(cp, "ptable.size", count);
 
-    pTable.clear();
+    for (int i = 0; i < count; ++i) {
+        ScopedCheckpointSection sec(cp, csprintf("Entry%d", i));
 
-    while (i < count) {
-        TheISA::TlbEntry *entry;
+        std::unique_ptr<TheISA::TlbEntry> entry;
         Addr vaddr;
 
-        paramIn(cp, csprintf("%s.Entry%d", name(), i), "vaddr", vaddr);
-        entry = new TheISA::TlbEntry();
-        entry->unserialize(cp, csprintf("%s.Entry%d", name(), i));
+        paramIn(cp, "vaddr", vaddr);
+        entry.reset(new TheISA::TlbEntry());
+        entry->unserialize(cp);
+
         pTable[vaddr] = *entry;
-        delete entry;
-        ++i;
     }
 }
 

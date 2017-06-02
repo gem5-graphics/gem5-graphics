@@ -172,8 +172,6 @@ IdeController::readConfig(PacketPtr pkt)
         return PciDevice::readConfig(pkt);
     }
 
-    pkt->allocate();
-
     switch (pkt->getSize()) {
       case sizeof(uint8_t):
         switch (offset) {
@@ -204,6 +202,9 @@ IdeController::readConfig(PacketPtr pkt)
         break;
       case sizeof(uint16_t):
         switch (offset) {
+          case UDMAControl:
+            pkt->set<uint16_t>(udmaControl);
+            break;
           case PrimaryTiming:
             pkt->set<uint16_t>(primaryTiming);
             break;
@@ -224,10 +225,16 @@ IdeController::readConfig(PacketPtr pkt)
                 (uint32_t)pkt->get<uint16_t>());
         break;
       case sizeof(uint32_t):
-        if (offset == IDEConfig)
+        switch (offset) {
+          case PrimaryTiming:
+            pkt->set<uint32_t>(primaryTiming);
+            break;
+          case IDEConfig:
             pkt->set<uint32_t>(ideConfig);
-        else
+            break;
+          default:
             panic("No 32bit reads implemented for this device.");
+        }
         DPRINTF(IdeCtrl, "PCI read offset: %#x size: 4 data: %#x\n", offset,
                 (uint32_t)pkt->get<uint32_t>());
         break;
@@ -270,6 +277,9 @@ IdeController::writeConfig(PacketPtr pkt)
             break;
           case sizeof(uint16_t):
             switch (offset) {
+              case UDMAControl:
+                udmaControl = pkt->get<uint16_t>();
+                break;
               case PrimaryTiming:
                 primaryTiming = pkt->get<uint16_t>();
                 break;
@@ -291,10 +301,16 @@ IdeController::writeConfig(PacketPtr pkt)
                     offset, (uint32_t)pkt->get<uint16_t>());
             break;
           case sizeof(uint32_t):
-            if (offset == IDEConfig)
+            switch (offset) {
+              case PrimaryTiming:
+                primaryTiming = pkt->get<uint32_t>();
+                break;
+              case IDEConfig:
                 ideConfig = pkt->get<uint32_t>();
-            else
+                break;
+              default:
                 panic("Write of unimplemented PCI config. register: %x\n", offset);
+            }
             break;
           default:
             panic("invalid access size(?) for PCI configspace!\n");
@@ -462,7 +478,6 @@ IdeController::Channel::accessBMI(Addr offset,
 void
 IdeController::dispatchAccess(PacketPtr pkt, bool read)
 {
-    pkt->allocate();
     if (pkt->getSize() != 1 && pkt->getSize() != 2 && pkt->getSize() !=4)
          panic("Bad IDE read size: %d\n", pkt->getSize());
 
@@ -540,14 +555,14 @@ IdeController::write(PacketPtr pkt)
 }
 
 void
-IdeController::serialize(std::ostream &os)
+IdeController::serialize(CheckpointOut &cp) const
 {
     // Serialize the PciDevice base class
-    PciDevice::serialize(os);
+    PciDevice::serialize(cp);
 
     // Serialize channels
-    primary.serialize("primary", os);
-    secondary.serialize("secondary", os);
+    primary.serialize("primary", cp);
+    secondary.serialize("secondary", cp);
 
     // Serialize config registers
     SERIALIZE_SCALAR(primaryTiming);
@@ -565,31 +580,32 @@ IdeController::serialize(std::ostream &os)
 }
 
 void
-IdeController::Channel::serialize(const std::string &base, std::ostream &os)
+IdeController::Channel::serialize(const std::string &base,
+                                  CheckpointOut &cp) const
 {
-    paramOut(os, base + ".cmdAddr", cmdAddr);
-    paramOut(os, base + ".cmdSize", cmdSize);
-    paramOut(os, base + ".ctrlAddr", ctrlAddr);
-    paramOut(os, base + ".ctrlSize", ctrlSize);
+    paramOut(cp, base + ".cmdAddr", cmdAddr);
+    paramOut(cp, base + ".cmdSize", cmdSize);
+    paramOut(cp, base + ".ctrlAddr", ctrlAddr);
+    paramOut(cp, base + ".ctrlSize", ctrlSize);
     uint8_t command = bmiRegs.command;
-    paramOut(os, base + ".bmiRegs.command", command);
-    paramOut(os, base + ".bmiRegs.reserved0", bmiRegs.reserved0);
+    paramOut(cp, base + ".bmiRegs.command", command);
+    paramOut(cp, base + ".bmiRegs.reserved0", bmiRegs.reserved0);
     uint8_t status = bmiRegs.status;
-    paramOut(os, base + ".bmiRegs.status", status);
-    paramOut(os, base + ".bmiRegs.reserved1", bmiRegs.reserved1);
-    paramOut(os, base + ".bmiRegs.bmidtp", bmiRegs.bmidtp);
-    paramOut(os, base + ".selectBit", selectBit);
+    paramOut(cp, base + ".bmiRegs.status", status);
+    paramOut(cp, base + ".bmiRegs.reserved1", bmiRegs.reserved1);
+    paramOut(cp, base + ".bmiRegs.bmidtp", bmiRegs.bmidtp);
+    paramOut(cp, base + ".selectBit", selectBit);
 }
 
 void
-IdeController::unserialize(Checkpoint *cp, const std::string &section)
+IdeController::unserialize(CheckpointIn &cp)
 {
     // Unserialize the PciDevice base class
-    PciDevice::unserialize(cp, section);
+    PciDevice::unserialize(cp);
 
     // Unserialize channels
-    primary.unserialize("primary", cp, section);
-    secondary.unserialize("secondary", cp, section);
+    primary.unserialize("primary", cp);
+    secondary.unserialize("secondary", cp);
 
     // Unserialize config registers
     UNSERIALIZE_SCALAR(primaryTiming);
@@ -607,23 +623,22 @@ IdeController::unserialize(Checkpoint *cp, const std::string &section)
 }
 
 void
-IdeController::Channel::unserialize(const std::string &base, Checkpoint *cp,
-    const std::string &section)
+IdeController::Channel::unserialize(const std::string &base, CheckpointIn &cp)
 {
-    paramIn(cp, section, base + ".cmdAddr", cmdAddr);
-    paramIn(cp, section, base + ".cmdSize", cmdSize);
-    paramIn(cp, section, base + ".ctrlAddr", ctrlAddr);
-    paramIn(cp, section, base + ".ctrlSize", ctrlSize);
+    paramIn(cp, base + ".cmdAddr", cmdAddr);
+    paramIn(cp, base + ".cmdSize", cmdSize);
+    paramIn(cp, base + ".ctrlAddr", ctrlAddr);
+    paramIn(cp, base + ".ctrlSize", ctrlSize);
     uint8_t command;
-    paramIn(cp, section, base +".bmiRegs.command", command);
+    paramIn(cp, base +".bmiRegs.command", command);
     bmiRegs.command = command;
-    paramIn(cp, section, base + ".bmiRegs.reserved0", bmiRegs.reserved0);
+    paramIn(cp, base + ".bmiRegs.reserved0", bmiRegs.reserved0);
     uint8_t status;
-    paramIn(cp, section, base + ".bmiRegs.status", status);
+    paramIn(cp, base + ".bmiRegs.status", status);
     bmiRegs.status = status;
-    paramIn(cp, section, base + ".bmiRegs.reserved1", bmiRegs.reserved1);
-    paramIn(cp, section, base + ".bmiRegs.bmidtp", bmiRegs.bmidtp);
-    paramIn(cp, section, base + ".selectBit", selectBit);
+    paramIn(cp, base + ".bmiRegs.reserved1", bmiRegs.reserved1);
+    paramIn(cp, base + ".bmiRegs.bmidtp", bmiRegs.bmidtp);
+    paramIn(cp, base + ".selectBit", selectBit);
     select(selectBit);
 }
 

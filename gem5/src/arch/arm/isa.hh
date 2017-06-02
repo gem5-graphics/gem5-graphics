@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2012-2013 ARM Limited
+ * Copyright (c) 2010, 2012-2015 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -43,15 +43,16 @@
 #ifndef __ARCH_ARM_ISA_HH__
 #define __ARCH_ARM_ISA_HH__
 
+#include "arch/arm/isa_device.hh"
 #include "arch/arm/registers.hh"
 #include "arch/arm/system.hh"
 #include "arch/arm/tlb.hh"
 #include "arch/arm/types.hh"
 #include "debug/Checkpoint.hh"
-#include "dev/arm/generic_timer.hh"
 #include "sim/sim_object.hh"
 
 struct ArmISAParams;
+struct DummyArmISADeviceParams;
 class ThreadContext;
 class Checkpoint;
 class EventManager;
@@ -131,6 +132,15 @@ namespace ArmISA
         // Parent system
         ArmSystem *system;
 
+        /** Dummy device for to handle non-existing ISA devices */
+        DummyISADevice dummyDevice;
+
+        // PMU belonging to this ISA
+        BaseISADevice *pmu;
+
+        // Generic timer interface belonging to this ISA
+        std::unique_ptr<BaseISADevice> timer;
+
         // Cached copies of system-level properties
         bool haveSecurity;
         bool haveLPAE;
@@ -197,9 +207,7 @@ namespace ArmISA
             }
         }
 
-        ::GenericTimer::SystemCounter * getSystemCounter(ThreadContext *tc);
-        ::GenericTimer::ArchTimer * getArchTimer(ThreadContext *tc,
-                                                 int cpu_id);
+        BaseISADevice &getGenericTimer(ThreadContext *tc);
 
 
       private:
@@ -213,7 +221,7 @@ namespace ArmISA
             assert(!cpsr.width);
         }
 
-        void tlbiVA(ThreadContext *tc, MiscReg newVal, uint8_t asid,
+        void tlbiVA(ThreadContext *tc, MiscReg newVal, uint16_t asid,
                     bool secure_lookup, uint8_t target_el);
 
         void tlbiALL(ThreadContext *tc, bool secure_lookup, uint8_t target_el);
@@ -268,19 +276,21 @@ namespace ArmISA
         int
         flattenFloatIndex(int reg) const
         {
+            assert(reg >= 0);
             return reg;
         }
 
-        // dummy
         int
         flattenCCIndex(int reg) const
         {
+            assert(reg >= 0);
             return reg;
         }
 
         int
         flattenMiscIndex(int reg) const
         {
+            assert(reg >= 0);
             int flat_idx = reg;
 
             if (reg == MISCREG_SPSR) {
@@ -392,7 +402,7 @@ namespace ArmISA
             return flat_idx;
         }
 
-        void serialize(std::ostream &os)
+        void serialize(CheckpointOut &cp) const
         {
             DPRINTF(Checkpoint, "Serializing Arm Misc Registers\n");
             SERIALIZE_ARRAY(miscRegs, NumMiscRegs);
@@ -403,7 +413,7 @@ namespace ArmISA
             SERIALIZE_SCALAR(haveLargeAsid64);
             SERIALIZE_SCALAR(physAddrRange64);
         }
-        void unserialize(Checkpoint *cp, const std::string &section)
+        void unserialize(CheckpointIn &cp)
         {
             DPRINTF(Checkpoint, "Unserializing Arm Misc Registers\n");
             UNSERIALIZE_ARRAY(miscRegs, NumMiscRegs);

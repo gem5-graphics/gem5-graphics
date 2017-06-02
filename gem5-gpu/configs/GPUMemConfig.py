@@ -42,6 +42,8 @@ def addMemCtrlOptions(parser):
 def setMemoryControlOptions(system, options):
     from m5.params import Latency
 
+    assert(options.mem_type == "RubyMemoryControl")
+
     cpu_mem_ctl_clk = SrcClockDomain(clock = options.mem_freq,
                                      voltage_domain = system.voltage_domain)
 
@@ -51,25 +53,25 @@ def setMemoryControlOptions(system, options):
     # Add 1 so that 2 consecutive cache lines are in the same bank
     low_bank_bit = low_dir_bit + dir_bits + 1
 
-    for i in xrange(options.num_dirs):
-        cntrl = eval("system.ruby.dir_cntrl%d" % i)
+    for mem_ctrl in system.mem_ctrls:
         if options.mem_freq:
-            cntrl.memBuffer.clk_domain = cpu_mem_ctl_clk
+            mem_ctrl.clk_domain = cpu_mem_ctl_clk
         if options.mem_ctl_latency >= 0:
-            cntrl.memBuffer.mem_ctl_latency = options.mem_ctl_latency
+            mem_ctrl.mem_ctl_latency = options.mem_ctl_latency
         if options.membus_busy_cycles > 0:
-            cntrl.memBuffer.basic_bus_busy_time = options.membus_busy_cycles
+            mem_ctrl.basic_bus_busy_time = options.membus_busy_cycles
         if options.membank_busy_time:
-            mem_cycle_seconds = float(cntrl.memBuffer.clk_domain.clock.period)
+            assert(len(mem_ctrl.clk_domain.clock) == 1)
+            mem_cycle_seconds = float(mem_ctrl.clk_domain.clock[0].period)
             bank_latency_seconds = Latency(options.membank_busy_time)
-            cntrl.memBuffer.bank_busy_time = long(bank_latency_seconds.period / mem_cycle_seconds)
-        cntrl.memBuffer.tFaw = options.mem_tFaw
-        cntrl.memBuffer.refresh_period = options.mem_refresh_period
-        cntrl.memBuffer.bank_bit_0 = low_bank_bit
-        bank_bits = int(math.log(cntrl.memBuffer.banks_per_rank, 2))
-        cntrl.memBuffer.rank_bit_0 = low_bank_bit + bank_bits
-        rank_bits = int(math.log(cntrl.memBuffer.ranks_per_dimm, 2))
-        cntrl.memBuffer.dimm_bit_0 = low_bank_bit + bank_bits + rank_bits
+            mem_ctrl.bank_busy_time = long(bank_latency_seconds.period / mem_cycle_seconds)
+        mem_ctrl.tFaw = options.mem_tFaw
+        mem_ctrl.refresh_period = options.mem_refresh_period
+        mem_ctrl.bank_bit_0 = low_bank_bit
+        bank_bits = int(math.log(mem_ctrl.banks_per_rank, 2))
+        mem_ctrl.rank_bit_0 = low_bank_bit + bank_bits
+        rank_bits = int(math.log(mem_ctrl.ranks_per_dimm, 2))
+        mem_ctrl.dimm_bit_0 = low_bank_bit + bank_bits + rank_bits
 
     dev_dir_bits = 0
     if options.num_dev_dirs > 0:
@@ -78,79 +80,26 @@ def setMemoryControlOptions(system, options):
     low_bank_bit = low_dir_bit + dev_dir_bits + 1
 
     if options.split:
-        for i in xrange(options.num_dev_dirs):
-            cntrl = eval("system.ruby.dev_dir_cntrl%d" % i)
-            if options.gpu_mem_freq:
-                gpu_mem_ctl_clk = SrcClockDomain(clock = options.gpu_mem_freq,
-                                         voltage_domain = system.voltage_domain)
-                cntrl.memBuffer.clk_domain = gpu_mem_ctl_clk
-            else:
-                cntrl.memBuffer.clk_domain = cpu_mem_ctl_clk
-            if options.gpu_mem_ctl_latency >= 0:
-                cntrl.memBuffer.mem_ctl_latency = options.gpu_mem_ctl_latency
-            if options.gpu_membus_busy_cycles > 0:
-                cntrl.memBuffer.basic_bus_busy_time = options.gpu_membus_busy_cycles
-            if options.gpu_membank_busy_time:
-                mem_cycle_seconds = float(cntrl.memBuffer.clk_domain.clock.period)
-                bank_latency_seconds = Latency(options.gpu_membank_busy_time)
-                cntrl.memBuffer.bank_busy_time = long(bank_latency_seconds.period / mem_cycle_seconds)
+        if options.num_dev_dirs > 0:
+            for mem_ctrl in system.dev_mem_ctrls:
+                if options.gpu_mem_freq:
+                    gpu_mem_ctl_clk = SrcClockDomain(clock = options.gpu_mem_freq,
+                                             voltage_domain = system.voltage_domain)
+                    mem_ctrl.clk_domain = gpu_mem_ctl_clk
+                else:
+                    mem_ctrl.clk_domain = cpu_mem_ctl_clk
+                if options.gpu_mem_ctl_latency >= 0:
+                    mem_ctrl.mem_ctl_latency = options.gpu_mem_ctl_latency
+                if options.gpu_membus_busy_cycles > 0:
+                    mem_ctrl.basic_bus_busy_time = options.gpu_membus_busy_cycles
+                if options.gpu_membank_busy_time:
+                    assert(len(mem_ctrl.clk_domain.clock) == 1)
+                    mem_cycle_seconds = float(mem_ctrl.clk_domain.clock[0].period)
+                    bank_latency_seconds = Latency(options.gpu_membank_busy_time)
+                    mem_ctrl.bank_busy_time = long(bank_latency_seconds.period / mem_cycle_seconds)
 
-            cntrl.memBuffer.bank_bit_0 = low_bank_bit
-            bank_bits = int(math.log(cntrl.memBuffer.banks_per_rank, 2))
-            cntrl.memBuffer.rank_bit_0 = low_bank_bit + bank_bits
-            rank_bits = int(math.log(cntrl.memBuffer.ranks_per_dimm, 2))
-            cntrl.memBuffer.dimm_bit_0 = low_bank_bit + bank_bits + rank_bits
-
-
-#this one uses the simple DRAM model for ruby
-def setDRAMMemoryControlOptions(system, options):
-   print "Using Ruby DRAM models"
-   ctrl_found = False;
-   for name, cls in inspect.getmembers(m5.objects):
-      if(options.mem_type == name):
-         assert(issubclass(cls, m5.objects.MemoryControl) and not(cls.abstract))
-         ruby_ctrl = cls
-         ctrl_found = True
-         break;
-   assert (ctrl_found, "Undefined mem-type!")
-   nbr_mem_ctrls = options.num_dirs
-
-   import math
-   from m5.util import fatal
-   intlv_bits = int(math.log(nbr_mem_ctrls, 2))
-   if 2 ** intlv_bits != nbr_mem_ctrls:
-      fatal("Number of memory channels must be a power of 2")
-
-   # The default behaviour is to interleave on cache line granularity
-   cache_line_bit = int(math.log(system.cache_line_size.value, 2)) - 1
-   intlv_low_bit = cache_line_bit
-   tCK = Latency(cls.tCK)
-   cpu_mem_ctl_clk = SrcClockDomain(clock = tCK.frequency,
-                                  voltage_domain = system.voltage_domain)
-
-   for r in system.mem_ranges:
-      print "Ruby mem range: start:", r.start, ", size:", r.size()
-      for i in xrange(options.num_dirs):
-         cntrl = eval("system.ruby.dir_cntrl%d" % i)
-         cntrl.memBuffer = cls(
-                    clk_domain = cpu_mem_ctl_clk,
-                    version = i,
-                    ruby_system = system.ruby)
-         cntrl.memBuffer.channels = nbr_mem_ctrls
-         # If the channel bits are appearing after the column
-         # bits, we need to add the appropriate number of bits
-         # for the row buffer size
-         if cntrl.memBuffer.addr_mapping.value == 'RoRaBaChCo':
-            # This computation only really needs to happen
-            # once, but as we rely on having an instance we
-            # end up having to repeat it for each and every one
-            rowbuffer_size = cntrl.memBuffer.device_rowbuffer_size.value * cntrl.memBuffer.devices_per_rank.value
-            intlv_low_bit = int(math.log(rowbuffer_size, 2)) - 1
-         # We got all we need to configure the appropriate address
-         # range
-         cntrl.memBuffer.range = m5.objects.AddrRange(r.start, size = r.size(),
-                                             intlvHighBit = \
-                                             intlv_low_bit + intlv_bits,
-                                             intlvBits = intlv_bits,
-                                             intlvMatch = i)
-
+                mem_ctrl.bank_bit_0 = low_bank_bit
+                bank_bits = int(math.log(mem_ctrl.banks_per_rank, 2))
+                mem_ctrl.rank_bit_0 = low_bank_bit + bank_bits
+                rank_bits = int(math.log(mem_ctrl.ranks_per_dimm, 2))
+                mem_ctrl.dimm_bit_0 = low_bank_bit + bank_bits + rank_bits

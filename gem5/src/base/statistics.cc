@@ -379,7 +379,7 @@ Formula::Formula()
 
 Formula::Formula(Temp r)
 {
-    root = r;
+    root = r.getNodePtr();
     setInit();
     assert(size());
 }
@@ -388,7 +388,7 @@ const Formula &
 Formula::operator=(Temp r)
 {
     assert(!root && "Can't change formulas");
-    root = r;
+    root = r.getNodePtr();
     setInit();
     assert(size());
     return *this;
@@ -400,7 +400,7 @@ Formula::operator+=(Temp r)
     if (root)
         root = NodePtr(new BinaryNode<std::plus<Result> >(root, r));
     else {
-        root = r;
+        root = r.getNodePtr();
         setInit();
     }
 
@@ -462,8 +462,30 @@ Formula::str() const
     return root ? root->str() : "";
 }
 
+Handler resetHandler = NULL;
+Handler dumpHandler = NULL;
+
+void
+registerHandlers(Handler reset_handler, Handler dump_handler)
+{
+    resetHandler = reset_handler;
+    dumpHandler = dump_handler;
+}
+
 CallbackQueue dumpQueue;
 CallbackQueue resetQueue;
+
+void
+processResetQueue()
+{
+    resetQueue.process();
+}
+
+void
+processDumpQueue()
+{
+    dumpQueue.process();
+}
 
 void
 registerResetCallback(Callback *cb)
@@ -486,6 +508,24 @@ enable()
         fatal("Stats are already enabled");
 
     _enabled = true;
+}
+
+void
+dump()
+{
+    if (dumpHandler)
+        dumpHandler();
+    else
+        fatal("No registered Stats::dump handler");
+}
+
+void
+reset()
+{
+    if (resetHandler)
+        resetHandler();
+    else
+        fatal("No registered Stats::reset handler");
 }
 
 void

@@ -36,8 +36,6 @@
 #include "params/GPUCopyEngine.hh"
 #include "sim/system.hh"
 
-#define READ_AMOUNT 128
-
 using namespace std;
 
 GPUCopyEngine::GPUCopyEngine(const Params *p) :
@@ -45,8 +43,9 @@ GPUCopyEngine::GPUCopyEngine(const Params *p) :
     hostPort(name() + ".hostPort", this, 0),
     devicePort(name() + ".devicePort", this, 0), readPort(NULL),
     writePort(NULL), tickEvent(this), masterId(p->sys->getMasterId(name())),
-    cudaGPU(p->gpu), driverDelay(p->driver_delay), hostDTB(p->host_dtb),
-    deviceDTB(p->device_dtb), readDTB(NULL), writeDTB(NULL)
+    cudaGPU(p->gpu), cacheLineSize(p->cache_line_size),
+    driverDelay(p->driver_delay), hostDTB(p->host_dtb),
+    deviceDTB(p->device_dtb), readDTB(NULL), writeDTB(NULL), _currentStream(NULL)
 {
     DPRINTF(GPUCopyEngine, "Created copy engine\n");
 
@@ -57,6 +56,8 @@ GPUCopyEngine::GPUCopyEngine(const Params *p) :
     registerExitCallback(&ceExitCB);
 
     cudaGPU->registerCopyEngine(this);
+
+    bufferDepth = p->buffering * cacheLineSize;
 }
 
 Tick GPUCopyEngine::CEPort::recvAtomic(PacketPtr pkt)
@@ -76,7 +77,7 @@ bool GPUCopyEngine::CEPort::recvTimingResp(PacketPtr pkt)
     return true;
 }
 
-void GPUCopyEngine::CEPort::recvRetry() {
+void GPUCopyEngine::CEPort::recvReqRetry() {
     assert(outstandingPkts.size());
 
     DPRINTF(GPUCopyEngine, "Got a retry...\n");
@@ -104,9 +105,21 @@ void GPUCopyEngine::finishMemcpy()
     readPort = writePort = NULL;
     readDTB = writeDTB = NULL;
     Tick total_time = curTick() - memCpyStartTime;
+    numOperations++;
+    operationTimeTicks += total_time;
     DPRINTF(GPUCopyEngine, "Total time was: %llu\n", total_time);
     memCpyStats.push_back(MemCpyStats(total_time, memCpyLength));
-    cudaGPU->finishCopyOperation();
+
+    assert( _currentStream );
+    cudaGPU->finishStreamCopyOperation( _currentStream );
+    /*
+    if( _currentStream ) {
+        cudaGPU->finishStreamCopyOperation( _currentStream );
+    } else {
+        cudaGPU->finishCopyOperation();
+    }
+    */
+    _currentStream = NULL;
 }
 
 void GPUCopyEngine::recvPacket(PacketPtr pkt)
@@ -114,6 +127,7 @@ void GPUCopyEngine::recvPacket(PacketPtr pkt)
     if (pkt->isRead()) {
         DPRINTF(GPUCopyEngine, "done with a read addr: 0x%x, size: %d\n", pkt->req->getVaddr(), pkt->getSize());
         pkt->writeData(curData + (pkt->req->getVaddr() - beginAddr));
+        bytesRead += pkt->getSize();
 
         // set the addresses we just got as done
         for (int i = pkt->req->getVaddr() - beginAddr;
@@ -142,6 +156,7 @@ void GPUCopyEngine::recvPacket(PacketPtr pkt)
     } else {
         DPRINTF(GPUCopyEngine, "done with a write addr: 0x%x\n", pkt->req->getVaddr());
         writeDone += pkt->getSize();
+        bytesWritten += pkt->getSize();
         if (!(writeDone < totalLength)) {
             // we are done!
             DPRINTF(GPUCopyEngine, "done writing, completely done!!!!\n");
@@ -173,11 +188,11 @@ void GPUCopyEngine::tryRead()
     }
 
     int size;
-    if (currentReadAddr % READ_AMOUNT) {
-        size = READ_AMOUNT - (currentReadAddr % READ_AMOUNT);
+    if (currentReadAddr % cacheLineSize) {
+        size = cacheLineSize - (currentReadAddr % cacheLineSize);
         DPRINTF(GPUCopyEngine, "Aligning\n");
     } else {
-        size = READ_AMOUNT;
+        size = cacheLineSize;
     }
     size = readLeft > (size - 1) ? size : readLeft;
     req->setVirt(asid, currentReadAddr, size, flags, masterId, pc);
@@ -217,11 +232,11 @@ void GPUCopyEngine::tryWrite()
     }
 
     int size;
-    if (currentWriteAddr % READ_AMOUNT) {
-        size = READ_AMOUNT - (currentWriteAddr % READ_AMOUNT);
+    if (currentWriteAddr % cacheLineSize) {
+        size = cacheLineSize - (currentWriteAddr % cacheLineSize);
         DPRINTF(GPUCopyEngine, "Aligning\n");
     } else {
-        size = READ_AMOUNT;
+        size = cacheLineSize;
     }
     size = writeLeft > size-1 ? size : writeLeft;
 
@@ -262,13 +277,18 @@ void GPUCopyEngine::tryWrite()
     }
 }
 
+bool GPUCopyEngine::buffersFull() {
+    unsigned amount_buffered = readDone - (totalLength - writeLeft);
+    return (bufferDepth > 0) && (amount_buffered > bufferDepth);
+}
+
 void GPUCopyEngine::tick()
 {
     if (!running) return;
     if (readPort->isStalled() && writePort->isStalled()) {
         DPRINTF(GPUCopyEngine, "Stalled\n");
     } else {
-        if (needToRead && !readPort->isStalled()) {
+        if (needToRead && !readPort->isStalled() && !buffersFull()) {
             DPRINTF(GPUCopyEngine, "trying read\n");
             tryRead();
         }
@@ -336,7 +356,9 @@ int GPUCopyEngine::memcpy(Addr src, Addr dst, size_t length, stream_operation_ty
         readsDone[i] = false;
     }
 
-    schedule(tickEvent, nextCycle() + driverDelay);
+    if (!tickEvent.scheduled()) {
+        schedule(tickEvent, nextCycle() + driverDelay);
+    }
 
     return 0;
 }
@@ -354,6 +376,7 @@ int GPUCopyEngine::memset(Addr dst, int value, size_t length)
 
     DPRINTF(GPUCopyEngine, "Initiating memset of %d bytes at 0x%x to %d\n", length, dst, value);
     memCpyStartTime = curTick();
+    memCpyLength = length;
 
     needToRead = false;
     needToWrite = true;
@@ -375,7 +398,9 @@ int GPUCopyEngine::memset(Addr dst, int value, size_t length)
         readsDone[i] = true;
     }
 
-    schedule(tickEvent, nextCycle() + driverDelay);
+    if (!tickEvent.scheduled()) {
+        schedule(tickEvent, nextCycle() + driverDelay);
+    }
 
     return 0;
 }
@@ -394,7 +419,7 @@ void GPUCopyEngine::finishTranslation(WholeTranslationState *state)
     } else if (state->mode == BaseTLB::Write) {
         pkt = new Packet(state->mainReq, MemCmd::WriteReq);
         uint8_t *pkt_data = (uint8_t *)state->mainReq->getExtraData();
-        pkt->dataDynamicArray(pkt_data);
+        pkt->dataDynamic(pkt_data);
         writePort->sendPacket(pkt);
     } else {
         panic("Finished translation of unknown mode: %d\n", state->mode);
@@ -411,6 +436,25 @@ GPUCopyEngine::getMasterPort(const std::string &if_name, PortID idx)
         return devicePort;
     else
         return MemObject::getMasterPort(if_name, idx);
+}
+
+void GPUCopyEngine::regStats() {
+    numOperations
+        .name(name() + ".numOperations")
+        .desc("Number of copy/memset operations")
+        ;
+    bytesRead
+        .name(name() + ".opBytesRead")
+        .desc("Number of copy bytes read")
+        ;
+    bytesWritten
+        .name(name() + ".opBytesWritten")
+        .desc("Number of copy/memset bytes written")
+        ;
+    operationTimeTicks
+        .name(name() + ".opTimeTicks")
+        .desc("Total time spent in copy/memset operations")
+        ;
 }
 
 GPUCopyEngine *GPUCopyEngineParams::create() {

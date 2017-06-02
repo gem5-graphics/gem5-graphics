@@ -42,6 +42,7 @@
 #include <cassert>
 #include <climits>
 #include <iosfwd>
+#include <memory>
 #include <mutex>
 #include <string>
 
@@ -145,6 +146,10 @@ class EventBase
     /// Default is zero for historical reasons.
     static const Priority Default_Pri =                  0;
 
+    /// DVFS update event leads to stats dump therefore given a lower priority
+    /// to ensure all relevant states have been updated
+    static const Priority DVFS_Update_Pri =             31;
+
     /// Serailization needs to occur before tick events also, so
     /// that a serialize/unserialize is identical to an on-line
     /// CPU switch.
@@ -235,7 +240,7 @@ class Event : public EventBase, public Serializable
     bool
     initialized() const
     {
-        return this && (flags & InitMask) == Initialized;
+        return (flags & InitMask) == Initialized;
     }
 
   protected:
@@ -284,7 +289,7 @@ class Event : public EventBase, public Serializable
      * @param queue that the event gets scheduled on
      */
     Event(Priority p = Default_Pri, Flags f = 0)
-        : nextBin(NULL), nextInBin(NULL), _priority(p),
+        : nextBin(nullptr), nextInBin(nullptr), _when(0), _priority(p),
           flags(Initialized | f)
     {
         assert(f.noneSet(~PublicWrite));
@@ -334,6 +339,9 @@ class Event : public EventBase, public Serializable
     /// See if this is a SimExitEvent (without resorting to RTTI)
     bool isExitEvent() const { return flags.isSet(IsExitEvent); }
 
+    /// Check whether this event will auto-delete
+    bool isAutoDelete() const { return flags.isSet(AutoDelete); }
+
     /// Get the time that the event is scheduled
     Tick when() const { return _when; }
 
@@ -346,15 +354,8 @@ class Event : public EventBase, public Serializable
     virtual BaseGlobalEvent *globalEvent() { return NULL; }
 
 #ifndef SWIG
-    virtual void serialize(std::ostream &os);
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
-
-    //! This function is required to support restoring from checkpoints
-    //! when running with multiple queues. Since we still have not thrashed
-    //! out all the details on checkpointing, this function is most likely
-    //! to be revisited in future.
-    virtual void unserialize(Checkpoint *cp, const std::string &section,
-                     EventQueue *eventq);
+    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
+    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
 #endif
 };
 
@@ -445,7 +446,7 @@ class EventQueue : public Serializable
     Tick _curTick;
 
     //! Mutex to protect async queue.
-    std::mutex *async_queue_mutex;
+    std::mutex async_queue_mutex;
 
     //! List of events added by other threads to this event queue.
     std::list<Event*> async_queue;
@@ -566,7 +567,8 @@ class EventQueue : public Serializable
 
     Tick nextTick() const { return head->when(); }
     void setCurTick(Tick newVal) { _curTick = newVal; }
-    Tick getCurTick() { return _curTick; }
+    Tick getCurTick() const { return _curTick; }
+    Event *getHead() const { return head; }
 
     Event *serviceOne();
 
@@ -602,6 +604,21 @@ class EventQueue : public Serializable
     void handleAsyncInsertions();
 
     /**
+     *  Function to signal that the event loop should be woken up because
+     *  an event has been scheduled by an agent outside the gem5 event
+     *  loop(s) whose event insertion may not have been noticed by gem5.
+     *  This function isn't needed by the usual gem5 event loop but may
+     *  be necessary in derived EventQueues which host gem5 onto other
+     *  schedulers.
+     *
+     *  @param when Time of a delayed wakeup (if known). This parameter
+     *  can be used by an implementation to schedule a wakeup in the
+     *  future if it is sure it will remain active until then.
+     *  Or it can be ignored and the event queue can be woken up now.
+     */
+    virtual void wakeup(Tick when = (Tick)-1) { }
+
+    /**
      *  function for replacing the head of the event queue, so that a
      *  different set of events can run without disturbing events that have
      *  already been scheduled. Already scheduled events can be processed
@@ -628,9 +645,24 @@ class EventQueue : public Serializable
     /**@}*/
 
 #ifndef SWIG
-    virtual void serialize(std::ostream &os);
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
+    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
+    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
 #endif
+
+    /**
+     * Reschedule an event after a checkpoint.
+     *
+     * Since events don't know which event queue they belong to,
+     * parent objects need to reschedule events themselves. This
+     * method conditionally schedules an event that has the Scheduled
+     * flag set. It should be called by parent objects after
+     * unserializing an object.
+     *
+     * @warn Only use this method after unserializing an Event.
+     */
+    void checkpointReschedule(Event *event);
+
+    virtual ~EventQueue() { }
 };
 
 void dumpMainQueue();
@@ -687,6 +719,11 @@ class EventManager
     reschedule(Event *event, Tick when, bool always = false)
     {
         eventq->reschedule(event, when, always);
+    }
+
+    void wakeupEventQueue(Tick when = (Tick)-1)
+    {
+        eventq->wakeup(when);
     }
 
     void setCurTick(Tick newVal) { eventq->setCurTick(newVal); }

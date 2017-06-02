@@ -70,15 +70,7 @@ namespace X86ISA
             Walker *walker;
 
             bool recvTimingResp(PacketPtr pkt);
-
-            /**
-             * Snooping a coherence request, do nothing.
-             */
-            void recvTimingSnoopReq(PacketPtr pkt) { }
-            Tick recvAtomicSnoop(PacketPtr pkt) { return 0; }
-            void recvFunctionalSnoop(PacketPtr pkt) { }
-            void recvRetry();
-            bool isSnooping() const { return true; }
+            void recvReqRetry();
         };
 
         friend class WalkerPort;
@@ -180,16 +172,21 @@ namespace X86ISA
         // The number of outstanding walks that can be squashed per cycle.
         unsigned numSquashable;
 
-        // If true, send all memory requests with the bypass L1 flag true
-        bool bypassL1;
-
         // Wrapper for checking for squashes before starting a translation.
         void startWalkWrapper();
 
+        /**
+         * Event used to call startWalkWrapper.
+         **/
+        EventWrapper<Walker, &Walker::startWalkWrapper> startWalkWrapperEvent;
+
         // Functions for dealing with packets.
         bool recvTimingResp(PacketPtr pkt);
-        void recvRetry();
+        void recvReqRetry();
         bool sendTiming(WalkerState * sendingState, PacketPtr pkt);
+
+        // If true, send all memory requests with the bypass L1 flag true
+        bool bypassL1;
 
       public:
 
@@ -211,6 +208,7 @@ namespace X86ISA
             funcState(this, NULL, NULL, true), tlb(NULL), sys(params->system),
             masterId(sys->getMasterId(name())),
             numSquashable(params->num_squash_per_cycle),
+            startWalkWrapperEvent(this),
             bypassL1(params->bypass_l1)
         {
         }

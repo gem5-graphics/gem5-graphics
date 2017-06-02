@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013 ARM Limited
+ * Copyright (c) 2012-2014 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -50,6 +50,23 @@ namespace ArmISA
 {
 
 GenericISA::BasicDecodeCache Decoder::defaultCache;
+
+Decoder::Decoder()
+    : data(0), fpscrLen(0), fpscrStride(0)
+{
+    reset();
+}
+
+void
+Decoder::reset()
+{
+    bigThumb = false;
+    offset = 0;
+    emi = 0;
+    instDone = false;
+    outOfBytes = true;
+    foundIt = false;
+}
 
 void
 Decoder::process()
@@ -102,7 +119,7 @@ Decoder::process()
                 consumeBytes(2);
                 emi.instBits = word;
                 // Set the condition code field artificially.
-                emi.condCode = COND_UC;
+                emi.condCode = ARM_COND_UC;
                 DPRINTF(Decoder, "16 bit Thumb: %#x.\n",
                         emi.instBits);
                 if (bits(word, 15, 8) == 0xbf &&
@@ -118,8 +135,15 @@ Decoder::process()
     }
 }
 
-//Use this to give data to the decoder. This should be used
-//when there is control flow.
+void
+Decoder::consumeBytes(int numBytes)
+{
+    offset += numBytes;
+    assert(offset <= sizeof(MachInst) || emi.decoderFault);
+    if (offset == sizeof(MachInst))
+        outOfBytes = true;
+}
+
 void
 Decoder::moreBytes(const PCState &pc, Addr fetchPC, MachInst inst)
 {
@@ -130,8 +154,34 @@ Decoder::moreBytes(const PCState &pc, Addr fetchPC, MachInst inst)
     emi.fpscrLen = fpscrLen;
     emi.fpscrStride = fpscrStride;
 
+    const Addr alignment(pc.thumb() ? 0x1 : 0x3);
+    emi.decoderFault = static_cast<uint8_t>(
+        pc.instAddr() & alignment ? DecoderFault::UNALIGNED : DecoderFault::OK);
+
     outOfBytes = false;
     process();
+}
+
+StaticInstPtr
+Decoder::decode(ArmISA::PCState &pc)
+{
+    if (!instDone)
+        return NULL;
+
+    const int inst_size((!emi.thumb || emi.bigThumb) ? 4 : 2);
+    ExtMachInst this_emi(emi);
+
+    pc.npc(pc.pc() + inst_size);
+    if (foundIt)
+        pc.nextItstate(itBits);
+    this_emi.itstate = pc.itstate();
+    pc.size(inst_size);
+
+    emi = 0;
+    instDone = false;
+    foundIt = false;
+
+    return decode(this_emi, pc.instAddr());
 }
 
 }

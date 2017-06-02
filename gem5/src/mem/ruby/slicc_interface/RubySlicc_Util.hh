@@ -36,18 +36,12 @@
 #include <cassert>
 
 #include "debug/RubySlicc.hh"
+#include "mem/packet.hh"
 #include "mem/ruby/common/Address.hh"
 #include "mem/ruby/common/DataBlock.hh"
-#include "mem/packet.hh"
-
-inline int
-random(int n)
-{
-  return random() % n;
-}
+#include "mem/ruby/common/TypeDefines.hh"
 
 inline Cycles zero_time() { return Cycles(0); }
-inline Cycles TimeToCycles(RubyTime t) { return Cycles(t); }
 
 inline NodeID
 intToID(int nodenum)
@@ -63,28 +57,11 @@ IDToInt(NodeID id)
     return nodenum;
 }
 
-// Appends an offset to an address
-inline Address
-setOffset(Address addr, int offset)
-{
-    Address result = addr;
-    result.setOffset(offset);
-    return result;
-}
-
-// Makes an address into a line address
-inline Address
-makeLineAddress(Address addr)
-{
-    Address result = addr;
-    result.makeLineAddress();
-    return result;
-}
-
 inline int
-addressOffset(Address addr)
+addressToInt(Addr addr)
 {
-    return addr.getOffset();
+    assert(!(addr & 0xffffffff00000000));
+    return addr;
 }
 
 inline int
@@ -105,18 +82,15 @@ inline int max_tokens()
  * returned if the data block was read, otherwise false is returned.
  */
 inline bool
-testAndRead(Address addr, DataBlock& blk, Packet *pkt)
+testAndRead(Addr addr, DataBlock& blk, Packet *pkt)
 {
-    Address pktLineAddr(pkt->getAddr());
-    pktLineAddr.makeLineAddress();
-
-    Address lineAddr = addr;
-    lineAddr.makeLineAddress();
+    Addr pktLineAddr = makeLineAddress(pkt->getAddr());
+    Addr lineAddr = makeLineAddress(addr);
 
     if (pktLineAddr == lineAddr) {
-        uint8_t *data = pkt->getPtr<uint8_t>(true);
+        uint8_t *data = pkt->getPtr<uint8_t>();
         unsigned int size_in_bytes = pkt->getSize();
-        unsigned startByte = pkt->getAddr() - lineAddr.getAddress();
+        unsigned startByte = pkt->getAddr() - lineAddr;
 
         for (unsigned i = 0; i < size_in_bytes; ++i) {
             data[i] = blk.getByte(i + startByte);
@@ -133,18 +107,15 @@ testAndRead(Address addr, DataBlock& blk, Packet *pkt)
  * returned if the data block was written, otherwise false is returned.
  */
 inline bool
-testAndWrite(Address addr, DataBlock& blk, Packet *pkt)
+testAndWrite(Addr addr, DataBlock& blk, Packet *pkt)
 {
-    Address pktLineAddr(pkt->getAddr());
-    pktLineAddr.makeLineAddress();
-
-    Address lineAddr = addr;
-    lineAddr.makeLineAddress();
+    Addr pktLineAddr = makeLineAddress(pkt->getAddr());
+    Addr lineAddr = makeLineAddress(addr);
 
     if (pktLineAddr == lineAddr) {
-        uint8_t *data = pkt->getPtr<uint8_t>(true);
+        const uint8_t *data = pkt->getConstPtr<uint8_t>();
         unsigned int size_in_bytes = pkt->getSize();
-        unsigned startByte = pkt->getAddr() - lineAddr.getAddress();
+        unsigned startByte = pkt->getAddr() - lineAddr;
 
         for (unsigned i = 0; i < size_in_bytes; ++i) {
             blk.setByte(i + startByte, data[i]);

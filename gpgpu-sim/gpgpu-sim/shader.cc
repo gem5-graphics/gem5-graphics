@@ -143,6 +143,7 @@ shader_core_ctx::shader_core_ctx( class gpgpu_sim *gpu,
                                          NUM_CONCRETE_SCHEDULERS;
     assert ( scheduler != NUM_CONCRETE_SCHEDULERS );
     
+	m_scheduler_prio = 0;
     for (int i = 0; i < m_config->gpgpu_num_sched_per_core; i++) {
         switch( scheduler )
         {
@@ -573,30 +574,30 @@ void shader_core_stats::visualizer_print( gzFile visualizer_file )
 void shader_core_ctx::decode()
 {
     if( m_inst_fetch_buffer.m_valid ) {
-        // decode 1 or 2 instructions and place them into ibuffer
-        address_type pc = m_inst_fetch_buffer.m_pc;
-        const warp_inst_t* pI1 = ptx_fetch_inst(pc);
-        m_warp[m_inst_fetch_buffer.m_warp_id].ibuffer_fill(0,pI1);
-        m_warp[m_inst_fetch_buffer.m_warp_id].inc_inst_in_pipeline();
-        if( pI1 ) {
-            m_stats->m_num_decoded_insn[m_sid]++;
-            if(pI1->oprnd_type==INT_OP){
-                m_stats->m_num_INTdecoded_insn[m_sid]++;
-            }else if(pI1->oprnd_type==FP_OP) {
-            	m_stats->m_num_FPdecoded_insn[m_sid]++;
+        // Decode instructions and place them into ibuffer
+        address_type base_ibuf_pc = m_inst_fetch_buffer.m_pc;
+        address_type end_ibuf_pc = base_ibuf_pc + m_inst_fetch_buffer.m_nbytes;
+        unsigned ibuf_pos = 0;
+        for (address_type tpc = base_ibuf_pc; tpc < end_ibuf_pc;) {
+            const warp_inst_t* new_pI = ptx_fetch_inst(tpc);
+            if (new_pI) {
+                assert(ibuf_pos < m_config->gpgpu_fetch_decode_width);
+                m_warp[m_inst_fetch_buffer.m_warp_id].ibuffer_fill(ibuf_pos, new_pI);
+                m_warp[m_inst_fetch_buffer.m_warp_id].inc_inst_in_pipeline();
+                m_stats->m_num_decoded_insn[m_sid]++;
+                if (new_pI->oprnd_type == INT_OP){
+                    m_stats->m_num_INTdecoded_insn[m_sid]++;
+                } else if(new_pI->oprnd_type == FP_OP) {
+                    m_stats->m_num_FPdecoded_insn[m_sid]++;
+                }
+                tpc += new_pI->isize;
+                ibuf_pos++;
+            } else {
+                // Advance tpc pointer to at least the end of the fetch size
+                tpc += m_inst_fetch_buffer.m_nbytes;
             }
-           const warp_inst_t* pI2 = ptx_fetch_inst(pc+pI1->isize);
-           if( pI2 ) {
-               m_warp[m_inst_fetch_buffer.m_warp_id].ibuffer_fill(1,pI2);
-               m_warp[m_inst_fetch_buffer.m_warp_id].inc_inst_in_pipeline();
-               m_stats->m_num_decoded_insn[m_sid]++;
-               if(pI2->oprnd_type==INT_OP){
-                   m_stats->m_num_INTdecoded_insn[m_sid]++;
-               }else if(pI2->oprnd_type==FP_OP) {
-            	   m_stats->m_num_FPdecoded_insn[m_sid]++;
-               }
-           }
         }
+        assert(ibuf_pos > 0);
         m_inst_fetch_buffer.m_valid = false;
     }
 }
@@ -635,17 +636,21 @@ void shader_core_ctx::fetch()
                 // the kernel that is currently scheduled to this shader
                 address_type ppc = pc + m_kernel->get_inst_base_vaddr();
 
-                unsigned nbytes = INST_FETCH_SIZE; 
-                unsigned offset_in_block = pc & (m_config->m_L1I_config.get_line_sz()-1);
+                // HACK: This assumes that instructions are 8B each
+                unsigned nbytes = m_config->gpgpu_fetch_decode_width * 8;
+                unsigned offset_in_block = ppc & (m_config->m_L1I_config.get_line_sz()-1);
                 if( (offset_in_block+nbytes) > m_config->m_L1I_config.get_line_sz() )
                     nbytes = (m_config->m_L1I_config.get_line_sz()-offset_in_block);
 
                 // TODO: replace with use of allocator
                 // mem_fetch *mf = m_mem_fetch_allocator->alloc()
+				// HACK: This access will get sent into gem5, so the control
+                // header size must be zero, since gem5 packets will assess
+                // control header sizing
                 mem_access_t acc(INST_ACC_R,ppc,nbytes,false);
                 mem_fetch *mf = new mem_fetch(acc,
                                               NULL/*we don't have an instruction yet*/,
-                                              READ_PACKET_SIZE,
+                                              0, // Control header size
                                               warp_id,
                                               m_sid,
                                               m_tpc,
@@ -705,15 +710,20 @@ void shader_core_ctx::issue_warp( register_set& pipe_reg_set, const warp_inst_t*
     (*pipe_reg)->issue( active_mask, warp_id, gpu_tot_sim_cycle + gpu_sim_cycle, m_warp[warp_id].get_dynamic_warp_id() ); // dynamic instruction information
     m_stats->shader_cycle_distro[2+(*pipe_reg)->active_count()]++;
     func_exec_inst( **pipe_reg );
+
     updateSIMTStack(warp_id,*pipe_reg);
     m_scoreboard->reserveRegisters(*pipe_reg);
     m_warp[warp_id].set_next_pc(next_inst->pc + next_inst->isize);
 }
 
 void shader_core_ctx::issue(){
+	if (m_config->gpgpu_cycle_sched_prio) {
+        m_scheduler_prio = (m_scheduler_prio + 1) % schedulers.size();
+    }
     //really is issue;
     for (unsigned i = 0; i < schedulers.size(); i++) {
-        schedulers[i]->cycle();
+        unsigned sched_index = (m_scheduler_prio + i) % schedulers.size();
+        schedulers[sched_index]->cycle();
     }
 }
 
@@ -1279,7 +1289,6 @@ void shader_core_ctx::writeback()
     	 * To handle this case, we ignore the return value (thus allowing
     	 * no stalling).
     	 */
-
         m_operand_collector.writeback(*pipe_reg);
         unsigned warp_id = pipe_reg->warp_id();
         m_scoreboard->releaseRegisters( pipe_reg );
@@ -1594,6 +1603,7 @@ pipelined_simd_unit::pipelined_simd_unit( register_set* result_port, const shade
     m_core=core;
 }
 
+
 void pipelined_simd_unit::issue( register_set& source_reg )
 {
     //move_warp(m_dispatch_reg,source_reg);
@@ -1642,8 +1652,6 @@ void ldst_unit::init( mem_fetch_interface *icnt,
     m_L1D = NULL;
     m_L1T = NULL;
     m_L1C = NULL;
-    if( !m_config->m_L1D_config.disabled() ) 
-        m_L1D = new l1_cache(L1D_name,m_config->m_L1D_config,m_sid,get_shader_normal_cache_id(),m_icnt,m_mf_allocator,IN_L1D_MISS_QUEUE);
     if( !m_config->m_L1T_config.disabled() )
         m_L1T =  new read_only_cache_gem5(m_core->get_gpu(),L1T_name,m_config->m_L1T_config, m_sid,get_shader_texture_cache_id(),
                 icnt, IN_L1T_MISS_QUEUE, tex_space);
@@ -1668,7 +1676,7 @@ ldst_unit::ldst_unit( mem_fetch_interface *icnt,
                       const memory_config *mem_config,  
                       shader_core_stats *stats,
                       unsigned sid,
-                      unsigned tpc ) : pipelined_simd_unit(NULL,config,3,core), m_next_wb(config)
+                      unsigned tpc ) : pipelined_simd_unit(NULL,config,config->gpgpu_shmem_access_latency,core), m_next_wb(config)
 {
     init( icnt,
           mf_allocator,
@@ -1680,6 +1688,17 @@ ldst_unit::ldst_unit( mem_fetch_interface *icnt,
           stats, 
           sid,
           tpc );
+    if( !m_config->m_L1D_config.disabled() ) {
+        char L1D_name[STRSIZE];
+        snprintf(L1D_name, STRSIZE, "L1D_%03d", m_sid);
+        m_L1D = new l1_cache( L1D_name,
+                              m_config->m_L1D_config,
+                              m_sid,
+                              get_shader_normal_cache_id(),
+                              m_icnt,
+                              m_mf_allocator,
+                              IN_L1D_MISS_QUEUE );
+    }
 }
 
 ldst_unit::ldst_unit( mem_fetch_interface *icnt,
@@ -1693,7 +1712,7 @@ ldst_unit::ldst_unit( mem_fetch_interface *icnt,
                       unsigned sid,
                       unsigned tpc,
                       l1_cache* new_l1d_cache )
-    : pipelined_simd_unit(NULL,config,3,core), m_L1D(new_l1d_cache), m_next_wb(config)
+    : pipelined_simd_unit(NULL,config,config->gpgpu_shmem_access_latency,core), m_L1D(new_l1d_cache), m_next_wb(config)
 {
     init( icnt,
           mf_allocator,
@@ -1946,9 +1965,9 @@ void ldst_unit::cycle()
        unsigned warp_id = pipe_reg.warp_id();
        if( pipe_reg.is_load() ) {
            if( pipe_reg.space.get_type() == shared_space ) {
-               if( m_pipeline_reg[2]->empty() ) {
+               if( m_pipeline_reg[m_pipeline_depth-1]->empty() ) {
                    // new shared memory request
-                   move_warp(m_pipeline_reg[2],m_dispatch_reg);
+                   move_warp(m_pipeline_reg[m_pipeline_depth-1],m_dispatch_reg);
                    m_dispatch_reg->clear();
                }
            } else {
@@ -2025,7 +2044,6 @@ void shader_core_ctx::finish_kernel()
   m_kernel_finishing = false;
   fflush(stdout);
 }
-
 
 void gpgpu_sim::shader_print_runtime_stat( FILE *fout ) 
 {
@@ -2810,6 +2828,7 @@ void shader_core_ctx::decrement_atomic_count( unsigned wid, unsigned n )
    assert( m_warp[wid].get_n_atomic() >= n );
    m_warp[wid].dec_n_atomic(n);
 }
+
 
 bool shader_core_ctx::fetch_unit_response_buffer_full() const
 {

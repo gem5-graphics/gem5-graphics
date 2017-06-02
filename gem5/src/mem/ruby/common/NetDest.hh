@@ -26,7 +26,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// NetDest specifies the network destination of a NetworkMessage
+// NetDest specifies the network destination of a Message
 // This is backward compatible with the Set class that was previously
 // used to specify network destinations.
 // NetDest supports both node networks and component networks
@@ -38,7 +38,7 @@
 #include <vector>
 
 #include "mem/ruby/common/Set.hh"
-#include "mem/ruby/system/MachineID.hh"
+#include "mem/ruby/common/MachineID.hh"
 
 class NetDest
 {
@@ -55,7 +55,6 @@ class NetDest
 
     void add(MachineID newElement);
     void addNetDest(const NetDest& netDest);
-    void addRandom();
     void setNetDest(MachineType machine, const Set& set);
     void remove(MachineID oldElement);
     void removeNetDest(const NetDest& netDest);

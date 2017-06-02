@@ -172,7 +172,8 @@ class ArmFault : public FaultBase
     };
 
     ArmFault(ExtMachInst _machInst = 0, uint32_t _iss = 0) :
-        machInst(_machInst), issRaw(_iss), from64(false), to64(false) {}
+        machInst(_machInst), issRaw(_iss), from64(false), to64(false),
+        fromEL(EL0), toEL(EL0), fromMode(MODE_UNDEFINED) {}
 
     // Returns the actual syndrome register to use based on the target
     // exception level
@@ -181,10 +182,10 @@ class ArmFault : public FaultBase
     // exception level
     MiscRegIndex getFaultAddrReg64() const;
 
-    void invoke(ThreadContext *tc,
-            StaticInstPtr inst = StaticInst::nullStaticInstPtr);
-    void invoke64(ThreadContext *tc,
-            StaticInstPtr inst = StaticInst::nullStaticInstPtr);
+    void invoke(ThreadContext *tc, const StaticInstPtr &inst =
+                StaticInst::nullStaticInstPtr);
+    void invoke64(ThreadContext *tc, const StaticInstPtr &inst =
+                  StaticInst::nullStaticInstPtr);
     virtual void annotate(AnnotationIDs id, uint64_t val) {}
     virtual FaultStat& countStat() = 0;
     virtual FaultOffset offset(ThreadContext *tc) = 0;
@@ -249,8 +250,8 @@ class ArmFaultVals : public ArmFault
 class Reset : public ArmFaultVals<Reset>
 {
   public:
-    void invoke(ThreadContext *tc,
-            StaticInstPtr inst = StaticInst::nullStaticInstPtr);
+    void invoke(ThreadContext *tc, const StaticInstPtr &inst =
+                StaticInst::nullStaticInstPtr);
 };
 
 class UndefinedInstruction : public ArmFaultVals<UndefinedInstruction>
@@ -277,8 +278,8 @@ class UndefinedInstruction : public ArmFaultVals<UndefinedInstruction>
         mnemonic(_mnemonic)
     {}
 
-    void invoke(ThreadContext *tc,
-            StaticInstPtr inst = StaticInst::nullStaticInstPtr);
+    void invoke(ThreadContext *tc, const StaticInstPtr &inst =
+                StaticInst::nullStaticInstPtr);
     bool routeToHyp(ThreadContext *tc) const;
     ExceptionClass ec(ThreadContext *tc) const;
     uint32_t iss() const;
@@ -295,8 +296,8 @@ class SupervisorCall : public ArmFaultVals<SupervisorCall>
         overrideEc(_overrideEc)
     {}
 
-    void invoke(ThreadContext *tc,
-            StaticInstPtr inst = StaticInst::nullStaticInstPtr);
+    void invoke(ThreadContext *tc, const StaticInstPtr &inst =
+                StaticInst::nullStaticInstPtr);
     bool routeToHyp(ThreadContext *tc) const;
     ExceptionClass ec(ThreadContext *tc) const;
     uint32_t iss() const;
@@ -309,8 +310,8 @@ class SecureMonitorCall : public ArmFaultVals<SecureMonitorCall>
         ArmFaultVals<SecureMonitorCall>(_machInst)
     {}
 
-    void invoke(ThreadContext *tc,
-            StaticInstPtr inst = StaticInst::nullStaticInstPtr);
+    void invoke(ThreadContext *tc, const StaticInstPtr &inst =
+                StaticInst::nullStaticInstPtr);
     ExceptionClass ec(ThreadContext *tc) const;
     uint32_t iss() const;
 };
@@ -395,14 +396,16 @@ class AbortFault : public ArmFaultVals<T>
     ArmFault::TranMethod tranMethod;
 
   public:
-    AbortFault(Addr _faultAddr, bool _write, TlbEntry::DomainType _domain, uint8_t _source,
-               bool _stage2, ArmFault::TranMethod _tranMethod = ArmFault::UnknownTran) :
-        faultAddr(_faultAddr), write(_write), domain(_domain), source(_source),
+    AbortFault(Addr _faultAddr, bool _write, TlbEntry::DomainType _domain,
+               uint8_t _source, bool _stage2,
+               ArmFault::TranMethod _tranMethod = ArmFault::UnknownTran) :
+        faultAddr(_faultAddr), OVAddr(0), write(_write),
+        domain(_domain), source(_source), srcEncoded(0),
         stage2(_stage2), s1ptw(false), tranMethod(_tranMethod)
     {}
 
-    void invoke(ThreadContext *tc,
-            StaticInstPtr inst = StaticInst::nullStaticInstPtr);
+    void invoke(ThreadContext *tc, const StaticInstPtr &inst =
+                StaticInst::nullStaticInstPtr);
 
     FSR getFsr(ThreadContext *tc);
     bool abortDisable(ThreadContext *tc);
@@ -473,7 +476,7 @@ class VirtualDataAbort : public AbortFault<VirtualDataAbort>
         AbortFault<VirtualDataAbort>(_addr, _write, _domain, _source, false)
     {}
 
-    void invoke(ThreadContext *tc, StaticInstPtr inst);
+    void invoke(ThreadContext *tc, const StaticInstPtr &inst);
 };
 
 class Interrupt : public ArmFaultVals<Interrupt>
@@ -514,8 +517,8 @@ class PCAlignmentFault : public ArmFaultVals<PCAlignmentFault>
   public:
     PCAlignmentFault(Addr _faultPC) : faultPC(_faultPC)
     {}
-    void invoke(ThreadContext *tc,
-            StaticInstPtr inst = StaticInst::nullStaticInstPtr);
+    void invoke(ThreadContext *tc, const StaticInstPtr &inst =
+                StaticInst::nullStaticInstPtr);
 };
 
 /// Stack pointer alignment fault (AArch64 only)
@@ -530,8 +533,8 @@ class SystemError : public ArmFaultVals<SystemError>
 {
   public:
     SystemError();
-    void invoke(ThreadContext *tc,
-            StaticInstPtr inst = StaticInst::nullStaticInstPtr);
+    void invoke(ThreadContext *tc, const StaticInstPtr &inst =
+                StaticInst::nullStaticInstPtr);
     bool routeToMonitor(ThreadContext *tc) const;
     bool routeToHyp(ThreadContext *tc) const;
 };
@@ -541,8 +544,8 @@ class FlushPipe : public ArmFaultVals<FlushPipe>
 {
   public:
     FlushPipe() {}
-    void invoke(ThreadContext *tc,
-            StaticInstPtr inst = StaticInst::nullStaticInstPtr);
+    void invoke(ThreadContext *tc, const StaticInstPtr &inst =
+                StaticInst::nullStaticInstPtr);
 };
 
 // A fault that flushes the pipe, excluding the faulting instructions
@@ -550,8 +553,8 @@ class ArmSev : public ArmFaultVals<ArmSev>
 {
   public:
     ArmSev () {}
-    void invoke(ThreadContext *tc,
-            StaticInstPtr inst = StaticInst::nullStaticInstPtr);
+    void invoke(ThreadContext *tc, const StaticInstPtr &inst =
+                StaticInst::nullStaticInstPtr);
 };
 
 /// Illegal Instruction Set State fault (AArch64 only)

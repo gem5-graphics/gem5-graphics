@@ -105,7 +105,7 @@ fxsave32Template = """
 
     rdval t1, "InstRegIndex(MISCREG_FOSEG)"
     st t1, seg, %(mode)s, "DISPLACEMENT + 16 + 4", dataSize=2
-"""
+""" + fxsaveCommonTemplate
 
 fxsave64Template = """
     rdval t1, "InstRegIndex(MISCREG_FIOFF)"
@@ -113,7 +113,7 @@ fxsave64Template = """
 
     rdval t1, "InstRegIndex(MISCREG_FOOFF)"
     st t1, seg, %(mode)s, "DISPLACEMENT + 16 + 0", dataSize=8
-"""
+""" + fxsaveCommonTemplate
 
 fxrstorCommonTemplate = """
     ld t1, seg, %(mode)s, "DISPLACEMENT + 0", dataSize=2
@@ -122,9 +122,6 @@ fxrstorCommonTemplate = """
     # FSW includes TOP when read
     ld t1, seg, %(mode)s, "DISPLACEMENT + 2", dataSize=2
     wrval fsw, t1
-    srli t1, t1, 11, dataSize=2
-    andi t1, t1, 0x7, dataSize=2
-    wrval "InstRegIndex(MISCREG_X87_TOP)", t1
 
     # FTW
     ld t1, seg, %(mode)s, "DISPLACEMENT + 4", dataSize=1
@@ -149,7 +146,7 @@ fxrstor32Template = """
 
     ld t1, seg, %(mode)s, "DISPLACEMENT + 16 + 4", dataSize=2
     wrval "InstRegIndex(MISCREG_FOSEG)", t1
-"""
+""" + fxrstorCommonTemplate
 
 fxrstor64Template = """
     limm t2, 0, dataSize=8
@@ -161,7 +158,7 @@ fxrstor64Template = """
     ld t1, seg, %(mode)s, "DISPLACEMENT + 16 + 0", dataSize=8
     wrval "InstRegIndex(MISCREG_FOOFF)", t1
     wrval "InstRegIndex(MISCREG_FOSEG)", t2
-"""
+""" + fxrstorCommonTemplate
 
 microcode = '''
 def macroop FXSAVE_M {

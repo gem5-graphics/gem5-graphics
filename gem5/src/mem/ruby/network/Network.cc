@@ -49,7 +49,23 @@ Network::Network(const Params *p)
 
     m_topology_ptr = new Topology(p->routers.size(), p->ext_links,
                                   p->int_links);
-    p->ruby_system->registerNetwork(this);
+
+    // Allocate to and from queues
+    // Queues that are getting messages from protocol
+    m_toNetQueues.resize(m_nodes);
+
+    // Queues that are feeding the protocol
+    m_fromNetQueues.resize(m_nodes);
+
+    m_in_use.resize(m_virtual_networks);
+    m_ordered.resize(m_virtual_networks);
+
+    for (int i = 0; i < m_virtual_networks; i++) {
+        m_in_use[i] = false;
+        m_ordered[i] = false;
+    }
+
+    params()->ruby_system->registerNetwork(this);
 
     // Initialize the controller's network pointers
     for (std::vector<BasicExtLink*>::const_iterator i = p->ext_links.begin();
@@ -61,6 +77,23 @@ Network::Network(const Params *p)
 
     // Register a callback function for combining the statistics
     Stats::registerDumpCallback(new StatsCallback(this));
+}
+
+Network::~Network()
+{
+    for (int node = 0; node < m_nodes; node++) {
+
+        // Delete the Message Buffers
+        for (auto& it : m_toNetQueues[node]) {
+            delete it;
+        }
+
+        for (auto& it : m_fromNetQueues[node]) {
+            delete it;
+        }
+    }
+
+    delete m_topology_ptr;
 }
 
 void

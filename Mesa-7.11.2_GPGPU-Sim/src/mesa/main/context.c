@@ -894,6 +894,18 @@ _mesa_alloc_dispatch_table(int size)
  *        to use
  * \param driverContext pointer to driver-specific context data
  */
+#define MAX_CTX_COUNT 1024
+struct gl_context* initializedCtxs[MAX_CTX_COUNT];
+int totalCtxCount = 0;
+extern void SetSoftProg(int flag){
+   int i;
+   for(i=0; i<totalCtxCount; i++){
+      initializedCtxs[i]->FragmentProgram._MaintainTexEnvProgram = flag;
+      initializedCtxs[i]->VertexProgram._MaintainTnlProgram = flag;
+      initializedCtxs[i]->FragmentProgram._MaintainTexEnvProgram = flag;
+   }
+}
+
 GLboolean
 _mesa_initialize_context(struct gl_context *ctx,
                          gl_api api,
@@ -904,6 +916,9 @@ _mesa_initialize_context(struct gl_context *ctx,
 {
    struct gl_shared_state *shared;
    int i;
+
+   assert(totalCtxCount < MAX_CTX_COUNT-1);
+   initializedCtxs[totalCtxCount++] = ctx;
 
    /*ASSERT(driverContext);*/
    assert(driverFunctions->NewTextureObject);

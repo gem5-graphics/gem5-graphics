@@ -33,11 +33,13 @@
 #include "gpu/shader_tlb.hh"
 #include "gpu/gpgpu-sim/cuda_gpu.hh"
 
-#ifdef TARGET_ARM
+#if THE_ISA == ARM_ISA
     // May need to include appropriate files for fault handling
-#else // x86_64
+#elif THE_ISA == X86_ISA
     #include "arch/x86/insts/microldstop.hh"
     #include "arch/x86/regs/misc.hh"
+#else
+    #error Currently gem5-gpu is only known to support x86 and ARM
 #endif
 
 using namespace std;
@@ -56,7 +58,7 @@ ShaderTLB::ShaderTLB(const Params *p) :
 }
 
 void
-ShaderTLB::unserialize(Checkpoint *cp, const std::string &section)
+ShaderTLB::unserialize(CheckpointIn &cp)
 {
     // Intentionally left blank to keep from trying to read shader header from
     // checkpoint files. Allows for restore into any number of shader cores.
@@ -96,7 +98,7 @@ ShaderTLB::translateTiming(RequestPtr req, ThreadContext *tc,
                            Translation *translation, Mode mode)
 {
 
-#ifdef TARGET_ARM
+#if THE_ISA == ARM_ISA
     // @TODO: Currently, translateTiming should only be called for translating
     // the copy engine's host-side addresses under ARM. These should not raise
     // page faults under SE mode, but it would still be good to check that the
@@ -106,7 +108,7 @@ ShaderTLB::translateTiming(RequestPtr req, ThreadContext *tc,
     // For some reason, this request flag must be set to verify that data
     // accesses are aligned properly (note: not required for inst fetches)
     req->setFlags(TLB::MustBeOne);
-#else // x86_64
+#elif THE_ISA == X86_ISA
 
     // Include some sanity checking
     uint32_t flags = req->getFlags();
@@ -131,13 +133,13 @@ ShaderTLB::translateTiming(RequestPtr req, ThreadContext *tc,
     Addr vaddr = req->getVaddr();
     DPRINTF(ShaderTLB, "Translating vaddr %#x.\n", vaddr);
     Addr offset = vaddr % TheISA::PageBytes;
-    Addr vpn = vaddr - offset;
-    Addr ppn;
+    Addr vp_base = vaddr - offset;
+    Addr pp_base;
 
-    if (tlbMemory->lookup(vpn, ppn)) {
-        DPRINTF(ShaderTLB, "TLB hit. Phys addr %#x.\n", ppn + offset);
+    if (tlbMemory->lookup(vp_base, pp_base)) {
+        DPRINTF(ShaderTLB, "TLB hit. Phys addr %#x.\n", pp_base + offset);
         hits++;
-        req->setPaddr(ppn + offset);
+        req->setPaddr(pp_base + offset);
         translation->finish(NoFault, req, tc, mode);
     } else {
         // TLB miss! Let the TLB handle the walk, etc
@@ -150,9 +152,9 @@ ShaderTLB::translateTiming(RequestPtr req, ThreadContext *tc,
 }
 
 void
-ShaderTLB::insert(Addr vpn, Addr ppn)
+ShaderTLB::insert(Addr vp_base, Addr pp_base)
 {
-    tlbMemory->insert(vpn, ppn);
+    tlbMemory->insert(vp_base, pp_base);
 }
 
 void
@@ -169,12 +171,12 @@ ShaderTLB::flushAll()
 }
 
 bool
-TLBMemory::lookup(Addr vpn, Addr& ppn, bool set_mru)
+TLBMemory::lookup(Addr vp_base, Addr& pp_base, bool set_mru)
 {
-    int way = (vpn / TheISA::PageBytes) % ways;
+    int way = (vp_base / TheISA::PageBytes) % ways;
     for (int i=0; i < sets; i++) {
-        if (entries[way][i].vpn == vpn && !entries[way][i].free) {
-            ppn = entries[way][i].ppn;
+        if (entries[way][i].vpBase == vp_base && !entries[way][i].free) {
+            pp_base = entries[way][i].ppBase;
             assert(entries[way][i].mruTick > 0);
             if (set_mru) {
                 entries[way][i].setMRU();
@@ -183,18 +185,18 @@ TLBMemory::lookup(Addr vpn, Addr& ppn, bool set_mru)
             return true;
         }
     }
-    ppn = Addr(0);
+    pp_base = Addr(0);
     return false;
 }
 
 void
-TLBMemory::insert(Addr vpn, Addr ppn)
+TLBMemory::insert(Addr vp_base, Addr pp_base)
 {
     Addr a;
-    if (lookup(vpn, a)) {
+    if (lookup(vp_base, a)) {
         return;
     }
-    int way = (vpn / TheISA::PageBytes) % ways;
+    int way = (vp_base / TheISA::PageBytes) % ways;
     GPUTlbEntry* entry = NULL;
     Tick minTick = curTick();
     for (int i=0; i < sets; i++) {
@@ -208,11 +210,11 @@ TLBMemory::insert(Addr vpn, Addr ppn)
     }
     assert(entry);
     if (!entry->free) {
-        DPRINTF(ShaderTLB, "Evicting entry for vpn %#x\n", entry->vpn);
+        DPRINTF(ShaderTLB, "Evicting entry for vp %#x\n", entry->vpBase);
     }
 
-    entry->vpn = vpn;
-    entry->ppn = ppn;
+    entry->vpBase = vp_base;
+    entry->ppBase = pp_base;
     entry->free = false;
     entry->setMRU();
 }

@@ -36,7 +36,7 @@
 #include "intersim2/routefunc.hpp"
 #include "network.hpp"
 
-class AnyNet : public Network {
+class AnyNet : public ISNetwork {
 
   string file_name;
   //associtation between  nodes and routers

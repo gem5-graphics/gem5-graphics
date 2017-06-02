@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012 ARM Limited
+ * Copyright (c) 2012, 2014 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -51,24 +51,36 @@
 #include <utility>
 #include <vector>
 
+#include "arch/isa_traits.hh"
 #include "base/loader/symtab.hh"
 #include "base/misc.hh"
 #include "base/statistics.hh"
-#include "cpu/pc_event.hh"
+#include "config/the_isa.hh"
 #include "enums/MemoryMode.hh"
-#include "kern/system_events.hh"
 #include "mem/mem_object.hh"
 #include "mem/port.hh"
 #include "mem/port_proxy.hh"
 #include "mem/physical.hh"
 #include "params/System.hh"
+#include "sim/full_system.hh"
+#include "mem/port_proxy.hh"
+#include "base/loader/object_file.hh"
+
+/**
+ * To avoid linking errors with LTO, only include the header if we
+ * actually have the definition.
+ */
+#if THE_ISA != NULL_ISA
+#include "cpu/pc_event.hh"
+#include "cpu/thread_context.hh"
+#endif
 
 class BaseCPU;
 class BaseRemoteGDB;
 class GDBListener;
 class ObjectFile;
 class Platform;
-class ThreadContext;
+class PageTableBase;
 
 class System : public MemObject
 {
@@ -91,7 +103,7 @@ class System : public MemObject
         { }
         bool recvTimingResp(PacketPtr pkt)
         { panic("SystemPort does not receive timing!\n"); return false; }
-        void recvRetry()
+        void recvReqRetry()
         { panic("SystemPort does not expect retry!\n"); }
     };
 
@@ -120,8 +132,6 @@ class System : public MemObject
      */
     BaseMasterPort& getMasterPort(const std::string &if_name,
                                   PortID idx = InvalidPortID);
-
-    static const char *MemoryModeStrings[4];
 
     /** @{ */
     /**
@@ -191,7 +201,7 @@ class System : public MemObject
     std::vector<ThreadContext *> threadContexts;
     int _numContexts;
 
-    ThreadContext *getThreadContext(ThreadID tid)
+    ThreadContext *getThreadContext(ContextID tid)
     {
         return threadContexts[tid];
     }
@@ -270,6 +280,21 @@ class System : public MemObject
      * @return Whether the address corresponds to a memory
      */
     bool isMemAddr(Addr addr) const;
+
+    /**
+     * Get the architecture.
+     */
+    Arch getArch() const { return Arch::TheISA; }
+
+     /**
+     * Get the page bytes for the ISA.
+     */
+    Addr getPageBytes() const { return TheISA::PageBytes; }
+
+    /**
+     * Get the number of bits worth of in-page adress for the ISA.
+     */
+    Addr getPageShift() const { return TheISA::PageShift; }
 
   protected:
 
@@ -493,14 +518,14 @@ class System : public MemObject
     /// @return Starting address of first page
     Addr allocPhysPages(int npages);
 
-    int registerThreadContext(ThreadContext *tc, int assigned=-1);
-    void replaceThreadContext(ThreadContext *tc, int context_id);
+    ContextID registerThreadContext(ThreadContext *tc,
+                                    ContextID assigned = InvalidContextID);
+    void replaceThreadContext(ThreadContext *tc, ContextID context_id);
 
-    void serialize(std::ostream &os);
-    void unserialize(Checkpoint *cp, const std::string &section);
+    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
+    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
 
-    unsigned int drain(DrainManager *dm);
-    void drainResume();
+    void drainResume() M5_ATTR_OVERRIDE;
 
   public:
     Counter totalNumInsts;
@@ -531,7 +556,7 @@ class System : public MemObject
      *
      * @param os stream to serialize to
      */
-    virtual void serializeSymtab(std::ostream &os) {}
+    virtual void serializeSymtab(CheckpointOut &os) const {}
 
     /**
      * If needed, unserialize additional symbol table entries for a
@@ -540,8 +565,7 @@ class System : public MemObject
      * @param cp checkpoint to unserialize from
      * @param section relevant section in the checkpoint
      */
-    virtual void unserializeSymtab(Checkpoint *cp,
-                                   const std::string &section) {}
+    virtual void unserializeSymtab(CheckpointIn &cp) {}
 
 };
 

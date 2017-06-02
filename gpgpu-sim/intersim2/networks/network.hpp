@@ -44,7 +44,7 @@
 typedef Channel<Credit> CreditChannel;
 
 
-class Network : public TimedModule {
+class ISNetwork : public TimedModule {
 protected:
 
   int _size;
@@ -71,10 +71,10 @@ protected:
   void _Alloc( );
 
 public:
-  Network( const Configuration &config, const string & name );
-  virtual ~Network( );
+  ISNetwork( const Configuration &config, const string & name );
+  virtual ~ISNetwork( );
 
-  static Network *New( const Configuration &config, const string & name );
+  static ISNetwork *New( const Configuration &config, const string & name );
 
   virtual void WriteFlit( Flit *f, int source );
   virtual Flit *ReadFlit( int dest );

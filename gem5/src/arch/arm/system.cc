@@ -57,7 +57,7 @@ ArmSystem::ArmSystem(Params *p)
     : System(p), bootldr(NULL), _haveSecurity(p->have_security),
       _haveLPAE(p->have_lpae),
       _haveVirtualization(p->have_virtualization),
-      _haveGenericTimer(p->have_generic_timer),
+      _genericTimer(nullptr),
       _highestELIs64(p->highest_el_is_64),
       _resetAddr64(p->reset_addr_64),
       _physAddrRange64(p->phys_addr_range_64),
@@ -150,24 +150,6 @@ ArmSystem::initState()
     }
 }
 
-GenericTimer::ArchTimer *
-ArmSystem::getArchTimer(int cpu_id) const
-{
-    if (_genericTimer) {
-        return _genericTimer->getArchTimer(cpu_id);
-    }
-    return NULL;
-}
-
-GenericTimer::SystemCounter *
-ArmSystem::getSystemCounter() const
-{
-    if (_genericTimer) {
-        return _genericTimer->getSystemCounter();
-    }
-    return NULL;
-}
-
 bool
 ArmSystem::haveSecurity(ThreadContext *tc)
 {
@@ -243,8 +225,26 @@ ArmSystem::haveLargeAsid64(ThreadContext *tc)
 {
     return dynamic_cast<ArmSystem *>(tc->getSystemPtr())->haveLargeAsid64();
 }
+
 ArmSystem *
 ArmSystemParams::create()
 {
     return new ArmSystem(this);
+}
+
+void
+GenericArmSystem::initState()
+{
+    // Moved from the constructor to here since it relies on the
+    // address map being resolved in the interconnect
+
+    // Call the initialisation of the super class
+    ArmSystem::initState();
+}
+
+GenericArmSystem *
+GenericArmSystemParams::create()
+{
+
+    return new GenericArmSystem(this);
 }

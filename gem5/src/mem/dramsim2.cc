@@ -50,9 +50,8 @@ DRAMSim2::DRAMSim2(const Params* p) :
     port(name() + ".port", *this),
     wrapper(p->deviceConfigFile, p->systemConfigFile, p->filePath,
             p->traceFile, p->range.size() / 1024 / 1024, p->enableDebug),
-    retryReq(false), retryResp(false),
+    retryReq(false), retryResp(false), startTick(0),
     nbrOutstandingReads(0), nbrOutstandingWrites(0),
-    drainManager(NULL),
     sendResponseEvent(this), tickEvent(this)
 {
     DPRINTF(DRAMSim2,
@@ -77,6 +76,8 @@ DRAMSim2::DRAMSim2(const Params* p) :
 void
 DRAMSim2::init()
 {
+    AbstractMemory::init();
+
     if (!port.isConnected()) {
         fatal("DRAMSim2 %s is unconnected!\n", name());
     } else {
@@ -91,6 +92,8 @@ DRAMSim2::init()
 void
 DRAMSim2::startup()
 {
+    startTick = curTick();
+
     // kick off the clock ticks
     schedule(tickEvent, clockEdge());
 }
@@ -114,11 +117,8 @@ DRAMSim2::sendResponse()
         if (!responseQueue.empty() && !sendResponseEvent.scheduled())
             schedule(sendResponseEvent, curTick());
 
-        // check if we were asked to drain and if we are now done
-        if (drainManager && nbrOutstanding() == 0) {
-            drainManager->signalDrainDone();
-            drainManager = NULL;
-        }
+        if (nbrOutstanding() == 0)
+            signalDrainDone();
     } else {
         retryResp = true;
 
@@ -143,7 +143,7 @@ DRAMSim2::tick()
     // state and send a retry if conditions have changed
     if (retryReq && nbrOutstanding() < wrapper.queueSize()) {
         retryReq = false;
-        port.sendRetry();
+        port.sendRetryReq();
     }
 
     schedule(tickEvent, curTick() + wrapper.clockPeriod() * SimClock::Int::ns);
@@ -240,7 +240,7 @@ DRAMSim2::recvTimingReq(PacketPtr pkt)
 }
 
 void
-DRAMSim2::recvRetry()
+DRAMSim2::recvRespRetry()
 {
     DPRINTF(DRAMSim2, "Retrying\n");
 
@@ -264,9 +264,11 @@ DRAMSim2::accessAndRespond(PacketPtr pkt)
     if (needsResponse) {
         // access already turned the packet into a response
         assert(pkt->isResponse());
-
-        // @todo someone should pay for this
-        pkt->busFirstWordDelay = pkt->busLastWordDelay = 0;
+        // Here we pay for xbar additional delay and to process the payload
+        // of the packet.
+        Tick time = curTick() + pkt->headerDelay + pkt->payloadDelay;
+        // Reset the timings of the packet
+        pkt->headerDelay = pkt->payloadDelay = 0;
 
         DPRINTF(DRAMSim2, "Queuing response for address %lld\n",
                 pkt->getAddr());
@@ -277,7 +279,7 @@ DRAMSim2::accessAndRespond(PacketPtr pkt)
         // if we are not already waiting for a retry, or are scheduled
         // to send a response, schedule an event
         if (!retryResp && !sendResponseEvent.scheduled())
-            schedule(sendResponseEvent, curTick());
+            schedule(sendResponseEvent, time);
     } else {
         // @todo the packet is going to be deleted, and the DRAMPacket
         // is still having a pointer to it
@@ -287,7 +289,7 @@ DRAMSim2::accessAndRespond(PacketPtr pkt)
 
 void DRAMSim2::readComplete(unsigned id, uint64_t addr, uint64_t cycle)
 {
-    assert(cycle == divCeil(curTick(),
+    assert(cycle == divCeil(curTick() - startTick,
                             wrapper.clockPeriod() * SimClock::Int::ns));
 
     DPRINTF(DRAMSim2, "Read to address %lld complete\n", addr);
@@ -315,7 +317,7 @@ void DRAMSim2::readComplete(unsigned id, uint64_t addr, uint64_t cycle)
 
 void DRAMSim2::writeComplete(unsigned id, uint64_t addr, uint64_t cycle)
 {
-    assert(cycle == divCeil(curTick(),
+    assert(cycle == divCeil(curTick() - startTick,
                             wrapper.clockPeriod() * SimClock::Int::ns));
 
     DPRINTF(DRAMSim2, "Write to address %lld complete\n", addr);
@@ -333,11 +335,8 @@ void DRAMSim2::writeComplete(unsigned id, uint64_t addr, uint64_t cycle)
     assert(nbrOutstandingWrites != 0);
     --nbrOutstandingWrites;
 
-    // check if we were asked to drain and if we are now done
-    if (drainManager && nbrOutstanding() == 0) {
-        drainManager->signalDrainDone();
-        drainManager = NULL;
-    }
+    if (nbrOutstanding() == 0)
+        signalDrainDone();
 }
 
 BaseSlavePort&
@@ -350,19 +349,12 @@ DRAMSim2::getSlavePort(const std::string &if_name, PortID idx)
     }
 }
 
-unsigned int
-DRAMSim2::drain(DrainManager* dm)
+DrainState
+DRAMSim2::drain()
 {
     // check our outstanding reads and writes and if any they need to
     // drain
-    if (nbrOutstanding() != 0) {
-        setDrainState(Drainable::Draining);
-        drainManager = dm;
-        return 1;
-    } else {
-        setDrainState(Drainable::Drained);
-        return 0;
-    }
+    return nbrOutstanding() != 0 ? DrainState::Draining : DrainState::Drained;
 }
 
 DRAMSim2::MemoryPort::MemoryPort(const std::string& _name,
@@ -398,9 +390,9 @@ DRAMSim2::MemoryPort::recvTimingReq(PacketPtr pkt)
 }
 
 void
-DRAMSim2::MemoryPort::recvRetry()
+DRAMSim2::MemoryPort::recvRespRetry()
 {
-    memory.recvRetry();
+    memory.recvRespRetry();
 }
 
 DRAMSim2*

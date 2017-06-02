@@ -82,9 +82,10 @@ class Cmos : public BasicPioDevice
 
     Tick write(PacketPtr pkt);
 
-    virtual void serialize(std::ostream &os);
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
+    virtual void startup();
 
+    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
+    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
 };
 
 } // namespace X86ISA
