@@ -1,3 +1,5 @@
+NOTE: These instructions are outdated and will be updated later. 
+
 * To build the system you will need: Nvidia CUDA Toolkit 3.1 or higher (tested under 3.1). Once installed please set the CUDAHOME env variable in setMesa_GPGPU.
 
 * Please check the prerequisites for gem5, gpgpusim and Mesa3D: 
