@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2015 ARM Limited
+ * Copyright (c) 2014-2016 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -44,7 +44,15 @@
 #include "dev/arm/realview.hh"
 #include "enums/MemoryMode.hh"
 #include "mem/packet_access.hh"
+#include "nomali/lib/mali_midg_regmap.h"
+#include "params/CustomNoMaliGpu.hh"
 #include "params/NoMaliGpu.hh"
+
+static const std::map<Enums::NoMaliGpuType, nomali_gpu_type_t> gpuTypeMap{
+    { Enums::T60x, NOMALI_GPU_T60X },
+    { Enums::T62x, NOMALI_GPU_T62X },
+    { Enums::T760, NOMALI_GPU_T760 },
+};
 
 NoMaliGpu::NoMaliGpu(const NoMaliGpuParams *p)
     : PioDevice(p),
@@ -63,22 +71,12 @@ NoMaliGpu::NoMaliGpu(const NoMaliGpuParams *p)
     nomali_config_t cfg;
     memset(&cfg, 0, sizeof(cfg));
 
-    switch (p->gpu_type) {
-      case Enums::T60x:
-        cfg.type = NOMALI_GPU_T60X;
-        break;
-
-      case Enums::T62x:
-        cfg.type = NOMALI_GPU_T62X;
-        break;
-
-      case Enums::T760:
-        cfg.type = NOMALI_GPU_T760;
-        break;
-
-      default:
-        fatal("Unknown GPU type\n");
+    const auto it_gpu(gpuTypeMap.find(p->gpu_type));
+    if (it_gpu == gpuTypeMap.end()) {
+        fatal("Unrecognized GPU type: %s (%i)\n",
+              Enums::NoMaliGpuTypeStrings[p->gpu_type], p->gpu_type);
     }
+    cfg.type = it_gpu->second;
 
     cfg.ver_maj = p->ver_maj;
     cfg.ver_min = p->ver_min;
@@ -94,9 +92,14 @@ NoMaliGpu::NoMaliGpu(const NoMaliGpuParams *p)
     cbk_int.type = NOMALI_CALLBACK_INT;
     cbk_int.usr = (void *)this;
     cbk_int.func.interrupt = NoMaliGpu::_interrupt;
-    panicOnErr(
-        nomali_set_callback(nomali, &cbk_int),
-        "Failed to setup interrupt callback");
+    setCallback(cbk_int);
+
+    /* Setup a reset callback */
+    nomali_callback_t cbk_rst;
+    cbk_rst.type = NOMALI_CALLBACK_RESET;
+    cbk_rst.usr = (void *)this;
+    cbk_rst.func.reset = NoMaliGpu::_reset;
+    setCallback(cbk_rst);
 
     panicOnErr(
         nomali_get_info(nomali, &nomaliInfo),
@@ -108,6 +111,17 @@ NoMaliGpu::~NoMaliGpu()
     nomali_destroy(nomali);
 }
 
+
+void
+NoMaliGpu::init()
+{
+    PioDevice::init();
+
+    /* Reset the GPU here since the reset callback won't have been
+     * installed when the GPU was reset at instantiation time.
+     */
+    reset();
+}
 
 void
 NoMaliGpu::serialize(CheckpointOut &cp) const
@@ -179,6 +193,16 @@ NoMaliGpu::getAddrRanges() const
     return AddrRangeList({ RangeSize(pioAddr, nomaliInfo.reg_size) });
 }
 
+void
+NoMaliGpu::reset()
+{
+    DPRINTF(NoMali, "reset()\n");
+
+    panicOnErr(
+        nomali_reset(nomali),
+        "Failed to reset GPU");
+}
+
 uint32_t
 NoMaliGpu::readReg(nomali_addr_t reg)
 {
@@ -227,16 +251,26 @@ NoMaliGpu::writeRegRaw(nomali_addr_t reg, uint32_t value)
         "GPU raw register write failed");
 }
 
-void
-NoMaliGpu::_interrupt(nomali_handle_t h, void *usr, nomali_int_t intno, int set)
+bool
+NoMaliGpu::intState(nomali_int_t intno)
 {
-    NoMaliGpu *_this(static_cast<NoMaliGpu *>(usr));
+    int state = 0;
+    panicOnErr(
+        nomali_int_state(nomali, &state, intno),
+        "Failed to get interrupt state");
 
-    _this->onInterrupt(h, intno, !!set);
+    return !!state;
 }
 
 void
-NoMaliGpu::onInterrupt(nomali_handle_t h, nomali_int_t intno, bool set)
+NoMaliGpu::gpuPanic(nomali_error_t err, const char *msg)
+{
+    panic("%s: %s\n", msg, nomali_errstr(err));
+}
+
+
+void
+NoMaliGpu::onInterrupt(nomali_int_t intno, bool set)
 {
     const auto it_int(interruptMap.find(intno));
     if (it_int == interruptMap.end())
@@ -255,13 +289,104 @@ NoMaliGpu::onInterrupt(nomali_handle_t h, nomali_int_t intno, bool set)
 }
 
 void
-NoMaliGpu::gpuPanic(nomali_error_t err, const char *msg)
+NoMaliGpu::onReset()
 {
-    panic("%s: %s\n", msg, nomali_errstr(err));
+    DPRINTF(NoMali, "Reset\n");
 }
+
+void
+NoMaliGpu::setCallback(const nomali_callback_t &callback)
+{
+    DPRINTF(NoMali, "Registering callback %i\n",
+            callback.type);
+
+    panicOnErr(
+        nomali_set_callback(nomali, &callback),
+        "Failed to register callback");
+}
+
+void
+NoMaliGpu::_interrupt(nomali_handle_t h, void *usr,
+                      nomali_int_t intno, int set)
+{
+    NoMaliGpu *_this(static_cast<NoMaliGpu *>(usr));
+
+    _this->onInterrupt(intno, !!set);
+}
+
+void
+NoMaliGpu::_reset(nomali_handle_t h, void *usr)
+{
+    NoMaliGpu *_this(static_cast<NoMaliGpu *>(usr));
+
+    _this->onReset();
+}
+
+
+CustomNoMaliGpu::CustomNoMaliGpu(const CustomNoMaliGpuParams *p)
+    : NoMaliGpu(p),
+      idRegs{
+        { GPU_CONTROL_REG(GPU_ID), p->gpu_id },
+        { GPU_CONTROL_REG(L2_FEATURES), p->l2_features },
+        { GPU_CONTROL_REG(TILER_FEATURES), p->tiler_features },
+        { GPU_CONTROL_REG(MEM_FEATURES), p->mem_features },
+        { GPU_CONTROL_REG(MMU_FEATURES), p->mmu_features },
+        { GPU_CONTROL_REG(AS_PRESENT), p->as_present },
+        { GPU_CONTROL_REG(JS_PRESENT), p->js_present },
+
+        { GPU_CONTROL_REG(THREAD_MAX_THREADS), p->thread_max_threads },
+        { GPU_CONTROL_REG(THREAD_MAX_WORKGROUP_SIZE),
+          p->thread_max_workgroup_size },
+        { GPU_CONTROL_REG(THREAD_MAX_BARRIER_SIZE),
+          p->thread_max_barrier_size },
+        { GPU_CONTROL_REG(THREAD_FEATURES), p->thread_features },
+
+        { GPU_CONTROL_REG(SHADER_PRESENT_LO), bits(p->shader_present, 31, 0) },
+        { GPU_CONTROL_REG(SHADER_PRESENT_HI), bits(p->shader_present, 63, 32) },
+        { GPU_CONTROL_REG(TILER_PRESENT_LO), bits(p->tiler_present, 31, 0) },
+        { GPU_CONTROL_REG(TILER_PRESENT_HI), bits(p->tiler_present, 63, 32) },
+        { GPU_CONTROL_REG(L2_PRESENT_LO), bits(p->l2_present, 31, 0) },
+        { GPU_CONTROL_REG(L2_PRESENT_HI), bits(p->l2_present, 63, 32) },
+      }
+{
+    fatal_if(p->texture_features.size() > 3,
+             "Too many texture feature registers specified (%i)\n",
+             p->texture_features.size());
+
+    fatal_if(p->js_features.size() > 16,
+             "Too many job slot feature registers specified (%i)\n",
+             p->js_features.size());
+
+    for (int i = 0; i < p->texture_features.size(); i++)
+        idRegs[TEXTURE_FEATURES_REG(i)] = p->texture_features[i];
+
+    for (int i = 0; i < p->js_features.size(); i++)
+        idRegs[JS_FEATURES_REG(i)] = p->js_features[i];
+}
+
+CustomNoMaliGpu::~CustomNoMaliGpu()
+{
+}
+
+void
+CustomNoMaliGpu::onReset()
+{
+    NoMaliGpu::onReset();
+
+    for (const auto &reg : idRegs)
+        writeRegRaw(reg.first, reg.second);
+}
+
+
 
 NoMaliGpu *
 NoMaliGpuParams::create()
 {
     return new NoMaliGpu(this);
+}
+
+CustomNoMaliGpu *
+CustomNoMaliGpuParams::create()
+{
+    return new CustomNoMaliGpu(this);
 }

@@ -28,11 +28,12 @@
  * Authors: Ali Saidi
  */
 
+#include "base/cp_annotate.hh"
+
 #include "arch/generic/linux/threadinfo.hh"
 #include "arch/utility.hh"
-#include "base/loader/object_file.hh"
 #include "base/callback.hh"
-#include "base/cp_annotate.hh"
+#include "base/loader/object_file.hh"
 #include "base/output.hh"
 #include "base/trace.hh"
 #include "config/the_isa.hh"
@@ -180,8 +181,8 @@ CPA::swSmBegin(ThreadContext *tc)
     int smi = getSm(sysi, sm, args[1]);
     DPRINTF(Annotate,  "Starting machine: %s(%d) sysi: %d id: %#x\n", sm,
             smi, sysi, args[1]);
-    DPRINTF(Annotate, "smMap[%d] = %d, %s, %#x\n", smi, 
-            smMap[smi-1].first, smMap[smi-1].second.first, 
+    DPRINTF(Annotate, "smMap[%d] = %d, %s, %#x\n", smi,
+            smMap[smi-1].first, smMap[smi-1].second.first,
             smMap[smi-1].second.second);
 
     uint64_t frame = getFrame(tc);
@@ -226,7 +227,7 @@ CPA::swSmBegin(ThreadContext *tc)
         scLinks[sysi-1].erase(id);
         an->stq = smi;
         an->dump = true;
-        DPRINTF(Annotate, 
+        DPRINTF(Annotate,
                 "Found prev unknown linking from %d to state machine %s(%d)\n",
                 an->sm, sm, smi);
 
@@ -288,11 +289,11 @@ CPA::doSwSmEnd(System *sys, int cpuid, string sm, uint64_t frame)
 
         warn("State machine stack not unwinding correctly at %d\n", curTick());
     } else {
-        DPRINTF(Annotate, 
+        DPRINTF(Annotate,
                 "State machine ending:%s sysi:%d id:%#x back:%d getSm:%d\n",
                 sm, sysi, smMap[smib-1].second.second, smStack[sid].back(),
                 getSm(sysi, sm, smMap[smib-1].second.second));
-        assert(getSm(sysi, sm, smMap[smib-1].second.second) == 
+        assert(getSm(sysi, sm, smMap[smib-1].second.second) ==
                 smStack[sid].back());
 
         int smi = smStack[sid].back();
@@ -400,7 +401,7 @@ CPA::swEnd(ThreadContext *tc)
             tc->readIntReg(ReturnAddressReg), st, junk);
     System *sys = tc->getSystemPtr();
     StringWrap name(sys->name());
- 
+
     int sysi = getSys(sys);
     StackId sid = StackId(sysi, getFrame(tc));
     if (!smStack[sid].size()) {
@@ -443,7 +444,7 @@ CPA::swQ(ThreadContext *tc)
         //warn("Tried to queue 0 bytes in %s, ignoring\n", q);
         return;
     }
-    DPRINTFS(AnnotateQ, sys, 
+    DPRINTFS(AnnotateQ, sys,
             "swQ: %s[%#x] cur size %d %d bytes: %d adding: %d\n",
             q, id, qSize[qi-1], qData[qi-1].size(), qBytes[qi-1], count);
     doQ(sys, FL_NONE, tc->contextId(), smi, q, qi, count);
@@ -470,7 +471,7 @@ CPA::swDq(ThreadContext *tc)
     int qi = getQ(sysi, q, id);
     if (swExpl[sid])
         swExpl[sid] = false;
-    DPRINTFS(AnnotateQ, sys, 
+    DPRINTFS(AnnotateQ, sys,
             "swDq: %s[%#x] cur size %d %d bytes: %d removing: %d\n",
             q, id, qSize[qi-1], qData[qi-1].size(), qBytes[qi-1], count);
     assert(count != 0);
@@ -499,7 +500,7 @@ CPA::swPq(ThreadContext *tc)
     int qi = getQ(sysi, q, id);
     if (swExpl[sid])
         swExpl[sid] = false;
-    DPRINTFS(AnnotateQ, sys, 
+    DPRINTFS(AnnotateQ, sys,
             "swPq: %s [%#x] cur size %d %d bytes: %d peeking: %d\n",
             q, id, qSize[qi-1], qData[qi-1].size(), qBytes[qi-1], count);
 
@@ -534,7 +535,7 @@ CPA::swRq(ThreadContext *tc)
     int qi = getQ(sysi, q, id);
     if (swExpl[sid])
         swExpl[sid] = false;
-    DPRINTFS(AnnotateQ, sys, 
+    DPRINTFS(AnnotateQ, sys,
             "swRq: %s [%#x] cur size %d %d bytes: %d reserve: %d\n",
             q, id, qSize[qi-1], qData[qi-1].size(), qBytes[qi-1], count);
 
@@ -696,7 +697,7 @@ CPA::swAq(ThreadContext *tc)
             x++;
         }
 
-        warn("%d: Queue Assert: SW said there should be %d byte(s) in %s," 
+        warn("%d: Queue Assert: SW said there should be %d byte(s) in %s,"
                 "however there are %d byte(s)\n",
             curTick(), size, q, qBytes[qi-1]);
         DPRINTF(AnnotateQ, "%d: Queue Assert: SW said there should be %d"
@@ -805,7 +806,7 @@ CPA::swSyscallLink(ThreadContext  *tc)
             smi, lsm);
 
     if (scLinks[sysi-1][id])
-        DPRINTF(Annotate, 
+        DPRINTF(Annotate,
                 "scLinks already contains entry for system %d %s[%x] of %d\n",
                 sysi, lsm, getFrame(tc), scLinks[sysi-1][id]);
     assert(scLinks[sysi-1][id] == 0);
@@ -837,7 +838,7 @@ CPA::add(int t, int f, int c, int sm, int stq, int32_t d)
 
     DPRINTF(AnnotateVerbose, "Annotate: op: %d flags: 0x%x sm: %d state: %d time: %d, data: %d\n",
             an->op, an->flag, an->sm, an->stq, an->time, an->data);
-    
+
     // Don't dump Links because we might be setting no-dump on it
     if (an->op != OP_LINK)
         dump(false);
@@ -1205,7 +1206,7 @@ CPA::serialize(CheckpointOut &cp) const
     }
 
     // qData (vector<AnnotateList>)
-    for(x = 0; x < qData.size(); x++) {
+    for (x = 0; x < qData.size(); x++) {
         if (!qData[x].size())
             continue;
         y = 0;

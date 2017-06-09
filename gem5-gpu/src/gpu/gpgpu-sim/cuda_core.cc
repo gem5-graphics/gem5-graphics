@@ -317,7 +317,7 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
                    }
                    MasterID reqMasterId = (inst.space.get_type() == tex_space)? texMasterId : dataMasterId;
                    RequestPtr req = new Request(asid, addr, size, flags,
-                           reqMasterId, inst.pc, id, inst.warp_id());
+                           reqMasterId, inst.pc, id);
                    pkt = new Packet(req, MemCmd::ReadReq);
                    if (inst.isatomic()) {
                        assert(flags.isSet(Request::MEM_SWAP));
@@ -355,7 +355,7 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
                    }
                    Addr addr = inst.get_addr(lane, reqNum);
                    RequestPtr req = new Request(asid, addr, size, flags,
-                           dataMasterId, inst.pc, id, inst.warp_id());
+                           dataMasterId, inst.pc, id);
                    pkt = new Packet(req, MemCmd::WriteReq);
                    pkt->allocate();
                    pkt->setData((uint8_t*)inst.get_data(lane));
@@ -367,7 +367,7 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
                    // TODO: If adding fencing functionality, specify control data
                    // in packet or request
                    RequestPtr req = new Request(asid, 0x0, 0, flags, dataMasterId,
-                           inst.pc, id, inst.warp_id());
+                           inst.pc, id);
                    pkt = new Packet(req, MemCmd::FenceReq);
                    pkt->senderState = new SenderState(inst);
                } else {
@@ -460,14 +460,14 @@ CudaCore::recvLSQDataResp(PacketPtr pkt, int lane_id)
                 assert(!shaderImpl->warp_waiting_at_barrier(inst.warp_id()));
                 shaderImpl->warp_reaches_barrier(inst);
                 DPRINTF(CudaCoreAccess, "Warp %d reaches barrier\n",
-                        pkt->req->threadId());
+                        pkt->req->contextId());
             }
 
             // Signal that fence has been cleared
             assert(shaderImpl->fence_unblock_needed(inst.warp_id()));
-            shaderImpl->complete_fence(pkt->req->threadId());
+            shaderImpl->complete_fence(pkt->req->contextId());
             DPRINTF(CudaCoreAccess, "Cleared fence, unblocking warp %d\n",
-                    pkt->req->threadId());
+                    pkt->req->contextId());
 
             needsFenceUnblock[inst.warp_id()] = false;
         }

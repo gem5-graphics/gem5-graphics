@@ -60,15 +60,15 @@ class Pl011 : public Uart, public AmbaDevice
   public:
     Pl011(const Pl011Params *p);
 
-    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
-    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 
   public: // PioDevice
-    Tick read(PacketPtr pkt) M5_ATTR_OVERRIDE;
-    Tick write(PacketPtr pkt) M5_ATTR_OVERRIDE;
+    Tick read(PacketPtr pkt) override;
+    Tick write(PacketPtr pkt) override;
 
   public: // Uart
-    void dataAvailable() M5_ATTR_OVERRIDE;
+    void dataAvailable() override;
 
 
   protected: // Interrupt handling
@@ -110,7 +110,7 @@ class Pl011 : public Uart, public AmbaDevice
     void clearInterrupts(uint16_t ints) { setInterrupts(rawInt & ~ints, imsc); }
 
     /** Masked interrupt status register */
-    const inline uint16_t maskInt() const { return rawInt & imsc; }
+    inline uint16_t maskInt() const { return rawInt & imsc; }
 
     /** Wrapper to create an event out of the thing */
     EventWrapper<Pl011, &Pl011::generateInterrupt> intEvent;
@@ -120,8 +120,10 @@ class Pl011 : public Uart, public AmbaDevice
     static const int UART_DR = 0x000;
     static const int UART_FR = 0x018;
     static const int UART_FR_CTS  = 0x001;
-    static const int UART_FR_TXFE = 0x080;
     static const int UART_FR_RXFE = 0x010;
+    static const int UART_FR_TXFF = 0x020;
+    static const int UART_FR_RXFF = 0x040;
+    static const int UART_FR_TXFE = 0x080;
     static const int UART_IBRD = 0x024;
     static const int UART_FBRD = 0x028;
     static const int UART_LCRH = 0x02C;

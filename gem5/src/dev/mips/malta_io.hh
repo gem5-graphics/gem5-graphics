@@ -120,8 +120,8 @@ class MaltaIO : public BasicPioDevice
      */
     MaltaIO(const Params *p);
 
-    virtual Tick read(PacketPtr pkt);
-    virtual Tick write(PacketPtr pkt);
+    Tick read(PacketPtr pkt) override;
+    Tick write(PacketPtr pkt) override;
 
 
     /** Post an Interrupt to the CPU */
@@ -130,13 +130,13 @@ class MaltaIO : public BasicPioDevice
     /** Clear an Interrupt to the CPU */
     void clearIntr(uint8_t interrupt);
 
-    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
-    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 
     /**
      * Start running.
      */
-    virtual void startup();
+    void startup() override;
 
 };
 

@@ -45,8 +45,9 @@
  * Definitions of a LRU tag store.
  */
 
-#include "debug/CacheRepl.hh"
 #include "mem/cache/tags/lru.hh"
+
+#include "debug/CacheRepl.hh"
 #include "mem/cache/base.hh"
 
 LRU::LRU(const Params *p)
@@ -55,11 +56,11 @@ LRU::LRU(const Params *p)
 }
 
 CacheBlk*
-LRU::accessBlock(Addr addr, bool is_secure, Cycles &lat, int master_id)
+LRU::accessBlock(Addr addr, bool is_secure, Cycles &lat)
 {
-    CacheBlk *blk = BaseSetAssoc::accessBlock(addr, is_secure, lat, master_id);
+    CacheBlk *blk = BaseSetAssoc::accessBlock(addr, is_secure, lat);
 
-    if (blk != NULL) {
+    if (blk != nullptr) {
         // move this block to head of the MRU list
         sets[blk->set].moveToHead(blk);
         DPRINTF(CacheRepl, "set %x: moving blk %x (%s) to MRU\n",
@@ -75,7 +76,7 @@ LRU::findVictim(Addr addr)
 {
     int set = extractSet(addr);
     // grab a replacement candidate
-    BlkType *blk = NULL;
+    BlkType *blk = nullptr;
     for (int i = assoc - 1; i >= 0; i--) {
         BlkType *b = sets[set].blks[i];
         if (b->way < allocAssoc) {

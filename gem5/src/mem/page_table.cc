@@ -35,19 +35,15 @@
  * @file
  * Definitions of functional page table.
  */
-#include <fstream>
-#include <map>
-#include <memory>
+#include "mem/page_table.hh"
+
 #include <string>
 
-#include "base/bitfield.hh"
-#include "base/intmath.hh"
 #include "base/trace.hh"
 #include "config/the_isa.hh"
 #include "debug/MMU.hh"
-#include "mem/page_table.hh"
 #include "sim/faults.hh"
-#include "sim/sim_object.hh"
+#include "sim/serialize.hh"
 
 using namespace std;
 using namespace TheISA;
@@ -105,6 +101,13 @@ FuncPageTable::remap(Addr vaddr, int64_t size, Addr new_vaddr)
         pTable[new_vaddr].updateVaddr(new_vaddr);
         updateCache(new_vaddr, pTable[new_vaddr]);
     }
+}
+
+void
+FuncPageTable::getMappings(std::vector<std::pair<Addr, Addr>> *addr_maps)
+{
+    for (auto &iter : pTable)
+        addr_maps->push_back(make_pair(iter.first, iter.second.pageStart()));
 }
 
 void

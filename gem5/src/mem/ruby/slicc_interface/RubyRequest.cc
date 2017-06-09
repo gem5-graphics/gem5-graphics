@@ -26,9 +26,9 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <iostream>
-
 #include "mem/ruby/slicc_interface/RubyRequest.hh"
+
+#include <iostream>
 
 using namespace std;
 
@@ -36,10 +36,10 @@ void
 RubyRequest::print(ostream& out) const
 {
   out << "[RubyRequest: ";
-  out << "LineAddress = " << m_LineAddress << " ";
-  out << "PhysicalAddress = " << m_PhysicalAddress << " ";
+  out << hex << "LineAddress = 0x" << m_LineAddress << dec << " ";
+  out << hex << "PhysicalAddress = 0x" << m_PhysicalAddress << dec << " ";
   out << "Type = " << m_Type << " ";
-  out << "ProgramCounter = " << m_ProgramCounter << " ";
+  out << hex << "ProgramCounter = 0x" << m_ProgramCounter << dec << " ";
   out << "AccessMode = " << m_AccessMode << " ";
   out << "Size = " << m_Size << " ";
   out << "Prefetch = " << m_Prefetch << " ";

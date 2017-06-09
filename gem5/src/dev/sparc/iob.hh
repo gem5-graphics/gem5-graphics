@@ -36,7 +36,6 @@
 #ifndef __DEV_SPARC_IOB_HH__
 #define __DEV_SPARC_IOB_HH__
 
-#include "dev/disk_image.hh"
 #include "dev/io_device.hh"
 #include "params/Iob.hh"
 
@@ -133,17 +132,17 @@ class Iob : public PioDevice
         return dynamic_cast<const Params *>(_params);
     }
 
-    virtual Tick read(PacketPtr pkt);
-    virtual Tick write(PacketPtr pkt);
+    Tick read(PacketPtr pkt) override;
+    Tick write(PacketPtr pkt) override;
     void generateIpi(Type type, int cpu_id, int vector);
     void receiveDeviceInterrupt(DeviceId devid);
     bool receiveJBusInterrupt(int cpu_id, int source, uint64_t d0,
                               uint64_t d1);
 
-    AddrRangeList getAddrRanges() const;
+    AddrRangeList getAddrRanges() const override;
 
-    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
-    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 };
 
 #endif //__DEV_SPARC_IOB_HH__

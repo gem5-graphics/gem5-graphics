@@ -1,4 +1,5 @@
 # Copyright (c) 2009 The Hewlett-Packard Development Company
+# Copyright (c) 2017 Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -25,6 +26,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 # Authors: Nathan Binkert
+#          Lena Olson
 
 import os.path
 import re
@@ -62,7 +64,6 @@ class SLICC(Grammar):
         return code
 
     def process(self):
-        self.decl_list.findMachines()
         self.decl_list.generate()
 
     def writeCodeFiles(self, code_path, includes):
@@ -72,10 +73,7 @@ class SLICC(Grammar):
         self.symtab.writeHTMLFiles(html_path)
 
     def files(self):
-        f = set([
-            'MachineType.cc',
-            'MachineType.hh',
-            'Types.hh' ])
+        f = set(['Types.hh'])
 
         f |= self.decl_list.files()
 
@@ -162,7 +160,8 @@ class SLICC(Grammar):
 
     precedence = (
         ('left', 'INCR', 'DECR'),
-        ('left', 'AND', 'OR'),
+        ('left', 'OR'),
+        ('left', 'AND'),
         ('left', 'EQ', 'NE'),
         ('left', 'LT', 'GT', 'LE', 'GE'),
         ('left', 'RIGHTSHIFT', 'LEFTSHIFT'),
@@ -259,11 +258,11 @@ class SLICC(Grammar):
         p[0] = self.parse_file(filename)
 
     def p_decl__machine0(self, p):
-        "decl : MACHINE '(' idents ')' ':' obj_decls '{' decls '}'"
+        "decl : MACHINE '(' enumeration ')' ':' obj_decls '{' decls '}'"
         p[0] = ast.MachineAST(self, p[3], [], p[7], p[9])
 
     def p_decl__machine1(self, p):
-        "decl : MACHINE '(' idents pairs ')' ':' obj_decls '{' decls '}'"
+        "decl : MACHINE '(' enumeration pairs ')' ':' obj_decls '{' decls '}'"
         p[0] = ast.MachineAST(self, p[3], p[4], p[7], p[9])
 
     def p_decl__action(self, p):
@@ -669,15 +668,18 @@ class SLICC(Grammar):
 
     def p_expr__member_method_call(self, p):
         "aexpr : aexpr DOT ident '(' exprs ')'"
-        p[0] = ast.MemberMethodCallExprAST(self, p[1], p[3], p[5])
+        p[0] = ast.MemberMethodCallExprAST(self, p[1],
+                    ast.FuncCallExprAST(self, p[3], p[5]))
 
     def p_expr__member_method_call_lookup(self, p):
         "aexpr : aexpr '[' exprs ']'"
-        p[0] = ast.MemberMethodCallExprAST(self, p[1], "lookup", p[3])
+        p[0] = ast.MemberMethodCallExprAST(self, p[1],
+                    ast.FuncCallExprAST(self, "lookup", p[3]))
 
     def p_expr__class_method_call(self, p):
         "aexpr : type DOUBLE_COLON ident '(' exprs ')'"
-        p[0] = ast.ClassMethodCallExprAST(self, p[1], p[3], p[5])
+        p[0] = ast.ClassMethodCallExprAST(self, p[1],
+                    ast.FuncCallExprAST(self, p[3], p[5]))
 
     def p_expr__aexpr(self, p):
         "expr : aexpr"

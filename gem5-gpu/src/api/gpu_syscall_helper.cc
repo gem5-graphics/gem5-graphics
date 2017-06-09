@@ -27,7 +27,7 @@
  */
 
 #include "gpu_syscall_helper.hh"
-#include "mem/ruby/system/System.hh"
+#include "mem/ruby/system/RubySystem.hh"
 #include "mem/fs_translating_port_proxy.hh"
 #include "mem/se_translating_port_proxy.hh"
 #include "sim/full_system.hh"

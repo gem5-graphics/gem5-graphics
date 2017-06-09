@@ -41,7 +41,6 @@
 #include "mem/ruby/common/Histogram.hh"
 #include "mem/ruby/common/MachineID.hh"
 #include "mem/ruby/network/MessageBuffer.hh"
-#include "mem/ruby/network/Network.hh"
 #include "mem/ruby/system/CacheRecorder.hh"
 #include "mem/packet.hh"
 #include "mem/qport.hh"
@@ -49,6 +48,7 @@
 #include "mem/mem_object.hh"
 
 class Network;
+class GPUCoalescer;
 
 // used to communicate that an in_port peeked the wrong message type
 class RejectException: public std::exception
@@ -65,14 +65,16 @@ class AbstractController : public MemObject, public Consumer
     void init();
     const Params *params() const { return (const Params *)_params; }
 
-    const NodeID getVersion() const { return m_machineID.getNum(); }
-    const MachineType getType() const { return m_machineID.getType(); }
+    NodeID getVersion() const { return m_machineID.getNum(); }
+    MachineType getType() const { return m_machineID.getType(); }
 
     void initNetworkPtr(Network* net_ptr) { m_net_ptr = net_ptr; }
 
     // return instance name
     void blockOnQueue(Addr, MessageBuffer*);
+    bool isBlocked(Addr) const;
     void unblock(Addr);
+    bool isBlocked(Addr);
 
     virtual MessageBuffer* getMandatoryQueue() const = 0;
     virtual MessageBuffer* getMemoryQueue() const = 0;
@@ -84,7 +86,8 @@ class AbstractController : public MemObject, public Consumer
     virtual void regStats();
 
     virtual void recordCacheTrace(int cntrl, CacheRecorder* tr) = 0;
-    virtual Sequencer* getSequencer() const = 0;
+    virtual Sequencer* getCPUSequencer() const = 0;
+    virtual GPUCoalescer* getGPUCoalescer() const = 0;
 
     //! These functions are used by ruby system to read/write the data blocks
     //! that exist with in the controller.
@@ -139,14 +142,14 @@ class AbstractController : public MemObject, public Consumer
     void wakeUpAllBuffers();
 
   protected:
-    NodeID m_version;
+    const NodeID m_version;
     MachineID m_machineID;
-    NodeID m_clusterID;
+    const NodeID m_clusterID;
 
     // MasterID used by some components of gem5.
-    MasterID m_masterId;
+    const MasterID m_masterId;
 
-    Network* m_net_ptr;
+    Network *m_net_ptr;
     bool m_is_blocking;
     std::map<Addr, MessageBuffer*> m_block_map;
 
@@ -157,9 +160,9 @@ class AbstractController : public MemObject, public Consumer
 
     unsigned int m_in_ports;
     unsigned int m_cur_in_port;
-    int m_number_of_TBEs;
-    int m_transitions_per_cycle;
-    unsigned int m_buffer_size;
+    const int m_number_of_TBEs;
+    const int m_transitions_per_cycle;
+    const unsigned int m_buffer_size;
     Cycles m_recycle_latency;
 
     //! Counter for the number of cycles when the transitions carried out

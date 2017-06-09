@@ -26,11 +26,12 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "mem/ruby/filters/MultiBitSelBloomFilter.hh"
+
 #include <vector>
 
 #include "base/intmath.hh"
 #include "base/str.hh"
-#include "mem/ruby/filters/MultiBitSelBloomFilter.hh"
 
 using namespace std;
 
@@ -93,7 +94,7 @@ MultiBitSelBloomFilter::merge(AbstractBloomFilter *other_filter)
 {
     // assumes both filters are the same size!
     MultiBitSelBloomFilter * temp = (MultiBitSelBloomFilter*) other_filter;
-    for(int i = 0; i < m_filter_size; ++i){
+    for (int i = 0; i < m_filter_size; ++i){
         m_filter[i] |= (*temp)[i];
     }
 }

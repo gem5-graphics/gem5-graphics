@@ -201,7 +201,7 @@ bitsToFp(uint64_t bits, double junk)
 }
 
 template <class fpType>
-static bool
+static inline bool
 isSnan(fpType val)
 {
     const bool single = (sizeof(fpType) == sizeof(float));
@@ -551,7 +551,7 @@ fpMulX(T a, T b)
     bool zero1 = (std::fpclassify(a) == FP_ZERO);
     bool zero2 = (std::fpclassify(b) == FP_ZERO);
     if ((inf1 && zero2) || (zero1 && inf2)) {
-        if(sign1 ^ sign2)
+        if (sign1 ^ sign2)
             return (T)(-2.0);
         else
             return (T)(2.0);
@@ -685,7 +685,7 @@ fpRSqrts(T a, T b)
     }
     aXb = a*b;
     fpClassAxB = std::fpclassify(aXb);
-    if(fpClassAxB == FP_SUBNORMAL) {
+    if (fpClassAxB == FP_SUBNORMAL) {
        feraiseexcept(FeUnderflow);
        return 1.5;
     }
@@ -707,7 +707,7 @@ fpRecps(T a, T b)
     }
     aXb = a*b;
     fpClassAxB = std::fpclassify(aXb);
-    if(fpClassAxB == FP_SUBNORMAL) {
+    if (fpClassAxB == FP_SUBNORMAL) {
        feraiseexcept(FeUnderflow);
        return 2.0;
     }
@@ -729,7 +729,7 @@ fpRSqrtsS(float a, float b)
     }
     aXb = a*b;
     fpClassAxB = std::fpclassify(aXb);
-    if(fpClassAxB == FP_SUBNORMAL) {
+    if (fpClassAxB == FP_SUBNORMAL) {
        feraiseexcept(FeUnderflow);
        return 1.5;
     }
@@ -750,7 +750,7 @@ fpRecpsS(float a, float b)
     }
     aXb = a*b;
     fpClassAxB = std::fpclassify(aXb);
-    if(fpClassAxB == FP_SUBNORMAL) {
+    if (fpClassAxB == FP_SUBNORMAL) {
        feraiseexcept(FeUnderflow);
        return 2.0;
     }
@@ -972,6 +972,27 @@ class FpRegRegRegOp : public FpOp
                   IntRegIndex _dest, IntRegIndex _op1, IntRegIndex _op2,
                   VfpMicroMode mode = VfpNotAMicroop) :
         FpOp(mnem, _machInst, __opClass), dest(_dest), op1(_op1), op2(_op2)
+    {
+        setVfpMicroFlags(mode, flags);
+    }
+
+    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+};
+
+class FpRegRegRegCondOp : public FpOp
+{
+  protected:
+    IntRegIndex dest;
+    IntRegIndex op1;
+    IntRegIndex op2;
+    ConditionCode cond;
+
+    FpRegRegRegCondOp(const char *mnem, ExtMachInst _machInst,
+                      OpClass __opClass, IntRegIndex _dest, IntRegIndex _op1,
+                      IntRegIndex _op2, ConditionCode _cond,
+                      VfpMicroMode mode = VfpNotAMicroop) :
+        FpOp(mnem, _machInst, __opClass), dest(_dest), op1(_op1), op2(_op2),
+        cond(_cond)
     {
         setVfpMicroFlags(mode, flags);
     }

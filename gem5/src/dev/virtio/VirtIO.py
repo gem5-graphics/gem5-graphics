@@ -1,6 +1,6 @@
 # -*- mode:python -*-
 
-# Copyright (c) 2014 ARM Limited
+# Copyright (c) 2014, 2016 ARM Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -41,7 +41,7 @@ from m5.SimObject import SimObject
 from m5.params import *
 from m5.proxy import *
 from Device import PioDevice
-from Pci import PciDevice
+from PciDevice import PciDevice
 
 
 class VirtIODeviceBase(SimObject):
@@ -53,11 +53,15 @@ class VirtIODeviceBase(SimObject):
 
     system = Param.System(Parent.any, "system object")
 
+class VirtIODummyDevice(VirtIODeviceBase):
+    type = 'VirtIODummyDevice'
+    cxx_header = 'dev/virtio/base.hh'
+
 class PciVirtIO(PciDevice):
     type = 'PciVirtIO'
     cxx_header = 'dev/virtio/pci.hh'
 
-    vio = Param.VirtIODeviceBase("VirtIO device")
+    vio = Param.VirtIODeviceBase(VirtIODummyDevice(), "VirtIO device")
 
     VendorID = 0x1AF4
     SubsystemVendorID = VendorID;
@@ -65,7 +69,7 @@ class PciVirtIO(PciDevice):
 
     ClassCode = 0xff # Misc device
 
-    BAR0 = 0x00000000 # Anywhere in 32-bit space
+    BAR0 = 0x00000001 # Anywhere in 32-bit space; IOREG
     BAR0Size = '0B' # Overridden by the device model
 
     InterruptPin = 0x01 # Use #INTA

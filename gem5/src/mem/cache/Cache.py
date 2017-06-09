@@ -53,7 +53,8 @@ class BaseCache(MemObject):
     size = Param.MemorySize("Capacity")
     assoc = Param.Unsigned("Associativity")
 
-    hit_latency = Param.Cycles("Hit latency")
+    tag_latency = Param.Cycles("Tag lookup latency")
+    data_latency = Param.Cycles("Data access latency")
     response_latency = Param.Cycles("Latency for the return path on a miss");
 
     max_miss_count = Param.Counter(0,
@@ -64,8 +65,6 @@ class BaseCache(MemObject):
     tgts_per_mshr = Param.Unsigned("Max number of accesses per MSHR")
     write_buffers = Param.Unsigned(8, "Number of write buffers")
 
-    forward_snoops = Param.Bool(True,
-        "Forward snoops from mem side to cpu side")
     is_read_only = Param.Bool(False, "Is this cache read only (e.g. inst)")
 
     prefetcher = Param.BasePrefetcher(NULL,"Prefetcher attached to cache")
@@ -84,6 +83,30 @@ class BaseCache(MemObject):
 
     system = Param.System(Parent.any, "System we belong to")
 
+# Enum for cache clusivity, currently mostly inclusive or mostly
+# exclusive.
+class Clusivity(Enum): vals = ['mostly_incl', 'mostly_excl']
+
 class Cache(BaseCache):
     type = 'Cache'
     cxx_header = 'mem/cache/cache.hh'
+
+    # Control whether this cache should be mostly inclusive or mostly
+    # exclusive with respect to upstream caches. The behaviour on a
+    # fill is determined accordingly. For a mostly inclusive cache,
+    # blocks are allocated on all fill operations. Thus, L1 caches
+    # should be set as mostly inclusive even if they have no upstream
+    # caches. In the case of a mostly exclusive cache, fills are not
+    # allocating unless they came directly from a non-caching source,
+    # e.g. a table walker. Additionally, on a hit from an upstream
+    # cache a line is dropped for a mostly exclusive cache.
+    clusivity = Param.Clusivity('mostly_incl',
+                                "Clusivity with upstream cache")
+
+    # Determine if this cache sends out writebacks for clean lines, or
+    # simply clean evicts. In cases where a downstream cache is mostly
+    # exclusive with respect to this cache (acting as a victim cache),
+    # the clean writebacks are essential for performance. In general
+    # this should be set to True for anything but the last-level
+    # cache.
+    writeback_clean = Param.Bool(False, "Writeback clean lines")

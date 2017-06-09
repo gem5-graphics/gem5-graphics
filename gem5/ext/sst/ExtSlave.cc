@@ -44,13 +44,6 @@
 
 #include "gem5.hh"
 
-#include <sst_config.h>
-#include <sst/core/serialization.h>
-
-#include <sst/core/params.h>
-#include <sst/core/output.h>
-#include <sst/core/link.h>
-
 #ifdef fatal  // gem5 sets this
 #undef fatal
 #endif
@@ -92,7 +85,7 @@ ExtSlave::recvFunctional(PacketPtr pkt)
             initPackets = new std::list<MemEvent*>;
         }
         ::MemCmd::Command pktCmd = (::MemCmd::Command)pkt->cmd.toInt();
-        assert(pktCmd == ::MemCmd::WriteReq || pktCmd == ::MemCmd::Writeback);
+        assert(pktCmd == ::MemCmd::WriteReq);
         Addr a = pkt->getAddr();
         MemEvent* ev = new MemEvent(comp, a, a, GetX);
         ev->setPayload(pkt->getSize(), pkt->getPtr<uint8_t>());
@@ -126,7 +119,7 @@ ExtSlave::recvTimingReq(PacketPtr pkt)
     else if ((::MemCmd::Command)pkt->cmd.toInt() == ::MemCmd::StoreCondReq)
         ev->setStoreConditional();
 
-    if (pkt->req->isLocked())      ev->setFlag(MemEvent::F_LOCKED);
+    if (pkt->req->isLockedRMW())   ev->setFlag(MemEvent::F_LOCKED);
     if (pkt->req->isUncacheable()) ev->setFlag(MemEvent::F_NONCACHEABLE);
     if (pkt->req->hasContextId())  ev->setGroupId(pkt->req->contextId());
 // Prefetches not working with SST; it maybe be dropping them, treating them
@@ -184,7 +177,7 @@ ExtSlave::handleEvent(Event* ev)
         // make Req/Pkt for Snoop/no response needed
         // presently no consideration for masterId, packet type, flags...
         RequestPtr req = new Request(event->getAddr(), event->getSize(), 0, 0);
-        auto pkt = new Packet(req, ::MemCmd::InvalidationReq);
+        auto pkt = new Packet(req, ::MemCmd::InvalidateReq);
 
         // Clear out bus delay notifications
         pkt->headerDelay = pkt->payloadDelay = 0;

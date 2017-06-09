@@ -54,6 +54,7 @@
 
 #include "dev/arm/flash_device.hh"
 
+#include "base/trace.hh"
 #include "debug/Drain.hh"
 
 /**
@@ -98,7 +99,7 @@ FlashDevice::FlashDevice(const FlashDeviceParams* p):
      * bitwise AND with those two numbers results in an integer with all bits
      * cleared.
      */
-    if(numPlanes & planeMask)
+    if (numPlanes & planeMask)
         fatal("Number of planes is not a power of 2 in flash device.\n");
 }
 
@@ -245,7 +246,7 @@ FlashDevice::accessDevice(uint64_t address, uint32_t amount, Callback *event,
         DPRINTF(FlashDevice, "Plane %d is busy for %d ticks\n", count,
                 time[count]);
 
-        if  (time[count] != 0) {
+        if (time[count] != 0) {
 
             struct CallBackEntry cbe;
             /**
@@ -379,10 +380,10 @@ FlashDevice::remap(uint64_t logic_page_addr)
         block = locationTable[logic_page_addr].block * pagesPerBlock;
 
         //assumption: clean will improve locality
-        for (uint32_t count = 0; count < pageSize; count++) {
+        for (uint32_t count = 0; count < pagesPerBlock; count++) {
+            assert(block + count < pagesPerDisk);
             locationTable[block + count].page = (block + count) %
                 pagesPerBlock;
-            ++count;
         }
 
         blockEmptyEntries[locationTable[logic_page_addr].block] =
@@ -471,6 +472,8 @@ FlashDevice::getUnknownPages(uint32_t index)
 void
 FlashDevice::regStats()
 {
+    AbstractNVM::regStats();
+
     using namespace Stats;
 
     std::string fd_name = name() + ".FlashDevice";
@@ -521,28 +524,18 @@ FlashDevice::serialize(CheckpointOut &cp) const
 {
     SERIALIZE_SCALAR(planeMask);
 
-    int unknown_pages_size = unknownPages.size();
-    SERIALIZE_SCALAR(unknown_pages_size);
-    for (uint32_t count = 0; count < unknownPages.size(); count++)
-        SERIALIZE_SCALAR(unknownPages[count]);
+    SERIALIZE_CONTAINER(unknownPages);
+    SERIALIZE_CONTAINER(blockValidEntries);
+    SERIALIZE_CONTAINER(blockEmptyEntries);
 
     int location_table_size = locationTable.size();
     SERIALIZE_SCALAR(location_table_size);
     for (uint32_t count = 0; count < location_table_size; count++) {
-        SERIALIZE_SCALAR(locationTable[count].page);
-        SERIALIZE_SCALAR(locationTable[count].block);
-        }
-
-    int block_valid_entries_size = blockValidEntries.size();
-    SERIALIZE_SCALAR(block_valid_entries_size);
-    for (uint32_t count = 0; count < blockValidEntries.size(); count++)
-        SERIALIZE_SCALAR(blockValidEntries[count]);
-
-    int block_empty_entries_size = blockEmptyEntries.size();
-    SERIALIZE_SCALAR(block_empty_entries_size);
-    for (uint32_t count = 0; count < blockEmptyEntries.size(); count++)
-        SERIALIZE_SCALAR(blockEmptyEntries[count]);
-
+        paramOut(cp, csprintf("locationTable[%d].page", count),
+                 locationTable[count].page);
+        paramOut(cp, csprintf("locationTable[%d].block", count),
+                 locationTable[count].block);
+    }
 };
 
 /**
@@ -554,32 +547,19 @@ FlashDevice::unserialize(CheckpointIn &cp)
 {
     UNSERIALIZE_SCALAR(planeMask);
 
-    int unknown_pages_size;
-    UNSERIALIZE_SCALAR(unknown_pages_size);
-    unknownPages.resize(unknown_pages_size);
-    for (uint32_t count = 0; count < unknown_pages_size; count++)
-        UNSERIALIZE_SCALAR(unknownPages[count]);
+    UNSERIALIZE_CONTAINER(unknownPages);
+    UNSERIALIZE_CONTAINER(blockValidEntries);
+    UNSERIALIZE_CONTAINER(blockEmptyEntries);
 
     int location_table_size;
     UNSERIALIZE_SCALAR(location_table_size);
     locationTable.resize(location_table_size);
     for (uint32_t count = 0; count < location_table_size; count++) {
-        UNSERIALIZE_SCALAR(locationTable[count].page);
-        UNSERIALIZE_SCALAR(locationTable[count].block);
-        }
-
-    int block_valid_entries_size;
-    UNSERIALIZE_SCALAR(block_valid_entries_size);
-    blockValidEntries.resize(block_valid_entries_size);
-    for (uint32_t count = 0; count < block_valid_entries_size; count++)
-        UNSERIALIZE_SCALAR(blockValidEntries[count]);
-
-    int block_empty_entries_size;
-    UNSERIALIZE_SCALAR(block_empty_entries_size);
-    blockEmptyEntries.resize(block_empty_entries_size);
-    for (uint32_t count = 0; count < block_empty_entries_size; count++)
-        UNSERIALIZE_SCALAR(blockEmptyEntries[count]);
-
+        paramIn(cp, csprintf("locationTable[%d].page", count),
+                locationTable[count].page);
+        paramIn(cp, csprintf("locationTable[%d].block", count),
+                locationTable[count].block);
+    }
 };
 
 /**
@@ -605,7 +585,7 @@ FlashDevice::drain()
 void
 FlashDevice::checkDrain()
 {
-    if (drainState() == DrainState::Draining)
+    if (drainState() != DrainState::Draining)
         return;
 
     if (planeEvent.when() > curTick()) {

@@ -42,20 +42,24 @@
  *          Stephan Diestelhorst
  */
 
+#include "sim/clock_domain.hh"
+
 #include <algorithm>
 #include <functional>
 
+#include "base/trace.hh"
 #include "debug/ClockDomain.hh"
 #include "params/ClockDomain.hh"
 #include "params/DerivedClockDomain.hh"
 #include "params/SrcClockDomain.hh"
-#include "sim/clock_domain.hh"
-#include "sim/voltage_domain.hh"
 #include "sim/clocked_object.hh"
+#include "sim/voltage_domain.hh"
 
 void
 ClockDomain::regStats()
 {
+    SimObject::regStats();
+
     using namespace Stats;
 
     // Expose the current clock period as a stat for observability in
@@ -147,6 +151,11 @@ SrcClockDomain::perfLevel(PerfLevel perf_level)
 
     _perfLevel = perf_level;
 
+    signalPerfLevelUpdate();
+}
+
+void SrcClockDomain::signalPerfLevelUpdate()
+{
     // Signal the voltage domain that we have changed our perf level so that the
     // voltage domain can recompute its performance level
     voltageDomain()->sanitiseVoltages();
@@ -174,7 +183,7 @@ SrcClockDomain::startup()
 {
     // Perform proper clock update when all related components have been
     // created (i.e. after unserialization / object creation)
-    perfLevel(_perfLevel);
+    signalPerfLevelUpdate();
 }
 
 SrcClockDomain *

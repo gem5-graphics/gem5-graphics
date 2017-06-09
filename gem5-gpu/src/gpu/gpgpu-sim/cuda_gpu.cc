@@ -46,7 +46,8 @@
 #include "debug/CudaGPUPageTable.hh"
 #include "debug/CudaGPUTick.hh"
 #include "gpu/gpgpu-sim/cuda_gpu.hh"
-#include "mem/ruby/system/System.hh"
+#include "mem/ruby/system/RubySystem.hh"
+#include "mem/page_table.hh"
 #include "params/GPGPUSimComponentWrapper.hh"
 #include "params/CudaGPU.hh"
 #include "sim/full_system.hh"
@@ -1021,9 +1022,9 @@ void CudaGPU::GMemory::freeMem(Addr addr) {
 */
 void GPUExitCallback::process()
 {
-    std::ostream *os = simout.find(stats_filename);
+    std::ostream *os = simout.find(stats_filename)->stream();
     if (!os) {
-        os = simout.create(stats_filename);
+        os = simout.create(stats_filename)->stream();
     }
     gpu->gpuPrintStats(*os);
     *os << std::endl;

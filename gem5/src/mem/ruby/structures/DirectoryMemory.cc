@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 1999-2008 Mark D. Hill and David A. Wood
+ * Copyright (c) 2017 Google Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -24,21 +25,24 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Authors: Lena Olson
  */
+
+#include "mem/ruby/structures/DirectoryMemory.hh"
 
 #include "base/intmath.hh"
 #include "debug/RubyCache.hh"
 #include "debug/RubyDirectoryMemory.hh"
 #include "debug/RubyStats.hh"
 #include "mem/ruby/slicc_interface/RubySlicc_Util.hh"
-#include "mem/ruby/structures/DirectoryMemory.hh"
-#include "mem/ruby/system/System.hh"
+#include "mem/ruby/system/RubySystem.hh"
+#include "sim/system.hh"
 
 using namespace std;
 
 int DirectoryMemory::m_num_directories = 0;
 int DirectoryMemory::m_num_directories_bits = 0;
-uint64_t DirectoryMemory::m_total_size_bytes = 0;
 int DirectoryMemory::m_numa_high_bit = 0;
 
 int DirectoryMemory::m_num_dev_directories = 0;
@@ -49,7 +53,14 @@ DirectoryMemory::DirectoryMemory(const Params *p)
     : SimObject(p)
 {
     m_version = p->version;
-    m_size_bytes = p->size;
+    // In X86, there is an IO gap in the 3-4GB range.
+    if (p->system->getArch() == Arch::X86ISA && p->size > 0xc0000000){
+        // We need to add 1GB to the size for the gap
+        m_size_bytes = p->size + 0x40000000;
+    }
+    else {
+        m_size_bytes = p->size;
+    }
     m_size_bits = floorLog2(m_size_bytes);
     m_num_entries = 0;
     m_numa_high_bit = p->numa_high_bit;
@@ -72,7 +83,6 @@ DirectoryMemory::init()
         m_num_directories_bits = ceilLog2(m_num_directories);
         m_device_segment_base += m_size_bytes;
     }
-    m_total_size_bytes += m_size_bytes;
 
     if (m_numa_high_bit == 0) {
         m_numa_high_bit = RubySystem::getMemorySizeBits() - 1;
@@ -164,7 +174,7 @@ AbstractEntry*
 DirectoryMemory::lookup(Addr address)
 {
     assert(isPresent(address));
-    DPRINTF(RubyCache, "Looking up address: %s\n", address);
+    DPRINTF(RubyCache, "Looking up address: %#x\n", address);
 
     uint64_t idx = mapAddressToLocalIdx(address);
     assert(idx < m_num_entries);
@@ -176,7 +186,7 @@ DirectoryMemory::allocate(Addr address, AbstractEntry *entry)
 {
     assert(isPresent(address));
     uint64_t idx;
-    DPRINTF(RubyCache, "Looking up address: %s\n", address);
+    DPRINTF(RubyCache, "Looking up address: %#x\n", address);
 
     idx = mapAddressToLocalIdx(address);
     assert(idx < m_num_entries);

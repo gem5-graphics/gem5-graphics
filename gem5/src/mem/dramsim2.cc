@@ -37,12 +37,13 @@
  * Authors: Andreas Hansson
  */
 
+#include "mem/dramsim2.hh"
+
 #include "DRAMSim2/Callback.h"
 #include "base/callback.hh"
 #include "base/trace.hh"
 #include "debug/DRAMSim2.hh"
 #include "debug/Drain.hh"
-#include "mem/dramsim2.hh"
 #include "sim/system.hh"
 
 DRAMSim2::DRAMSim2(const Params* p) :
@@ -155,7 +156,7 @@ DRAMSim2::recvAtomic(PacketPtr pkt)
     access(pkt);
 
     // 50 ns is just an arbitrary value at this point
-    return pkt->memInhibitAsserted() ? 0 : 50000;
+    return pkt->cacheResponding() ? 0 : 50000;
 }
 
 void
@@ -175,21 +176,17 @@ DRAMSim2::recvFunctional(PacketPtr pkt)
 bool
 DRAMSim2::recvTimingReq(PacketPtr pkt)
 {
-    // we should never see a new request while in retry
-    assert(!retryReq);
-
-    // @todo temporary hack to deal with memory corruption issues until
-    // 4-phase transactions are complete
-    for (int x = 0; x < pendingDelete.size(); x++)
-        delete pendingDelete[x];
-    pendingDelete.clear();
-
-    if (pkt->memInhibitAsserted()) {
-        // snooper will supply based on copy of packet
-        // still target's responsibility to delete packet
-        pendingDelete.push_back(pkt);
+    // if a cache is responding, sink the packet without further action
+    if (pkt->cacheResponding()) {
+        pendingDelete.reset(pkt);
         return true;
     }
+
+    // we should not get a new request after committing to retry the
+    // current one, but unfortunately the CPU violates this rule, so
+    // simply ignore it for now
+    if (retryReq)
+        return false;
 
     // if we cannot accept we need to send a retry once progress can
     // be made
@@ -281,9 +278,8 @@ DRAMSim2::accessAndRespond(PacketPtr pkt)
         if (!retryResp && !sendResponseEvent.scheduled())
             schedule(sendResponseEvent, time);
     } else {
-        // @todo the packet is going to be deleted, and the DRAMPacket
-        // is still having a pointer to it
-        pendingDelete.push_back(pkt);
+        // queue the packet for deletion
+        pendingDelete.reset(pkt);
     }
 }
 

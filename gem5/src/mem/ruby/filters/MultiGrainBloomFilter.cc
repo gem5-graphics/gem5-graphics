@@ -26,29 +26,22 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "mem/ruby/filters/MultiGrainBloomFilter.hh"
+
 #include "base/intmath.hh"
 #include "base/str.hh"
-#include "mem/ruby/filters/MultiGrainBloomFilter.hh"
-#include "mem/ruby/system/System.hh"
+#include "mem/ruby/system/RubySystem.hh"
 
 using namespace std;
 
-MultiGrainBloomFilter::MultiGrainBloomFilter(string str)
+MultiGrainBloomFilter::MultiGrainBloomFilter(int head, int tail)
 {
-    string head, tail;
-#ifndef NDEBUG
-    bool success =
-#endif
-        split_first(str, head, tail, '_');
-    assert(success);
-
     // head contains size of 1st bloom filter, tail contains size of
     // 2nd bloom filter
-
-    m_filter_size = atoi(head.c_str());
+    m_filter_size = head;
     m_filter_size_bits = floorLog2(m_filter_size);
 
-    m_page_filter_size = atoi(tail.c_str());
+    m_page_filter_size = tail;
     m_page_filter_size_bits = floorLog2(m_page_filter_size);
 
     m_filter.resize(m_filter_size);
@@ -66,7 +59,7 @@ MultiGrainBloomFilter::clear()
     for (int i = 0; i < m_filter_size; i++) {
         m_filter[i] = 0;
     }
-    for(int i=0; i < m_page_filter_size; ++i){
+    for (int i=0; i < m_page_filter_size; ++i){
         m_page_filter[i] = 0;
     }
 }
@@ -133,7 +126,7 @@ MultiGrainBloomFilter::getTotalCount()
         count += m_filter[i];
     }
 
-    for(int i=0; i < m_page_filter_size; ++i) {
+    for (int i=0; i < m_page_filter_size; ++i) {
         count += m_page_filter[i] = 0;
     }
 

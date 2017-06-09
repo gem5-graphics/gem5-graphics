@@ -45,7 +45,6 @@
 
 #include "arch/generic/types.hh"
 #include "base/bitunion.hh"
-#include "base/hashmap.hh"
 #include "base/misc.hh"
 #include "base/types.hh"
 #include "debug/Decoder.hh"
@@ -483,7 +482,7 @@ namespace ArmISA
         }
 
         void
-        serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE
+        serialize(CheckpointOut &cp) const override
         {
             Base::serialize(cp);
             SERIALIZE_SCALAR(flags);
@@ -494,7 +493,7 @@ namespace ArmISA
         }
 
         void
-        unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE
+        unserialize(CheckpointIn &cp) override
         {
             Base::unserialize(cp);
             UNSERIALIZE_SCALAR(flags);
@@ -524,9 +523,6 @@ namespace ArmISA
         SXTW = 6,
         SXTX = 7
     };
-
-    typedef uint64_t LargestRead;
-    // Need to use 64 bits to make sure that read requests get handled properly
 
     typedef int RegContextParam;
     typedef int RegContextVal;
@@ -740,7 +736,7 @@ namespace ArmISA
 
 } // namespace ArmISA
 
-__hash_namespace_begin
+namespace std {
 
 template<>
 struct hash<ArmISA::ExtMachInst> :
@@ -752,6 +748,6 @@ struct hash<ArmISA::ExtMachInst> :
 
 };
 
-__hash_namespace_end
+}
 
 #endif

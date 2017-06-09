@@ -26,16 +26,18 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "mem/ruby/network/simple/Throttle.hh"
+
 #include <cassert>
 
 #include "base/cast.hh"
 #include "base/cprintf.hh"
 #include "debug/RubyNetwork.hh"
-#include "mem/ruby/network/simple/Throttle.hh"
 #include "mem/ruby/network/MessageBuffer.hh"
 #include "mem/ruby/network/Network.hh"
+#include "mem/ruby/network/simple/Switch.hh"
 #include "mem/ruby/slicc_interface/Message.hh"
-#include "mem/ruby/system/System.hh"
+#include "mem/ruby/system/RubySystem.hh"
 
 using namespace std;
 
@@ -48,27 +50,10 @@ static int network_message_to_size(Message* net_msg_ptr);
 
 Throttle::Throttle(int sID, RubySystem *rs, NodeID node, Cycles link_latency,
                    int link_bandwidth_multiplier, int endpoint_bandwidth,
-                   ClockedObject *em)
-    : Consumer(em), m_ruby_system(rs)
+                   Switch *em)
+    : Consumer(em), m_switch_id(sID), m_switch(em), m_node(node),
+      m_ruby_system(rs)
 {
-    init(node, link_latency, link_bandwidth_multiplier, endpoint_bandwidth);
-    m_sID = sID;
-}
-
-Throttle::Throttle(RubySystem *rs, NodeID node, Cycles link_latency,
-                   int link_bandwidth_multiplier, int endpoint_bandwidth,
-                   ClockedObject *em)
-    : Consumer(em), m_ruby_system(rs)
-{
-    init(node, link_latency, link_bandwidth_multiplier, endpoint_bandwidth);
-    m_sID = 0;
-}
-
-void
-Throttle::init(NodeID node, Cycles link_latency,
-               int link_bandwidth_multiplier, int endpoint_bandwidth)
-{
-    m_node = node;
     m_vnets = 0;
 
     assert(link_bandwidth_multiplier > 0);
@@ -98,7 +83,7 @@ Throttle::addLinks(const vector<MessageBuffer*>& in_vec,
 
         // Set consumer and description
         in_ptr->setConsumer(this);
-        string desc = "[Queue to Throttle " + to_string(m_sID) + " " +
+        string desc = "[Queue to Throttle " + to_string(m_switch_id) + " " +
             to_string(m_node) + "]";
     }
 }
@@ -110,14 +95,16 @@ Throttle::operateVnet(int vnet, int &bw_remaining, bool &schedule_wakeup,
     if (out == nullptr || in == nullptr) {
         return;
     }
+
     assert(m_units_remaining[vnet] >= 0);
+    Tick current_time = m_switch->clockEdge();
 
-    while (bw_remaining > 0 && (in->isReady() || m_units_remaining[vnet] > 0) &&
-                                out->areNSlotsAvailable(1)) {
-
+    while (bw_remaining > 0 && (in->isReady(current_time) ||
+                                m_units_remaining[vnet] > 0) &&
+           out->areNSlotsAvailable(1, current_time)) {
         // See if we are done transferring the previous message on
         // this virtual network
-        if (m_units_remaining[vnet] == 0 && in->isReady()) {
+        if (m_units_remaining[vnet] == 0 && in->isReady(current_time)) {
             // Find the size of the message we are moving
             MsgPtr msg_ptr = in->peekMsgPtr();
             Message *net_msg_ptr = msg_ptr.get();
@@ -130,8 +117,9 @@ Throttle::operateVnet(int vnet, int &bw_remaining, bool &schedule_wakeup,
                     m_ruby_system->curCycle());
 
             // Move the message
-            in->dequeue();
-            out->enqueue(msg_ptr, m_link_latency);
+            in->dequeue(current_time);
+            out->enqueue(msg_ptr, current_time,
+                         m_switch->cyclesToTicks(m_link_latency));
 
             // Count the message
             m_msg_counts[net_msg_ptr->getMessageSize()][vnet]++;
@@ -144,8 +132,9 @@ Throttle::operateVnet(int vnet, int &bw_remaining, bool &schedule_wakeup,
         bw_remaining = max(0, -diff);
     }
 
-    if (bw_remaining > 0 && (in->isReady() || m_units_remaining[vnet] > 0) &&
-                             !out->areNSlotsAvailable(1)) {
+    if (bw_remaining > 0 && (in->isReady(current_time) ||
+                             m_units_remaining[vnet] > 0) &&
+        !out->areNSlotsAvailable(1, current_time)) {
         DPRINTF(RubyNetwork, "vnet: %d", vnet);
 
         // schedule me to wakeup again because I'm waiting for my

@@ -125,6 +125,18 @@ DefaultIEW<Impl>::regProbePoints()
 {
     ppDispatch = new ProbePointArg<DynInstPtr>(cpu->getProbeManager(), "Dispatch");
     ppMispredict = new ProbePointArg<DynInstPtr>(cpu->getProbeManager(), "Mispredict");
+    /**
+     * Probe point with dynamic instruction as the argument used to probe when
+     * an instruction starts to execute.
+     */
+    ppExecute = new ProbePointArg<DynInstPtr>(cpu->getProbeManager(),
+                                              "Execute");
+    /**
+     * Probe point with dynamic instruction as the argument used to probe when
+     * an instruction execution completes and it is marked ready to commit.
+     */
+    ppToCommit = new ProbePointArg<DynInstPtr>(cpu->getProbeManager(),
+                                               "ToCommit");
 }
 
 template <class Impl>
@@ -273,19 +285,6 @@ DefaultIEW<Impl>::regStats()
         .desc("num instructions consuming a value")
         .flags(total);
 
-    wbPenalized
-        .init(cpu->numThreads)
-        .name(name() + ".wb_penalized")
-        .desc("number of instrctions required to write to 'other' IQ")
-        .flags(total);
-
-    wbPenalizedRate
-        .name(name() + ".wb_penalized_rate")
-        .desc ("fraction of instructions written-back that wrote to 'other' IQ")
-        .flags(total);
-
-    wbPenalizedRate = wbPenalized / writebackCount;
-
     wbFanout
         .name(name() + ".wb_fanout")
         .desc("average fanout of values written-back")
@@ -392,6 +391,7 @@ DefaultIEW<Impl>::isDrained() const
             DPRINTF(Drain, "%i: Skid buffer not empty.\n", tid);
             drained = false;
         }
+        drained = drained && dispatchStatus[tid] == Running;
     }
 
     // Also check the FU pool as instructions are "stored" in FU
@@ -1203,6 +1203,10 @@ DefaultIEW<Impl>::executeInsts()
         DPRINTF(IEW, "Execute: Processing PC %s, [tid:%i] [sn:%i].\n",
                 inst->pcState(), inst->threadNumber,inst->seqNum);
 
+        // Notify potential listeners that this instruction has started
+        // executing
+        ppExecute->notify(inst);
+
         // Check if the instruction is squashed; if so then skip it
         if (inst->isSquashed()) {
             DPRINTF(IEW, "Execute: Instruction was squashed. PC: %s, [tid:%i]"
@@ -1347,7 +1351,7 @@ DefaultIEW<Impl>::executeInsts()
                 DPRINTF(IEW, "LDSTQ detected a violation. Violator PC: %s "
                         "[sn:%lli], inst PC: %s [sn:%lli]. Addr is: %#x.\n",
                         violator->pcState(), violator->seqNum,
-                        inst->pcState(), inst->seqNum, inst->physEffAddr);
+                        inst->pcState(), inst->seqNum, inst->physEffAddrLow);
 
                 fetchRedirect[tid] = true;
 
@@ -1370,7 +1374,7 @@ DefaultIEW<Impl>::executeInsts()
                 DPRINTF(IEW, "LDSTQ detected a violation.  Violator PC: "
                         "%s, inst PC: %s.  Addr is: %#x.\n",
                         violator->pcState(), inst->pcState(),
-                        inst->physEffAddr);
+                        inst->physEffAddrLow);
                 DPRINTF(IEW, "Violation will not be handled because "
                         "already squashing\n");
 
@@ -1415,6 +1419,9 @@ DefaultIEW<Impl>::writebackInsts()
                 inst->seqNum, inst->pcState());
 
         iewInstsToCommit[tid]++;
+        // Notify potential listeners that execution is complete for this
+        // instruction.
+        ppToCommit->notify(inst);
 
         // Some instructions will be sent to commit without having
         // executed because they need commit to handle them.

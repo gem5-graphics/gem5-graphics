@@ -29,10 +29,11 @@
  *          Ali Saidi
  */
 
+#include "arch/sparc/process.hh"
+
 #include "arch/sparc/asi.hh"
 #include "arch/sparc/handlers.hh"
 #include "arch/sparc/isa_traits.hh"
-#include "arch/sparc/process.hh"
 #include "arch/sparc/registers.hh"
 #include "arch/sparc/types.hh"
 #include "base/loader/elf_object.hh"
@@ -41,7 +42,9 @@
 #include "cpu/thread_context.hh"
 #include "debug/Stack.hh"
 #include "mem/page_table.hh"
+#include "sim/aux_vector.hh"
 #include "sim/process_impl.hh"
+#include "sim/syscall_return.hh"
 #include "sim/system.hh"
 
 using namespace std;
@@ -50,25 +53,17 @@ using namespace SparcISA;
 static const int FirstArgumentReg = 8;
 
 
-SparcLiveProcess::SparcLiveProcess(LiveProcessParams * params,
-        ObjectFile *objFile, Addr _StackBias)
-    : LiveProcess(params, objFile), StackBias(_StackBias)
+SparcProcess::SparcProcess(ProcessParams * params, ObjectFile *objFile,
+                           Addr _StackBias)
+    : Process(params, objFile), StackBias(_StackBias)
 {
-
-    // XXX all the below need to be updated for SPARC - Ali
-    brk_point = objFile->dataBase() + objFile->dataSize() + objFile->bssSize();
-    brk_point = roundUp(brk_point, PageBytes);
-
-    // Set pointer for next thread stack.  Reserve 8M for main stack.
-    next_thread_stack_base = stack_base - (8 * 1024 * 1024);
-
     // Initialize these to 0s
     fillStart = 0;
     spillStart = 0;
 }
 
 void
-SparcLiveProcess::handleTrap(int trapNum, ThreadContext *tc)
+SparcProcess::handleTrap(int trapNum, ThreadContext *tc, Fault *fault)
 {
     PCState pc = tc->pcState();
     switch (trapNum) {
@@ -109,9 +104,9 @@ SparcLiveProcess::handleTrap(int trapNum, ThreadContext *tc)
 }
 
 void
-SparcLiveProcess::initState()
+SparcProcess::initState()
 {
-    LiveProcess::initState();
+    Process::initState();
 
     ThreadContext *tc = system->getThreadContext(contextIds[0]);
     // From the SPARC ABI
@@ -147,6 +142,9 @@ SparcLiveProcess::initState()
     // Set the ASI register to something fixed
     tc->setMiscReg(MISCREG_ASI, ASI_PRIMARY);
 
+    // Set the MMU Primary Context Register to hold the process' pid
+    tc->setMiscReg(MISCREG_MMU_P_CONTEXT, _pid);
+
     /*
      * T1 specific registers
      */
@@ -155,9 +153,9 @@ SparcLiveProcess::initState()
 }
 
 void
-Sparc32LiveProcess::initState()
+Sparc32Process::initState()
 {
-    SparcLiveProcess::initState();
+    SparcProcess::initState();
 
     ThreadContext *tc = system->getThreadContext(contextIds[0]);
     // The process runs in user mode with 32 bit addresses
@@ -170,9 +168,9 @@ Sparc32LiveProcess::initState()
 }
 
 void
-Sparc64LiveProcess::initState()
+Sparc64Process::initState()
 {
-    SparcLiveProcess::initState();
+    SparcProcess::initState();
 
     ThreadContext *tc = system->getThreadContext(contextIds[0]);
     // The process runs in user mode
@@ -185,7 +183,7 @@ Sparc64LiveProcess::initState()
 
 template<class IntType>
 void
-SparcLiveProcess::argsInit(int pageSize)
+SparcProcess::argsInit(int pageSize)
 {
     int intSize = sizeof(IntType);
 
@@ -202,6 +200,9 @@ SparcLiveProcess::argsInit(int pageSize)
     // Even for a 32 bit process, the ABI says we still need to
     // maintain double word alignment of the stack pointer.
     uint64_t align = 16;
+
+    // Patch the ld_bias for dynamic executables.
+    updateBias();
 
     // load object file into target memory
     objFile->loadSections(initVirtMem);
@@ -245,10 +246,10 @@ SparcLiveProcess::argsInit(int pageSize)
         auxv.push_back(auxv_t(M5_AT_PHENT, elfObject->programHeaderSize()));
         // This is the number of program headers from the original elf file.
         auxv.push_back(auxv_t(M5_AT_PHNUM, elfObject->programHeaderCount()));
-        // This is the address of the elf "interpreter", It should be set
-        // to 0 for regular executables. It should be something else
-        // (not sure what) for dynamic libraries.
-        auxv.push_back(auxv_t(M5_AT_BASE, 0));
+        // This is the base address of the ELF interpreter; it should be
+        // zero for static executables or contain the base address for
+        // dynamic executables.
+        auxv.push_back(auxv_t(M5_AT_BASE, getBias()));
         // This is hardwired to 0 in the elf loading code in the kernel
         auxv.push_back(auxv_t(M5_AT_FLAGS, 0));
         // The entry point to the program
@@ -315,15 +316,16 @@ SparcLiveProcess::argsInit(int pageSize)
         aux_padding +
         frame_size;
 
-    stack_min = stack_base - space_needed;
-    stack_min = roundDown(stack_min, align);
-    stack_size = stack_base - stack_min;
+    memState->setStackMin(memState->getStackBase() - space_needed);
+    memState->setStackMin(roundDown(memState->getStackMin(), align));
+    memState->setStackSize(memState->getStackBase() - memState->getStackMin());
 
     // Allocate space for the stack
-    allocateMem(roundDown(stack_min, pageSize), roundUp(stack_size, pageSize));
+    allocateMem(roundDown(memState->getStackMin(), pageSize),
+                roundUp(memState->getStackSize(), pageSize));
 
     // map out initial stack contents
-    IntType sentry_base = stack_base - sentry_size;
+    IntType sentry_base = memState->getStackBase() - sentry_size;
     IntType file_name_base = sentry_base - file_name_size;
     IntType env_data_base = file_name_base - env_data_size;
     IntType arg_data_base = env_data_base - arg_data_size;
@@ -347,9 +349,9 @@ SparcLiveProcess::argsInit(int pageSize)
     DPRINTF(Stack, "%#x - argv array\n", argv_array_base);
     DPRINTF(Stack, "%#x - argc \n", argc_base);
     DPRINTF(Stack, "%#x - window save\n", window_save_base);
-    DPRINTF(Stack, "%#x - stack min\n", stack_min);
+    DPRINTF(Stack, "%#x - stack min\n", memState->getStackMin());
 
-    assert(window_save_base == stack_min);
+    assert(window_save_base == memState->getStackMin());
 
     // write contents to stack
 
@@ -388,7 +390,7 @@ SparcLiveProcess::argsInit(int pageSize)
     // Set up space for the trap handlers into the processes address space.
     // Since the stack grows down and there is reserved address space abov
     // it, we can put stuff above it and stay out of the way.
-    fillStart = stack_base;
+    fillStart = memState->getStackBase();
     spillStart = fillStart + sizeof(MachInst) * numFillInsts;
 
     ThreadContext *tc = system->getThreadContext(contextIds[0]);
@@ -396,24 +398,22 @@ SparcLiveProcess::argsInit(int pageSize)
     // assert(NumArgumentRegs >= 2);
     // tc->setIntReg(ArgumentReg[0], argc);
     // tc->setIntReg(ArgumentReg[1], argv_array_base);
-    tc->setIntReg(StackPointerReg, stack_min - StackBias);
+    tc->setIntReg(StackPointerReg, memState->getStackMin() - StackBias);
 
     // %g1 is a pointer to a function that should be run at exit. Since we
     // don't have anything like that, it should be set to 0.
     tc->setIntReg(1, 0);
 
-    tc->pcState(objFile->entryPoint());
+    tc->pcState(getStartPC());
 
     // Align the "stack_min" to a page boundary.
-    stack_min = roundDown(stack_min, pageSize);
-
-//    num_processes++;
+    memState->setStackMin(roundDown(memState->getStackMin(), pageSize));
 }
 
 void
-Sparc64LiveProcess::argsInit(int intSize, int pageSize)
+Sparc64Process::argsInit(int intSize, int pageSize)
 {
-    SparcLiveProcess::argsInit<uint64_t>(pageSize);
+    SparcProcess::argsInit<uint64_t>(pageSize);
 
     // Stuff the trap handlers into the process address space
     initVirtMem.writeBlob(fillStart,
@@ -423,9 +423,9 @@ Sparc64LiveProcess::argsInit(int intSize, int pageSize)
 }
 
 void
-Sparc32LiveProcess::argsInit(int intSize, int pageSize)
+Sparc32Process::argsInit(int intSize, int pageSize)
 {
-    SparcLiveProcess::argsInit<uint32_t>(pageSize);
+    SparcProcess::argsInit<uint32_t>(pageSize);
 
     // Stuff the trap handlers into the process address space
     initVirtMem.writeBlob(fillStart,
@@ -434,7 +434,7 @@ Sparc32LiveProcess::argsInit(int intSize, int pageSize)
             (uint8_t*)spillHandler32, sizeof(MachInst) *  numSpillInsts);
 }
 
-void Sparc32LiveProcess::flushWindows(ThreadContext *tc)
+void Sparc32Process::flushWindows(ThreadContext *tc)
 {
     IntReg Cansave = tc->readIntReg(NumIntArchRegs + 3);
     IntReg Canrestore = tc->readIntReg(NumIntArchRegs + 4);
@@ -469,7 +469,7 @@ void Sparc32LiveProcess::flushWindows(ThreadContext *tc)
 }
 
 void
-Sparc64LiveProcess::flushWindows(ThreadContext *tc)
+Sparc64Process::flushWindows(ThreadContext *tc)
 {
     IntReg Cansave = tc->readIntReg(NumIntArchRegs + 3);
     IntReg Canrestore = tc->readIntReg(NumIntArchRegs + 4);
@@ -504,35 +504,35 @@ Sparc64LiveProcess::flushWindows(ThreadContext *tc)
 }
 
 IntReg
-Sparc32LiveProcess::getSyscallArg(ThreadContext *tc, int &i)
+Sparc32Process::getSyscallArg(ThreadContext *tc, int &i)
 {
     assert(i < 6);
     return bits(tc->readIntReg(FirstArgumentReg + i++), 31, 0);
 }
 
 void
-Sparc32LiveProcess::setSyscallArg(ThreadContext *tc, int i, IntReg val)
+Sparc32Process::setSyscallArg(ThreadContext *tc, int i, IntReg val)
 {
     assert(i < 6);
     tc->setIntReg(FirstArgumentReg + i, bits(val, 31, 0));
 }
 
 IntReg
-Sparc64LiveProcess::getSyscallArg(ThreadContext *tc, int &i)
+Sparc64Process::getSyscallArg(ThreadContext *tc, int &i)
 {
     assert(i < 6);
     return tc->readIntReg(FirstArgumentReg + i++);
 }
 
 void
-Sparc64LiveProcess::setSyscallArg(ThreadContext *tc, int i, IntReg val)
+Sparc64Process::setSyscallArg(ThreadContext *tc, int i, IntReg val)
 {
     assert(i < 6);
     tc->setIntReg(FirstArgumentReg + i, val);
 }
 
 void
-SparcLiveProcess::setSyscallReturn(ThreadContext *tc, SyscallReturn sysret)
+SparcProcess::setSyscallReturn(ThreadContext *tc, SyscallReturn sysret)
 {
     // check for error condition.  SPARC syscall convention is to
     // indicate success/failure in reg the carry bit of the ccr

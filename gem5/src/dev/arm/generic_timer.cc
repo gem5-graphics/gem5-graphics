@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, 2015 ARM Limited
+ * Copyright (c) 2013, 2015, 2017 ARM Limited
  * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
@@ -234,7 +234,8 @@ GenericTimer::GenericTimer(GenericTimerParams *p)
       irqPhys(p->int_phys),
       irqVirt(p->int_virt)
 {
-    dynamic_cast<ArmSystem &>(*p->system).setGenericTimer(this);
+    fatal_if(!p->system, "No system specified, can't instantiate timer.\n");
+    p->system->setGenericTimer(this);
 }
 
 void
@@ -306,6 +307,11 @@ GenericTimer::createTimers(unsigned cpus)
 void
 GenericTimer::setMiscReg(int reg, unsigned cpu, MiscReg val)
 {
+    // This method might have been called from another context if we
+    // are running in multi-core KVM. Migrate to the SimObject's event
+    // queue to prevent surprising race conditions.
+    EventQueue::ScopedMigration migrate(eventQueue());
+
     CoreTimers &core(getTimers(cpu));
 
     switch (reg) {
@@ -398,6 +404,11 @@ GenericTimer::setMiscReg(int reg, unsigned cpu, MiscReg val)
 MiscReg
 GenericTimer::readMiscReg(int reg, unsigned cpu)
 {
+    // This method might have been called from another context if we
+    // are running in multi-core KVM. Migrate to the SimObject's event
+    // queue to prevent surprising race conditions.
+    EventQueue::ScopedMigration migrate(eventQueue());
+
     CoreTimers &core(getTimers(cpu));
 
     switch (reg) {

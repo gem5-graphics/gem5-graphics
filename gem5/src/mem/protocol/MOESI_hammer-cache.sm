@@ -33,7 +33,7 @@
  *          Brad Beckmann
  */
 
-machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
+machine(MachineType:L1Cache, "AMD Hammer-like protocol")
     : Sequencer * sequencer;
       CacheMemory * L1Icache;
       CacheMemory * L1Dcache;
@@ -56,6 +56,10 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
             vnet_type="forward";
       MessageBuffer * responseToCache, network="From", virtual_network="4",
             vnet_type="response";
+
+      MessageBuffer * mandatoryQueue;
+
+      MessageBuffer * triggerQueue;
 {
   // STATES
   state_declaration(State, desc="Cache states", default="L1Cache_State_I") {
@@ -85,7 +89,6 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
     OI, AccessPermission:Busy, "OI", desc="Issued PutO, waiting for ack";
     MI, AccessPermission:Busy, "MI", desc="Issued PutX, waiting for ack";
     II, AccessPermission:Busy, "II", desc="Issued PutX/O, saw Other_GETS or Other_GETX, waiting for ack";
-    IT, AccessPermission:Busy, "IT", desc="Invalid block transferring to L1";
     ST, AccessPermission:Busy, "ST", desc="S block transferring to L1";
     OT, AccessPermission:Busy, "OT", desc="O block transferring to L1";
     MT, AccessPermission:Busy, "MT", desc="M block transferring to L1";
@@ -139,12 +142,7 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
     Block_Ack,                   desc="the directory is blocked and ready for the flush";
   }
 
-  // TYPES
-
   // STRUCTURE DEFINITIONS
-
-  MessageBuffer mandatoryQueue;
-
   // CacheEntry
   structure(Entry, desc="...", interface="AbstractCacheEntry") {
     State CacheState,        desc="cache state";
@@ -182,6 +180,7 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
 
   TBETable TBEs, template="<L1Cache_TBE>", constructor="m_number_of_TBEs";
 
+  Tick clockEdge();
   void set_cache_entry(AbstractCacheEntry b);
   void unset_cache_entry();
   void set_tbe(TBE b);
@@ -320,10 +319,7 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
     return cache_entry.AtomicAccessed;
   }
 
-  MessageBuffer triggerQueue;
-
   // ** OUT_PORTS **
-
   out_port(requestNetwork_out, RequestMsg, requestFromCache);
   out_port(responseNetwork_out, ResponseMsg, responseFromCache);
   out_port(unblockNetwork_out, ResponseMsg, unblockFromCache);
@@ -333,7 +329,7 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
 
   // Trigger Queue
   in_port(triggerQueue_in, TriggerMsg, triggerQueue, rank=3) {
-    if (triggerQueue_in.isReady()) {
+    if (triggerQueue_in.isReady(clockEdge())) {
       peek(triggerQueue_in, TriggerMsg) {
 
         Entry cache_entry := getCacheEntry(in_msg.addr);
@@ -356,7 +352,7 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
 
   // Response Network
   in_port(responseToCache_in, ResponseMsg, responseToCache, rank=2) {
-    if (responseToCache_in.isReady()) {
+    if (responseToCache_in.isReady(clockEdge())) {
       peek(responseToCache_in, ResponseMsg, block_on="addr") {
 
         Entry cache_entry := getCacheEntry(in_msg.addr);
@@ -381,7 +377,7 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
 
   // Forward Network
   in_port(forwardToCache_in, RequestMsg, forwardToCache, rank=1) {
-    if (forwardToCache_in.isReady()) {
+    if (forwardToCache_in.isReady(clockEdge())) {
       peek(forwardToCache_in, RequestMsg, block_on="addr") {
 
         Entry cache_entry := getCacheEntry(in_msg.addr);
@@ -425,7 +421,7 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
 
   // Mandatory Queue
   in_port(mandatoryQueue_in, RubyRequest, mandatoryQueue, desc="...", rank=0) {
-    if (mandatoryQueue_in.isReady()) {
+    if (mandatoryQueue_in.isReady(clockEdge())) {
       peek(mandatoryQueue_in, RubyRequest, block_on="LineAddress") {
 
         // Check for data access to blocks in I-cache and ifetchs to blocks in D-cache
@@ -857,9 +853,18 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
     }
   }
 
-  action(h_load_hit, "h", desc="Notify sequencer the load completed.") {
+  action(h_load_hit, "hd", desc="Notify sequencer the load completed.") {
     assert(is_valid(cache_entry));
     DPRINTF(RubySlicc, "%s\n", cache_entry.DataBlk);
+    L1Dcache.setMRU(cache_entry);
+    sequencer.readCallback(address, cache_entry.DataBlk, false,
+                           testAndClearLocalHit(cache_entry));
+  }
+
+  action(h_ifetch_hit, "hi", desc="Notify sequencer the ifetch completed.") {
+    assert(is_valid(cache_entry));
+    DPRINTF(RubySlicc, "%s\n", cache_entry.DataBlk);
+    L1Icache.setMRU(cache_entry);
     sequencer.readCallback(address, cache_entry.DataBlk, false,
                            testAndClearLocalHit(cache_entry));
   }
@@ -869,7 +874,8 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
     assert(is_valid(tbe));
     DPRINTF(RubySlicc, "%s\n", cache_entry.DataBlk);
     peek(responseToCache_in, ResponseMsg) {
-
+      L1Icache.setMRU(address);
+      L1Dcache.setMRU(address);
       sequencer.readCallback(address, cache_entry.DataBlk, true,
                  machineIDToMachineType(in_msg.Sender), tbe.InitialRequestTime,
                  tbe.ForwardRequestTime, tbe.FirstResponseTime);
@@ -880,6 +886,7 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
     assert(is_valid(cache_entry));
     DPRINTF(RubySlicc, "%s\n", cache_entry.DataBlk);
     peek(mandatoryQueue_in, RubyRequest) {
+      L1Dcache.setMRU(cache_entry);
       sequencer.writeCallback(address, cache_entry.DataBlk, false,
                               testAndClearLocalHit(cache_entry));
 
@@ -901,7 +908,8 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
     assert(is_valid(tbe));
     DPRINTF(RubySlicc, "%s\n", cache_entry.DataBlk);
     peek(responseToCache_in, ResponseMsg) {
-
+      L1Icache.setMRU(address);
+      L1Dcache.setMRU(address);
       sequencer.writeCallback(address, cache_entry.DataBlk, true,
               machineIDToMachineType(in_msg.Sender), tbe.InitialRequestTime,
               tbe.ForwardRequestTime, tbe.FirstResponseTime);
@@ -914,7 +922,8 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
     assert(is_valid(cache_entry));
     assert(is_valid(tbe));
     DPRINTF(RubySlicc, "%s\n", cache_entry.DataBlk);
-
+    L1Icache.setMRU(address);
+    L1Dcache.setMRU(address);
     sequencer.writeCallback(address, cache_entry.DataBlk, true,
             machineIDToMachineType(tbe.LastResponder), tbe.InitialRequestTime,
             tbe.ForwardRequestTime, tbe.FirstResponseTime);
@@ -941,15 +950,15 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
   }
 
   action(j_popTriggerQueue, "j", desc="Pop trigger queue.") {
-    triggerQueue_in.dequeue();
+    triggerQueue_in.dequeue(clockEdge());
   }
 
   action(k_popMandatoryQueue, "k", desc="Pop mandatory queue.") {
-    mandatoryQueue_in.dequeue();
+    mandatoryQueue_in.dequeue(clockEdge());
   }
 
   action(l_popForwardQueue, "l", desc="Pop forwareded request queue.") {
-    forwardToCache_in.dequeue();
+    forwardToCache_in.dequeue(clockEdge());
   }
 
   action(hp_copyFromTBEToL2, "li", desc="Copy data from TBE to L2 cache entry.") {
@@ -1008,7 +1017,7 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
   }
 
   action(n_popResponseQueue, "n", desc="Pop response queue") {
-    responseToCache_in.dequeue();
+    responseToCache_in.dequeue(clockEdge());
   }
 
   action(ll_L2toL1Transfer, "ll", desc="") {
@@ -1233,9 +1242,23 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
     unset_cache_entry();
   }
 
+  action(gr_deallocateCacheBlock, "\gr", desc="Deallocate an L1 or L2 cache block.") {
+    if (L1Dcache.isTagPresent(address)) {
+      L1Dcache.deallocate(address);
+    }
+    else if (L1Icache.isTagPresent(address)){
+      L1Icache.deallocate(address);
+    }
+    else {
+      assert(L2cache.isTagPresent(address));
+      L2cache.deallocate(address);
+    }
+    unset_cache_entry();
+  }
+
   action(forward_eviction_to_cpu, "\cc", desc="sends eviction information to the processor") {
     if (send_evictions) {
-      DPRINTF(RubySlicc, "Sending invalidation for %s to the CPU\n", address);
+      DPRINTF(RubySlicc, "Sending invalidation for %#x to the CPU\n", address);
       sequencer.evictionCallback(address);
     }
   }
@@ -1286,7 +1309,7 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
   //*****************************************************
 
   // Transitions for Load/Store/L2_Replacement from transient states
-  transition({IM, IM_F, MM_WF, SM, SM_F, ISM, ISM_F, OM, OM_F, IS, SS, OI, MI, II, IT, ST, OT, MT, MMT}, {Store, L2_Replacement}) {
+  transition({IM, IM_F, MM_WF, SM, SM_F, ISM, ISM_F, OM, OM_F, IS, SS, OI, MI, II, ST, OT, MT, MMT}, {Store, L2_Replacement}) {
     zz_stallAndWaitMandatoryQueue;
   }
 
@@ -1298,11 +1321,11 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
     zz_stallAndWaitMandatoryQueue;
   }
 
-  transition({IM, IS, OI, MI, II, IT, ST, OT, MT, MMT, MI_F, MM_F, OM_F, IM_F, ISM_F, SM_F, MM_WF}, {Load, Ifetch}) {
+  transition({IM, IS, OI, MI, II, ST, OT, MT, MMT, MI_F, MM_F, OM_F, IM_F, ISM_F, SM_F, MM_WF}, {Load, Ifetch}) {
     zz_stallAndWaitMandatoryQueue;
   }
 
-  transition({IM, SM, ISM, OM, IS, SS, MM_W, M_W, OI, MI, II, IT, ST, OT, MT, MMT, IM_F, SM_F, ISM_F, OM_F, MM_WF, MI_F, MM_F, IR, SR, OR, MR, MMR}, L1_to_L2) {
+  transition({IM, SM, ISM, OM, IS, SS, MM_W, M_W, OI, MI, II, ST, OT, MT, MMT, IM_F, SM_F, ISM_F, OM_F, MM_WF, MI_F, MM_F, IR, SR, OR, MR, MMR}, L1_to_L2) {
     zz_stallAndWaitMandatoryQueue;
   }
 
@@ -1314,7 +1337,7 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
     zz_stallAndWaitMandatoryQueue;
   }
 
-  transition({IT, ST, OT, MT, MMT}, {Other_GETX, NC_DMA_GETS, Other_GETS, Merged_GETS, Other_GETS_No_Mig, Invalidate, Flush_line}) {
+  transition({ST, OT, MT, MMT}, {Other_GETX, NC_DMA_GETS, Other_GETS, Merged_GETS, Other_GETS_No_Mig, Invalidate, Flush_line}) {
     z_stall;
   }
 
@@ -1323,22 +1346,12 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
   }
 
   // Transitions moving data between the L1 and L2 caches
-  transition({I, S, O, M, MM}, L1_to_L2) {
+  transition({S, O, M, MM}, L1_to_L2) {
     i_allocateTBE;
     gg_deallocateL1CacheBlock;
     vv_allocateL2CacheBlock;
     hp_copyFromTBEToL2;
     s_deallocateTBE;
-  }
-
-  transition(I, Trigger_L2_to_L1D, IT) {
-    i_allocateTBE;
-    rr_deallocateL2CacheBlock;
-    ii_allocateL1DCacheBlock;
-    nb_copyFromTBEToL1; // Not really needed for state I
-    s_deallocateTBE;
-    zz_stallAndWaitMandatoryQueue;
-    ll_L2toL1Transfer;
   }
 
   transition(S, Trigger_L2_to_L1D, ST) {
@@ -1375,16 +1388,6 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
     i_allocateTBE;
     rr_deallocateL2CacheBlock;
     ii_allocateL1DCacheBlock;
-    nb_copyFromTBEToL1;
-    s_deallocateTBE;
-    zz_stallAndWaitMandatoryQueue;
-    ll_L2toL1Transfer;
-  }
-
-  transition(I, Trigger_L2_to_L1I, IT) {
-    i_allocateTBE;
-    rr_deallocateL2CacheBlock;
-    jj_allocateL1ICacheBlock;
     nb_copyFromTBEToL1;
     s_deallocateTBE;
     zz_stallAndWaitMandatoryQueue;
@@ -1429,11 +1432,6 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
     s_deallocateTBE;
     zz_stallAndWaitMandatoryQueue;
     ll_L2toL1Transfer;
-  }
-
-  transition(IT, Complete_L2_to_L1, IR) {
-    j_popTriggerQueue;
-    kd_wakeUpDependents;
   }
 
   transition(ST, Complete_L2_to_L1, SR) {
@@ -1490,11 +1488,6 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
     k_popMandatoryQueue;
   }
 
-  transition(I, L2_Replacement) {
-    rr_deallocateL2CacheBlock;
-    ka_wakeUpAllDependents;
-  }
-
   transition(I, {Other_GETX, NC_DMA_GETS, Other_GETS, Other_GETS_No_Mig, Invalidate}) {
     f_sendAck;
     l_popForwardQueue;
@@ -1508,7 +1501,7 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
   }
 
   transition({S, SM, ISM}, Ifetch) {
-    h_load_hit;
+    h_ifetch_hit;
     uu_profileL1InstHit;
     k_popMandatoryQueue;
   }
@@ -1522,7 +1515,7 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
   }
 
   transition(SR, Ifetch, S) {
-    h_load_hit;
+    h_ifetch_hit;
     uu_profileL1InstMiss;
     uu_profileL2Hit;
     k_popMandatoryQueue;
@@ -1554,6 +1547,7 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
   transition(S, {Other_GETX, Invalidate}, I) {
     f_sendAck;
     forward_eviction_to_cpu;
+    gr_deallocateCacheBlock;
     l_popForwardQueue;
   }
 
@@ -1570,7 +1564,7 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
   }
 
   transition({O, OM, SS, MM_W, M_W}, {Ifetch}) {
-    h_load_hit;
+    h_ifetch_hit;
     uu_profileL1InstHit;
     k_popMandatoryQueue;
   }
@@ -1584,7 +1578,7 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
   }
 
   transition(OR, Ifetch, O) {
-    h_load_hit;
+    h_ifetch_hit;
     uu_profileL1InstMiss;
     uu_profileL2Hit;
     k_popMandatoryQueue;
@@ -1620,6 +1614,7 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
   transition(O, {Other_GETX, Invalidate}, I) {
     e_sendData;
     forward_eviction_to_cpu;
+    gr_deallocateCacheBlock;
     l_popForwardQueue;
   }
 
@@ -1635,7 +1630,7 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
 
   // Transitions from Modified
   transition({MM, M}, {Ifetch}) {
-    h_load_hit;
+    h_ifetch_hit;
     uu_profileL1InstHit;
     k_popMandatoryQueue;
   }
@@ -1661,7 +1656,7 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
   }
 
   transition(MMR, Ifetch, MM) {
-    h_load_hit;
+    h_ifetch_hit;
     uu_profileL1InstMiss;
     uu_profileL2Hit;
     k_popMandatoryQueue;
@@ -1702,12 +1697,14 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
   transition(MM, {Other_GETX, Invalidate}, I) {
     c_sendExclusiveData;
     forward_eviction_to_cpu;
+    gr_deallocateCacheBlock;
     l_popForwardQueue;
   }
 
   transition(MM, Other_GETS, I) {
     c_sendExclusiveData;
     forward_eviction_to_cpu;
+    gr_deallocateCacheBlock;
     l_popForwardQueue;
   }
 
@@ -1742,7 +1739,7 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
   }
 
   transition(MR, Ifetch, M) {
-    h_load_hit;
+    h_ifetch_hit;
     uu_profileL1InstMiss;
     uu_profileL2Hit;
     k_popMandatoryQueue;
@@ -1768,6 +1765,7 @@ machine({L1Cache, L2Cache}, "AMD Hammer-like protocol")
   transition(M, {Other_GETX, Invalidate}, I) {
     c_sendExclusiveData;
     forward_eviction_to_cpu;
+    gr_deallocateCacheBlock;
     l_popForwardQueue;
   }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013 ARM Limited
+ * Copyright (c) 2012-2013,2015 ARM Limited
  * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
@@ -44,6 +44,8 @@
 #define __CPU_SIMPLE_ATOMIC_HH__
 
 #include "cpu/simple/base.hh"
+#include "cpu/simple/exec_context.hh"
+#include "mem/request.hh"
 #include "params/AtomicSimpleCPU.hh"
 #include "sim/probe/probe.hh"
 
@@ -54,7 +56,7 @@ class AtomicSimpleCPU : public BaseSimpleCPU
     AtomicSimpleCPU(AtomicSimpleCPUParams *params);
     virtual ~AtomicSimpleCPU();
 
-    virtual void init();
+    void init() override;
 
   private:
 
@@ -96,9 +98,11 @@ class AtomicSimpleCPU : public BaseSimpleCPU
      * </ul>
      */
     bool isDrained() {
-        return microPC() == 0 &&
+        SimpleExecContext &t_info = *threadInfo[curThread];
+
+        return t_info.thread->microPC() == 0 &&
             !locked &&
-            !stayAtPC;
+            !t_info.stayAtPC;
     }
 
     /**
@@ -124,7 +128,6 @@ class AtomicSimpleCPU : public BaseSimpleCPU
         { }
 
       protected:
-        virtual Tick recvAtomicSnoop(PacketPtr pkt) { return 0; }
 
         bool recvTimingResp(PacketPtr pkt)
         {
@@ -178,30 +181,37 @@ class AtomicSimpleCPU : public BaseSimpleCPU
   protected:
 
     /** Return a reference to the data port. */
-    virtual MasterPort &getDataPort() { return dcachePort; }
+    MasterPort &getDataPort() override { return dcachePort; }
 
     /** Return a reference to the instruction port. */
-    virtual MasterPort &getInstPort() { return icachePort; }
+    MasterPort &getInstPort() override { return icachePort; }
+
+    /** Perform snoop for other cpu-local thread contexts. */
+    void threadSnoop(PacketPtr pkt, ThreadID sender);
 
   public:
 
-    DrainState drain() M5_ATTR_OVERRIDE;
-    void drainResume() M5_ATTR_OVERRIDE;
+    DrainState drain() override;
+    void drainResume() override;
 
-    void switchOut();
-    void takeOverFrom(BaseCPU *oldCPU);
+    void switchOut() override;
+    void takeOverFrom(BaseCPU *oldCPU) override;
 
-    void verifyMemoryMode() const;
+    void verifyMemoryMode() const override;
 
-    virtual void activateContext(ThreadID thread_num);
-    virtual void suspendContext(ThreadID thread_num);
+    void activateContext(ThreadID thread_num) override;
+    void suspendContext(ThreadID thread_num) override;
 
-    Fault readMem(Addr addr, uint8_t *data, unsigned size, unsigned flags);
+    Fault readMem(Addr addr, uint8_t *data, unsigned size,
+                  Request::Flags flags) override;
+
+    Fault initiateMemRead(Addr addr, unsigned size,
+                          Request::Flags flags) override;
 
     Fault writeMem(uint8_t *data, unsigned size,
-                   Addr addr, unsigned flags, uint64_t *res);
+                   Addr addr, Request::Flags flags, uint64_t *res) override;
 
-    virtual void regProbePoints();
+    void regProbePoints() override;
 
     /**
      * Print state of address in memory system via PrintReq (for

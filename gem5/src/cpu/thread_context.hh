@@ -161,6 +161,8 @@ class ThreadContext
 
     virtual Process *getProcessPtr() = 0;
 
+    virtual void setProcessPtr(Process *p) = 0;
+
     virtual Status status() const = 0;
 
     virtual void setStatus(Status new_status) = 0;
@@ -173,6 +175,12 @@ class ThreadContext
 
     /// Set the status to Halted.
     virtual void halt() = 0;
+
+    /// Quiesce thread context
+    void quiesce();
+
+    /// Quiesce, suspend, and schedule activate at resume
+    void quiesceTick(Tick resume);
 
     virtual void dumpFuncProfile() = 0;
 
@@ -217,6 +225,14 @@ class ThreadContext
 
     virtual void pcState(const TheISA::PCState &val) = 0;
 
+    void
+    setNPC(Addr val)
+    {
+        TheISA::PCState pc_state = pcState();
+        pc_state.setNPC(val);
+        pcState(pc_state);
+    }
+
     virtual void pcStateNoRecord(const TheISA::PCState &val) = 0;
 
     virtual Addr instAddr() = 0;
@@ -260,7 +276,7 @@ class ThreadContext
     // Same with st cond failures.
     virtual Counter readFuncExeInst() = 0;
 
-    virtual void syscall(int64_t callnum) = 0;
+    virtual void syscall(int64_t callnum, Fault *fault) = 0;
 
     // This function exits the thread context in the CPU and returns
     // 1 if the CPU has no more active threads (meaning it's OK to exit);
@@ -356,6 +372,8 @@ class ProxyThreadContext : public ThreadContext
 
     Process *getProcessPtr() { return actualTC->getProcessPtr(); }
 
+    void setProcessPtr(Process *p) { actualTC->setProcessPtr(p); }
+
     Status status() const { return actualTC->status(); }
 
     void setStatus(Status new_status) { actualTC->setStatus(new_status); }
@@ -368,6 +386,12 @@ class ProxyThreadContext : public ThreadContext
 
     /// Set the status to Halted.
     void halt() { actualTC->halt(); }
+
+    /// Quiesce thread context
+    void quiesce() { actualTC->quiesce(); }
+
+    /// Quiesce, suspend, and schedule activate at resume
+    void quiesceTick(Tick resume) { actualTC->quiesceTick(resume); }
 
     void dumpFuncProfile() { actualTC->dumpFuncProfile(); }
 
@@ -464,8 +488,8 @@ class ProxyThreadContext : public ThreadContext
     void setStCondFailures(unsigned sc_failures)
     { actualTC->setStCondFailures(sc_failures); }
 
-    void syscall(int64_t callnum)
-    { actualTC->syscall(callnum); }
+    void syscall(int64_t callnum, Fault *fault)
+    { actualTC->syscall(callnum, fault); }
 
     Counter readFuncExeInst() { return actualTC->readFuncExeInst(); }
 

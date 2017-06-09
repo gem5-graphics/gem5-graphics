@@ -26,25 +26,19 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "mem/ruby/filters/NonCountingBloomFilter.hh"
+
 #include "base/intmath.hh"
 #include "base/str.hh"
-#include "mem/ruby/filters/NonCountingBloomFilter.hh"
-#include "mem/ruby/system/System.hh"
+#include "mem/ruby/system/RubySystem.hh"
 
 using namespace std;
 
-NonCountingBloomFilter::NonCountingBloomFilter(string str)
+NonCountingBloomFilter::NonCountingBloomFilter(int head, int tail)
 {
-    string head, tail;
-#ifndef NDEBUG
-    bool success =
-#endif
-        split_first(str, head, tail, '_');
-    assert(success);
-
     // head contains filter size, tail contains bit offset from block number
-    m_filter_size = atoi(head.c_str());
-    m_offset = atoi(tail.c_str());
+    m_filter_size = head;
+    m_offset = tail;
     m_filter_size_bits = floorLog2(m_filter_size);
 
     m_filter.resize(m_filter_size);
@@ -80,7 +74,7 @@ NonCountingBloomFilter::merge(AbstractBloomFilter *other_filter)
 {
     // assumes both filters are the same size!
     NonCountingBloomFilter * temp = (NonCountingBloomFilter*) other_filter;
-    for(int i = 0; i < m_filter_size; ++i){
+    for (int i = 0; i < m_filter_size; ++i){
         m_filter[i] |= (*temp)[i];
     }
 }

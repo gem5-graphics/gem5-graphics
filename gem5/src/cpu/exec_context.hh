@@ -12,6 +12,7 @@
  * modified or unmodified, in source code or in binary form.
  *
  * Copyright (c) 2002-2005 The Regents of The University of Michigan
+ * Copyright (c) 2015 Advanced Micro Devices, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -50,6 +51,7 @@
 #include "cpu/base.hh"
 #include "cpu/static_inst_fwd.hh"
 #include "cpu/translation.hh"
+#include "mem/request.hh"
 
 /**
  * The ExecContext is an abstract base class the provides the
@@ -173,11 +175,38 @@ class ExecContext {
      */
     virtual Addr getEA() const = 0;
 
+    /**
+     * Perform an atomic memory read operation.  Must be overridden
+     * for exec contexts that support atomic memory mode.  Not pure
+     * virtual since exec contexts that only support timing memory
+     * mode need not override (though in that case this function
+     * should never be called).
+     */
     virtual Fault readMem(Addr addr, uint8_t *data, unsigned int size,
-                          unsigned int flags) = 0;
+                          Request::Flags flags)
+    {
+        panic("ExecContext::readMem() should be overridden\n");
+    }
 
+    /**
+     * Initiate a timing memory read operation.  Must be overridden
+     * for exec contexts that support timing memory mode.  Not pure
+     * virtual since exec contexts that only support atomic memory
+     * mode need not override (though in that case this function
+     * should never be called).
+     */
+    virtual Fault initiateMemRead(Addr addr, unsigned int size,
+                                  Request::Flags flags)
+    {
+        panic("ExecContext::initiateMemRead() should be overridden\n");
+    }
+
+    /**
+     * For atomic-mode contexts, perform an atomic memory write operation.
+     * For timing-mode contexts, initiate a timing memory write operation.
+     */
     virtual Fault writeMem(uint8_t *data, unsigned int size, Addr addr,
-                           unsigned int flags, uint64_t *res) = 0;
+                           Request::Flags flags, uint64_t *res) = 0;
 
     /**
      * Sets the number of consecutive store conditional failures.
@@ -199,7 +228,7 @@ class ExecContext {
     /**
      * Executes a syscall specified by the callnum.
      */
-    virtual void syscall(int64_t callnum) = 0;
+    virtual void syscall(int64_t callnum, Fault *fault) = 0;
 
     /** @} */
 

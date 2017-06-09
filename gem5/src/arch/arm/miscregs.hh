@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 ARM Limited
+ * Copyright (c) 2010-2017 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -44,6 +44,7 @@
 #define __ARCH_ARM_MISCREGS_HH__
 
 #include <bitset>
+#include <tuple>
 
 #include "base/bitunion.hh"
 #include "base/compiler.hh"
@@ -133,9 +134,9 @@ namespace ArmISA
         MISCREG_DBGDEVID2,              //  72
         MISCREG_DBGDEVID1,              //  73
         MISCREG_DBGDEVID0,              //  74
-        MISCREG_TEECR,                  //  75
+        MISCREG_TEECR,                  //  75, not in ARM DDI 0487A.b+
         MISCREG_JIDR,                   //  76
-        MISCREG_TEEHBR,                 //  77
+        MISCREG_TEEHBR,                 //  77, not in ARM DDI 0487A.b+
         MISCREG_JOSCR,                  //  78
         MISCREG_JMCR,                   //  79
 
@@ -420,8 +421,8 @@ namespace ArmISA
         MISCREG_DBGCLAIMSET_EL1,        // 355
         MISCREG_DBGCLAIMCLR_EL1,        // 356
         MISCREG_DBGAUTHSTATUS_EL1,      // 357
-        MISCREG_TEECR32_EL1,            // 358
-        MISCREG_TEEHBR32_EL1,           // 359
+        MISCREG_TEECR32_EL1,            // 358, not in ARM DDI 0487A.b+
+        MISCREG_TEEHBR32_EL1,           // 359, not in ARM DDI 0487A.b+
 
         // AArch64 registers (Op0=1,3)
         MISCREG_MIDR_EL1,               // 360
@@ -1388,6 +1389,7 @@ namespace ArmISA
         Bitfield<8> a;
         Bitfield<7> i;
         Bitfield<6> f;
+        Bitfield<8, 6> aif;
         Bitfield<9, 6> daif;    // AArch64
         Bitfield<5> t;
         Bitfield<4> width;      // AArch64
@@ -1746,10 +1748,12 @@ namespace ArmISA
     BitUnion32(VTCR_t)
         Bitfield<3, 0> t0sz;
         Bitfield<4> s;
+        Bitfield<5, 0> t0sz64;
         Bitfield<7, 6> sl0;
         Bitfield<9, 8> irgn0;
         Bitfield<11, 10> orgn0;
         Bitfield<13, 12> sh0;
+        Bitfield<15, 14> tg0;
     EndBitUnion(VTCR_t)
 
     BitUnion32(PRRR)
@@ -1874,13 +1878,37 @@ namespace ArmISA
    BitUnion64(GPUFaultRSPReg)
    EndBitUnion(GPUFaultRSPReg)
 
-    // Checks read access permissions to coproc. registers
-    bool canReadCoprocReg(MiscRegIndex reg, SCR scr, CPSR cpsr,
-                          ThreadContext *tc);
+    /**
+     * Check for permission to read coprocessor registers.
+     *
+     * Checks whether an instruction at the current program mode has
+     * permissions to read the coprocessor registers. This function
+     * returns whether the check is undefined and if not whether the
+     * read access is permitted.
+     *
+     * @param the misc reg indicating the coprocessor
+     * @param the SCR
+     * @param the CPSR
+     * @return a tuple of booleans: can_read, undefined
+     */
+    std::tuple<bool, bool> canReadCoprocReg(MiscRegIndex reg, SCR scr,
+                                           CPSR cpsr);
 
-    // Checks write access permissions to coproc. registers
-    bool canWriteCoprocReg(MiscRegIndex reg, SCR scr, CPSR cpsr,
-                           ThreadContext *tc);
+    /**
+     * Check for permission to write coprocessor registers.
+     *
+     * Checks whether an instruction at the current program mode has
+     * permissions to write the coprocessor registers. This function
+     * returns whether the check is undefined and if not whether the
+     * write access is permitted.
+     *
+     * @param the misc reg indicating the coprocessor
+     * @param the SCR
+     * @param the CPSR
+     * @return a tuple of booleans: can_write, undefined
+     */
+    std::tuple<bool, bool> canWriteCoprocReg(MiscRegIndex reg, SCR scr,
+                                             CPSR cpsr);
 
     // Checks read access permissions to AArch64 system registers
     bool canReadAArch64SysReg(MiscRegIndex reg, SCR scr, CPSR cpsr,

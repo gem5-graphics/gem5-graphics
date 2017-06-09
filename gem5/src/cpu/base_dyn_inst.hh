@@ -65,6 +65,7 @@
 #include "cpu/static_inst.hh"
 #include "cpu/translation.hh"
 #include "mem/packet.hh"
+#include "mem/request.hh"
 #include "sim/byteswap.hh"
 #include "sim/system.hh"
 
@@ -215,7 +216,12 @@ class BaseDynInst : public ExecContext, public RefCounted
     Addr effAddr;
 
     /** The effective physical address. */
-    Addr physEffAddr;
+    Addr physEffAddrLow;
+
+    /** The effective physical address
+     *  of the second request for a split request
+     */
+    Addr physEffAddrHigh;
 
     /** The memory request flags (from translation). */
     unsigned memReqFlags;
@@ -308,10 +314,10 @@ class BaseDynInst : public ExecContext, public RefCounted
         cpu->demapPage(vaddr, asn);
     }
 
-    Fault readMem(Addr addr, uint8_t *data, unsigned size, unsigned flags);
+    Fault initiateMemRead(Addr addr, unsigned size, Request::Flags flags);
 
-    Fault writeMem(uint8_t *data, unsigned size,
-                   Addr addr, unsigned flags, uint64_t *res);
+    Fault writeMem(uint8_t *data, unsigned size, Addr addr,
+                   Request::Flags flags, uint64_t *res);
 
     /** Splits a request in two if it crosses a dcache block. */
     void splitRequest(RequestPtr req, RequestPtr &sreqLow,
@@ -788,13 +794,13 @@ class BaseDynInst : public ExecContext, public RefCounted
     void pcState(const TheISA::PCState &val) { pc = val; }
 
     /** Read the PC of this instruction. */
-    const Addr instAddr() const { return pc.instAddr(); }
+    Addr instAddr() const { return pc.instAddr(); }
 
     /** Read the PC of the next instruction. */
-    const Addr nextInstAddr() const { return pc.nextInstAddr(); }
+    Addr nextInstAddr() const { return pc.nextInstAddr(); }
 
     /**Read the micro PC of this instruction. */
-    const Addr microPC() const { return pc.microPC(); }
+    Addr microPC() const { return pc.microPC(); }
 
     bool readPredicate()
     {
@@ -858,17 +864,18 @@ class BaseDynInst : public ExecContext, public RefCounted
 
   public:
     // monitor/mwait funtions
-    void armMonitor(Addr address) { cpu->armMonitor(address); }
-    bool mwait(PacketPtr pkt) { return cpu->mwait(pkt); }
+    void armMonitor(Addr address) { cpu->armMonitor(threadNumber, address); }
+    bool mwait(PacketPtr pkt) { return cpu->mwait(threadNumber, pkt); }
     void mwaitAtomic(ThreadContext *tc)
-    { return cpu->mwaitAtomic(tc, cpu->dtb); }
-    AddressMonitor *getAddrMonitor() { return cpu->getCpuAddrMonitor(); }
+    { return cpu->mwaitAtomic(threadNumber, tc, cpu->dtb); }
+    AddressMonitor *getAddrMonitor()
+    { return cpu->getCpuAddrMonitor(threadNumber); }
 };
 
 template<class Impl>
 Fault
-BaseDynInst<Impl>::readMem(Addr addr, uint8_t *data,
-                           unsigned size, unsigned flags)
+BaseDynInst<Impl>::initiateMemRead(Addr addr, unsigned size,
+                                   Request::Flags flags)
 {
     instFlags[ReqMade] = true;
     Request *req = NULL;
@@ -881,7 +888,7 @@ BaseDynInst<Impl>::readMem(Addr addr, uint8_t *data,
         sreqHigh = savedSreqHigh;
     } else {
         req = new Request(asid, addr, size, flags, masterId(), this->pc.instAddr(),
-                          thread->contextId(), threadNumber);
+                          thread->contextId());
 
         req->taskId(cpu->taskId());
 
@@ -904,18 +911,11 @@ BaseDynInst<Impl>::readMem(Addr addr, uint8_t *data,
                 }
                 reqToVerify = new Request(*req);
             }
-            fault = cpu->read(req, sreqLow, sreqHigh, data, lqIdx);
+            fault = cpu->read(req, sreqLow, sreqHigh, lqIdx);
         } else {
             // Commit will have to clean up whatever happened.  Set this
             // instruction as executed.
             this->setExecuted();
-        }
-
-        if (fault != NoFault) {
-            // Return a fixed value to keep simulation deterministic even
-            // along misspeculated paths.
-            if (data)
-                bzero(data, size);
         }
     }
 
@@ -927,8 +927,8 @@ BaseDynInst<Impl>::readMem(Addr addr, uint8_t *data,
 
 template<class Impl>
 Fault
-BaseDynInst<Impl>::writeMem(uint8_t *data, unsigned size,
-                            Addr addr, unsigned flags, uint64_t *res)
+BaseDynInst<Impl>::writeMem(uint8_t *data, unsigned size, Addr addr,
+                            Request::Flags flags, uint64_t *res)
 {
     if (traceData)
         traceData->setMem(addr, size, flags);
@@ -944,7 +944,7 @@ BaseDynInst<Impl>::writeMem(uint8_t *data, unsigned size,
         sreqHigh = savedSreqHigh;
     } else {
         req = new Request(asid, addr, size, flags, masterId(), this->pc.instAddr(),
-                          thread->contextId(), threadNumber);
+                          thread->contextId());
 
         req->taskId(cpu->taskId());
 
@@ -1056,7 +1056,15 @@ BaseDynInst<Impl>::finishTranslation(WholeTranslationState *state)
     instFlags[IsStrictlyOrdered] = state->isStrictlyOrdered();
 
     if (fault == NoFault) {
-        physEffAddr = state->getPaddr();
+        // save Paddr for a single req
+        physEffAddrLow = state->getPaddr();
+
+        // case for the request that has been split
+        if (state->isSplit) {
+          physEffAddrLow = state->sreqLow->getPaddr();
+          physEffAddrHigh = state->sreqHigh->getPaddr();
+        }
+
         memReqFlags = state->getFlags();
 
         if (state->mainReq->isCondSwap()) {

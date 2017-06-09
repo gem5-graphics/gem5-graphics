@@ -82,7 +82,7 @@ class LinuxArmSystem : public GenericArmSystem
 
     /** This is a file that is placed in the run directory that prints out
      * mappings between taskIds and OS process IDs */
-    std::ostream* taskFile;
+    OutputStream* taskFile;
 
     LinuxArmSystem(Params *p);
     ~LinuxArmSystem();
@@ -94,6 +94,12 @@ class LinuxArmSystem : public GenericArmSystem
     /** This function creates a new task Id for the given pid.
      * @param tc thread context that is currentyl executing  */
     void mapPid(ThreadContext* tc, uint32_t pid);
+
+  public: // Exported Python methods
+    /**
+     * Dump the kernel's dmesg buffer to stdout
+     */
+    void dumpDmesg();
 
   private:
     /** Event to halt the simulator if the kernel calls panic()  */

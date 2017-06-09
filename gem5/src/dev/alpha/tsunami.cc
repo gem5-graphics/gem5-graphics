@@ -32,6 +32,8 @@
  * Implementation of Tsunami platform.
  */
 
+#include "dev/alpha/tsunami.hh"
+
 #include <deque>
 #include <string>
 #include <vector>
@@ -39,7 +41,6 @@
 #include "arch/alpha/system.hh"
 #include "config/the_isa.hh"
 #include "cpu/intr_control.hh"
-#include "dev/alpha/tsunami.hh"
 #include "dev/alpha/tsunami_cchip.hh"
 #include "dev/alpha/tsunami_io.hh"
 #include "dev/alpha/tsunami_pchip.hh"
@@ -86,31 +87,6 @@ void
 Tsunami::clearPciInt(int line)
 {
     cchip->clearDRIR(line);
-}
-
-Addr
-Tsunami::pciToDma(Addr pciAddr) const
-{
-    return pchip->translatePciToDma(pciAddr);
-}
-
-
-Addr
-Tsunami::calcPciConfigAddr(int bus, int dev, int func)
-{
-   return pchip->calcConfigAddr(bus, dev, func);
-}
-
-Addr
-Tsunami::calcPciIOAddr(Addr addr)
-{
-   return pchip->calcIOAddr(addr);
-}
-
-Addr
-Tsunami::calcPciMemAddr(Addr addr)
-{
-   return pchip->calcMemAddr(addr);
 }
 
 void

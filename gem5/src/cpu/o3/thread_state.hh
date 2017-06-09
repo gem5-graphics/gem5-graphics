@@ -112,7 +112,7 @@ struct O3ThreadState : public ThreadState {
         profilePC = 3;
     }
 
-    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE
+    void serialize(CheckpointOut &cp) const override
     {
         ThreadState::serialize(cp);
         // Use the ThreadContext serialization helper to serialize the
@@ -120,7 +120,7 @@ struct O3ThreadState : public ThreadState {
         ::serialize(*tc, cp);
     }
 
-    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE
+    void unserialize(CheckpointIn &cp) override
     {
         // Prevent squashing - we don't have any instructions in
         // flight that we need to squash since we just instantiated a
@@ -140,12 +140,17 @@ struct O3ThreadState : public ThreadState {
     ThreadContext *getTC() { return tc; }
 
     /** Handles the syscall. */
-    void syscall(int64_t callnum) { process->syscall(callnum, tc); }
+    void syscall(int64_t callnum, Fault *fault)
+    {
+        process->syscall(callnum, tc, fault);
+    }
 
     void dumpFuncProfile()
     {
-        std::ostream *os = simout.create(csprintf("profile.%s.dat", cpu->name()));
-        profile->dump(tc, *os);
+        OutputStream *os(
+            simout.create(csprintf("profile.%s.dat", cpu->name())));
+        profile->dump(tc, *os->stream());
+        simout.close(os);
     }
 };
 

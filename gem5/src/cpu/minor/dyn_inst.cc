@@ -37,20 +37,27 @@
  * Authors: Andrew Bardsley
  */
 
+#include "cpu/minor/dyn_inst.hh"
+
 #include <iomanip>
 #include <sstream>
 
 #include "arch/isa.hh"
 #include "arch/registers.hh"
-#include "cpu/minor/dyn_inst.hh"
-#include "cpu/minor/trace.hh"
 #include "cpu/base.hh"
+#include "cpu/minor/trace.hh"
 #include "cpu/reg_class.hh"
 #include "debug/MinorExecute.hh"
 #include "enums/OpClass.hh"
 
 namespace Minor
 {
+
+const InstSeqNum InstId::firstStreamSeqNum;
+const InstSeqNum InstId::firstPredictionSeqNum;
+const InstSeqNum InstId::firstLineSeqNum;
+const InstSeqNum InstId::firstFetchSeqNum;
+const InstSeqNum InstId::firstExecSeqNum;
 
 std::ostream &
 operator <<(std::ostream &os, const InstId &id)

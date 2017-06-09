@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 ARM Limited
+ * Copyright (c) 2010-2013, 2016 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -40,9 +40,10 @@
  * Authors: Ali Saidi
  */
 
-#include "arch/arm/linux/atag.hh"
 #include "arch/arm/linux/system.hh"
+
 #include "arch/arm/isa_traits.hh"
+#include "arch/arm/linux/atag.hh"
 #include "arch/arm/utility.hh"
 #include "arch/generic/linux/threadinfo.hh"
 #include "base/loader/dtb_object.hh"
@@ -53,6 +54,7 @@
 #include "cpu/thread_context.hh"
 #include "debug/Loader.hh"
 #include "kern/linux/events.hh"
+#include "kern/linux/helpers.hh"
 #include "mem/fs_translating_port_proxy.hh"
 #include "mem/physical.hh"
 #include "sim/stat_control.hh"
@@ -65,25 +67,28 @@ LinuxArmSystem::LinuxArmSystem(Params *p)
       enableContextSwitchStatsDump(p->enable_context_switch_stats_dump),
       taskFile(nullptr), kernelPanicEvent(nullptr), kernelOopsEvent(nullptr)
 {
+    const std::string dmesg_output = name() + ".dmesg";
     if (p->panic_on_panic) {
-        kernelPanicEvent = addKernelFuncEventOrPanic<PanicPCEvent>(
-            "panic", "Kernel panic in simulated kernel");
+        kernelPanicEvent = addKernelFuncEventOrPanic<Linux::KernelPanicEvent>(
+            "panic", "Kernel panic in simulated kernel", dmesg_output);
     } else {
-#ifndef NDEBUG
-        kernelPanicEvent = addKernelFuncEventOrPanic<BreakPCEvent>("panic");
-#endif
+        kernelPanicEvent = addKernelFuncEventOrPanic<Linux::DmesgDumpEvent>(
+            "panic", "Kernel panic in simulated kernel", dmesg_output);
     }
 
     if (p->panic_on_oops) {
-        kernelOopsEvent = addKernelFuncEventOrPanic<PanicPCEvent>(
-            "oops_exit", "Kernel oops in guest");
+        kernelOopsEvent = addKernelFuncEventOrPanic<Linux::KernelPanicEvent>(
+            "oops_exit", "Kernel oops in guest", dmesg_output);
+    } else {
+        kernelOopsEvent = addKernelFuncEventOrPanic<Linux::DmesgDumpEvent>(
+            "oops_exit", "Kernel oops in guest", dmesg_output);
     }
 
     // With ARM udelay() is #defined to __udelay
     // newer kernels use __loop_udelay and __loop_const_udelay symbols
     uDelaySkipEvent = addKernelFuncEvent<UDelayEvent>(
         "__loop_udelay", "__udelay", 1000, 0);
-    if(!uDelaySkipEvent)
+    if (!uDelaySkipEvent)
         uDelaySkipEvent = addKernelFuncEventOrPanic<UDelayEvent>(
          "__udelay", "__udelay", 1000, 0);
 
@@ -91,7 +96,7 @@ LinuxArmSystem::LinuxArmSystem(Params *p)
     // time. Constant comes from code.
     constUDelaySkipEvent = addKernelFuncEvent<UDelayEvent>(
         "__loop_const_udelay", "__const_udelay", 1000, 107374);
-    if(!constUDelaySkipEvent)
+    if (!constUDelaySkipEvent)
         constUDelaySkipEvent = addKernelFuncEventOrPanic<UDelayEvent>(
          "__const_udelay", "__const_udelay", 1000, 107374);
 
@@ -110,8 +115,8 @@ LinuxArmSystem::initState()
     // to do this permanently, for but early bootup work
     // it is helpful.
     if (params()->early_kernel_symbols) {
-        kernel->loadGlobalSymbols(kernelSymtab, loadAddrMask);
-        kernel->loadGlobalSymbols(debugSymbolTable, loadAddrMask);
+        kernel->loadGlobalSymbols(kernelSymtab, 0, 0, loadAddrMask);
+        kernel->loadGlobalSymbols(debugSymbolTable, 0, 0, loadAddrMask);
     }
 
     // Setup boot data structure
@@ -265,6 +270,12 @@ LinuxArmSystem::mapPid(ThreadContext *tc, uint32_t pid)
     }
 }
 
+void
+LinuxArmSystem::dumpDmesg()
+{
+    Linux::dumpDmesg(getThreadContext(0), std::cout);
+}
+
 /** This function is called whenever the the kernel function
  *  "__switch_to" is called to change running tasks.
  *
@@ -304,15 +315,15 @@ DumpStatsPCEvent::process(ThreadContext *tc)
     tc->getCpuPtr()->taskId(taskMap[pid]);
     tc->getCpuPtr()->setPid(pid);
 
-    std::ostream* taskFile = sys->taskFile;
+    OutputStream* taskFile = sys->taskFile;
 
     // Task file is read by cache occupancy plotting script or
     // Streamline conversion script.
-    ccprintf(*taskFile,
+    ccprintf(*(taskFile->stream()),
              "tick=%lld %d cpu_id=%d next_pid=%d next_tgid=%d next_task=%s\n",
              curTick(), taskMap[pid], tc->cpuId(), (int) pid, (int) tgid,
              next_task_str);
-    taskFile->flush();
+    taskFile->stream()->flush();
 
     // Dump and reset statistics
     Stats::schedStatEvent(true, true, curTick(), 0);

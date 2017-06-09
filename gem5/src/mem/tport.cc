@@ -41,8 +41,9 @@
  *          Andreas Hansson
  */
 
-#include "mem/mem_object.hh"
 #include "mem/tport.hh"
+
+#include "mem/mem_object.hh"
 
 SimpleTimingPort::SimpleTimingPort(const std::string& _name,
                                    MemObject* _owner) :
@@ -62,16 +63,12 @@ SimpleTimingPort::recvFunctional(PacketPtr pkt)
 bool
 SimpleTimingPort::recvTimingReq(PacketPtr pkt)
 {
-    /// @todo temporary hack to deal with memory corruption issue until
-    /// 4-phase transactions are complete. Remove me later
-    for (int x = 0; x < pendingDelete.size(); x++)
-        delete pendingDelete[x];
-    pendingDelete.clear();
-
     // the SimpleTimingPort should not be used anywhere where there is
-    // a need to deal with inhibited packets
-    if (pkt->memInhibitAsserted())
-        panic("SimpleTimingPort should never see an inhibited request\n");
+    // a need to deal with snoop responses and their flow control
+    // requirements
+    if (pkt->cacheResponding())
+        panic("SimpleTimingPort should never see packets with the "
+              "cacheResponding flag set\n");
 
     bool needsResponse = pkt->needsResponse();
     Tick latency = recvAtomic(pkt);
@@ -82,10 +79,8 @@ SimpleTimingPort::recvTimingReq(PacketPtr pkt)
         assert(pkt->isResponse());
         schedTimingResp(pkt, curTick() + latency);
     } else {
-        /// @todo nominally we should just delete the packet here.
-        /// Until 4-phase stuff we can't because the sending
-        /// cache is still relying on it
-        pendingDelete.push_back(pkt);
+        // queue the packet for deletion
+        pendingDelete.reset(pkt);
     }
 
     return true;

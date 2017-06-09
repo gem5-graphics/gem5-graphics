@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014 ARM Limited
+ * Copyright (c) 2014-2015 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -37,16 +37,17 @@
  * Authors: Andreas Sandberg
  */
 
+#include "dev/virtio/fs9p.hh"
+
+#include <fcntl.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/types.h>
-#include <fcntl.h>
-#include <netdb.h>
 #include <unistd.h>
 
 #include "debug/VIO9P.hh"
 #include "debug/VIO9PData.hh"
-#include "dev/virtio/fs9p.hh"
 #include "params/VirtIO9PBase.hh"
 #include "params/VirtIO9PDiod.hh"
 #include "params/VirtIO9PProxy.hh"
@@ -204,7 +205,7 @@ VirtIO9PBase::dumpMsg(const P9MsgHeader &header, const uint8_t *data, size_t siz
 
 
 VirtIO9PProxy::VirtIO9PProxy(Params *params)
-    : VirtIO9PBase(params)
+  : VirtIO9PBase(params), deviceUsed(false)
 {
 }
 
@@ -214,15 +215,29 @@ VirtIO9PProxy::~VirtIO9PProxy()
 
 
 void
-VirtIO9PProxy::VirtIO9PProxy::serialize(CheckpointOut &cp) const
+VirtIO9PProxy::serialize(CheckpointOut &cp) const
 {
-    fatal("Can't checkpoint a system with a VirtIO 9p proxy!\n");
+    if (deviceUsed) {
+        warn("Serializing VirtIO9Base device after device has been used. It is "
+             "likely that state will be lost, and that the device will cease "
+             "to work!");
+    }
+    SERIALIZE_SCALAR(deviceUsed);
+
+    VirtIO9PBase::serialize(cp);
 }
 
 void
 VirtIO9PProxy::unserialize(CheckpointIn &cp)
 {
-    fatal("Can't checkpoint a system with a VirtIO 9p proxy!\n");
+    UNSERIALIZE_SCALAR(deviceUsed);
+
+    if (deviceUsed) {
+        warn("Unserializing VirtIO9Base device after device has been used. It is "
+             "likely that state has been lost, and that the device will cease "
+             "to work!");
+    }
+    VirtIO9PBase::unserialize(cp);
 }
 
 
@@ -230,6 +245,7 @@ void
 VirtIO9PProxy::recvTMsg(const P9MsgHeader &header,
                         const uint8_t *data, size_t size)
 {
+    deviceUsed = true;
     assert(header.len == sizeof(header) + size);
     // While technically not needed, we send the packet as one
     // contiguous segment to make some packet dissectors happy.

@@ -32,13 +32,15 @@
  *          Timothy M. Jones
  */
 
-#include "arch/power/linux/linux.hh"
 #include "arch/power/linux/process.hh"
+
 #include "arch/power/isa_traits.hh"
+#include "arch/power/linux/linux.hh"
 #include "base/trace.hh"
 #include "cpu/thread_context.hh"
 #include "kern/linux/linux.hh"
 #include "sim/process.hh"
+#include "sim/syscall_desc.hh"
 #include "sim/syscall_emul.hh"
 #include "sim/system.hh"
 
@@ -47,7 +49,7 @@ using namespace PowerISA;
 
 /// Target uname() handler.
 static SyscallReturn
-unameFunc(SyscallDesc *desc, int callnum, LiveProcess *process,
+unameFunc(SyscallDesc *desc, int callnum, Process *process,
           ThreadContext *tc)
 {
     int index = 0;
@@ -413,10 +415,10 @@ SyscallDesc PowerLinuxProcess::syscallDescs[] = {
     /* 346 */ SyscallDesc("epoll_pwait", unimplementedFunc),
 };
 
-PowerLinuxProcess::PowerLinuxProcess(LiveProcessParams * params,
+PowerLinuxProcess::PowerLinuxProcess(ProcessParams * params,
         ObjectFile *objFile)
-    : PowerLiveProcess(params, objFile),
-     Num_Syscall_Descs(sizeof(syscallDescs) / sizeof(SyscallDesc))
+    : PowerProcess(params, objFile),
+      Num_Syscall_Descs(sizeof(syscallDescs) / sizeof(SyscallDesc))
 {
 }
 
@@ -432,7 +434,7 @@ PowerLinuxProcess::getDesc(int callnum)
 void
 PowerLinuxProcess::initState()
 {
-    PowerLiveProcess::initState();
+    PowerProcess::initState();
 }
 
 PowerISA::IntReg

@@ -1,4 +1,4 @@
-# Copyright (c) 2015 ARM Limited
+# Copyright (c) 2015-2016 ARM Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -40,6 +40,7 @@
 #          Andreas Hansson
 
 import optparse
+import random
 import sys
 
 import m5
@@ -97,6 +98,8 @@ parser.add_option("-t", "--testers", type="string", default="1:0:2",
                   help="Colon-separated tester hierarchy specification, "
                   "see script comments for details "
                   "[default: %default]")
+parser.add_option("-r", "--random", action="store_true",
+                  help="Generate a random tree topology")
 parser.add_option("--sys-clock", action="store", type="string",
                   default='1GHz',
                   help = """Top-level clock for blocks running at system
@@ -110,34 +113,42 @@ if args:
 
 # Start by parsing the command line options and do some basic sanity
 # checking
-try:
-     cachespec = [int(x) for x in options.caches.split(':')]
-     testerspec = [int(x) for x in options.testers.split(':')]
-except:
-     print "Error: Unable to parse caches or testers option"
-     sys.exit(1)
-
-if len(cachespec) < 1:
-     print "Error: Must have at least one level of caches"
-     sys.exit(1)
-
-if len(cachespec) != len(testerspec) - 1:
-     print "Error: Testers must have one element more than caches"
-     sys.exit(1)
-
-if testerspec[-1] == 0:
-     print "Error: Must have testers at the uppermost level"
-     sys.exit(1)
-
-for t in testerspec:
-     if t < 0:
-          print "Error: Cannot have a negative number of testers"
+if options.random:
+     # Generate a tree with a valid number of testers
+     tree_depth = random.randint(1, 4)
+     cachespec = [random.randint(1, 3) for i in range(tree_depth)]
+     testerspec = [random.randint(1, 3) for i in range(tree_depth + 1)]
+     print "Generated random tree -c", ':'.join(map(str, cachespec)), \
+         "-t", ':'.join(map(str, testerspec))
+else:
+     try:
+          cachespec = [int(x) for x in options.caches.split(':')]
+          testerspec = [int(x) for x in options.testers.split(':')]
+     except:
+          print "Error: Unable to parse caches or testers option"
           sys.exit(1)
 
-for c in cachespec:
-     if c < 1:
-          print "Error: Must have 1 or more caches at each level"
+     if len(cachespec) < 1:
+          print "Error: Must have at least one level of caches"
           sys.exit(1)
+
+     if len(cachespec) != len(testerspec) - 1:
+          print "Error: Testers must have one element more than caches"
+          sys.exit(1)
+
+     if testerspec[-1] == 0:
+          print "Error: Must have testers at the uppermost level"
+          sys.exit(1)
+
+     for t in testerspec:
+          if t < 0:
+               print "Error: Cannot have a negative number of testers"
+               sys.exit(1)
+
+     for c in cachespec:
+          if c < 1:
+               print "Error: Must have 1 or more caches at each level"
+               sys.exit(1)
 
 # Determine the tester multiplier for each level as the string
 # elements are per subsystem and it fans out
@@ -153,7 +164,7 @@ for t, m in zip(testerspec, multiplier):
 
 # Define a prototype L1 cache that we scale for all successive levels
 proto_l1 = Cache(size = '32kB', assoc = 4,
-                 hit_latency = 1, response_latency = 1,
+                 tag_latency = 1, data_latency = 1, response_latency = 1,
                  tgts_per_mshr = 8)
 
 if options.blocking:
@@ -175,7 +186,8 @@ for scale in cachespec[:-1]:
      prev = cache_proto[0]
      next = prev()
      next.size = prev.size * scale
-     next.hit_latency = prev.hit_latency * 10
+     next.tag_latency = prev.tag_latency * 10
+     next.data_latency = prev.data_latency * 10
      next.response_latency = prev.response_latency * 10
      next.assoc = prev.assoc * scale
      next.mshrs = prev.mshrs * scale
@@ -187,9 +199,9 @@ cfg_file = open(cfg_file_name, 'w')
 
 # Three states, with random, linear and idle behaviours. The random
 # and linear states access memory in the range [0 : 16 Mbyte] with 8
-# byte accesses.
+# byte and 64 byte accesses respectively.
 cfg_file.write("STATE 0 10000000 RANDOM 65 0 16777216 8 50000 150000 0\n")
-cfg_file.write("STATE 1 10000000 LINEAR 65 0 16777216 8 50000 150000 0\n")
+cfg_file.write("STATE 1 10000000 LINEAR 65 0 16777216 64 50000 150000 0\n")
 cfg_file.write("STATE 2 10000000 IDLE\n")
 cfg_file.write("INIT 0\n")
 cfg_file.write("TRANSITION 0 1 0.5\n")
@@ -204,7 +216,7 @@ cfg_file.close()
 proto_tester = TrafficGen(config_file = cfg_file_name)
 
 # Set up the system along with a DRAM controller
-system = System(physmem = DDR3_1600_x64())
+system = System(physmem = DDR3_1600_8x8())
 
 system.voltage_domain = VoltageDomain(voltage = '1V')
 
@@ -285,6 +297,7 @@ make_cache_level(cachespec, cache_proto, len(cachespec), None)
 # Connect the lowest level crossbar to the memory
 last_subsys = getattr(system, 'l%dsubsys0' % len(cachespec))
 last_subsys.xbar.master = system.physmem.port
+last_subsys.xbar.point_of_coherency = True
 
 root = Root(full_system = False, system = system)
 if options.atomic:

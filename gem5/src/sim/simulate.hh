@@ -29,8 +29,10 @@
  *          Steve Reinhardt
  */
 
+#include <mutex>
 #include "base/types.hh"
-#include "sim/sim_events.hh"
+
+class GlobalSimLoopExitEvent;
 
 GlobalSimLoopExitEvent *simulate(Tick num_cycles = MaxTick);
 extern GlobalSimLoopExitEvent *simulate_limit_event;

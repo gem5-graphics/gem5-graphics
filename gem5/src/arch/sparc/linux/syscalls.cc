@@ -29,17 +29,18 @@
  */
 
 #include "arch/sparc/linux/process.hh"
+#include "sim/syscall_desc.hh"
 #include "sim/syscall_emul.hh"
 
-class LiveProcess;
+class Process;
 class ThreadContext;
 
 namespace SparcISA {
 
 /// Target uname() handler.
 static SyscallReturn
-unameFunc(SyscallDesc *desc, int callnum, LiveProcess *process,
-        ThreadContext *tc)
+unameFunc(SyscallDesc *desc, int callnum, Process *process,
+          ThreadContext *tc)
 {
     int index = 0;
     TypedBufferArg<Linux::utsname> name(process->getSyscallArg(tc, index));
@@ -57,7 +58,7 @@ unameFunc(SyscallDesc *desc, int callnum, LiveProcess *process,
 
 
 SyscallReturn
-getresuidFunc(SyscallDesc *desc, int num, LiveProcess *p, ThreadContext *tc)
+getresuidFunc(SyscallDesc *desc, int num, Process *p, ThreadContext *tc)
 {
     const IntReg id = htog(100);
     int index = 0;
@@ -304,7 +305,7 @@ SyscallDesc SparcLinuxProcess::syscall32Descs[] = {
     /* 214 */ SyscallDesc("sysinfo", sysinfoFunc<Sparc32Linux>), // 32 bit
     /* 215 */ SyscallDesc("ipc", unimplementedFunc), // 32 bit
     /* 216 */ SyscallDesc("sigreturn", unimplementedFunc), // 32 bit
-    /* 217 */ SyscallDesc("clone", cloneFunc),
+    /* 217 */ SyscallDesc("clone", cloneFunc<Sparc32Linux>),
     /* 218 */ SyscallDesc("ioprio_get", unimplementedFunc), // 32 bit
     /* 219 */ SyscallDesc("adjtimex", unimplementedFunc), // 32 bit
     /* 220 */ SyscallDesc("sigprocmask", unimplementedFunc), // 32 bit
@@ -610,7 +611,7 @@ SyscallDesc SparcLinuxProcess::syscallDescs[] = {
     /* 214 */ SyscallDesc("sysinfo", sysinfoFunc<SparcLinux>),
     /* 215 */ SyscallDesc("ipc", unimplementedFunc),
     /* 216 */ SyscallDesc("sigreturn", unimplementedFunc),
-    /* 217 */ SyscallDesc("clone", cloneFunc),
+    /* 217 */ SyscallDesc("clone", cloneFunc<SparcLinux>),
     /* 218 */ SyscallDesc("ioprio_get", unimplementedFunc),
     /* 219 */ SyscallDesc("adjtimex", unimplementedFunc),
     /* 220 */ SyscallDesc("sigprocmask", unimplementedFunc),

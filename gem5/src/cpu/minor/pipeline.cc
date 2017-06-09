@@ -37,13 +37,14 @@
  * Authors: Andrew Bardsley
  */
 
+#include "cpu/minor/pipeline.hh"
+
 #include <algorithm>
 
 #include "cpu/minor/decode.hh"
 #include "cpu/minor/execute.hh"
 #include "cpu/minor/fetch1.hh"
 #include "cpu/minor/fetch2.hh"
-#include "cpu/minor/pipeline.hh"
 #include "debug/Drain.hh"
 #include "debug/MinorCPU.hh"
 #include "debug/MinorTrace.hh"
@@ -187,9 +188,9 @@ Pipeline::getDataPort()
 }
 
 void
-Pipeline::wakeupFetch()
+Pipeline::wakeupFetch(ThreadID tid)
 {
-    execute.wakeupFetch();
+    fetch1.wakeupFetch(tid);
 }
 
 bool
@@ -212,6 +213,11 @@ void
 Pipeline::drainResume()
 {
     DPRINTF(Drain, "Drain resume\n");
+
+    for (ThreadID tid = 0; tid < cpu.numThreads; tid++) {
+        fetch1.wakeupFetch(tid);
+    }
+
     execute.drainResume();
 }
 

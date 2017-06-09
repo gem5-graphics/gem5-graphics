@@ -44,6 +44,8 @@
  * Implementation of RealView platform.
  */
 
+#include "dev/arm/realview.hh"
+
 #include <deque>
 #include <string>
 #include <vector>
@@ -51,31 +53,16 @@
 #include "config/the_isa.hh"
 #include "cpu/intr_control.hh"
 #include "dev/arm/base_gic.hh"
-#include "dev/arm/realview.hh"
 #include "dev/terminal.hh"
 #include "sim/system.hh"
 
 using namespace std;
 using namespace TheISA;
 
+
 RealView::RealView(const Params *p)
     : Platform(p), system(p->system), gic(nullptr)
 {}
-
-void
-RealView::initState()
-{
-    Addr junk;
-    bool has_gen_pci_host;
-    has_gen_pci_host = system->kernelSymtab->findAddress("gen_pci_setup", junk);
-
-    if (has_gen_pci_host && !params()->pci_cfg_gen_offsets)
-        warn("Kernel supports generic PCI host but PCI Config offsets "
-                "configured for legacy. Set pci_cfg_gen_offsets to True");
-    if (has_gen_pci_host && !params()->pci_io_base)
-        warn("Kernel supports generic PCI host but PCI IO base is set "
-                "to 0. Set pci_io_base to the start of PCI IO space");
-}
 
 void
 RealView::postConsoleInt()
@@ -101,39 +88,6 @@ void
 RealView::clearPciInt(int line)
 {
     gic->clearInt(line);
-}
-
-Addr
-RealView::pciToDma(Addr pciAddr) const
-{
-    return pciAddr;
-}
-
-
-Addr
-RealView::calcPciConfigAddr(int bus, int dev, int func)
-{
-    if (bus != 0)
-        return ULL(-1);
-
-    Addr cfg_offset = 0;
-    if (params()->pci_cfg_gen_offsets)
-        cfg_offset |= ((func & 7) << 12) | ((dev & 0x1f) << 15);
-    else
-        cfg_offset |= ((func & 7) << 16) | ((dev & 0x1f) << 19);
-    return params()->pci_cfg_base | cfg_offset;
-}
-
-Addr
-RealView::calcPciIOAddr(Addr addr)
-{
-    return params()->pci_io_base + addr;
-}
-
-Addr
-RealView::calcPciMemAddr(Addr addr)
-{
-    return addr;
 }
 
 RealView *

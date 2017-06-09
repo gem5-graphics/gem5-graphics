@@ -48,6 +48,7 @@ import os
 cuda_sdk = os.environ['CUDAHOME']
 env.Append(CCFLAGS=['-I'+cuda_sdk+'/include', '-I'+cuda_sdk+'/common/inc/'])
 env.Append(CPPDEFINES=['-DCUDART_VERSION=3020', '-DYYDEBUG'])
+env.Append(CCFLAGS=['-Wno-ignored-qualifiers'])
 
 #CCFLAGS.append('-g3')
 #CCFLAGS.append('-fPIC')

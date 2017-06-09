@@ -56,25 +56,17 @@ class SimpleNetwork : public Network
     void collateStats();
     void regStats();
 
-    // sets the queue requested
-    void setToNetQueue(NodeID id, bool ordered, int network_num,
-                       std::string vnet_type, MessageBuffer *b);
-    void setFromNetQueue(NodeID id, bool ordered, int network_num,
-                         std::string vnet_type, MessageBuffer *b);
-
-    bool isVNetOrdered(int vnet) { return m_ordered[vnet]; }
-    bool validVirtualNetwork(int vnet) { return m_in_use[vnet]; }
+    bool isVNetOrdered(int vnet) const { return m_ordered[vnet]; }
 
     // Methods used by Topology to setup the network
-    void makeOutLink(SwitchID src, NodeID dest, BasicLink* link, 
-                     LinkDirection direction, 
+    void makeExtOutLink(SwitchID src, NodeID dest, BasicLink* link,
                      const NetDest& routing_table_entry);
-    void makeInLink(NodeID src, SwitchID dest, BasicLink* link,
-                    LinkDirection direction, 
+    void makeExtInLink(NodeID src, SwitchID dest, BasicLink* link,
                     const NetDest& routing_table_entry);
     void makeInternalLink(SwitchID src, SwitchID dest, BasicLink* link,
-                          LinkDirection direction, 
-                          const NetDest& routing_table_entry);
+                          const NetDest& routing_table_entry,
+                          PortDirection src_outport,
+                          PortDirection dst_inport);
 
     void print(std::ostream& out) const;
 
@@ -82,7 +74,6 @@ class SimpleNetwork : public Network
     uint32_t functionalWrite(Packet *pkt);
 
   private:
-    void checkNetworkAllocation(NodeID id, bool ordered, int network_num);
     void addLink(SwitchID src, SwitchID dest, int link_latency);
     void makeLink(SwitchID src, SwitchID dest,
         const NetDest& routing_table_entry, int link_latency);
@@ -95,11 +86,9 @@ class SimpleNetwork : public Network
     std::vector<Switch*> m_switches;
     std::vector<MessageBuffer*> m_int_link_buffers;
     int m_num_connected_buffers;
-    std::vector<Switch*> m_endpoint_switches;
-
-    int m_buffer_size;
-    int m_endpoint_bandwidth;
-    bool m_adaptive_routing;    
+    const int m_buffer_size;
+    const int m_endpoint_bandwidth;
+    const bool m_adaptive_routing;
 
     //Statistical variables
     Stats::Formula m_msg_counts[MessageSizeType_NUM];

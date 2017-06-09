@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013 ARM Limited
+ * Copyright (c) 2012-2013,2016 ARM Limited
  * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
@@ -49,10 +49,11 @@
 #define __MEM_CACHE_TAGS_FA_LRU_HH__
 
 #include <list>
+#include <unordered_map>
 
-#include "base/hashmap.hh"
-#include "mem/cache/tags/base.hh"
+#include "mem/cache/base.hh"
 #include "mem/cache/blk.hh"
+#include "mem/cache/tags/base.hh"
 #include "mem/packet.hh"
 #include "params/FALRU.hh"
 
@@ -89,8 +90,6 @@ class FALRU : public BaseTags
   public:
     /** Typedef the block type used in this class. */
     typedef FALRUBlk BlkType;
-    /** Typedef a list of pointers to the local block type. */
-    typedef std::list<FALRUBlk*> BlkList;
 
   protected:
     /** Array of pointers to blocks at the cache size  boundaries. */
@@ -109,7 +108,7 @@ class FALRU : public BaseTags
     FALRUBlk *tail;
 
     /** Hash table type mapping addresses to cache block pointers. */
-    typedef m5::hash_map<Addr, FALRUBlk *, m5::hash<Addr> > hash_t;
+    typedef std::unordered_map<Addr, FALRUBlk *, std::hash<Addr> > hash_t;
     /** Iterator into the address hash table. */
     typedef hash_t::const_iterator tagIterator;
 
@@ -168,34 +167,32 @@ public:
      * Register the stats for this object.
      * @param name The name to prepend to the stats name.
      */
-    void regStats();
+    void regStats() override;
 
     /**
      * Invalidate a cache block.
      * @param blk The block to invalidate.
      */
-    void invalidate(CacheBlk *blk);
+    void invalidate(CacheBlk *blk) override;
 
     /**
-     * Access block and update replacement data.  May not succeed, in which case
-     * NULL pointer is returned.  This has all the implications of a cache
-     * access and should only be used as such.
+     * Access block and update replacement data.  May not succeed, in which
+     * case nullptr pointer is returned.  This has all the implications of a
+     * cache access and should only be used as such.
      * Returns the access latency and inCache flags as a side effect.
      * @param addr The address to look for.
      * @param is_secure True if the target memory space is secure.
-     * @param asid The address space ID.
      * @param lat The latency of the access.
      * @param inCache The FALRUBlk::inCache flags.
      * @return Pointer to the cache block.
      */
     CacheBlk* accessBlock(Addr addr, bool is_secure, Cycles &lat,
-                          int context_src, int *inCache);
+                          int *inCache);
 
     /**
      * Just a wrapper of above function to conform with the base interface.
      */
-    CacheBlk* accessBlock(Addr addr, bool is_secure, Cycles &lat,
-                          int context_src);
+    CacheBlk* accessBlock(Addr addr, bool is_secure, Cycles &lat) override;
 
     /**
      * Find the block in the cache, do not update the replacement data.
@@ -204,56 +201,16 @@ public:
      * @param asid The address space ID.
      * @return Pointer to the cache block.
      */
-    CacheBlk* findBlock(Addr addr, bool is_secure) const;
+    CacheBlk* findBlock(Addr addr, bool is_secure) const override;
 
     /**
      * Find a replacement block for the address provided.
      * @param pkt The request to a find a replacement candidate for.
      * @return The block to place the replacement in.
      */
-    CacheBlk* findVictim(Addr addr);
+    CacheBlk* findVictim(Addr addr) override;
 
-    void insertBlock(PacketPtr pkt, CacheBlk *blk);
-
-    /**
-     * Return the block size of this cache.
-     * @return The block size.
-     */
-    unsigned
-    getBlockSize() const
-    {
-        return blkSize;
-    }
-
-    /**
-     * Return the subblock size of this cache, always the block size.
-     * @return The block size.
-     */
-    unsigned
-    getSubBlockSize() const
-    {
-        return blkSize;
-    }
-
-    /**
-     * Return the number of sets this cache has
-     * @return The number of sets.
-     */
-    unsigned
-    getNumSets() const
-    {
-        return 1;
-    }
-
-    /**
-     * Return the number of ways this cache has
-     * @return The number of ways.
-     */
-    unsigned
-    getNumWays() const
-    {
-        return numBlocks;
-    }
+    void insertBlock(PacketPtr pkt, CacheBlk *blk) override;
 
     /**
      * Find the cache block given set and way
@@ -261,17 +218,7 @@ public:
      * @param way The way of the block.
      * @return The cache block.
      */
-    CacheBlk* findBlockBySetAndWay(int set, int way) const;
-
-    /**
-     * Align an address to the block size.
-     * @param addr the address to align.
-     * @return The aligned address.
-     */
-    Addr blkAlign(Addr addr) const
-    {
-        return (addr & ~(Addr)(blkSize-1));
-    }
+    CacheBlk* findBlockBySetAndWay(int set, int way) const override;
 
     /**
      * Generate the tag from the addres. For fully associative this is just the
@@ -279,7 +226,7 @@ public:
      * @param addr The address to get the tag from.
      * @return The tag.
      */
-    Addr extractTag(Addr addr) const
+    Addr extractTag(Addr addr) const override
     {
         return blkAlign(addr);
     }
@@ -289,7 +236,7 @@ public:
      * @param addr The address to get the set from.
      * @return 0.
      */
-    int extractSet(Addr addr) const
+    int extractSet(Addr addr) const override
     {
         return 0;
     }
@@ -300,7 +247,7 @@ public:
      * @param set The set the block belongs to.
      * @return the block address.
      */
-    Addr regenerateBlkAddr(Addr tag, unsigned set) const
+    Addr regenerateBlkAddr(Addr tag, unsigned set) const override
     {
         return (tag);
     }
@@ -308,7 +255,7 @@ public:
     /**
      * @todo Implement as in lru. Currently not used
      */
-    virtual std::string print() const { return ""; }
+    virtual std::string print() const override { return ""; }
 
     /**
      * Visit each block in the tag store and apply a visitor to the
@@ -322,7 +269,7 @@ public:
      *
      * \param visitor Visitor to call on each block.
      */
-    void forEachBlk(CacheBlkVisitor &visitor) M5_ATTR_OVERRIDE {
+    void forEachBlk(CacheBlkVisitor &visitor) override {
         for (int i = 0; i < numBlocks; i++) {
             if (!visitor(blks[i]))
                 return;

@@ -29,9 +29,10 @@
  *
  */
 
-#include "base/intmath.hh"
 #include "mem/ruby/structures/BankedArray.hh"
-#include "mem/ruby/system/System.hh"
+
+#include "base/intmath.hh"
+#include "mem/ruby/system/RubySystem.hh"
 
 BankedArray::BankedArray(unsigned int banks, Cycles accessLatency,
                          unsigned int startIndexBit, RubySystem *rs)
@@ -73,7 +74,7 @@ BankedArray::reserve(int64_t idx)
     unsigned int bank = mapIndexToBank(idx);
     assert(bank < banks);
 
-    if(busyBanks[bank].endAccess >= curTick()) {
+    if (busyBanks[bank].endAccess >= curTick()) {
         if (busyBanks[bank].startAccess == curTick() &&
              busyBanks[bank].idx == idx) {
             // this is the same reservation (can happen when

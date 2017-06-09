@@ -87,7 +87,7 @@ class TLB : public BaseTLB
     MipsISA::PTE *getEntry(unsigned) const;
     virtual ~TLB();
 
-    void takeOverFrom(BaseTLB *otlb) {}
+    void takeOverFrom(BaseTLB *otlb) override {}
 
     int smallPages;
     int getsize() const { return size; }
@@ -95,8 +95,8 @@ class TLB : public BaseTLB
     MipsISA::PTE &index(bool advance = true);
     void insert(Addr vaddr, MipsISA::PTE &pte);
     void insertAt(MipsISA::PTE &pte, unsigned Index, int _smallPages);
-    void flushAll();
-    void demapPage(Addr vaddr, uint64_t asn)
+    void flushAll() override;
+    void demapPage(Addr vaddr, uint64_t asn) override
     {
         panic("demapPage unimplemented.\n");
     }
@@ -107,10 +107,10 @@ class TLB : public BaseTLB
     static Fault checkCacheability(RequestPtr &req);
 
     // Checkpointing
-    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
-    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 
-    void regStats();
+    void regStats() override;
 
     Fault translateAtomic(RequestPtr req, ThreadContext *tc, Mode mode);
     void translateTiming(RequestPtr req, ThreadContext *tc,

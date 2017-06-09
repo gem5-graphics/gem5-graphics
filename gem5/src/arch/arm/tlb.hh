@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 ARM Limited
+ * Copyright (c) 2010-2013, 2016 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -61,6 +61,43 @@ namespace ArmISA {
 class TableWalker;
 class Stage2LookUp;
 class Stage2MMU;
+class TLB;
+
+class TlbTestInterface
+{
+  public:
+    TlbTestInterface() {}
+    virtual ~TlbTestInterface() {}
+
+    /**
+     * Check if a TLB translation should be forced to fail.
+     *
+     * @param req Request requiring a translation.
+     * @param is_priv Access from a privileged mode (i.e., not EL0)
+     * @param mode Access type
+     * @param domain Domain type
+     */
+    virtual Fault translationCheck(RequestPtr req, bool is_priv,
+                                   BaseTLB::Mode mode,
+                                   TlbEntry::DomainType domain) = 0;
+
+    /**
+     * Check if a page table walker access should be forced to fail.
+     *
+     * @param pa Physical address the walker is accessing
+     * @param size Walker access size
+     * @param va Virtual address that initiated the walk
+     * @param is_secure Access from secure state
+     * @param is_priv Access from a privileged mode (i.e., not EL0)
+     * @param mode Access type
+     * @param domain Domain type
+     * @param lookup_level Page table walker level
+     */
+    virtual Fault walkCheck(Addr pa, Addr size, Addr va, bool is_secure,
+                            Addr is_priv, BaseTLB::Mode mode,
+                            TlbEntry::DomainType domain,
+                            LookupLevel lookup_level) = 0;
+};
 
 class TLB : public BaseTLB
 {
@@ -90,7 +127,17 @@ class TLB : public BaseTLB
         HypMode = 0x2,
         // Secure code operating as if it wasn't (required by some Address
         // Translate operations)
-        S1S2NsTran = 0x4
+        S1S2NsTran = 0x4,
+        // Address translation instructions (eg AT S1E0R_Xt) need to be handled
+        // in special ways during translation because they could need to act
+        // like a different EL than the current EL. The following flags are
+        // for these instructions
+        S1E0Tran = 0x8,
+        S1E1Tran = 0x10,
+        S1E2Tran = 0x20,
+        S1E3Tran = 0x40,
+        S12E0Tran = 0x80,
+        S12E1Tran = 0x100
     };
   protected:
     TlbEntry* table;     // the Page Table
@@ -104,6 +151,8 @@ class TLB : public BaseTLB
     TableWalker *tableWalker;
     TLB *stage2Tlb;
     Stage2MMU *stage2Mmu;
+
+    TlbTestInterface *test;
 
     // Access Stats
     mutable Stats::Scalar instHits;
@@ -155,10 +204,12 @@ class TLB : public BaseTLB
 
     virtual ~TLB();
 
-    void takeOverFrom(BaseTLB *otlb);
+    void takeOverFrom(BaseTLB *otlb) override;
 
     /// setup all the back pointers
-    virtual void init();
+    void init() override;
+
+    void setTestInterface(SimObject *ti);
 
     TableWalker *getTableWalker() { return tableWalker; }
 
@@ -197,7 +248,7 @@ class TLB : public BaseTLB
     /** Reset the entire TLB. Used for CPU switching to prevent stale
      * translations after multiple switches
      */
-    void flushAll()
+    void flushAll() override
     {
         flushAllSecurity(false, 0, true);
         flushAllSecurity(true, 0, true);
@@ -224,19 +275,26 @@ class TLB : public BaseTLB
      */
     void flushMva(Addr mva, bool secure_lookup, bool hyp, uint8_t target_el);
 
+    /**
+     * Invalidate all entries in the stage 2 TLB that match the given ipa
+     * and the current VMID
+     * @param ipa the address to invalidate
+     * @param secure_lookup if the operation affects the secure world
+     * @param hyp if the operation affects hyp mode
+     */
+    void flushIpaVmid(Addr ipa, bool secure_lookup, bool hyp, uint8_t target_el);
+
     Fault trickBoxCheck(RequestPtr req, Mode mode, TlbEntry::DomainType domain);
     Fault walkTrickBoxCheck(Addr pa, bool is_secure, Addr va, Addr sz, bool is_exec,
             bool is_write, TlbEntry::DomainType domain, LookupLevel lookup_level);
 
     void printTlb() const;
 
-    void demapPage(Addr vaddr, uint64_t asn)
+    void demapPage(Addr vaddr, uint64_t asn) override
     {
         // needed for x86 only
         panic("demapPage() is not implemented.\n");
     }
-
-    static bool validVirtualAddress(Addr vaddr);
 
     /**
      * Do a functional lookup on the TLB (for debugging)
@@ -284,15 +342,15 @@ class TLB : public BaseTLB
             bool callFromS2);
     Fault finalizePhysical(RequestPtr req, ThreadContext *tc, Mode mode) const;
 
-    void drainResume() M5_ATTR_OVERRIDE;
+    void drainResume() override;
 
     // Checkpointing
-    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
-    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 
-    void regStats();
+    void regStats() override;
 
-    void regProbePoints() M5_ATTR_OVERRIDE;
+    void regProbePoints() override;
 
     /**
      * Get the table walker master port. This is used for migrating
@@ -304,7 +362,7 @@ class TLB : public BaseTLB
      *
      * @return A pointer to the walker master port
      */
-    virtual BaseMasterPort* getMasterPort();
+    BaseMasterPort* getMasterPort() override;
 
     // Caching misc register values here.
     // Writing to misc registers needs to invalidate them.
@@ -327,12 +385,15 @@ protected:
     HCR hcr;
     uint32_t dacr;
     bool miscRegValid;
+    ContextID miscRegContext;
     ArmTranslationType curTranType;
 
     // Cached copies of system-level properties
     bool haveLPAE;
     bool haveVirtualization;
     bool haveLargeAsid64;
+
+    AddrRange m5opRange;
 
     void updateMiscReg(ThreadContext *tc,
                        ArmTranslationType tranType = NormalTran);
@@ -357,6 +418,13 @@ private:
                    bool hyp, bool ignore_asn, uint8_t target_el);
 
     bool checkELMatch(uint8_t target_el, uint8_t tentry_el, bool ignore_el);
+
+  public: /* Testing */
+    Fault testTranslation(RequestPtr req, Mode mode,
+                          TlbEntry::DomainType domain);
+    Fault testWalk(Addr pa, Addr size, Addr va, bool is_secure, Mode mode,
+                   TlbEntry::DomainType domain,
+                   LookupLevel lookup_level);
 };
 
 } // namespace ArmISA

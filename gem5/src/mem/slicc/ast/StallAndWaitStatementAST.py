@@ -33,7 +33,7 @@ class StallAndWaitStatementAST(StatementAST):
         super(StatementAST, self).__init__(slicc)
         self.in_port = in_port
         self.address = address
-        
+
     def __repr__(self):
         return "[StallAndWaitStatementAst: %r]" % self.in_port
 
@@ -45,5 +45,5 @@ class StallAndWaitStatementAST(StatementAST):
         address_code = self.address.var.code
         code('''
         stallBuffer(&($in_port_code), $address_code);
-        $in_port_code.stallMessage($address_code);
+        $in_port_code.stallMessage($address_code, clockEdge());
         ''')

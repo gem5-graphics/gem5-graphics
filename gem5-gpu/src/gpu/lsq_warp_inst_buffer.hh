@@ -242,7 +242,9 @@ class WarpInstBuffer {
         } else {
             panic("Instruction type not found!");
         }
-        warpId = pkt->req->threadId();
+
+        warpId = pkt->req->contextId();
+
         requestDataSize = pkt->getSize();
         pc = pkt->req->getPC();
         masterId = pkt->req->masterId();

@@ -32,6 +32,8 @@
  * Implementation of PC platform.
  */
 
+#include "dev/x86/pc.hh"
+
 #include <deque>
 #include <string>
 #include <vector>
@@ -40,12 +42,11 @@
 #include "arch/x86/x86_traits.hh"
 #include "config/the_isa.hh"
 #include "cpu/intr_control.hh"
+#include "dev/terminal.hh"
 #include "dev/x86/i82094aa.hh"
 #include "dev/x86/i8254.hh"
 #include "dev/x86/i8259.hh"
-#include "dev/x86/pc.hh"
 #include "dev/x86/south_bridge.hh"
-#include "dev/terminal.hh"
 #include "sim/system.hh"
 
 using namespace std;
@@ -139,33 +140,6 @@ void
 Pc::clearPciInt(int line)
 {
     warn_once("Tried to clear PCI interrupt %d\n", line);
-}
-
-Addr
-Pc::pciToDma(Addr pciAddr) const
-{
-    return pciAddr;
-}
-
-Addr
-Pc::calcPciConfigAddr(int bus, int dev, int func)
-{
-    assert(func < 8);
-    assert(dev < 32);
-    assert(bus == 0);
-    return (PhysAddrPrefixPciConfig | (func << 8) | (dev << 11));
-}
-
-Addr
-Pc::calcPciIOAddr(Addr addr)
-{
-    return PhysAddrPrefixIO + addr;
-}
-
-Addr
-Pc::calcPciMemAddr(Addr addr)
-{
-    return addr;
 }
 
 Pc *

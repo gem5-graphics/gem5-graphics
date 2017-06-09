@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014 ARM Limited
+ * Copyright (c) 2014, 2016 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -48,6 +48,8 @@
 #include "sim/sim_object.hh"
 
 struct VirtIODeviceBaseParams;
+struct VirtIODummyDeviceParams;
+
 class VirtQueue;
 
 /** @{
@@ -319,8 +321,8 @@ public:
     /** @{
      * @name Checkpointing Interface
      */
-    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
-    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 
     /** @{
      * @name Low-level Device Interface
@@ -595,8 +597,8 @@ class VirtIODeviceBase : public SimObject
     /** @{
      * @name SimObject Interfaces
      */
-    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
-    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
     /** @} */
 
 
@@ -873,6 +875,16 @@ class VirtIODeviceBase : public SimObject
 
     /** Callbacks to kick the guest through the transport layer  */
     Callback *transKick;
+};
+
+class VirtIODummyDevice : public VirtIODeviceBase
+{
+  public:
+    VirtIODummyDevice(VirtIODummyDeviceParams *params);
+
+  protected:
+    /** VirtIO device ID */
+    static const DeviceId ID_INVALID = 0x00;
 };
 
 #endif // __DEV_VIRTIO_BASE_HH__

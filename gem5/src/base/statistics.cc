@@ -28,6 +28,8 @@
  * Authors: Nathan Binkert
  */
 
+#include "base/statistics.hh"
+
 #include <fstream>
 #include <iomanip>
 #include <list>
@@ -39,7 +41,6 @@
 #include "base/debug.hh"
 #include "base/hostinfo.hh"
 #include "base/misc.hh"
-#include "base/statistics.hh"
 #include "base/str.hh"
 #include "base/time.hh"
 #include "base/trace.hh"
@@ -178,10 +179,10 @@ Info::setName(const string &name)
 
     Info *other = p.first->second;
     bool result = p.second;
-    
+
     if (!result) {
-        // using other->name instead of just name to avoid a compiler
-        // warning.  They should be the same.
+      // using other->name instead of just name to avoid a compiler
+      // warning.  They should be the same.
         panic("same statistic name used twice! name=%s\n", other->name);
     }
 
@@ -221,7 +222,9 @@ Info::baseCheck() const
 #ifdef DEBUG
         cprintf("this is stat number %d\n", id);
 #endif
-        panic("Not all stats have been initialized");
+        panic("Not all stats have been initialized.\n"
+              "You may need to add <ParentClass>::regStats() to a"
+              " new SimObject's regStats() function.");
         return false;
     }
 
@@ -364,9 +367,9 @@ HistStor::add(HistStor *hs)
     squares += hs->squares;
     samples += hs->samples;
 
-    while(bucket_size > hs->bucket_size)
+    while (bucket_size > hs->bucket_size)
         hs->grow_up();
-    while(bucket_size < hs->bucket_size)
+    while (bucket_size < hs->bucket_size)
         grow_up();
 
     for (uint32_t i = 0; i < b_size; i++)

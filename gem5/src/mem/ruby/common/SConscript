@@ -34,9 +34,11 @@ if env['PROTOCOL'] == 'None':
     Return()
 
 Source('Address.cc')
+Source('BoolVec.cc')
 Source('Consumer.cc')
 Source('DataBlock.cc')
 Source('Histogram.cc')
+Source('IntVec.cc')
 Source('NetDest.cc')
-Source('Set.cc')
 Source('SubBlock.cc')
+Source('WriteMask.cc')

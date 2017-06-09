@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015 ARM Limited
+ * Copyright (c) 2015, 2017 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -65,6 +65,8 @@ static_assert(NUM_QREGS == 32, "Unexpected number of aarch64 vector regs.");
 #define INT_REG(name) CORE_REG(name, U64)
 #define SIMD_REG(name) CORE_REG(name, U128)
 
+#define SYS_MPIDR_EL1 ARM64_SYS_REG(0b11, 0b000, 0b0000, 0b0000, 0b101)
+
 constexpr uint64_t
 kvmXReg(const int num)
 {
@@ -102,7 +104,6 @@ const std::vector<ArmV8KvmCPU::IntRegInfo> ArmV8KvmCPU::intRegMap = {
 };
 
 const std::vector<ArmV8KvmCPU::MiscRegInfo> ArmV8KvmCPU::miscRegMap = {
-    MiscRegInfo(INT_REG(regs.pstate), MISCREG_CPSR, "PSTATE"),
     MiscRegInfo(INT_REG(elr_el1), MISCREG_ELR_EL1, "ELR(EL1)"),
     MiscRegInfo(INT_REG(spsr[KVM_SPSR_EL1]), MISCREG_SPSR_EL1, "SPSR(EL1)"),
     MiscRegInfo(INT_REG(spsr[KVM_SPSR_ABT]), MISCREG_SPSR_ABT, "SPSR(ABT)"),
@@ -111,6 +112,10 @@ const std::vector<ArmV8KvmCPU::MiscRegInfo> ArmV8KvmCPU::miscRegMap = {
     MiscRegInfo(INT_REG(spsr[KVM_SPSR_FIQ]), MISCREG_SPSR_FIQ, "SPSR(FIQ)"),
     MiscRegInfo(INT_REG(fp_regs.fpsr), MISCREG_FPSR, "FPSR"),
     MiscRegInfo(INT_REG(fp_regs.fpcr), MISCREG_FPCR, "FPCR"),
+};
+
+const std::vector<ArmV8KvmCPU::MiscRegInfo> ArmV8KvmCPU::miscRegIdMap = {
+    MiscRegInfo(SYS_MPIDR_EL1, MISCREG_MPIDR_EL1, "MPIDR(EL1)"),
 };
 
 ArmV8KvmCPU::ArmV8KvmCPU(ArmV8KvmCPUParams *params)
@@ -123,7 +128,20 @@ ArmV8KvmCPU::~ArmV8KvmCPU()
 }
 
 void
-ArmV8KvmCPU::dump()
+ArmV8KvmCPU::startup()
+{
+    BaseArmKvmCPU::startup();
+
+    // Override ID registers that KVM should "inherit" from gem5.
+    for (const auto &ri : miscRegIdMap) {
+        const uint64_t value(tc->readMiscReg(ri.idx));
+        DPRINTF(KvmContext, "  %s := 0x%x\n", ri.name, value);
+        setOneReg(ri.kvm, value);
+    }
+}
+
+void
+ArmV8KvmCPU::dump() const
 {
     inform("Integer registers:\n");
     inform("  PC: %s\n", getAndFormatOneReg(INT_REG(regs.pc)));
@@ -136,7 +154,12 @@ ArmV8KvmCPU::dump()
     for (const auto &ri : intRegMap)
         inform("  %s: %s\n", ri.name, getAndFormatOneReg(ri.kvm));
 
+    inform("  %s: %s\n", "PSTATE", getAndFormatOneReg(INT_REG(regs.pstate)));
+
     for (const auto &ri : miscRegMap)
+        inform("  %s: %s\n", ri.name, getAndFormatOneReg(ri.kvm));
+
+    for (const auto &ri : miscRegIdMap)
         inform("  %s: %s\n", ri.name, getAndFormatOneReg(ri.kvm));
 
     for (const auto &reg : getRegList()) {
@@ -188,6 +211,20 @@ void
 ArmV8KvmCPU::updateKvmState()
 {
     DPRINTF(KvmContext, "In updateKvmState():\n");
+
+    // update pstate register state
+    CPSR cpsr(tc->readMiscReg(MISCREG_CPSR));
+    cpsr.nz = tc->readCCReg(CCREG_NZ);
+    cpsr.c = tc->readCCReg(CCREG_C);
+    cpsr.v = tc->readCCReg(CCREG_V);
+    if (cpsr.width) {
+        cpsr.ge = tc->readCCReg(CCREG_GE);
+    } else {
+        cpsr.ge = 0;
+    }
+    DPRINTF(KvmContext, "  %s := 0x%x\n", "PSTATE", cpsr);
+    setOneReg(INT_REG(regs.pstate), static_cast<uint64_t>(cpsr));
+
     for (const auto &ri : miscRegMap) {
         const uint64_t value(tc->readMiscReg(ri.idx));
         DPRINTF(KvmContext, "  %s := 0x%x\n", ri.name, value);
@@ -231,7 +268,18 @@ ArmV8KvmCPU::updateThreadContext()
 {
     DPRINTF(KvmContext, "In updateThreadContext():\n");
 
-    // Update core misc regs first as they (particularly PSTATE/CPSR)
+    // Update pstate thread context
+    const CPSR cpsr(getOneRegU64(INT_REG(regs.pstate)));
+    DPRINTF(KvmContext, "  %s := 0x%x\n", "PSTATE", cpsr);
+    tc->setMiscRegNoEffect(MISCREG_CPSR, cpsr);
+    tc->setCCReg(CCREG_NZ, cpsr.nz);
+    tc->setCCReg(CCREG_C, cpsr.c);
+    tc->setCCReg(CCREG_V, cpsr.v);
+    if (cpsr.width) {
+        tc->setCCReg(CCREG_GE, cpsr.ge);
+    }
+
+    // Update core misc regs first as they
     // affect how other registers are mapped.
     for (const auto &ri : miscRegMap) {
         const auto value(getOneRegU64(ri.kvm));
@@ -242,7 +290,13 @@ ArmV8KvmCPU::updateThreadContext()
     for (int i = 0; i < NUM_XREGS; ++i) {
         const auto value(getOneRegU64(kvmXReg(i)));
         DPRINTF(KvmContext, "  X%i := 0x%x\n", i, value);
-        tc->setIntReg(INTREG_X0 + i, value);
+        // KVM64 returns registers in 64-bit layout. If we are in aarch32
+        // mode, we need to map these to banked ARM32 registers.
+        if (inAArch64(tc)) {
+            tc->setIntReg(INTREG_X0 + i, value);
+        } else {
+            tc->setIntRegFlat(IntReg64Map[INTREG_X0 + i], value);
+        }
     }
 
     for (const auto &ri : intRegMap) {
@@ -266,7 +320,6 @@ ArmV8KvmCPU::updateThreadContext()
         tc->setMiscRegNoEffect(ri.idx, value);
     }
 
-    const CPSR cpsr(tc->readMiscRegNoEffect(MISCREG_CPSR));
     PCState pc(getOneRegU64(INT_REG(regs.pc)));
     pc.aarch64(inAArch64(tc));
     pc.thumb(cpsr.t);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009-2014 ARM Limited
+ * Copyright (c) 2009-2014, 2016 ARM Limited
  * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
@@ -37,16 +37,17 @@
  * Authors: Ali Saidi
  */
 
+#include "arch/arm/utility.hh"
+
 #include <memory>
 
 #include "arch/arm/faults.hh"
 #include "arch/arm/isa_traits.hh"
 #include "arch/arm/system.hh"
 #include "arch/arm/tlb.hh"
-#include "arch/arm/utility.hh"
 #include "arch/arm/vtophys.hh"
-#include "cpu/checker/cpu.hh"
 #include "cpu/base.hh"
+#include "cpu/checker/cpu.hh"
 #include "cpu/thread_context.hh"
 #include "mem/fs_translating_port_proxy.hh"
 #include "sim/full_system.hh"
@@ -209,8 +210,11 @@ getMPIDR(ArmSystem *arm_sys, ThreadContext *tc)
     // We deliberately extend both the Cluster ID and CPU ID fields to allow
     // for simulation of larger systems
     assert((0 <= tc->cpuId()) && (tc->cpuId() < 256));
-    assert((0 <= tc->socketId()) && (tc->socketId() < 65536));
-    if (arm_sys->multiProc) {
+    assert(tc->socketId() < 65536);
+    if (arm_sys->multiThread) {
+       return 0x80000000 | // multiprocessor extensions available
+              tc->contextId();
+    } else if (arm_sys->multiProc) {
        return 0x80000000 | // multiprocessor extensions available
               tc->cpuId() | tc->socketId() << 8;
     } else {
@@ -232,14 +236,14 @@ ELIs64(ThreadContext *tc, ExceptionLevel el)
         return opModeIs64(currOpMode(tc));
       case EL1:
         {
-            // @todo: uncomment this to enable Virtualization
-            // if (ArmSystem::haveVirtualization(tc)) {
-            //     HCR hcr = tc->readMiscReg(MISCREG_HCR_EL2);
-            //     return hcr.rw;
-            // }
-            assert(ArmSystem::haveSecurity(tc));
-            SCR scr = tc->readMiscReg(MISCREG_SCR_EL3);
-            return scr.rw;
+            if (ArmSystem::haveVirtualization(tc)) {
+                HCR hcr = tc->readMiscReg(MISCREG_HCR_EL2);
+                return hcr.rw;
+            } else if (ArmSystem::haveSecurity(tc)) {
+                SCR scr = tc->readMiscReg(MISCREG_SCR_EL3);
+                return scr.rw;
+            }
+            panic("must haveSecurity(tc)");
         }
       case EL2:
         {
@@ -283,13 +287,12 @@ purifyTaggedAddr(Addr addr, ThreadContext *tc, ExceptionLevel el,
         else if (!bits(addr, 55, 48) && tcr.tbi0)
             return bits(addr,55, 0);
         break;
-      // @todo: uncomment this to enable Virtualization
-      // case EL2:
-      //   assert(ArmSystem::haveVirtualization());
-      //   tcr = tc->readMiscReg(MISCREG_TCR_EL2);
-      //   if (tcr.tbi)
-      //       return addr & mask(56);
-      //   break;
+      case EL2:
+        assert(ArmSystem::haveVirtualization(tc));
+        tcr = tc->readMiscReg(MISCREG_TCR_EL2);
+        if (tcr.tbi)
+            return addr & mask(56);
+        break;
       case EL3:
         assert(ArmSystem::haveSecurity(tc));
         if (tcr.tbi)
@@ -317,13 +320,12 @@ purifyTaggedAddr(Addr addr, ThreadContext *tc, ExceptionLevel el)
         else if (!bits(addr, 55, 48) && tcr.tbi0)
             return bits(addr,55, 0);
         break;
-      // @todo: uncomment this to enable Virtualization
-      // case EL2:
-      //   assert(ArmSystem::haveVirtualization());
-      //   tcr = tc->readMiscReg(MISCREG_TCR_EL2);
-      //   if (tcr.tbi)
-      //       return addr & mask(56);
-      //   break;
+      case EL2:
+        assert(ArmSystem::haveVirtualization(tc));
+        tcr = tc->readMiscReg(MISCREG_TCR_EL2);
+        if (tcr.tbi)
+            return addr & mask(56);
+        break;
       case EL3:
         assert(ArmSystem::haveSecurity(tc));
         tcr = tc->readMiscReg(MISCREG_TCR_EL3);
@@ -589,7 +591,9 @@ msrMrs64TrapToSup(const MiscRegIndex miscReg, ExceptionLevel el,
 }
 
 bool
-msrMrs64TrapToHyp(const MiscRegIndex miscReg, bool isRead,
+msrMrs64TrapToHyp(const MiscRegIndex miscReg,
+                  ExceptionLevel el,
+                  bool isRead,
                   CPTR cptr /* CPTR_EL2 */,
                   HCR hcr /* HCR_EL2 */,
                   bool * isVfpNeon)
@@ -607,7 +611,7 @@ msrMrs64TrapToHyp(const MiscRegIndex miscReg, bool isRead,
         break;
       // CPACR
       case MISCREG_CPACR_EL1:
-        trapToHyp = cptr.tcpac;
+        trapToHyp = cptr.tcpac && el == EL1;
         break;
       // Virtual memory control regs
       case MISCREG_SCTLR_EL1:
@@ -621,7 +625,8 @@ msrMrs64TrapToHyp(const MiscRegIndex miscReg, bool isRead,
       case MISCREG_MAIR_EL1:
       case MISCREG_AMAIR_EL1:
       case MISCREG_CONTEXTIDR_EL1:
-        trapToHyp = (hcr.trvm && isRead) || (hcr.tvm && !isRead);
+        trapToHyp = ((hcr.trvm && isRead) || (hcr.tvm && !isRead))
+                    && el == EL1;
         break;
       // TLB maintenance instructions
       case MISCREG_TLBI_VMALLE1:
@@ -636,30 +641,30 @@ msrMrs64TrapToHyp(const MiscRegIndex miscReg, bool isRead,
       case MISCREG_TLBI_VAAE1IS_Xt:
       case MISCREG_TLBI_VALE1IS_Xt:
       case MISCREG_TLBI_VAALE1IS_Xt:
-        trapToHyp = hcr.ttlb;
+        trapToHyp = hcr.ttlb && el == EL1;
         break;
       // Cache maintenance instructions to the point of unification
       case MISCREG_IC_IVAU_Xt:
       case MISCREG_ICIALLU:
       case MISCREG_ICIALLUIS:
       case MISCREG_DC_CVAU_Xt:
-        trapToHyp = hcr.tpu;
+        trapToHyp = hcr.tpu && el <= EL1;
         break;
       // Data/Unified cache maintenance instructions to the point of coherency
       case MISCREG_DC_IVAC_Xt:
       case MISCREG_DC_CIVAC_Xt:
       case MISCREG_DC_CVAC_Xt:
-        trapToHyp = hcr.tpc;
+        trapToHyp = hcr.tpc && el <= EL1;
         break;
       // Data/Unified cache maintenance instructions by set/way
       case MISCREG_DC_ISW_Xt:
       case MISCREG_DC_CSW_Xt:
       case MISCREG_DC_CISW_Xt:
-        trapToHyp = hcr.tsw;
+        trapToHyp = hcr.tsw && el == EL1;
         break;
       // ACTLR
       case MISCREG_ACTLR_EL1:
-        trapToHyp = hcr.tacr;
+        trapToHyp = hcr.tacr && el == EL1;
         break;
 
       // @todo: Trap implementation-dependent functionality based on
@@ -694,20 +699,20 @@ msrMrs64TrapToHyp(const MiscRegIndex miscReg, bool isRead,
       case MISCREG_ID_AA64AFR0_EL1:
       case MISCREG_ID_AA64AFR1_EL1:
         assert(isRead);
-        trapToHyp = hcr.tid3;
+        trapToHyp = hcr.tid3 && el == EL1;
         break;
       // ID regs, group 2
       case MISCREG_CTR_EL0:
       case MISCREG_CCSIDR_EL1:
       case MISCREG_CLIDR_EL1:
       case MISCREG_CSSELR_EL1:
-        trapToHyp = hcr.tid2;
+        trapToHyp = hcr.tid2 && el <= EL1;
         break;
       // ID regs, group 1
       case MISCREG_AIDR_EL1:
       case MISCREG_REVIDR_EL1:
         assert(isRead);
-        trapToHyp = hcr.tid1;
+        trapToHyp = hcr.tid1 && el == EL1;
         break;
       default:
         break;
@@ -864,91 +869,6 @@ decodeMrsMsrBankedReg(uint8_t sysM, bool r, bool &isIntReg, int &regIdx,
         }
     }
     return (ok);
-}
-
-bool
-vfpNeonEnabled(uint32_t &seq, HCPTR hcptr, NSACR nsacr, CPACR cpacr, CPSR cpsr,
-               uint32_t &iss, bool &trap, ThreadContext *tc, FPEXC fpexc,
-               bool isSIMD)
-{
-    iss                     = 0;
-    trap                    = false;
-    bool undefined          = false;
-    bool haveSecurity       = ArmSystem::haveSecurity(tc);
-    bool haveVirtualization = ArmSystem::haveVirtualization(tc);
-    bool isSecure           = inSecureState(tc);
-
-    // Non-secure view of CPACR and HCPTR determines behavior
-    // Copy register values
-    uint8_t cpacr_cp10   = cpacr.cp10;
-    bool    cpacr_asedis = cpacr.asedis;
-    bool    hcptr_cp10   = false;
-    bool    hcptr_tase   = false;
-
-    bool cp10_enabled = cpacr.cp10 == 0x3
-                      || (cpacr.cp10 == 0x1 && inPrivilegedMode(cpsr));
-
-    bool cp11_enabled =  cpacr.cp11 == 0x3
-                      || (cpacr.cp11 == 0x1 && inPrivilegedMode(cpsr));
-
-    if (cp11_enabled) {
-        undefined |= !(fpexc.en && cp10_enabled);
-    } else {
-        undefined |= !(fpexc.en && cp10_enabled && (cpacr.cp11 == cpacr.cp10));
-    }
-
-    if (haveVirtualization) {
-        hcptr_cp10 = hcptr.tcp10;
-        undefined |= hcptr.tcp10 != hcptr.tcp11;
-        hcptr_tase = hcptr.tase;
-    }
-
-    if (haveSecurity) {
-        undefined |= nsacr.cp10 != nsacr.cp11;
-        if (!isSecure) {
-            // Modify register values to the Non-secure view
-            if (!nsacr.cp10) {
-                cpacr_cp10 = 0;
-                if (haveVirtualization) {
-                    hcptr_cp10 = true;
-                }
-            }
-            if (nsacr.nsasedis) {
-                cpacr_asedis = true;
-                if (haveVirtualization) {
-                    hcptr_tase = true;
-                }
-            }
-        }
-    }
-
-    // Check Coprocessor Access Control Register for permission to use CP10/11.
-    if (!haveVirtualization || (cpsr.mode != MODE_HYP)) {
-        switch (cpacr_cp10)
-        {
-            case 0:
-                undefined = true;
-                break;
-            case 1:
-                undefined |= inUserMode(cpsr);
-                break;
-        }
-
-        // Check if SIMD operations are disabled
-        if (isSIMD && cpacr_asedis) undefined = true;
-    }
-
-    // If required, check FPEXC enabled bit.
-    undefined |= !fpexc.en;
-
-    if (haveSecurity && haveVirtualization && !isSecure) {
-        if (hcptr_cp10 || (isSIMD && hcptr_tase)) {
-            iss  = isSIMD ? (1 << 5) : 0xA;
-            trap = true;
-        }
-    }
-
-    return (!undefined);
 }
 
 bool

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011 ARM Limited
+ * Copyright (c) 2011, 2017 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -43,6 +43,7 @@
 #ifdef linux
 #define _GNU_SOURCE
 #include <sched.h>
+
 #endif
 
 #include <err.h>
@@ -83,12 +84,33 @@ parse_int_args(int argc, char *argv[], uint64_t ints[], int len)
 #undef strto64
 }
 
+void
+parse_str_args_to_regs(int argc, char *argv[], uint64_t regs[], int len)
+{
+    if (argc > 1 || (argc > 0 && strlen(argv[0]) > len * sizeof(uint64_t)))
+        usage();
+
+    int i;
+    for (i = 0; i < len; i++)
+        regs[i] = 0;
+
+    if (argc == 0)
+        return;
+
+    int n;
+    for (n = 0, i = 0; i < len && n < strlen(argv[0]); n++) {
+        *((char *)(&regs[i]) + (n % 8)) = argv[0][n];
+        if ((n % 8) == 7)
+            i++;
+    }
+}
+
 int
 read_file(int dest_fid)
 {
-    char buf[256*1024];
+    uint8_t buf[256*1024];
     int offset = 0;
-    int len;
+    int len, ret;
 
     // Touch all buffer pages to ensure they are mapped in the
     // page table. This is required in the case of X86_FS, where
@@ -96,12 +118,28 @@ read_file(int dest_fid)
     memset(buf, 0, sizeof(buf));
 
     while ((len = m5_readfile(buf, sizeof(buf), offset)) > 0) {
-        write(dest_fid, buf, len);
+        uint8_t *base = buf;
         offset += len;
+        do {
+            ret = write(dest_fid, base, len);
+            if (ret < 0) {
+                perror("Failed to write file");
+                exit(2);
+            } else if (ret == 0) {
+                fprintf(stderr, "Failed to write file: "
+                        "Unhandled short write\n");
+                exit(2);
+            }
+
+            base += ret;
+            len -= ret;
+        } while (len);
     }
+
+    return offset;
 }
 
-int
+void
 write_file(const char *filename)
 {
     fprintf(stderr, "opening %s\n", filename);
@@ -220,23 +258,35 @@ do_checkpoint(int argc, char *argv[])
 }
 
 void
-do_load_symbol(int argc, char *argv[])
+do_addsymbol(int argc, char *argv[])
 {
     if (argc != 2)
         usage();
 
     uint64_t addr = strtoul(argv[0], NULL, 0);
     char *symbol = argv[1];
-    m5_loadsymbol(addr, symbol);
+    m5_addsymbol(addr, symbol);
+}
+
+
+void
+do_loadsymbol(int argc, char *argv[])
+{
+    if (argc > 0)
+        usage();
+
+    m5_loadsymbol();
 }
 
 void
 do_initparam(int argc, char *argv[])
 {
-    if (argc != 0)
+    if (argc > 1)
         usage();
 
-    uint64_t val = m5_initparam();
+    uint64_t key_str[2];
+    parse_str_args_to_regs(argc, argv, key_str, 2);
+    uint64_t val = m5_initparam(key_str[0], key_str[1]);
     printf("%"PRIu64, val);
 }
 
@@ -246,7 +296,7 @@ do_sw99param(int argc, char *argv[])
     if (argc != 0)
         usage();
 
-    uint64_t param = m5_initparam();
+    uint64_t param = m5_initparam(0, 0);
 
     // run-time, rampup-time, rampdown-time, warmup-time, connections
     printf("%"PRId64" %"PRId64" %"PRId64" %"PRId64" %"PRId64,
@@ -284,7 +334,7 @@ do_pin(int argc, char *argv[])
     if (argc < 2)
         usage();
 
-    cpu_set_t mask;  
+    cpu_set_t mask;
     CPU_ZERO(&mask);
 
     const char *sep = ",";
@@ -292,7 +342,7 @@ do_pin(int argc, char *argv[])
     while (target) {
         CPU_SET(atoi(target), &mask);
         target = strtok(NULL, sep);
-    }            
+    }
 
     if (sched_setaffinity(0, sizeof(cpu_set_t), &mask) < 0)
         err(1, "setaffinity");
@@ -319,8 +369,10 @@ struct MainFunc mainfuncs[] = {
     { "writefile",      do_write_file,       "<filename>" },
     { "execfile",       do_exec_file,        "" },
     { "checkpoint",     do_checkpoint,       "[delay [period]]" },
-    { "loadsymbol",     do_load_symbol,      "<address> <symbol>" },
-    { "initparam",      do_initparam,        "" },
+    { "addsymbol",      do_addsymbol,        "<address> <symbol>" },
+    { "loadsymbol",     do_loadsymbol,       "" },
+    { "initparam",      do_initparam,        "[key] // key must be shorter"
+                                             " than 16 chars" },
     { "sw99param",      do_sw99param,        "" },
     { "gpu",            do_gpu,              "" },
     { "util",           do_util,             "" },
@@ -358,7 +410,8 @@ map_m5_mem()
         exit(1);
     }
 
-    m5_mem = mmap(NULL, 0x10000, PROT_READ | PROT_WRITE, MAP_SHARED, fd, M5OP_ADDR);
+    m5_mem = mmap(NULL, 0x10000, PROT_READ | PROT_WRITE, MAP_SHARED, fd,
+                  M5OP_ADDR);
     if (!m5_mem) {
         perror("Can't mmap /dev/mem");
         exit(1);

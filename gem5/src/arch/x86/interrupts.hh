@@ -213,15 +213,15 @@ class Interrupts : public BasicPioDevice, IntDevice
     /*
      * Initialize this object by registering it with the IO APIC.
      */
-    void init();
+    void init() override;
 
     /*
      * Functions to interact with the interrupt port from IntDevice.
      */
-    Tick read(PacketPtr pkt);
-    Tick write(PacketPtr pkt);
-    Tick recvMessage(PacketPtr pkt);
-    Tick recvResponse(PacketPtr pkt);
+    Tick read(PacketPtr pkt) override;
+    Tick write(PacketPtr pkt) override;
+    Tick recvMessage(PacketPtr pkt) override;
+    Tick recvResponse(PacketPtr pkt) override;
 
     bool
     triggerTimerInterrupt()
@@ -232,16 +232,15 @@ class Interrupts : public BasicPioDevice, IntDevice
         return entry.periodic;
     }
 
+    AddrRangeList getIntAddrRange() const override;
     void
     triggerGPUInterrupt()
     {
         requestInterrupt(0, DeliveryMode::GPUFault, false);
     }
 
-    AddrRangeList getIntAddrRange() const;
-
     BaseMasterPort &getMasterPort(const std::string &if_name,
-                                  PortID idx = InvalidPortID)
+                                  PortID idx = InvalidPortID) override
     {
         if (if_name == "int_master") {
             return intMasterPort;
@@ -250,7 +249,7 @@ class Interrupts : public BasicPioDevice, IntDevice
     }
 
     BaseSlavePort &getSlavePort(const std::string &if_name,
-                                PortID idx = InvalidPortID)
+                                PortID idx = InvalidPortID) override
     {
         if (if_name == "int_slave") {
             return intSlavePort;
@@ -300,8 +299,8 @@ class Interrupts : public BasicPioDevice, IntDevice
     /*
      * Serialization.
      */
-    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
-    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 
     /*
      * Old functions needed for compatability but which will be phased out

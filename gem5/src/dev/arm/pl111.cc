@@ -38,14 +38,15 @@
  *          Ali Saidi
  */
 
-#include "base/vnc/vncinput.hh"
+#include "dev/arm/pl111.hh"
+
 #include "base/output.hh"
 #include "base/trace.hh"
+#include "base/vnc/vncinput.hh"
 #include "debug/PL111.hh"
 #include "debug/Uart.hh"
 #include "dev/arm/amba_device.hh"
 #include "dev/arm/base_gic.hh"
-#include "dev/arm/pl111.hh"
 #include "mem/packet.hh"
 #include "mem/packet_access.hh"
 #include "sim/system.hh"
@@ -523,11 +524,12 @@ Pl111::dmaDone()
             DPRINTF(PL111, "-- write out frame buffer into bmp\n");
 
             if (!pic)
-                pic = simout.create(csprintf("%s.framebuffer.bmp", sys->name()), true);
+                pic = simout.create(csprintf("%s.framebuffer.bmp", sys->name()),
+                                    true);
 
             assert(pic);
-            pic->seekp(0);
-            bmp.write(*pic);
+            pic->stream()->seekp(0);
+            bmp.write(*pic->stream());
         }
 
         // schedule the next read based on when the last frame started

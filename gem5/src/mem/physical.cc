@@ -37,10 +37,12 @@
  * Authors: Andreas Hansson
  */
 
+#include "mem/physical.hh"
+
+#include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/user.h>
-#include <fcntl.h>
 #include <unistd.h>
 #include <zlib.h>
 
@@ -54,15 +56,14 @@
 #include "debug/AddrRanges.hh"
 #include "debug/Checkpoint.hh"
 #include "mem/abstract_mem.hh"
-#include "mem/physical.hh"
 
 /**
  * On Linux, MAP_NORESERVE allow us to simulate a very large memory
  * without committing to actually providing the swap space on the
- * host. On OSX the MAP_NORESERVE flag does not exist, so simply make
- * it 0.
+ * host. On FreeBSD or OSX the MAP_NORESERVE flag does not exist,
+ * so simply make it 0.
  */
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(__FreeBSD__)
 #ifndef MAP_NORESERVE
 #define MAP_NORESERVE 0
 #endif
@@ -111,7 +112,9 @@ PhysicalMemory::PhysicalMemory(const string& _name,
             // memories are allowed to overlap in the logic address
             // map
             vector<AbstractMemory*> unmapped_mems{m};
-            createBackingStore(m->getAddrRange(), unmapped_mems);
+            createBackingStore(m->getAddrRange(), unmapped_mems,
+                               m->isConfReported(), m->isInAddrMap(),
+                               m->isKvmMap());
         }
     }
 
@@ -132,7 +135,19 @@ PhysicalMemory::PhysicalMemory(const string& _name,
                 if (!intlv_ranges.empty() &&
                     !intlv_ranges.back().mergesWith(r.first)) {
                     AddrRange merged_range(intlv_ranges);
-                    createBackingStore(merged_range, curr_memories);
+
+                    AbstractMemory *f = curr_memories.front();
+                    for (const auto& c : curr_memories)
+                        if (f->isConfReported() != c->isConfReported() ||
+                            f->isInAddrMap() != c->isInAddrMap() ||
+                            f->isKvmMap() != c->isKvmMap())
+                            fatal("Inconsistent flags in an interleaved "
+                                  "range\n");
+
+                    createBackingStore(merged_range, curr_memories,
+                                       f->isConfReported(), f->isInAddrMap(),
+                                       f->isKvmMap());
+
                     intlv_ranges.clear();
                     curr_memories.clear();
                 }
@@ -140,7 +155,10 @@ PhysicalMemory::PhysicalMemory(const string& _name,
                 curr_memories.push_back(r.second);
             } else {
                 vector<AbstractMemory*> single_memory{r.second};
-                createBackingStore(r.first, single_memory);
+                createBackingStore(r.first, single_memory,
+                                   r.second->isConfReported(),
+                                   r.second->isInAddrMap(),
+                                   r.second->isKvmMap());
             }
         }
     }
@@ -149,13 +167,26 @@ PhysicalMemory::PhysicalMemory(const string& _name,
     // ahead and do it
     if (!intlv_ranges.empty()) {
         AddrRange merged_range(intlv_ranges);
-        createBackingStore(merged_range, curr_memories);
+
+        AbstractMemory *f = curr_memories.front();
+        for (const auto& c : curr_memories)
+            if (f->isConfReported() != c->isConfReported() ||
+                f->isInAddrMap() != c->isInAddrMap() ||
+                f->isKvmMap() != c->isKvmMap())
+                fatal("Inconsistent flags in an interleaved "
+                      "range\n");
+
+        createBackingStore(merged_range, curr_memories,
+                           f->isConfReported(), f->isInAddrMap(),
+                           f->isKvmMap());
     }
 }
 
 void
 PhysicalMemory::createBackingStore(AddrRange range,
-                                   const vector<AbstractMemory*>& _memories)
+                                   const vector<AbstractMemory*>& _memories,
+                                   bool conf_table_reported,
+                                   bool in_addr_map, bool kvm_map)
 {
     panic_if(range.interleaved(),
              "Cannot create backing store for interleaved range %s\n",
@@ -184,7 +215,8 @@ PhysicalMemory::createBackingStore(AddrRange range,
 
     // remember this backing store so we can checkpoint it and unmap
     // it appropriately
-    backingStore.push_back(make_pair(range, pmem));
+    backingStore.emplace_back(range, pmem,
+                              conf_table_reported, in_addr_map, kvm_map);
 
     // point the memories to their backing store
     for (const auto& m : _memories) {
@@ -198,7 +230,7 @@ PhysicalMemory::~PhysicalMemory()
 {
     // unmap the backing store
     for (auto& s : backingStore)
-        munmap((char*)s.second, s.first.size());
+        munmap((char*)s.pmem, s.range.size());
 }
 
 bool
@@ -314,7 +346,7 @@ PhysicalMemory::serialize(CheckpointOut &cp) const
     // store each backing store memory segment in a file
     for (auto& s : backingStore) {
         ScopedCheckpointSection sec(cp, csprintf("store%d", store_id));
-        serializeStore(cp, store_id++, s.first, s.second);
+        serializeStore(cp, store_id++, s.range, s.pmem);
     }
 }
 
@@ -373,7 +405,7 @@ PhysicalMemory::unserialize(CheckpointIn &cp)
     vector<ContextID> lal_cid;
     UNSERIALIZE_CONTAINER(lal_addr);
     UNSERIALIZE_CONTAINER(lal_cid);
-    for(size_t i = 0; i < lal_addr.size(); ++i) {
+    for (size_t i = 0; i < lal_addr.size(); ++i) {
         const auto& m = addrMap.find(lal_addr[i]);
         m->second->addLockedAddr(LockedAddr(lal_addr[i], lal_cid[i]));
     }
@@ -407,8 +439,8 @@ PhysicalMemory::unserializeStore(CheckpointIn &cp)
         fatal("Can't open physical memory checkpoint file '%s'", filename);
 
     // we've already got the actual backing store mapped
-    uint8_t* pmem = backingStore[store_id].second;
-    AddrRange range = backingStore[store_id].first;
+    uint8_t* pmem = backingStore[store_id].pmem;
+    AddrRange range = backingStore[store_id].range;
 
     long range_size;
     UNSERIALIZE_SCALAR(range_size);

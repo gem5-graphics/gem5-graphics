@@ -48,14 +48,14 @@ class SparcSystem : public System
     SparcSystem(Params *p);
     ~SparcSystem();
 
-    virtual void initState();
+    void initState() override;
 
 /**
  * Serialization stuff
  */
   public:
-    void serializeSymtab(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
-    void unserializeSymtab(CheckpointIn &cp) M5_ATTR_OVERRIDE;
+    void serializeSymtab(CheckpointOut &cp) const override;
+    void unserializeSymtab(CheckpointIn &cp) override;
 
     /** reset binary symbol table */
     SymbolTable *resetSymtab;
@@ -123,8 +123,8 @@ class SparcSystem : public System
         return addFuncEvent<T>(openbootSymtab, lbl);
     }
 
-    virtual Addr
-    fixFuncEventAddr(Addr addr)
+    Addr
+    fixFuncEventAddr(Addr addr) override
     {
         //XXX This may eventually have to do something useful.
         return addr;

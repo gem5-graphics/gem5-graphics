@@ -45,6 +45,8 @@
  *          Andreas Sandberg
  */
 
+#include "sim/serialize.hh"
+
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -63,7 +65,6 @@
 #include "base/trace.hh"
 #include "debug/Checkpoint.hh"
 #include "sim/eventq.hh"
-#include "sim/serialize.hh"
 #include "sim/sim_events.hh"
 #include "sim/sim_exit.hh"
 #include "sim/sim_object.hh"
@@ -213,6 +214,24 @@ arrayParamOut(CheckpointOut &os, const string &name, const list<T> &param)
 
 template <class T>
 void
+arrayParamOut(CheckpointOut &os, const string &name, const set<T> &param)
+{
+    typename set<T>::const_iterator it = param.begin();
+
+    os << name << "=";
+    if (param.size() > 0)
+        showParam(os, *it);
+    it++;
+    while (it != param.end()) {
+        os << " ";
+        showParam(os, *it);
+        it++;
+    }
+    os << "\n";
+}
+
+template <class T>
+void
 paramIn(CheckpointIn &cp, const string &name, T &param)
 {
     const string &section(Serializable::currentSection());
@@ -224,12 +243,13 @@ paramIn(CheckpointIn &cp, const string &name, T &param)
 
 template <class T>
 bool
-optParamIn(CheckpointIn &cp, const string &name, T &param)
+optParamIn(CheckpointIn &cp, const string &name, T &param, bool warn)
 {
     const string &section(Serializable::currentSection());
     string str;
     if (!cp.find(section, name, str) || !parseParam(str, param)) {
-        warn("optional parameter %s:%s not present\n", section, name);
+        if (warn)
+            warn("optional parameter %s:%s not present\n", section, name);
         return false;
     } else {
         return true;
@@ -368,6 +388,36 @@ arrayParamIn(CheckpointIn &cp, const string &name, list<T> &param)
     }
 }
 
+template <class T>
+void
+arrayParamIn(CheckpointIn &cp, const string &name, set<T> &param)
+{
+    const string &section(Serializable::currentSection());
+    string str;
+    if (!cp.find(section, name, str)) {
+        fatal("Can't unserialize '%s:%s'\n", section, name);
+    }
+    param.clear();
+
+    vector<string> tokens;
+    tokenize(tokens, str, ' ');
+
+    for (vector<string>::size_type i = 0; i < tokens.size(); i++) {
+        T scalar_value;
+        if (!parseParam(tokens[i], scalar_value)) {
+            string err("could not parse \"");
+
+            err += str;
+            err += "\"";
+
+            fatal(err);
+        }
+
+        // assign parsed value to vector
+        param.insert(scalar_value);
+    }
+}
+
 
 void
 objParamIn(CheckpointIn &cp, const string &name, SimObject * &param)
@@ -385,7 +435,8 @@ objParamIn(CheckpointIn &cp, const string &name, SimObject * &param)
     template void                                                       \
     paramIn(CheckpointIn &cp, const string &name, type & param);        \
     template bool                                                       \
-    optParamIn(CheckpointIn &cp, const string &name, type & param);     \
+    optParamIn(CheckpointIn &cp, const string &name, type & param,      \
+               bool warn);                                              \
     template void                                                       \
     arrayParamOut(CheckpointOut &os, const string &name,                \
                   type const *param, unsigned size);                    \
@@ -422,6 +473,11 @@ INSTANTIATE_PARAM_TEMPLATES(double)
 INSTANTIATE_PARAM_TEMPLATES(string)
 INSTANTIATE_PARAM_TEMPLATES(Pixel)
 
+// set is only used with strings and furthermore doesn't agree with Pixel
+template void
+arrayParamOut(CheckpointOut &, const string &, const set<string> &);
+template void
+arrayParamIn(CheckpointIn &, const string &, set<string> &);
 
 /////////////////////////////
 
@@ -433,8 +489,8 @@ class Globals : public Serializable
     Globals()
         : unserializedCurTick(0) {}
 
-    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
-    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 
     Tick unserializedCurTick;
 };
@@ -442,19 +498,73 @@ class Globals : public Serializable
 /// The one and only instance of the Globals class.
 Globals globals;
 
+/// The version tags for this build of the simulator, to be stored in the
+/// Globals section during serialization and compared upon unserialization.
+extern std::set<std::string> version_tags;
+
 void
 Globals::serialize(CheckpointOut &cp) const
 {
     paramOut(cp, "curTick", curTick());
-    paramOut(cp, "numMainEventQueues", numMainEventQueues);
-
+    SERIALIZE_CONTAINER(version_tags);
 }
 
 void
 Globals::unserialize(CheckpointIn &cp)
 {
     paramIn(cp, "curTick", unserializedCurTick);
-    paramIn(cp, "numMainEventQueues", numMainEventQueues);
+
+    const std::string &section(Serializable::currentSection());
+    std::string str;
+    if (!cp.find(section, "version_tags", str)) {
+        warn("**********************************************************\n");
+        warn("!!!! Checkpoint uses an old versioning scheme.        !!!!\n");
+        warn("Run the checkpoint upgrader (util/cpt_upgrader.py) on your "
+             "checkpoint\n");
+        warn("**********************************************************\n");
+        return;
+    }
+
+    std::set<std::string> cpt_tags;
+    arrayParamIn(cp, "version_tags", cpt_tags); // UNSERIALIZE_CONTAINER
+
+    bool err = false;
+    for (const auto& t : version_tags) {
+        if (cpt_tags.find(t) == cpt_tags.end()) {
+            // checkpoint is missing tag that this binary has
+            if (!err) {
+                warn("*****************************************************\n");
+                warn("!!!! Checkpoint is missing the following version tags:\n");
+                err = true;
+            }
+            warn("  %s\n", t);
+        }
+    }
+    if (err) {
+        warn("You might experience some issues when restoring and should run "
+             "the checkpoint upgrader (util/cpt_upgrader.py) on your "
+             "checkpoint\n");
+        warn("**********************************************************\n");
+    }
+
+    err = false;
+    for (const auto& t : cpt_tags) {
+        if (version_tags.find(t) == version_tags.end()) {
+            // gem5 binary is missing tag that this checkpoint has
+            if (!err) {
+                warn("*****************************************************\n");
+                warn("!!!! gem5 is missing the following version tags:\n");
+                err = true;
+            }
+            warn("  %s\n", t);
+        }
+    }
+    if (err) {
+        warn("Running a checkpoint with incompatible version tags is not "
+             "supported. While it might work, you may experience incorrect "
+             "behavior or crashes.\n");
+        warn("**********************************************************\n");
+     }
 }
 
 Serializable::Serializable()
@@ -470,13 +580,6 @@ Serializable::serializeSection(CheckpointOut &cp, const char *name) const
 {
     Serializable::ScopedCheckpointSection sec(cp, name);
     serialize(cp);
-}
-
-void
-Serializable::serializeSectionOld(CheckpointOut &cp, const char *name)
-{
-    Serializable::ScopedCheckpointSection sec(cp, name);
-    serializeOld(cp);
 }
 
 void
@@ -501,8 +604,6 @@ Serializable::serializeAll(const string &cpt_dir)
     outstream << "## checkpoint generated: " << ctime(&t);
 
     globals.serializeSection(outstream, "Globals");
-    for (uint32_t i = 0; i < numMainEventQueues; ++i)
-        mainEventQueue[i]->serializeSection(outstream, "MainEventQueue");
 
     SimObject::serializeAll(outstream);
     string graphics_file = dir + CheckpointIn::graphicsFilename;
@@ -514,10 +615,8 @@ Serializable::unserializeGlobals(CheckpointIn &cp)
 {
     globals.unserializeSection(cp, "Globals");
 
-    for (uint32_t i = 0; i < numMainEventQueues; ++i) {
+    for (uint32_t i = 0; i < numMainEventQueues; ++i)
         mainEventQueue[i]->setCurTick(globals.unserializedCurTick);
-        mainEventQueue[i]->unserializeSection(cp, "MainEventQueue");
-    } 
 }
 
 Serializable::ScopedCheckpointSection::~ScopedCheckpointSection()
@@ -558,73 +657,12 @@ debug_serialize(const string &cpt_dir)
     Serializable::serializeAll(cpt_dir);
 }
 
-
-////////////////////////////////////////////////////////////////////////
-//
-// SerializableClass member definitions
-//
-////////////////////////////////////////////////////////////////////////
-
-// Map of class names to SerializableBuilder creation functions.
-// Need to make this a pointer so we can force initialization on the
-// first reference; otherwise, some SerializableClass constructors
-// may be invoked before the classMap constructor.
-map<string, SerializableClass::CreateFunc> *SerializableClass::classMap = 0;
-
-// SerializableClass constructor: add mapping to classMap
-SerializableClass::SerializableClass(const string &className,
-                                     CreateFunc createFunc)
-{
-    if (classMap == NULL)
-        classMap = new map<string, SerializableClass::CreateFunc>();
-
-    if ((*classMap)[className])
-        fatal("Error: simulation object class %s redefined\n", className);
-
-    // add className --> createFunc to class map
-    (*classMap)[className] = createFunc;
-}
-
-//
-//
-Serializable *
-SerializableClass::createObject(CheckpointIn &cp, const string &section)
-{
-    string className;
-
-    if (!cp.find(section, "type", className)) {
-        fatal("Serializable::create: no 'type' entry in section '%s'.\n",
-              section);
-    }
-
-    CreateFunc createFunc = (*classMap)[className];
-
-    if (createFunc == NULL) {
-        fatal("Serializable::create: no create function for class '%s'.\n",
-              className);
-    }
-
-    Serializable *object = createFunc(cp, section);
-
-    assert(object != NULL);
-
-    return object;
-}
-
 const std::string &
 Serializable::currentSection()
 {
     assert(!path.empty());
 
     return path.top();
-}
-
-Serializable *
-Serializable::create(CheckpointIn &cp, const string &section)
-{
-    Serializable *object = SerializableClass::createObject(cp, section);
-    object->unserializeSection(cp, section);
-    return object;
 }
 
 const char *CheckpointIn::baseFilename = "m5.cpt";
@@ -669,6 +707,12 @@ CheckpointIn::CheckpointIn(const string &cpt_dir, SimObjectResolver &resolver, C
 CheckpointIn::~CheckpointIn()
 {
     delete db;
+}
+
+bool
+CheckpointIn::entryExists(const string &section, const string &entry)
+{
+    return db->entryExists(section, entry);
 }
 
 bool

@@ -37,11 +37,11 @@
  * Authors: Andreas Sandberg
  */
 
+#include <fcntl.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
-#include <fcntl.h>
 #include <syscall.h>
 #include <unistd.h>
 
@@ -242,5 +242,5 @@ PerfKvmCounter::read(void *buf, size_t size) const
             _buf += ret;
             break;
         }
-    } while(_size);
+    } while (_size);
 }

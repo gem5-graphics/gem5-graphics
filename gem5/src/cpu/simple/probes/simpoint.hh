@@ -41,7 +41,9 @@
 #ifndef __CPU_SIMPLE_PROBES_SIMPOINT_HH__
 #define __CPU_SIMPLE_PROBES_SIMPOINT_HH__
 
-#include "base/hashmap.hh"
+#include <unordered_map>
+
+#include "base/output.hh"
 #include "cpu/simple_thread.hh"
 #include "params/SimPoint.hh"
 #include "sim/probe/probe.hh"
@@ -59,7 +61,7 @@
 typedef std::pair<Addr, Addr> BasicBlockRange;
 
 /** Overload hash function for BasicBlockRange type */
-__hash_namespace_begin
+namespace std {
 template <>
 struct hash<BasicBlockRange>
 {
@@ -68,7 +70,7 @@ struct hash<BasicBlockRange>
         return hash<Addr>()(bb.first + bb.second);
     }
 };
-__hash_namespace_end
+}
 
 class SimPoint : public ProbeListenerObject
 {
@@ -96,7 +98,7 @@ class SimPoint : public ProbeListenerObject
     /** Excess inst count from previous interval*/
     uint64_t intervalDrift;
     /** Pointer to SimPoint BBV output stream */
-    std::ostream *simpointStream;
+    OutputStream *simpointStream;
 
     /** Basic Block information */
     struct BBInfo {
@@ -109,7 +111,7 @@ class SimPoint : public ProbeListenerObject
     };
 
     /** Hash table containing all previously seen basic blocks */
-    m5::hash_map<BasicBlockRange, BBInfo> bbMap;
+    std::unordered_map<BasicBlockRange, BBInfo> bbMap;
     /** Currently executing basic block */
     BasicBlockRange currentBBV;
     /** inst count in current basic block */

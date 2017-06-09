@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2012-2015 ARM Limited
+ * Copyright (c) 2010, 2012-2016 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -50,6 +50,7 @@
 #include "arch/arm/types.hh"
 #include "debug/Checkpoint.hh"
 #include "sim/sim_object.hh"
+#include "enums/DecoderFlavour.hh"
 
 struct ArmISAParams;
 struct DummyArmISADeviceParams;
@@ -59,78 +60,14 @@ class EventManager;
 
 namespace ArmISA
 {
-
-    /**
-     * At the moment there are 57 registers which need to be aliased/
-     * translated with other registers in the ISA. This enum helps with that
-     * translation.
-     */
-    enum translateTable {
-        miscRegTranslateCSSELR_EL1,
-        miscRegTranslateSCTLR_EL1,
-        miscRegTranslateSCTLR_EL2,
-        miscRegTranslateACTLR_EL1,
-        miscRegTranslateACTLR_EL2,
-        miscRegTranslateCPACR_EL1,
-        miscRegTranslateCPTR_EL2,
-        miscRegTranslateHCR_EL2,
-        miscRegTranslateMDCR_EL2,
-        miscRegTranslateHSTR_EL2,
-        miscRegTranslateHACR_EL2,
-        miscRegTranslateTTBR0_EL1,
-        miscRegTranslateTTBR1_EL1,
-        miscRegTranslateTTBR0_EL2,
-        miscRegTranslateVTTBR_EL2,
-        miscRegTranslateTCR_EL1,
-        miscRegTranslateTCR_EL2,
-        miscRegTranslateVTCR_EL2,
-        miscRegTranslateAFSR0_EL1,
-        miscRegTranslateAFSR1_EL1,
-        miscRegTranslateAFSR0_EL2,
-        miscRegTranslateAFSR1_EL2,
-        miscRegTranslateESR_EL2,
-        miscRegTranslateFAR_EL1,
-        miscRegTranslateFAR_EL2,
-        miscRegTranslateHPFAR_EL2,
-        miscRegTranslatePAR_EL1,
-        miscRegTranslateMAIR_EL1,
-        miscRegTranslateMAIR_EL2,
-        miscRegTranslateAMAIR_EL1,
-        miscRegTranslateVBAR_EL1,
-        miscRegTranslateVBAR_EL2,
-        miscRegTranslateCONTEXTIDR_EL1,
-        miscRegTranslateTPIDR_EL0,
-        miscRegTranslateTPIDRRO_EL0,
-        miscRegTranslateTPIDR_EL1,
-        miscRegTranslateTPIDR_EL2,
-        miscRegTranslateTEECR32_EL1,
-        miscRegTranslateCNTFRQ_EL0,
-        miscRegTranslateCNTPCT_EL0,
-        miscRegTranslateCNTVCT_EL0,
-        miscRegTranslateCNTVOFF_EL2,
-        miscRegTranslateCNTKCTL_EL1,
-        miscRegTranslateCNTHCTL_EL2,
-        miscRegTranslateCNTP_TVAL_EL0,
-        miscRegTranslateCNTP_CTL_EL0,
-        miscRegTranslateCNTP_CVAL_EL0,
-        miscRegTranslateCNTV_TVAL_EL0,
-        miscRegTranslateCNTV_CTL_EL0,
-        miscRegTranslateCNTV_CVAL_EL0,
-        miscRegTranslateCNTHP_TVAL_EL2,
-        miscRegTranslateCNTHP_CTL_EL2,
-        miscRegTranslateCNTHP_CVAL_EL2,
-        miscRegTranslateDACR32_EL2,
-        miscRegTranslateIFSR32_EL2,
-        miscRegTranslateTEEHBR32_EL1,
-        miscRegTranslateSDER32_EL3,
-        miscRegTranslateMax
-    };
-
     class ISA : public SimObject
     {
       protected:
         // Parent system
         ArmSystem *system;
+
+        // Micro Architecture
+        const Enums::DecoderFlavour _decoderFlavour;
 
         /** Dummy device for to handle non-existing ISA devices */
         DummyISADevice dummyDevice;
@@ -142,6 +79,7 @@ namespace ArmISA
         std::unique_ptr<BaseISADevice> timer;
 
         // Cached copies of system-level properties
+        bool highestELIs64;
         bool haveSecurity;
         bool haveLPAE;
         bool haveVirtualization;
@@ -160,8 +98,7 @@ namespace ArmISA
         };
 
         /** Register table noting all translations */
-        static const struct MiscRegInitializerEntry
-                            MiscRegSwitch[miscRegTranslateMax];
+        static const struct MiscRegInitializerEntry MiscRegSwitch[];
 
         /** Translation table accessible via the value of the register */
         std::vector<struct MiscRegLUTEntry> lookUpMiscReg;
@@ -257,9 +194,8 @@ namespace ArmISA
                 switch (el) {
                   case EL3:
                     return INTREG_SP3;
-                  // @todo: uncomment this to enable Virtualization
-                  // case EL2:
-                  //   return INTREG_SP2;
+                  case EL2:
+                    return INTREG_SP2;
                   case EL1:
                     return INTREG_SP1;
                   case EL0:
@@ -393,7 +329,7 @@ namespace ArmISA
                 }
             } else {
                 if (miscRegInfo[reg][MISCREG_BANKED]) {
-                    bool secureReg = haveSecurity &&
+                    bool secureReg = haveSecurity && !highestELIs64 &&
                                      inSecureState(miscRegs[MISCREG_SCR],
                                                    miscRegs[MISCREG_CPSR]);
                     flat_idx += secureReg ? 2 : 1;
@@ -402,11 +338,33 @@ namespace ArmISA
             return flat_idx;
         }
 
+        std::pair<int,int> getMiscIndices(int misc_reg) const
+        {
+            // Note: indexes of AArch64 registers are left unchanged
+            int flat_idx = flattenMiscIndex(misc_reg);
+
+            if (lookUpMiscReg[flat_idx].lower == 0) {
+                return std::make_pair(flat_idx, 0);
+            }
+
+            // do additional S/NS flattenings if mapped to NS while in S
+            bool S = haveSecurity && !highestELIs64 &&
+                     inSecureState(miscRegs[MISCREG_SCR],
+                                   miscRegs[MISCREG_CPSR]);
+            int lower = lookUpMiscReg[flat_idx].lower;
+            int upper = lookUpMiscReg[flat_idx].upper;
+            // upper == 0, which is CPSR, is not MISCREG_BANKED_CHILD (no-op)
+            lower += S && miscRegInfo[lower][MISCREG_BANKED_CHILD];
+            upper += S && miscRegInfo[upper][MISCREG_BANKED_CHILD];
+            return std::make_pair(lower, upper);
+        }
+
         void serialize(CheckpointOut &cp) const
         {
             DPRINTF(Checkpoint, "Serializing Arm Misc Registers\n");
             SERIALIZE_ARRAY(miscRegs, NumMiscRegs);
 
+            SERIALIZE_SCALAR(highestELIs64);
             SERIALIZE_SCALAR(haveSecurity);
             SERIALIZE_SCALAR(haveLPAE);
             SERIALIZE_SCALAR(haveVirtualization);
@@ -420,6 +378,7 @@ namespace ArmISA
             CPSR tmp_cpsr = miscRegs[MISCREG_CPSR];
             updateRegMap(tmp_cpsr);
 
+            UNSERIALIZE_SCALAR(highestELIs64);
             UNSERIALIZE_SCALAR(haveSecurity);
             UNSERIALIZE_SCALAR(haveLPAE);
             UNSERIALIZE_SCALAR(haveVirtualization);
@@ -428,6 +387,8 @@ namespace ArmISA
         }
 
         void startup(ThreadContext *tc) {}
+
+        Enums::DecoderFlavour decoderFlavour() const { return _decoderFlavour; }
 
         /// Explicitly import the otherwise hidden startup
         using SimObject::startup;

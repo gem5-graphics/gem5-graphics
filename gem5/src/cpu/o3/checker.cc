@@ -40,8 +40,9 @@
  * Authors: Kevin Lim
  */
 
-#include "cpu/checker/cpu_impl.hh"
 #include "cpu/o3/checker.hh"
+
+#include "cpu/checker/cpu_impl.hh"
 #include "params/O3Checker.hh"
 
 class MemObject;
@@ -86,7 +87,6 @@ O3CheckerParams::create()
     params->system = system;
     params->cpu_id = cpu_id;
     params->profile = profile;
-    params->interrupts = NULL;
     params->workload = workload;
 
     O3Checker *cpu = new O3Checker(params);

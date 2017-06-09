@@ -31,9 +31,9 @@
 #define __MEM_RUBY_STRUCTURES_CACHEMEMORY_HH__
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 
-#include "base/hashmap.hh"
 #include "base/statistics.hh"
 #include "mem/protocol/CacheRequestType.hh"
 #include "mem/protocol/CacheResourceType.hh"
@@ -106,6 +106,9 @@ class CacheMemory : public SimObject
 
     // Set this address to most recently used
     void setMRU(Addr address);
+    void setMRU(Addr addr, int occupancy);
+    int getReplacementWeight(int64_t set, int64_t loc);
+    void setMRU(const AbstractCacheEntry *e);
 
     // Functions for locking and unlocking cache lines corresponding to the
     // provided address.  These are required for supporting atomic memory
@@ -146,6 +149,7 @@ class CacheMemory : public SimObject
     Stats::Scalar numDataArrayStalls;
 
     int getCacheSize() const { return m_cache_size; }
+    int getCacheAssoc() const { return m_cache_assoc; }
     int getNumBlocks() const { return m_cache_num_sets * m_cache_assoc; }
     Addr getAddressAtIdx(int idx) const;
 
@@ -168,7 +172,7 @@ class CacheMemory : public SimObject
 
     // The first index is the # of cache lines.
     // The second index is the the amount associativity.
-    m5::hash_map<Addr, int> m_tag_index;
+    std::unordered_map<Addr, int> m_tag_index;
     std::vector<std::vector<AbstractCacheEntry*> > m_cache;
 
     AbstractReplacementPolicy *m_replacementPolicy_ptr;
@@ -182,6 +186,7 @@ class CacheMemory : public SimObject
     int m_cache_assoc;
     int m_start_index_bit;
     bool m_resource_stalls;
+    int m_block_size;
 };
 
 std::ostream& operator<<(std::ostream& out, const CacheMemory& obj);

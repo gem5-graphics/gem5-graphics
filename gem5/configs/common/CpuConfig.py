@@ -38,26 +38,10 @@
 import m5.objects
 import inspect
 import sys
-from textwrap import  TextWrapper
+from textwrap import TextWrapper
 
 # Dictionary of mapping names of real CPU models to classes.
 _cpu_classes = {}
-
-# CPU aliases. The CPUs listed here might not be compiled, we make
-# sure they exist before we add them to the CPU list. A target may be
-# specified as a tuple, in which case the first available CPU model in
-# the tuple will be used as the target.
-_cpu_aliases_all = [
-    ("timing", "TimingSimpleCPU"),
-    ("atomic", "AtomicSimpleCPU"),
-    ("minor", "MinorCPU"),
-    ("detailed", "DerivO3CPU"),
-    ("kvm", ("ArmKvmCPU", "ArmV8KvmCPU", "X86KvmCPU")),
-    ]
-
-# Filtered list of aliases. Only aliases for existing CPUs exist in
-# this list.
-_cpu_aliases = {}
 
 
 def is_cpu_class(cls):
@@ -69,16 +53,14 @@ def is_cpu_class(cls):
         return issubclass(cls, m5.objects.BaseCPU) and \
             not cls.abstract and \
             not issubclass(cls, m5.objects.CheckerCPU)
-    except TypeError:
+    except (TypeError, AttributeError):
         return False
 
 def get(name):
     """Get a CPU class from a user provided class name or alias."""
 
-    real_name = _cpu_aliases.get(name, name)
-
     try:
-        cpu_class = _cpu_classes[real_name]
+        cpu_class = _cpu_classes[name]
         return cpu_class
     except KeyError:
         print "%s is not a valid CPU model." % (name,)
@@ -99,35 +81,56 @@ def print_cpu_list():
             for line in doc_wrapper.wrap(doc):
                 print line
 
-    if _cpu_aliases:
-        print "\nCPU aliases:"
-        for alias, target in _cpu_aliases.items():
-            print "\t%s => %s" % (alias, target)
-
 def cpu_names():
     """Return a list of valid CPU names."""
-    return _cpu_classes.keys() + _cpu_aliases.keys()
+    return _cpu_classes.keys()
+
+def config_etrace(cpu_cls, cpu_list, options):
+    if issubclass(cpu_cls, m5.objects.DerivO3CPU):
+        # Assign the same file name to all cpus for now. This must be
+        # revisited when creating elastic traces for multi processor systems.
+        for cpu in cpu_list:
+            # Attach the elastic trace probe listener. Set the protobuf trace
+            # file names. Set the dependency window size equal to the cpu it
+            # is attached to.
+            cpu.traceListener = m5.objects.ElasticTrace(
+                                instFetchTraceFile = options.inst_trace_file,
+                                dataDepTraceFile = options.data_trace_file,
+                                depWindowSize = 3 * cpu.numROBEntries)
+            # Make the number of entries in the ROB, LQ and SQ very
+            # large so that there are no stalls due to resource
+            # limitation as such stalls will get captured in the trace
+            # as compute delay. For replay, ROB, LQ and SQ sizes are
+            # modelled in the Trace CPU.
+            cpu.numROBEntries = 512;
+            cpu.LQEntries = 128;
+            cpu.SQEntries = 128;
+    else:
+        fatal("%s does not support data dependency tracing. Use a CPU model of"
+              " type or inherited from DerivO3CPU.", cpu_cls)
 
 # The ARM detailed CPU is special in the sense that it doesn't exist
 # in the normal object hierarchy, so we have to add it manually.
 try:
     from O3_ARM_v7a import O3_ARM_v7a_3
-    _cpu_classes["arm_detailed"] = O3_ARM_v7a_3
+    _cpu_classes["O3_ARM_v7a_3"] = O3_ARM_v7a_3
 except:
     pass
+
+# The calibrated ex5-model cores
+try:
+    from ex5_LITTLE import ex5_LITTLE
+    _cpu_classes["ex5_LITTLE"] = ex5_LITTLE
+except:
+     pass
+
+try:
+    from ex5_big import ex5_big
+    _cpu_classes["ex5_big"] = ex5_big
+except:
+     pass
+
 
 # Add all CPUs in the object hierarchy.
 for name, cls in inspect.getmembers(m5.objects, is_cpu_class):
     _cpu_classes[name] = cls
-
-for alias, target in _cpu_aliases_all:
-    if isinstance(target, tuple):
-        # Some aliases contain a list of CPU model sorted in priority
-        # order. Use the first target that's available.
-        for t in target:
-            if t in _cpu_classes:
-                _cpu_aliases[alias] = t
-                break
-    elif target in _cpu_classes:
-        # Normal alias
-        _cpu_aliases[alias] = target

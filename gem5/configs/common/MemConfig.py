@@ -39,6 +39,7 @@
 import m5.objects
 import inspect
 import sys
+import HMC
 from textwrap import  TextWrapper
 
 # Dictionary of mapping names of real memory controller models to
@@ -151,9 +152,18 @@ def config_mem(options, system):
     them.
     """
 
+    if ( options.mem_type == "HMC_2500_1x32"):
+        HMChost = HMC.config_host_hmc(options, system)
+        HMC.config_hmc(options, system, HMChost.hmc_host)
+        subsystem = system.hmc_dev
+        xbar = system.hmc_dev.xbar
+    else:
+        subsystem = system
+        xbar = system.membus
+
     if options.tlm_memory:
         system.external_memory = m5.objects.ExternalSlave(
-            port_type="tlm",
+            port_type="tlm_slave",
             port_data=options.tlm_memory,
             port=system.membus.master,
             addr_ranges=system.mem_ranges)
@@ -161,11 +171,11 @@ def config_mem(options, system):
         return
 
     if options.external_memory_system:
-        system.external_memory = m5.objects.ExternalSlave(
+        subsystem.external_memory = m5.objects.ExternalSlave(
             port_type=options.external_memory_system,
-            port_data="init_mem0", port=system.membus.master,
+            port_data="init_mem0", port=xbar.master,
             addr_ranges=system.mem_ranges)
-        system.kernel_addr_check = False
+        subsystem.kernel_addr_check = False
         return
 
     nbr_mem_ctrls = options.mem_channels
@@ -177,6 +187,11 @@ def config_mem(options, system):
 
     cls = get(options.mem_type)
     mem_ctrls = []
+
+    if options.elastic_trace_en and not issubclass(cls, \
+                                                    m5.objects.SimpleMemory):
+        fatal("When elastic trace is enabled, configure mem-type as "
+                "simple-mem.")
 
     # The default behaviour is to interleave memory channels on 128
     # byte granularity, or cache line granularity if larger than 128
@@ -197,10 +212,18 @@ def config_mem(options, system):
                     options.mem_ranks:
                 mem_ctrl.ranks_per_channel = options.mem_ranks
 
+            if options.elastic_trace_en:
+                mem_ctrl.latency = '1ns'
+                print "For elastic trace, over-riding Simple Memory " \
+                    "latency to 1ns."
+
             mem_ctrls.append(mem_ctrl)
 
-    system.mem_ctrls = mem_ctrls
+    subsystem.mem_ctrls = mem_ctrls
 
     # Connect the controllers to the membus
-    for i in xrange(len(system.mem_ctrls)):
-        system.mem_ctrls[i].port = system.membus.master
+    for i in xrange(len(subsystem.mem_ctrls)):
+        if (options.mem_type == "HMC_2500_1x32"):
+            subsystem.mem_ctrls[i].port = xbar[i/4].master
+        else:
+            subsystem.mem_ctrls[i].port = xbar.master

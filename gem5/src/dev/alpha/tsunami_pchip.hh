@@ -36,17 +36,15 @@
 #define __TSUNAMI_PCHIP_HH__
 
 #include "dev/alpha/tsunami.hh"
-#include "dev/io_device.hh"
+#include "dev/pci/host.hh"
 #include "params/TsunamiPChip.hh"
 
 /**
  * A very simple implementation of the Tsunami PCI interface chips.
  */
-class TsunamiPChip : public BasicPioDevice
+class TsunamiPChip : public GenericPciHost
 {
   protected:
-
-    static const Addr TsunamiPciBus0Config = ULL(0x801fe000000);
 
     /** Pchip control register */
     uint64_t pctl;
@@ -74,23 +72,27 @@ class TsunamiPChip : public BasicPioDevice
         return dynamic_cast<const Params *>(_params);
     }
 
+
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
+
+  public:
+    Tick read(PacketPtr pkt) override;
+    Tick write(PacketPtr pkt) override;
+
+    AddrRangeList getAddrRanges() const override;
+
     /**
      * Translate a PCI bus address to a memory address for DMA.
      * @todo Andrew says this needs to be fixed. What's wrong with it?
-     * @param busAddr PCI address to translate.
+     * @param pci_addr PCI address to translate.
      * @return memory system address
      */
-    Addr translatePciToDma(Addr busAddr);
+    Addr dmaAddr(const PciBusAddr &addr, Addr pci_addr) const override;
 
-    Addr calcConfigAddr(int bus, int dev, int func);
-    Addr calcIOAddr(Addr addr);
-    Addr calcMemAddr(Addr addr);
-
-    virtual Tick read(PacketPtr pkt);
-    virtual Tick write(PacketPtr pkt);
-
-    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
-    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
+  protected:
+    const AddrRange pioRange;
+    const Tick pioDelay;
 };
 
 #endif // __TSUNAMI_PCHIP_HH__

@@ -42,13 +42,14 @@
  *          Andreas Hansson
  */
 
+#include "mem/abstract_mem.hh"
+
 #include <vector>
 
 #include "cpu/base.hh"
 #include "cpu/thread_context.hh"
 #include "debug/LLSC.hh"
 #include "debug/MemoryAccess.hh"
-#include "mem/abstract_mem.hh"
 #include "mem/packet_access.hh"
 #include "sim/system.hh"
 
@@ -57,7 +58,7 @@ using namespace std;
 AbstractMemory::AbstractMemory(const Params *p) :
     MemObject(p), range(params()->range), pmemAddr(NULL),
     confTableReported(p->conf_table_reported), inAddrMap(p->in_addr_map),
-    _system(NULL)
+    kvmMap(p->kvm_map), _system(NULL)
 {
 }
 
@@ -79,6 +80,8 @@ AbstractMemory::setBackingStore(uint8_t* pmem_addr)
 void
 AbstractMemory::regStats()
 {
+    MemObject::regStats();
+
     using namespace Stats;
 
     assert(system());
@@ -274,7 +277,8 @@ AbstractMemory::checkLockedAddrList(PacketPtr pkt)
                 // architecture specifies that an event is
                 // automatically generated when clearing the exclusive
                 // monitor to wake up the processor in WFE.
-                system()->getThreadContext(i->contextId)->getCpuPtr()->wakeup();
+                ThreadContext* ctx = system()->getThreadContext(i->contextId);
+                ctx->getCpuPtr()->wakeup(ctx->threadId());
                 i = lockedAddrList.erase(i);
             } else {
                 i++;
@@ -322,13 +326,13 @@ AbstractMemory::checkLockedAddrList(PacketPtr pkt)
 void
 AbstractMemory::access(PacketPtr pkt)
 {
-    if (pkt->memInhibitAsserted()) {
-        DPRINTF(MemoryAccess, "mem inhibited on 0x%x: not responding\n",
+    if (pkt->cacheResponding()) {
+        DPRINTF(MemoryAccess, "Cache responding to %#llx: not responding\n",
                 pkt->getAddr());
         return;
     }
 
-    if (pkt->cmd == MemCmd::CleanEvict) {
+    if (pkt->cmd == MemCmd::CleanEvict || pkt->cmd == MemCmd::WritebackClean) {
         DPRINTF(MemoryAccess, "CleanEvict  on 0x%x: not responding\n",
                 pkt->getAddr());
       return;
@@ -340,39 +344,46 @@ AbstractMemory::access(PacketPtr pkt)
     uint8_t *hostAddr = pmemAddr + pkt->getAddr() - range.start();
 
     if (pkt->cmd == MemCmd::SwapReq) {
-        std::vector<uint8_t> overwrite_val(pkt->getSize());
-        uint64_t condition_val64;
-        uint32_t condition_val32;
+        if (pkt->isAtomicOp()) {
+            if (pmemAddr) {
+                memcpy(pkt->getPtr<uint8_t>(), hostAddr, pkt->getSize());
+                (*(pkt->getAtomicOp()))(hostAddr);
+            }
+        } else {
+            std::vector<uint8_t> overwrite_val(pkt->getSize());
+            uint64_t condition_val64;
+            uint32_t condition_val32;
 
-        if (!pmemAddr)
-            panic("Swap only works if there is real memory (i.e. null=False)");
+            if (!pmemAddr)
+                panic("Swap only works if there is real memory (i.e. null=False)");
 
-        bool overwrite_mem = true;
-        // keep a copy of our possible write value, and copy what is at the
-        // memory address into the packet
-        std::memcpy(&overwrite_val[0], pkt->getConstPtr<uint8_t>(),
-                    pkt->getSize());
-        std::memcpy(pkt->getPtr<uint8_t>(), hostAddr, pkt->getSize());
+            bool overwrite_mem = true;
+            // keep a copy of our possible write value, and copy what is at the
+            // memory address into the packet
+            std::memcpy(&overwrite_val[0], pkt->getConstPtr<uint8_t>(),
+                        pkt->getSize());
+            std::memcpy(pkt->getPtr<uint8_t>(), hostAddr, pkt->getSize());
 
-        if (pkt->req->isCondSwap()) {
-            if (pkt->getSize() == sizeof(uint64_t)) {
-                condition_val64 = pkt->req->getExtraData();
-                overwrite_mem = !std::memcmp(&condition_val64, hostAddr,
-                                             sizeof(uint64_t));
-            } else if (pkt->getSize() == sizeof(uint32_t)) {
-                condition_val32 = (uint32_t)pkt->req->getExtraData();
-                overwrite_mem = !std::memcmp(&condition_val32, hostAddr,
-                                             sizeof(uint32_t));
-            } else
-                panic("Invalid size for conditional read/write\n");
+            if (pkt->req->isCondSwap()) {
+                if (pkt->getSize() == sizeof(uint64_t)) {
+                    condition_val64 = pkt->req->getExtraData();
+                    overwrite_mem = !std::memcmp(&condition_val64, hostAddr,
+                                                 sizeof(uint64_t));
+                } else if (pkt->getSize() == sizeof(uint32_t)) {
+                    condition_val32 = (uint32_t)pkt->req->getExtraData();
+                    overwrite_mem = !std::memcmp(&condition_val32, hostAddr,
+                                                 sizeof(uint32_t));
+                } else
+                    panic("Invalid size for conditional read/write\n");
+            }
+
+            if (overwrite_mem)
+                std::memcpy(hostAddr, &overwrite_val[0], pkt->getSize());
+
+            assert(!pkt->req->isInstFetch());
+            TRACE_PACKET("Read/Write");
+            numOther[pkt->req->masterId()]++;
         }
-
-        if (overwrite_mem)
-            std::memcpy(hostAddr, &overwrite_val[0], pkt->getSize());
-
-        assert(!pkt->req->isInstFetch());
-        TRACE_PACKET("Read/Write");
-        numOther[pkt->req->masterId()]++;
     } else if (pkt->isRead()) {
         assert(!pkt->isWrite());
         if (pkt->isLLSC()) {
@@ -396,7 +407,7 @@ AbstractMemory::access(PacketPtr pkt)
         if (writeOK(pkt)) {
             if (pmemAddr) {
                 memcpy(hostAddr, pkt->getConstPtr<uint8_t>(), pkt->getSize());
-                DPRINTF(MemoryAccess, "%s wrote %x bytes to address %x\n",
+                DPRINTF(MemoryAccess, "%s wrote %i bytes to address %x\n",
                         __func__, pkt->getSize(), pkt->getAddr());
             }
             assert(!pkt->req->isInstFetch());

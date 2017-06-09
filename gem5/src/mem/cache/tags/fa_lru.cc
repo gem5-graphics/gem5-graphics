@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 ARM Limited
+ * Copyright (c) 2013,2016 ARM Limited
  * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
@@ -45,12 +45,13 @@
  * Definitions a fully associative LRU tagstore.
  */
 
+#include "mem/cache/tags/fa_lru.hh"
+
 #include <cassert>
 #include <sstream>
 
 #include "base/intmath.hh"
 #include "base/misc.hh"
-#include "mem/cache/tags/fa_lru.hh"
 
 using namespace std;
 
@@ -67,7 +68,7 @@ FALRU::FALRU(const Params *p)
     numCaches = floorLog2(size) - 17;
     if (numCaches >0){
         cacheBoundaries = new FALRUBlk *[numCaches];
-        cacheMask = (1 << numCaches) - 1;
+        cacheMask = (ULL(1) << numCaches) - 1;
     } else {
         cacheMask = 0;
     }
@@ -79,12 +80,12 @@ FALRU::FALRU(const Params *p)
     head = &(blks[0]);
     tail = &(blks[numBlocks-1]);
 
-    head->prev = NULL;
+    head->prev = nullptr;
     head->next = &(blks[1]);
     head->inCache = cacheMask;
 
     tail->prev = &(blks[numBlocks-2]);
-    tail->next = NULL;
+    tail->next = nullptr;
     tail->inCache = 0;
 
     unsigned index = (1 << 17) / blkSize;
@@ -159,7 +160,7 @@ FALRU::hashLookup(Addr addr) const
     if (iter != tagHash.end()) {
         return (*iter).second;
     }
-    return NULL;
+    return nullptr;
 }
 
 void
@@ -170,14 +171,13 @@ FALRU::invalidate(CacheBlk *blk)
 }
 
 CacheBlk*
-FALRU::accessBlock(Addr addr, bool is_secure, Cycles &lat, int context_src)
+FALRU::accessBlock(Addr addr, bool is_secure, Cycles &lat)
 {
-    return accessBlock(addr, is_secure, lat, context_src, 0);
+    return accessBlock(addr, is_secure, lat, 0);
 }
 
 CacheBlk*
-FALRU::accessBlock(Addr addr, bool is_secure, Cycles &lat, int context_src,
-                   int *inCache)
+FALRU::accessBlock(Addr addr, bool is_secure, Cycles &lat, int *inCache)
 {
     accesses++;
     int tmp_in_cache = 0;
@@ -185,6 +185,16 @@ FALRU::accessBlock(Addr addr, bool is_secure, Cycles &lat, int context_src,
     FALRUBlk* blk = hashLookup(blkAddr);
 
     if (blk && blk->isValid()) {
+        // If a cache hit
+        lat = accessLatency;
+        // Check if the block to be accessed is available. If not,
+        // apply the accessLatency on top of block->whenReady.
+        if (blk->whenReady > curTick() &&
+            cache->ticksToCycles(blk->whenReady - curTick()) >
+            accessLatency) {
+            lat = cache->ticksToCycles(blk->whenReady - curTick()) +
+            accessLatency;
+        }
         assert(blk->tag == blkAddr);
         tmp_in_cache = blk->inCache;
         for (unsigned i = 0; i < numCaches; i++) {
@@ -199,7 +209,9 @@ FALRU::accessBlock(Addr addr, bool is_secure, Cycles &lat, int context_src,
             moveToHead(blk);
         }
     } else {
-        blk = NULL;
+        // If a cache miss
+        lat = lookupLatency;
+        blk = nullptr;
         for (unsigned i = 0; i <= numCaches; ++i) {
             misses[i]++;
         }
@@ -208,7 +220,6 @@ FALRU::accessBlock(Addr addr, bool is_secure, Cycles &lat, int context_src,
         *inCache = tmp_in_cache;
     }
 
-    lat = accessLatency;
     //assert(check());
     return blk;
 }
@@ -223,7 +234,7 @@ FALRU::findBlock(Addr addr, bool is_secure) const
     if (blk && blk->isValid()) {
         assert(blk->tag == blkAddr);
     } else {
-        blk = NULL;
+        blk = nullptr;
     }
     return blk;
 }
@@ -277,15 +288,15 @@ FALRU::moveToHead(FALRUBlk *blk)
     blk->inCache = cacheMask;
     if (blk != head) {
         if (blk == tail){
-            assert(blk->next == NULL);
+            assert(blk->next == nullptr);
             tail = blk->prev;
-            tail->next = NULL;
+            tail->next = nullptr;
         } else {
             blk->prev->next = blk->next;
             blk->next->prev = blk->prev;
         }
         blk->next = head;
-        blk->prev = NULL;
+        blk->prev = nullptr;
         head->prev = blk;
         head = blk;
     }

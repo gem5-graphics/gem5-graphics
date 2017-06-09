@@ -33,7 +33,6 @@
 #include <iomanip>
 #include <iostream>
 
-#include "base/hashmap.hh"
 #include "base/types.hh"
 
 const uint32_t ADDRESS_WIDTH = 64; // address width in bytes
@@ -47,5 +46,6 @@ Addr shiftLowOrderBits(Addr addr, unsigned int number);
 Addr getOffset(Addr addr);
 Addr makeLineAddress(Addr addr);
 Addr makeNextStrideAddress(Addr addr, int stride);
+std::string printAddress(Addr addr);
 
 #endif // __MEM_RUBY_COMMON_ADDRESS_HH__

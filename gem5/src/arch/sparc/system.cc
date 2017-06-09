@@ -29,6 +29,7 @@
  */
 
 #include "arch/sparc/system.hh"
+
 #include "arch/vtophys.hh"
 #include "base/loader/object_file.hh"
 #include "base/loader/symtab.hh"
@@ -115,7 +116,7 @@ SparcSystem::SparcSystem(Params *p)
 
     // Strip off the rom address so when the hypervisor is copied into memory we
     // have symbols still
-    if (!hypervisor->loadLocalSymbols(debugSymbolTable, 0xFFFFFF))
+    if (!hypervisor->loadLocalSymbols(debugSymbolTable, 0, 0, 0xFFFFFF))
         panic("could not load hypervisor symbols\n");
 
     if (!nvram->loadGlobalSymbols(debugSymbolTable))

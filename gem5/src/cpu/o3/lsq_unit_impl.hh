@@ -143,7 +143,8 @@ LSQUnit<Impl>::completeDataAccess(PacketPtr pkt)
 template <class Impl>
 LSQUnit<Impl>::LSQUnit()
     : loads(0), stores(0), storesToWB(0), cacheBlockMask(0), stalled(false),
-      isStoreBlocked(false), storeInFlight(false), hasPendingPkt(false)
+      isStoreBlocked(false), storeInFlight(false), hasPendingPkt(false),
+      pendingPkt(nullptr)
 {
 }
 
@@ -175,7 +176,7 @@ LSQUnit<Impl>::init(O3CPU *cpu_ptr, IEW *iew_ptr, DerivO3CPUParams *params,
 
     depCheckShift = params->LSQDepCheckShift;
     checkLoads = params->LSQCheckLoads;
-    cachePorts = params->cachePorts;
+    cacheStorePorts = params->cacheStorePorts;
     needsTSO = params->needsTSO;
 
     resetState();
@@ -192,7 +193,7 @@ LSQUnit<Impl>::resetState()
 
     storeHead = storeWBIdx = storeTail = 0;
 
-    usedPorts = 0;
+    usedStorePorts = 0;
 
     retryPkt = NULL;
     memDepViolator = NULL;
@@ -434,13 +435,14 @@ template <class Impl>
 void
 LSQUnit<Impl>::checkSnoop(PacketPtr pkt)
 {
+    // Should only ever get invalidations in here
+    assert(pkt->isInvalidate());
+
     int load_idx = loadHead;
     DPRINTF(LSQUnit, "Got snoop for address %#x\n", pkt->getAddr());
 
-    // Unlock the cpu-local monitor when the CPU sees a snoop to a locked
-    // address. The CPU can speculatively execute a LL operation after a pending
-    // SC operation in the pipeline and that can make the cache monitor the CPU
-    // is connected to valid while it really shouldn't be.
+    // Only Invalidate packet calls checkSnoop
+    assert(pkt->isInvalidate());
     for (int x = 0; x < cpu->numContexts(); x++) {
         ThreadContext *tc = cpu->getContext(x);
         bool no_squash = cpu->thread[x]->noSquashFromTC;
@@ -453,10 +455,13 @@ LSQUnit<Impl>::checkSnoop(PacketPtr pkt)
 
     DynInstPtr ld_inst = loadQueue[load_idx];
     if (ld_inst) {
-        Addr load_addr = ld_inst->physEffAddr & cacheBlockMask;
+        Addr load_addr_low = ld_inst->physEffAddrLow & cacheBlockMask;
+        Addr load_addr_high = ld_inst->physEffAddrHigh & cacheBlockMask;
+
         // Check that this snoop didn't just invalidate our lock flag
-        if (ld_inst->effAddrValid() && load_addr == invalidate_addr &&
-            ld_inst->memReqFlags & Request::LLSC)
+        if (ld_inst->effAddrValid() && (load_addr_low == invalidate_addr
+                                        || load_addr_high == invalidate_addr)
+            && ld_inst->memReqFlags & Request::LLSC)
             TheISA::handleLockedSnoopHit(ld_inst.get());
     }
 
@@ -476,11 +481,14 @@ LSQUnit<Impl>::checkSnoop(PacketPtr pkt)
             continue;
         }
 
-        Addr load_addr = ld_inst->physEffAddr & cacheBlockMask;
-        DPRINTF(LSQUnit, "-- inst [sn:%lli] load_addr: %#x to pktAddr:%#x\n",
-                    ld_inst->seqNum, load_addr, invalidate_addr);
+        Addr load_addr_low = ld_inst->physEffAddrLow & cacheBlockMask;
+        Addr load_addr_high = ld_inst->physEffAddrHigh & cacheBlockMask;
 
-        if (load_addr == invalidate_addr || force_squash) {
+        DPRINTF(LSQUnit, "-- inst [sn:%lli] load_addr: %#x to pktAddr:%#x\n",
+                    ld_inst->seqNum, load_addr_low, invalidate_addr);
+
+        if ((load_addr_low == invalidate_addr
+             || load_addr_high == invalidate_addr) || force_squash) {
             if (needsTSO) {
                 // If we have a TSO system, as all loads must be ordered with
                 // all other loads, this load as well as *all* subsequent loads
@@ -784,7 +792,7 @@ LSQUnit<Impl>::writebackStores()
            storeQueue[storeWBIdx].inst &&
            storeQueue[storeWBIdx].canWB &&
            ((!needsTSO) || (!storeInFlight)) &&
-           usedPorts < cachePorts) {
+           usedStorePorts < cacheStorePorts) {
 
         if (isStoreBlocked) {
             DPRINTF(LSQUnit, "Unable to write back any more stores, cache"
@@ -802,7 +810,7 @@ LSQUnit<Impl>::writebackStores()
             continue;
         }
 
-        ++usedPorts;
+        ++usedStorePorts;
 
         if (storeQueue[storeWBIdx].inst->isDataPrefetch()) {
             incrStIdx(storeWBIdx);
@@ -942,8 +950,8 @@ LSQUnit<Impl>::writebackStores()
                 assert(snd_data_pkt);
 
                 // Ensure there are enough ports to use.
-                if (usedPorts < cachePorts) {
-                    ++usedPorts;
+                if (usedStorePorts < cacheStorePorts) {
+                    ++usedStorePorts;
                     if (sendStore(snd_data_pkt)) {
                         storePostSend(snd_data_pkt);
                     } else {
@@ -967,7 +975,7 @@ LSQUnit<Impl>::writebackStores()
     }
 
     // Not sure this should set it to 0.
-    usedPorts = 0;
+    usedStorePorts = 0;
 
     assert(stores >= 0 && storesToWB >= 0);
 }

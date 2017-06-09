@@ -41,7 +41,7 @@ class ArmFreebsd32 : public FreeBSD
 
     /// This table maps the target open() flags to the corresponding
     /// host open() flags.
-    static OpenFlagTransTable openFlagTable[];
+    static SyscallFlagTransTable openFlagTable[];
 
     /// Number of entries in openFlagTable[].
     static const int NUM_OPEN_FLAGS;
@@ -74,6 +74,8 @@ class ArmFreebsd32 : public FreeBSD
     //@}
 
     /// For mmap().
+    static const unsigned TGT_MAP_SHARED    = 0x0001;
+    static const unsigned TGT_MAP_PRIVATE   = 0x0002;
     static const unsigned TGT_MAP_ANONYMOUS = 0x1000;
     static const unsigned TGT_MAP_FIXED     = 0x0010;
 
@@ -196,7 +198,7 @@ class ArmFreebsd64 : public FreeBSD
 
     /// This table maps the target open() flags to the corresponding
     /// host open() flags.
-    static OpenFlagTransTable openFlagTable[];
+    static SyscallFlagTransTable openFlagTable[];
 
     /// Number of entries in openFlagTable[].
     static const int NUM_OPEN_FLAGS;
@@ -229,6 +231,8 @@ class ArmFreebsd64 : public FreeBSD
     //@}
 
     /// For mmap().
+    static const unsigned TGT_MAP_SHARED    = 0x0001;
+    static const unsigned TGT_MAP_PRIVATE   = 0x0002;
     static const unsigned TGT_MAP_ANONYMOUS = 0x1000;
     static const unsigned TGT_MAP_FIXED     = 0x0010;
 

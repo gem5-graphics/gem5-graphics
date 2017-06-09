@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2012-2013 ARM Limited
+ * Copyright (c) 2010, 2012-2013, 2015-2016 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -43,6 +43,7 @@
 #ifndef __ARCH_ARM_SYSTEM_HH__
 #define __ARCH_ARM_SYSTEM_HH__
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -63,6 +64,9 @@ class ArmSystem : public System
      * functionality
      */
     Linux::DebugPrintkEvent *debugPrintkEvent;
+
+    /** Bootloaders */
+    std::vector<std::unique_ptr<ObjectFile>> bootLoaders;
 
     /**
      * Pointer to the bootloader object
@@ -111,6 +115,22 @@ class ArmSystem : public System
      * True if ASID is 16 bits in AArch64 (ARMv8)
      */
     const bool _haveLargeAsid64;
+
+    /**
+     * Range for memory-mapped m5 pseudo ops. The range will be
+     * invalid/empty if disabled.
+     */
+    const AddrRange _m5opRange;
+
+  protected:
+    /**
+     * Get a boot loader that matches the kernel.
+     *
+     * @param obj Kernel binary
+     * @return Pointer to boot loader ObjectFile or nullptr if there
+     *         is no matching boot loader.
+     */
+    ObjectFile *getBootLoader(ObjectFile *const obj);
 
   public:
     typedef ArmSystemParams Params;
@@ -170,9 +190,8 @@ class ArmSystem : public System
     {
         if (_haveSecurity)
             return EL3;
-        // @todo: uncomment this to enable Virtualization
-        // if (_haveVirtualization)
-        //     return EL2;
+        if (_haveVirtualization)
+            return EL2;
         return EL1;
     }
 
@@ -202,6 +221,12 @@ class ArmSystem : public System
     {
         return mask(physAddrRange());
     }
+
+    /**
+     * Range used by memory-mapped m5 pseudo-ops if enabled. Returns
+     * an invalid/empty range if disabled.
+     */
+    const AddrRange &m5opRange() const { return _m5opRange; }
 
     /** Returns true if the system of a specific thread context implements the
      * Security Extensions

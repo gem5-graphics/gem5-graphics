@@ -38,8 +38,9 @@
  *          Curtis Dunham
  */
 
-#include "base/output.hh"
 #include "cpu/simple/probes/simpoint.hh"
+
+#include "base/output.hh"
 
 SimPoint::SimPoint(const SimPointParams *p)
     : ProbeListenerObject(p),
@@ -126,13 +127,13 @@ SimPoint::profile(const std::pair<SimpleThread*, StaticInstPtr>& p)
             std::sort(counts.begin(), counts.end());
 
             // Print output BBV info
-            *simpointStream << "T";
+            *simpointStream->stream() << "T";
             for (auto cnt_itr = counts.begin(); cnt_itr != counts.end();
                     ++cnt_itr) {
-                *simpointStream << ":" << cnt_itr->first
+                *simpointStream->stream() << ":" << cnt_itr->first
                                 << ":" << cnt_itr->second << " ";
             }
-            *simpointStream << "\n";
+            *simpointStream->stream() << "\n";
 
             intervalDrift = (intervalCount + intervalDrift) - intervalSize;
             intervalCount = 0;

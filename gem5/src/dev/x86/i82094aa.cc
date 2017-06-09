@@ -28,11 +28,12 @@
  * Authors: Gabe Black
  */
 
+#include "dev/x86/i82094aa.hh"
+
 #include "arch/x86/interrupts.hh"
 #include "arch/x86/intmessage.hh"
 #include "cpu/base.hh"
 #include "debug/I82094AA.hh"
-#include "dev/x86/i82094aa.hh"
 #include "dev/x86/i8259.hh"
 #include "mem/packet.hh"
 #include "mem/packet_access.hh"
@@ -85,6 +86,15 @@ X86ISA::I82094AA::getIntAddrRange() const
                              x86InterruptAddress(initialApicId, 0) +
                              PhysAddrAPICRangeSize));
     return ranges;
+}
+
+Tick
+X86ISA::I82094AA::recvResponse(PacketPtr pkt)
+{
+    // Packet instantiated calling sendMessage() in signalInterrupt()
+    delete pkt->req;
+    delete pkt;
+    return 0;
 }
 
 Tick
@@ -215,7 +225,7 @@ X86ISA::I82094AA::signalInterrupt(int line)
         } else {
             for (int i = 0; i < numContexts; i++) {
                 Interrupts *localApic = sys->getThreadContext(i)->
-                    getCpuPtr()->getInterruptController();
+                    getCpuPtr()->getInterruptController(0);
                 if ((localApic->readReg(APIC_LOGICAL_DESTINATION) >> 24) &
                         message.destination) {
                     apics.push_back(localApic->getInitialApicId());

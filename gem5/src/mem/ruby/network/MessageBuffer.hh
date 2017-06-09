@@ -41,6 +41,7 @@
 #include <string>
 #include <vector>
 
+#include "base/trace.hh"
 #include "debug/RubyQueue.hh"
 #include "mem/ruby/common/Address.hh"
 #include "mem/ruby/common/Consumer.hh"
@@ -55,24 +56,24 @@ class MessageBuffer : public SimObject
     typedef MessageBufferParams Params;
     MessageBuffer(const Params *p);
 
-    void reanalyzeMessages(Addr addr);
-    void reanalyzeAllMessages();
-    void stallMessage(Addr addr);
+    void reanalyzeMessages(Addr addr, Tick current_time);
+    void reanalyzeAllMessages(Tick current_time);
+    void stallMessage(Addr addr, Tick current_time);
 
     // TRUE if head of queue timestamp <= SystemTime
-    bool isReady() const;
+    bool isReady(Tick current_time) const;
 
     void
-    delayHead()
+    delayHead(Tick current_time, Tick delta)
     {
         MsgPtr m = m_prio_heap.front();
         std::pop_heap(m_prio_heap.begin(), m_prio_heap.end(),
                       std::greater<MsgPtr>());
         m_prio_heap.pop_back();
-        enqueue(m, Cycles(1));
+        enqueue(m, current_time, delta);
     }
 
-    bool areNSlotsAvailable(unsigned int n);
+    bool areNSlotsAvailable(unsigned int n, Tick curTime);
     int getPriority() { return m_priority_rank; }
     void setPriority(int rank) { m_priority_rank = rank; }
     void setConsumer(Consumer* consumer)
@@ -86,20 +87,6 @@ class MessageBuffer : public SimObject
         m_consumer = consumer;
     }
 
-    void setSender(ClockedObject* obj)
-    {
-        DPRINTF(RubyQueue, "Setting sender: %s\n", obj->name());
-        assert(m_sender == NULL || m_sender == obj);
-        m_sender = obj;
-    }
-
-    void setReceiver(ClockedObject* obj)
-    {
-        DPRINTF(RubyQueue, "Setting receiver: %s\n", obj->name());
-        assert(m_receiver == NULL || m_receiver == obj);
-        m_receiver = obj;
-    }
-
     Consumer* getConsumer() { return m_consumer; }
 
     bool getOrdered() { return m_strict_fifo; }
@@ -108,26 +95,23 @@ class MessageBuffer : public SimObject
     //! message queue.  The function assumes that the queue is nonempty.
     const Message* peek() const;
 
-    const MsgPtr&
-    peekMsgPtr() const
-    {
-        assert(isReady());
-        return m_prio_heap.front();
-    }
+    const MsgPtr &peekMsgPtr() const { return m_prio_heap.front(); }
 
-    void enqueue(MsgPtr message) { enqueue(message, Cycles(1)); }
-    void enqueue(MsgPtr message, Cycles delta);
+    void enqueue(MsgPtr message, Tick curTime, Tick delta);
 
     //! Updates the delay cycles of the message at the head of the queue,
     //! removes it from the queue and returns its total delay.
-    Cycles dequeue();
+    Tick dequeue(Tick current_time, bool decrement_messages = true);
 
-    void recycle();
+    void registerDequeueCallback(std::function<void()> callback);
+    void unregisterDequeueCallback();
+
+    void recycle(Tick current_time, Tick recycle_latency);
     bool isEmpty() const { return m_prio_heap.size() == 0; }
     bool isStallMapEmpty() { return m_stall_msg_map.size() == 0; }
     unsigned int getStallMapSize() { return m_stall_msg_map.size(); }
 
-    unsigned int getSize();
+    unsigned int getSize(Tick curTime);
 
     void clear();
     void print(std::ostream& out) const;
@@ -136,10 +120,7 @@ class MessageBuffer : public SimObject
     void setIncomingLink(int link_id) { m_input_link_id = link_id; }
     void setVnet(int net) { m_vnet_id = net; }
 
-    // Function for figuring out if any of the messages in the buffer can
-    // satisfy the read request for the address in the packet.
-    // Return value, if true, indicates that the request was fulfilled.
-    bool functionalRead(Packet *pkt);
+    void regStats();
 
     // Function for figuring out if any of the messages in the buffer need
     // to be updated with the data from the packet.
@@ -148,42 +129,65 @@ class MessageBuffer : public SimObject
     uint32_t functionalWrite(Packet *pkt);
 
   private:
-    //added by SS
-    const Cycles m_recycle_latency;
-
     void reanalyzeList(std::list<MsgPtr> &, Tick);
 
   private:
     // Data Members (m_ prefix)
-    //! The two ends of the buffer.
-    ClockedObject* m_sender;
-    ClockedObject* m_receiver;
-
     //! Consumer to signal a wakeup(), can be NULL
     Consumer* m_consumer;
     std::vector<MsgPtr> m_prio_heap;
+
+    std::function<void()> m_dequeue_callback;
 
     // use a std::map for the stalled messages as this container is
     // sorted and ensures a well-defined iteration order
     typedef std::map<Addr, std::list<MsgPtr> > StallMsgMapType;
 
+    /**
+     * A map from line addresses to lists of stalled messages for that line.
+     * If this buffer allows the receiver to stall messages, on a stall
+     * request, the stalled message is removed from the m_prio_heap and placed
+     * in the m_stall_msg_map. Messages are held there until the receiver
+     * requests they be reanalyzed, at which point they are moved back to
+     * m_prio_heap.
+     *
+     * NOTE: The stall map holds messages in the order in which they were
+     * initially received, and when a line is unblocked, the messages are
+     * moved back to the m_prio_heap in the same order. This prevents starving
+     * older requests with younger ones.
+     */
     StallMsgMapType m_stall_msg_map;
 
+    /**
+     * Current size of the stall map.
+     * Track the number of messages held in stall map lists. This is used to
+     * ensure that if the buffer is finite-sized, it blocks further requests
+     * when the m_prio_heap and m_stall_msg_map contain m_max_size messages.
+     */
+    int m_stall_map_size;
+
+    /**
+     * The maximum capacity. For finite-sized buffers, m_max_size stores a
+     * number greater than 0 to indicate the maximum allowed number of messages
+     * in the buffer at any time. To get infinitely-sized buffers, set buffer
+     * size: m_max_size = 0
+     */
     const unsigned int m_max_size;
-    Cycles m_time_last_time_size_checked;
+
+    Tick m_time_last_time_size_checked;
     unsigned int m_size_last_time_size_checked;
 
     // variables used so enqueues appear to happen immediately, while
     // pop happen the next cycle
-    Cycles m_time_last_time_enqueue;
+    Tick m_time_last_time_enqueue;
     Tick m_time_last_time_pop;
     Tick m_last_arrival_time;
 
     unsigned int m_size_at_cycle_start;
     unsigned int m_msgs_this_cycle;
 
-    int m_not_avail_count;  // count the # of times I didn't have N
-                            // slots available
+    Stats::Scalar m_not_avail_count;  // count the # of times I didn't have N
+                                      // slots available
     uint64_t m_msg_counter;
     int m_priority_rank;
     const bool m_strict_fifo;
@@ -191,9 +195,14 @@ class MessageBuffer : public SimObject
 
     int m_input_link_id;
     int m_vnet_id;
+
+    Stats::Average m_buf_msgs;
+    Stats::Average m_stall_time;
+    Stats::Scalar m_stall_count;
+    Stats::Formula m_occupancy;
 };
 
-Cycles random_time();
+Tick random_time();
 
 inline std::ostream&
 operator<<(std::ostream& out, const MessageBuffer& obj)

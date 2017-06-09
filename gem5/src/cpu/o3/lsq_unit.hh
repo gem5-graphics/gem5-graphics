@@ -54,7 +54,6 @@
 #include "arch/isa_traits.hh"
 #include "arch/locked_mem.hh"
 #include "arch/mmapped_ipr.hh"
-#include "base/hashmap.hh"
 #include "config/the_isa.hh"
 #include "cpu/inst_seq.hh"
 #include "cpu/timebuf.hh"
@@ -114,7 +113,7 @@ class LSQUnit {
      * @todo: Move the number of used ports up to the LSQ level so it can
      * be shared by all LSQ units.
      */
-    void tick() { usedPorts = 0; }
+    void tick() { usedStorePorts = 0; }
 
     /** Inserts an instruction. */
     void insert(DynInstPtr &inst);
@@ -430,11 +429,11 @@ class LSQUnit {
     int storeTail;
 
     /// @todo Consider moving to a more advanced model with write vs read ports
-    /** The number of cache ports available each cycle. */
-    int cachePorts;
+    /** The number of cache ports available each cycle (stores only). */
+    int cacheStorePorts;
 
-    /** The number of used cache ports in this cycle. */
-    int usedPorts;
+    /** The number of used cache ports in this cycle by stores. */
+    int usedStorePorts;
 
     //list<InstSeqNum> mshrSeqNums;
 
@@ -512,7 +511,7 @@ class LSQUnit {
   public:
     /** Executes the load at the given index. */
     Fault read(Request *req, Request *sreqLow, Request *sreqHigh,
-               uint8_t *data, int load_idx);
+               int load_idx);
 
     /** Executes the store at the given index. */
     Fault write(Request *req, Request *sreqLow, Request *sreqHigh,
@@ -551,7 +550,7 @@ class LSQUnit {
 template <class Impl>
 Fault
 LSQUnit<Impl>::read(Request *req, Request *sreqLow, Request *sreqHigh,
-                    uint8_t *data, int load_idx)
+                    int load_idx)
 {
     DynInstPtr load_inst = loadQueue[load_idx];
 
@@ -672,16 +671,11 @@ LSQUnit<Impl>::read(Request *req, Request *sreqLow, Request *sreqHigh,
             (req->getVaddr() + req->getSize()) >
             storeQueue[store_idx].inst->effAddr;
 
-        // If the store's data has all of the data needed, we can forward.
-        if ((store_has_lower_limit && store_has_upper_limit)) {
+        // If the store's data has all of the data needed and the load isn't
+        // LLSC, we can forward.
+        if (store_has_lower_limit && store_has_upper_limit && !req->isLLSC()) {
             // Get shift amount for offset into the store's data.
             int shift_amt = req->getVaddr() - storeQueue[store_idx].inst->effAddr;
-
-            if (storeQueue[store_idx].isAllZeros)
-                memset(data, 0, req->getSize());
-            else
-                memcpy(data, storeQueue[store_idx].data + shift_amt,
-                   req->getSize());
 
             // Allocate memory if this is the first time a load is issued.
             if (!load_inst->memData) {
@@ -714,11 +708,18 @@ LSQUnit<Impl>::read(Request *req, Request *sreqLow, Request *sreqHigh,
 
             ++lsqForwLoads;
             return NoFault;
-        } else if ((store_has_lower_limit && lower_load_has_store_part) ||
-                   (store_has_upper_limit && upper_load_has_store_part) ||
-                   (lower_load_has_store_part && upper_load_has_store_part)) {
+        } else if (
+                (!req->isLLSC() &&
+                 ((store_has_lower_limit && lower_load_has_store_part) ||
+                  (store_has_upper_limit && upper_load_has_store_part) ||
+                  (lower_load_has_store_part && upper_load_has_store_part))) ||
+                (req->isLLSC() &&
+                 ((store_has_lower_limit || upper_load_has_store_part) &&
+                  (store_has_upper_limit || lower_load_has_store_part)))) {
             // This is the partial store-load forwarding case where a store
-            // has only part of the load's data.
+            // has only part of the load's data and the load isn't LLSC or
+            // the load is LLSC and the store has all or part of the load's
+            // data
 
             // If it's already been written back, then don't worry about
             // stalling on it.
@@ -772,8 +773,6 @@ LSQUnit<Impl>::read(Request *req, Request *sreqLow, Request *sreqHigh,
         load_inst->memData = new uint8_t[req->getSize()];
     }
 
-    ++usedPorts;
-
     // if we the cache is not blocked, do cache access
     bool completedFirst = false;
     PacketPtr data_pkt = Packet::createRead(req);
@@ -807,6 +806,11 @@ LSQUnit<Impl>::read(Request *req, Request *sreqLow, Request *sreqHigh,
         state->mainPkt = data_pkt;
     }
 
+    // For now, load throughput is constrained by the number of
+    // load FUs only, and loads do not consume a cache port (only
+    // stores do).
+    // @todo We should account for cache port contention
+    // and arbitrate between loads and stores.
     bool successful_load = true;
     if (!dcachePort->sendTimingReq(fst_data_pkt)) {
         successful_load = false;
@@ -818,7 +822,8 @@ LSQUnit<Impl>::read(Request *req, Request *sreqLow, Request *sreqHigh,
         // load will be squashed, so indicate this to the state object.
         // The first packet will return in completeDataAccess and be
         // handled there.
-        ++usedPorts;
+        // @todo We should also account for cache port contention
+        // here.
         if (!dcachePort->sendTimingReq(snd_data_pkt)) {
             // The main packet will be deleted in completeDataAccess.
             state->complete();

@@ -30,8 +30,8 @@
 #define __MEM_RUBY_STRUCTURES_TBETABLE_HH__
 
 #include <iostream>
+#include <unordered_map>
 
-#include "base/hashmap.hh"
 #include "mem/ruby/common/Address.hh"
 
 template<class ENTRY>
@@ -47,12 +47,12 @@ class TBETable
     void allocate(Addr address);
     void deallocate(Addr address);
     bool
-    areNSlotsAvailable(int n) const
+    areNSlotsAvailable(int n, Tick current_time) const
     {
         return (m_number_of_TBEs - m_map.size()) >= n;
     }
 
-    ENTRY* lookup(Addr address);
+    ENTRY *lookup(Addr address);
 
     // Print cache contents
     void print(std::ostream& out) const;
@@ -63,7 +63,7 @@ class TBETable
     TBETable& operator=(const TBETable& obj);
 
     // Data Members (m_prefix)
-    m5::hash_map<Addr, ENTRY> m_map;
+    std::unordered_map<Addr, ENTRY> m_map;
 
   private:
     int m_number_of_TBEs;
@@ -110,7 +110,7 @@ template<class ENTRY>
 inline ENTRY*
 TBETable<ENTRY>::lookup(Addr address)
 {
-  if(m_map.find(address) != m_map.end()) return &(m_map.find(address)->second);
+  if (m_map.find(address) != m_map.end()) return &(m_map.find(address)->second);
   return NULL;
 }
 

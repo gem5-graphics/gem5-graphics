@@ -36,16 +36,15 @@
 #include <string>
 #include <vector>
 
+#include "mem/page_table.hh"
 #include "sim/process.hh"
 
-class LiveProcess;
 class ObjectFile;
-class System;
 
-class PowerLiveProcess : public LiveProcess
+class PowerProcess : public Process
 {
   protected:
-    PowerLiveProcess(LiveProcessParams * params, ObjectFile *objFile);
+    PowerProcess(ProcessParams * params, ObjectFile *objFile);
 
     void initState();
 
@@ -53,7 +52,7 @@ class PowerLiveProcess : public LiveProcess
     void argsInit(int intSize, int pageSize);
     PowerISA::IntReg getSyscallArg(ThreadContext *tc, int &i);
     /// Explicitly import the otherwise hidden getSyscallArg
-    using LiveProcess::getSyscallArg;
+    using Process::getSyscallArg;
     void setSyscallArg(ThreadContext *tc, int i, PowerISA::IntReg val);
     void setSyscallReturn(ThreadContext *tc, SyscallReturn return_value);
 };

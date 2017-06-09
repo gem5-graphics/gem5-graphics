@@ -28,12 +28,14 @@
  * Authors: Nathan Binkert
  */
 
+#include "base/time.hh"
+
 #include <cstdlib>
 #include <ctime>
 #include <iostream>
 #include <sstream>
 
-#include "base/time.hh"
+#include "base/misc.hh"
 #include "config/use_posix_clock.hh"
 #include "sim/core.hh"
 #include "sim/serialize.hh"

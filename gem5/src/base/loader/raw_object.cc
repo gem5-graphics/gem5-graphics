@@ -29,6 +29,7 @@
  */
 
 #include "base/loader/raw_object.hh"
+
 #include "base/loader/symtab.hh"
 #include "base/trace.hh"
 #include "debug/Loader.hh"
@@ -62,21 +63,30 @@ RawObject::RawObject(const std::string &_filename, size_t _len,
 }
 
 bool
-RawObject::loadGlobalSymbols(SymbolTable *symtab, Addr addrMask)
+RawObject::loadAllSymbols(SymbolTable *symtab, Addr base, Addr offset,
+                          Addr addr_mask)
+{
+    return true;
+}
+
+bool
+RawObject::loadGlobalSymbols(SymbolTable *symtab, Addr base, Addr offset,
+                             Addr addr_mask)
 {
 /*    int fnameStart = filename.rfind('/',filename.size()) + 1;
     int extStart = filename.rfind('.',filename.size());
-    symtab->insert(text.baseAddr & addrMask, filename.substr(fnameStart,
+    symtab->insert(text.baseAddr & addr_mask, filename.substr(fnameStart,
                 extStart-fnameStart) + "_start");*/
     return true;
 }
 
 bool
-RawObject::loadLocalSymbols(SymbolTable *symtab, Addr addrMask)
+RawObject::loadLocalSymbols(SymbolTable *symtab, Addr base, Addr offset,
+                            Addr addr_mask)
 {
 /*    int fnameStart = filename.rfind('/',filename.size()) + 1;
     int extStart = filename.rfind('.',filename.size());
-    symtab->insert(text.baseAddr & addrMask, filename.substr(fnameStart,
+    symtab->insert(text.baseAddr & addr_mask, filename.substr(fnameStart,
                 extStart-fnameStart) + "_start");*/
     return true;
 }

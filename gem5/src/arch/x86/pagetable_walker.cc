@@ -49,10 +49,11 @@
  * Authors: Gabe Black
  */
 
+#include "arch/x86/pagetable_walker.hh"
+
 #include <memory>
 
 #include "arch/x86/pagetable.hh"
-#include "arch/x86/pagetable_walker.hh"
 #include "arch/x86/tlb.hh"
 #include "arch/x86/vtophys.hh"
 #include "base/bitfield.hh"
@@ -239,7 +240,7 @@ Walker::WalkerState::startWalk()
             nextState = Ready;
             if (write)
                 walker->port.sendAtomic(write);
-        } while(read);
+        } while (read);
         state = Ready;
         nextState = Waiting;
     }
@@ -263,7 +264,7 @@ Walker::WalkerState::startFunctional(Addr &addr, unsigned &logBytes)
         assert(fault == NoFault || read == NULL);
         state = nextState;
         nextState = Ready;
-    } while(read);
+    } while (read);
     logBytes = entry.logBytes;
     addr = entry.paddr;
 
@@ -625,7 +626,7 @@ Walker::WalkerState::recvPacket(PacketPtr pkt)
         nextState = Waiting;
         if (timingFault == NoFault) {
             /*
-             * Finish the translation. Now that we now the right entry is
+             * Finish the translation. Now that we know the right entry is
              * in the TLB, this should work with no memory accesses.
              * There could be new faults unrelated to the table walk like
              * permissions violations, so we'll need the return value as

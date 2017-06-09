@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013 ARM Limited
+ * Copyright (c) 2012-2013, 2015-2016 ARM Limited
  * Copyright (c) 2013 Cornell University
  * All rights reserved
  *
@@ -37,6 +37,8 @@
  *
  * Authors: Andreas Hansson
  *          Christopher Torng
+ *          Akash Bagdia
+ *          David Guillen Fandos
  */
 
 /**
@@ -47,8 +49,9 @@
 #ifndef __SIM_CLOCKED_OBJECT_HH__
 #define __SIM_CLOCKED_OBJECT_HH__
 
+#include "base/callback.hh"
 #include "base/intmath.hh"
-#include "base/misc.hh"
+#include "enums/PwrState.hh"
 #include "params/ClockedObject.hh"
 #include "sim/core.hh"
 #include "sim/clock_domain.hh"
@@ -212,6 +215,11 @@ class Clocked
         return clockDomain.clockPeriod();
     }
 
+    inline double voltage() const
+    {
+        return clockDomain.voltage();
+    }
+
     inline Cycles ticksToCycles(Tick t) const
     { return Cycles(divCeil(t, clockPeriod())); }
 
@@ -227,8 +235,55 @@ class ClockedObject
     : public SimObject, public Clocked
 {
   public:
-    ClockedObject(const ClockedObjectParams *p)
-        : SimObject(p), Clocked(*p->clk_domain) { }
+    ClockedObject(const ClockedObjectParams *p);
+
+    /** Parameters of ClockedObject */
+    typedef ClockedObjectParams Params;
+    const Params* params() const
+    { return reinterpret_cast<const Params*>(_params); }
+
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
+
+    inline Enums::PwrState pwrState() const
+    { return _currPwrState; }
+
+    inline std::string pwrStateName() const
+    { return Enums::PwrStateStrings[_currPwrState]; }
+
+    /** Returns the percentage residency for each power state */
+    std::vector<double> pwrStateWeights() const;
+
+    /**
+     * Record stats values like state residency by computing the time
+     * difference from previous update. Also, updates the previous evaluation
+     * tick once all stats are recorded.
+     * Usually called on power state change and stats dump callback.
+     */
+    void computeStats();
+
+    void pwrState(Enums::PwrState);
+    void regStats() override;
+
+  protected:
+
+    /** To keep track of the current power state */
+    Enums::PwrState _currPwrState;
+
+    Tick prvEvalTick;
+
+    Stats::Scalar numPwrStateTransitions;
+    Stats::Distribution pwrStateClkGateDist;
+    Stats::Vector pwrStateResidencyTicks;
+
+};
+
+class ClockedObjectDumpCallback : public Callback
+{
+    ClockedObject *co;
+  public:
+    ClockedObjectDumpCallback(ClockedObject *co_t) : co(co_t) {}
+    virtual void process() { co->computeStats(); };
 };
 
 #endif //__SIM_CLOCKED_OBJECT_HH__

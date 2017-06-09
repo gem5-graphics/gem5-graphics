@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2012-2014 ARM Limited
+ * Copyright (c) 2010, 2012-2014, 2016 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -45,9 +45,10 @@
  */
 
 #include "arch/arm/faults.hh"
+
+#include "arch/arm/insts/static_inst.hh"
 #include "arch/arm/system.hh"
 #include "arch/arm/utility.hh"
-#include "arch/arm/insts/static_inst.hh"
 #include "base/compiler.hh"
 #include "base/trace.hh"
 #include "cpu/base.hh"
@@ -338,11 +339,10 @@ ArmFault::getVector64(ThreadContext *tc)
         assert(ArmSystem::haveSecurity(tc));
         vbar = tc->readMiscReg(MISCREG_VBAR_EL3);
         break;
-      // @todo: uncomment this to enable Virtualization
-      // case EL2:
-      //   assert(ArmSystem::haveVirtualization(tc));
-      //   vbar = tc->readMiscReg(MISCREG_VBAR_EL2);
-      //   break;
+      case EL2:
+        assert(ArmSystem::haveVirtualization(tc));
+        vbar = tc->readMiscReg(MISCREG_VBAR_EL2);
+        break;
       case EL1:
         vbar = tc->readMiscReg(MISCREG_VBAR_EL1);
         break;
@@ -440,6 +440,8 @@ ArmFault::invoke(ThreadContext *tc, const StaticInstPtr &inst)
         // Determine target exception level
         if (ArmSystem::haveSecurity(tc) && routeToMonitor(tc))
             toEL = EL3;
+        else if (ArmSystem::haveVirtualization(tc) && routeToHyp(tc))
+            toEL = EL2;
         else
             toEL = opModeToEL(nextMode());
         if (fromEL > toEL)
@@ -596,12 +598,11 @@ ArmFault::invoke64(ThreadContext *tc, const StaticInstPtr &inst)
         elr_idx = MISCREG_ELR_EL1;
         spsr_idx = MISCREG_SPSR_EL1;
         break;
-      // @todo: uncomment this to enable Virtualization
-      // case EL2:
-      //   assert(ArmSystem::haveVirtualization());
-      //   elr_idx = MISCREG_ELR_EL2;
-      //   spsr_idx = MISCREG_SPSR_EL2;
-      //   break;
+      case EL2:
+        assert(ArmSystem::haveVirtualization(tc));
+        elr_idx = MISCREG_ELR_EL2;
+        spsr_idx = MISCREG_SPSR_EL2;
+        break;
       case EL3:
         assert(ArmSystem::haveSecurity(tc));
         elr_idx = MISCREG_ELR_EL3;
@@ -681,7 +682,7 @@ void
 Reset::invoke(ThreadContext *tc, const StaticInstPtr &inst)
 {
     if (FullSystem) {
-        tc->getCpuPtr()->clearInterrupts();
+        tc->getCpuPtr()->clearInterrupts(tc->threadId());
         tc->clearArchRegs();
     }
     if (!ArmSystem::highestELIs64(tc)) {
@@ -783,7 +784,8 @@ SupervisorCall::invoke(ThreadContext *tc, const StaticInstPtr &inst)
         callNum = tc->readIntReg(INTREG_X8);
     else
         callNum = tc->readIntReg(INTREG_R7);
-    tc->syscall(callNum);
+    Fault fault;
+    tc->syscall(callNum, &fault);
 
     // Advance the PC since that won't happen automatically.
     PCState pc = tc->pcState();
@@ -841,6 +843,12 @@ UndefinedInstruction::ec(ThreadContext *tc) const
 HypervisorCall::HypervisorCall(ExtMachInst _machInst, uint32_t _imm) :
         ArmFaultVals<HypervisorCall>(_machInst, _imm)
 {}
+
+ExceptionClass
+HypervisorCall::ec(ThreadContext *tc) const
+{
+    return from64 ? EC_HVC_64 : vals.ec;
+}
 
 ExceptionClass
 HypervisorTrap::ec(ThreadContext *tc) const
@@ -938,7 +946,7 @@ AbortFault<T>::invoke(ThreadContext *tc, const StaticInstPtr &inst)
     }
 
     if (source == ArmFault::AsynchronousExternalAbort) {
-        tc->getCpuPtr()->clearInterrupt(INT_ABT, 0);
+        tc->getCpuPtr()->clearInterrupt(tc->threadId(), INT_ABT, 0);
     }
     // Get effective fault source encoding
     CPSR cpsr = tc->readMiscReg(MISCREG_CPSR);
@@ -948,7 +956,7 @@ AbortFault<T>::invoke(ThreadContext *tc, const StaticInstPtr &inst)
     // try to set hsr etc. and are based upon source!
     ArmFaultVals<T>::invoke(tc, inst);
 
-    if (cpsr.width) {  // AArch32
+    if (!this->to64) {  // AArch32
         if (cpsr.mode == MODE_HYP) {
             tc->setMiscReg(T::HFarIndex, faultAddr);
         } else if (stage2) {
@@ -963,7 +971,17 @@ AbortFault<T>::invoke(ThreadContext *tc, const StaticInstPtr &inst)
     } else {  // AArch64
         // Set the FAR register.  Nothing else to do if we are in AArch64 state
         // because the syndrome register has already been set inside invoke64()
-        tc->setMiscReg(AbortFault<T>::getFaultAddrReg64(), faultAddr);
+        if (stage2) {
+            // stage 2 fault, set HPFAR_EL2 to the faulting IPA
+            // and FAR_EL2 to the Original VA
+            tc->setMiscReg(AbortFault<T>::getFaultAddrReg64(), OVAddr);
+            tc->setMiscReg(MISCREG_HPFAR_EL2, bits(faultAddr, 47, 12) << 4);
+
+            DPRINTF(Faults, "Abort Fault (Stage 2) VA: 0x%x IPA: 0x%x\n",
+                    OVAddr, faultAddr);
+        } else {
+            tc->setMiscReg(AbortFault<T>::getFaultAddrReg64(), faultAddr);
+        }
     }
 }
 
@@ -1110,7 +1128,7 @@ PrefetchAbort::routeToHyp(ThreadContext *tc) const
     toHyp |= (stage2 ||
                 ( (source ==               DebugEvent) && hdcr.tde && (cpsr.mode !=  MODE_HYP)) ||
                 ( (source == SynchronousExternalAbort) && hcr.tge  && (cpsr.mode == MODE_USER))
-             ) && !inSecureState(scr, cpsr);
+             ) && !inSecureState(tc);
     return toHyp;
 }
 
@@ -1176,7 +1194,7 @@ DataAbort::routeToHyp(ThreadContext *tc) const
                   ((source == AlignmentFault)            ||
                    (source == SynchronousExternalAbort))
                 )
-             ) && !inSecureState(scr, cpsr);
+             ) && !inSecureState(tc);
     return toHyp;
 }
 
@@ -1266,7 +1284,7 @@ Interrupt::routeToHyp(ThreadContext *tc) const
     HCR  hcr  = tc->readMiscRegNoEffect(MISCREG_HCR);
     CPSR cpsr = tc->readMiscRegNoEffect(MISCREG_CPSR);
     // Determine whether IRQs are routed to Hyp mode.
-    toHyp = (!scr.irq && hcr.imo && !inSecureState(scr, cpsr)) ||
+    toHyp = (!scr.irq && hcr.imo && !inSecureState(tc)) ||
             (cpsr.mode == MODE_HYP);
     return toHyp;
 }
@@ -1305,7 +1323,7 @@ FastInterrupt::routeToHyp(ThreadContext *tc) const
     HCR  hcr  = tc->readMiscRegNoEffect(MISCREG_HCR);
     CPSR cpsr = tc->readMiscRegNoEffect(MISCREG_CPSR);
     // Determine whether IRQs are routed to Hyp mode.
-    toHyp = (!scr.fiq && hcr.fmo && !inSecureState(scr, cpsr)) ||
+    toHyp = (!scr.fiq && hcr.fmo && !inSecureState(tc)) ||
             (cpsr.mode == MODE_HYP);
     return toHyp;
 }
@@ -1353,7 +1371,7 @@ SystemError::SystemError()
 void
 SystemError::invoke(ThreadContext *tc, const StaticInstPtr &inst)
 {
-    tc->getCpuPtr()->clearInterrupt(INT_ABT, 0);
+    tc->getCpuPtr()->clearInterrupt(tc->threadId(), INT_ABT, 0);
     ArmFault::invoke(tc, inst);
 }
 
@@ -1374,10 +1392,9 @@ SystemError::routeToHyp(ThreadContext *tc) const
 
     SCR scr = tc->readMiscRegNoEffect(MISCREG_SCR_EL3);
     HCR hcr  = tc->readMiscRegNoEffect(MISCREG_HCR);
-    CPSR cpsr = tc->readMiscRegNoEffect(MISCREG_CPSR);
 
-    toHyp = (!scr.ea && hcr.amo && !inSecureState(scr, cpsr)) ||
-            (!scr.ea && !scr.rw && !hcr.amo && !inSecureState(scr,cpsr));
+    toHyp = (!scr.ea && hcr.amo && !inSecureState(tc)) ||
+            (!scr.ea && !scr.rw && !hcr.amo && !inSecureState(tc));
     return toHyp;
 }
 
@@ -1404,7 +1421,7 @@ ArmSev::invoke(ThreadContext *tc, const StaticInstPtr &inst) {
     // SEV execution and let pipeline continue as pcState is still
     // valid.
     tc->setMiscReg(MISCREG_SEV_MAILBOX, 1);
-    tc->getCpuPtr()->clearInterrupt(INT_SEV, 0);
+    tc->getCpuPtr()->clearInterrupt(tc->threadId(), INT_SEV, 0);
 }
 
 // Instantiate all the templates to make the linker happy

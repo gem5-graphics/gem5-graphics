@@ -100,6 +100,12 @@ class CoherentXBar(BaseXBar):
     # An optional snoop filter
     snoop_filter = Param.SnoopFilter(NULL, "Selected snoop filter")
 
+    # Determine how this crossbar handles packets where caches have
+    # already committed to responding, by establishing if the crossbar
+    # is the point of coherency or not.
+    point_of_coherency = Param.Bool(False, "Consider this crossbar the " \
+                                    "point of coherency")
+
     system = Param.System(Parent.any, "System that the crossbar belongs to.")
 
 class SnoopFilter(SimObject):
@@ -111,6 +117,9 @@ class SnoopFilter(SimObject):
     lookup_latency = Param.Cycles(1, "Lookup latency")
 
     system = Param.System(Parent.any, "System that the crossbar belongs to.")
+
+    # Sanity check on max capacity to track, adjust if needed.
+    max_capacity = Param.MemorySize('8MB', "Maximum capacity of snoop filter")
 
 # We use a coherent crossbar to connect multiple masters to the L2
 # caches. Normally this crossbar would be part of the cache itself.
@@ -125,6 +134,11 @@ class L2XBar(CoherentXBar):
     response_latency = 1
     snoop_response_latency = 1
 
+    # Use a snoop-filter by default, and set the latency to zero as
+    # the lookup is assumed to overlap with the frontend latency of
+    # the crossbar
+    snoop_filter = SnoopFilter(lookup_latency = 0)
+
 # One of the key coherent crossbar instances is the system
 # interconnect, tying together the CPU clusters, GPUs, and any I/O
 # coherent masters, and DRAM controllers.
@@ -138,6 +152,14 @@ class SystemXBar(CoherentXBar):
     forward_latency = 4
     response_latency = 2
     snoop_response_latency = 4
+
+    # Use a snoop-filter by default
+    snoop_filter = SnoopFilter(lookup_latency = 1)
+
+    # This specialisation of the coherent crossbar is to be considered
+    # the point of coherency, as there are no (coherent) downstream
+    # caches.
+    point_of_coherency = True
 
 # In addition to the system interconnect, we typically also have one
 # or more on-chip I/O crossbars. Note that at some point we might want

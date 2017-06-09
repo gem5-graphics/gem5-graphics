@@ -154,6 +154,8 @@ class DefaultCommit
     /** Probe Points. */
     ProbePointArg<DynInstPtr> *ppCommit;
     ProbePointArg<DynInstPtr> *ppCommitStall;
+    /** To probe when an instruction is squashed */
+    ProbePointArg<DynInstPtr> *ppSquash;
 
   public:
     /** Construct a DefaultCommit with the given parameters. */
@@ -233,7 +235,7 @@ class DefaultCommit
     size_t numROBFreeEntries(ThreadID tid);
 
     /** Generates an event to schedule a squash due to a trap. */
-    void generateTrapEvent(ThreadID tid);
+    void generateTrapEvent(ThreadID tid, Fault inst_fault);
 
     /** Records that commit needs to initiate a squash due to an
      * external state update through the TC.

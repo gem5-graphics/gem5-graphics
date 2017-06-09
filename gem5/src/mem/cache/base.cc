@@ -45,14 +45,15 @@
  * Definition of BaseCache functions.
  */
 
+#include "mem/cache/base.hh"
+
 #include "debug/Cache.hh"
 #include "debug/Drain.hh"
+#include "mem/cache/cache.hh"
+#include "mem/cache/mshr.hh"
 #include "mem/cache/tags/fa_lru.hh"
 #include "mem/cache/tags/lru.hh"
 #include "mem/cache/tags/random_repl.hh"
-#include "mem/cache/base.hh"
-#include "mem/cache/cache.hh"
-#include "mem/cache/mshr.hh"
 #include "sim/full_system.hh"
 
 using namespace std;
@@ -68,24 +69,32 @@ BaseCache::CacheSlavePort::CacheSlavePort(const std::string &_name,
 BaseCache::BaseCache(const BaseCacheParams *p, unsigned blk_size)
     : MemObject(p),
       cpuSidePort(nullptr), memSidePort(nullptr),
-      mshrQueue("MSHRs", p->mshrs, 4, p->demand_mshr_reserve, MSHRQueue_MSHRs),
-      writeBuffer("write buffer", p->write_buffers, p->mshrs+1000, 0,
-                  MSHRQueue_WriteBuffer),
+      mshrQueue("MSHRs", p->mshrs, 0, p->demand_mshr_reserve), // see below
+      writeBuffer("write buffer", p->write_buffers, p->mshrs), // see below
       blkSize(blk_size),
-      lookupLatency(p->hit_latency),
-      forwardLatency(p->hit_latency),
-      fillLatency(p->response_latency),
+      lookupLatency(p->tag_latency),
+      dataLatency(p->data_latency),
+      forwardLatency(p->tag_latency),
+      fillLatency(p->data_latency),
       responseLatency(p->response_latency),
       numTarget(p->tgts_per_mshr),
-      forwardSnoops(p->forward_snoops),
+      forwardSnoops(true),
       isReadOnly(p->is_read_only),
       blocked(0),
       order(0),
-      noTargetMSHR(NULL),
+      noTargetMSHR(nullptr),
       missCount(p->max_miss_count),
       addrRanges(p->addr_ranges.begin(), p->addr_ranges.end()),
       system(p->system)
 {
+    // the MSHR queue has no reserve entries as we check the MSHR
+    // queue on every single allocation, whereas the write queue has
+    // as many reserve entries as we have MSHRs, since every MSHR may
+    // eventually require a writeback, and we do not check the write
+    // buffer before committing to an MSHR
+
+    // forward snoops is overridden in init() once we can query
+    // whether the connected master is actually snooping or not
 }
 
 void
@@ -131,6 +140,7 @@ BaseCache::init()
     if (!cpuSidePort->isConnected() || !memSidePort->isConnected())
         fatal("Cache ports on %s are not connected\n", name());
     cpuSidePort->sendRangeChange();
+    forwardSnoops = cpuSidePort->isSnooping();
 }
 
 BaseMasterPort &
@@ -167,6 +177,8 @@ BaseCache::inRange(Addr addr) const
 void
 BaseCache::regStats()
 {
+    MemObject::regStats();
+
     using namespace Stats;
 
     // Hit statistics
@@ -189,7 +201,7 @@ BaseCache::regStats()
 // to change the subset of commands that are considered "demand" vs
 // "non-demand"
 #define SUM_DEMAND(s) \
-    (s[MemCmd::ReadReq] + s[MemCmd::WriteReq] + \
+    (s[MemCmd::ReadReq] + s[MemCmd::WriteReq] + s[MemCmd::WriteLineReq] + \
      s[MemCmd::ReadExReq] + s[MemCmd::ReadCleanReq] + s[MemCmd::ReadSharedReq])
 
 // should writebacks be included here?  prior code was inconsistent...
@@ -426,14 +438,10 @@ BaseCache::regStats()
 
     avg_blocked = blocked_cycles / blocked_causes;
 
-    fastWrites
-        .name(name() + ".fast_writes")
-        .desc("number of fast writes performed")
-        ;
-
-    cacheCopies
-        .name(name() + ".cache_copies")
-        .desc("number of cache copies performed")
+    unusedPrefetches
+        .name(name() + ".unused_prefetches")
+        .desc("number of HardPF blocks evicted w/o reference")
+        .flags(nozero)
         ;
 
     writebacks
@@ -595,7 +603,8 @@ BaseCache::regStats()
             .flags(total | nozero | nonan)
             ;
         for (int i = 0; i < system->maxMasters(); i++) {
-            mshr_uncacheable_lat[access_idx].subname(i, system->getMasterName(i));
+            mshr_uncacheable_lat[access_idx].subname(
+                i, system->getMasterName(i));
         }
     }
 
@@ -695,7 +704,8 @@ BaseCache::regStats()
             mshr_miss_latency[access_idx] / mshr_misses[access_idx];
 
         for (int i = 0; i < system->maxMasters(); i++) {
-            avgMshrMissLatency[access_idx].subname(i, system->getMasterName(i));
+            avgMshrMissLatency[access_idx].subname(
+                i, system->getMasterName(i));
         }
     }
 
@@ -733,7 +743,8 @@ BaseCache::regStats()
             mshr_uncacheable_lat[access_idx] / mshr_uncacheable[access_idx];
 
         for (int i = 0; i < system->maxMasters(); i++) {
-            avgMshrUncacheableLatency[access_idx].subname(i, system->getMasterName(i));
+            avgMshrUncacheableLatency[access_idx].subname(
+                i, system->getMasterName(i));
         }
     }
 
@@ -742,35 +753,10 @@ BaseCache::regStats()
         .desc("average overall mshr uncacheable latency")
         .flags(total | nozero | nonan)
         ;
-    overallAvgMshrUncacheableLatency = overallMshrUncacheableLatency / overallMshrUncacheable;
+    overallAvgMshrUncacheableLatency =
+        overallMshrUncacheableLatency / overallMshrUncacheable;
     for (int i = 0; i < system->maxMasters(); i++) {
         overallAvgMshrUncacheableLatency.subname(i, system->getMasterName(i));
     }
-
-    mshr_cap_events
-        .init(system->maxMasters())
-        .name(name() + ".mshr_cap_events")
-        .desc("number of times MSHR cap was activated")
-        .flags(total | nozero | nonan)
-        ;
-    for (int i = 0; i < system->maxMasters(); i++) {
-        mshr_cap_events.subname(i, system->getMasterName(i));
-    }
-
-    //software prefetching stats
-    soft_prefetch_mshr_full
-        .init(system->maxMasters())
-        .name(name() + ".soft_prefetch_mshr_full")
-        .desc("number of mshr full events for SW prefetching instrutions")
-        .flags(total | nozero | nonan)
-        ;
-    for (int i = 0; i < system->maxMasters(); i++) {
-        soft_prefetch_mshr_full.subname(i, system->getMasterName(i));
-    }
-
-    mshr_no_allocate_misses
-        .name(name() +".no_allocate_misses")
-        .desc("Number of misses that were no-allocate")
-        ;
 
 }

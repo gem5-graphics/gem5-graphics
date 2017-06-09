@@ -44,10 +44,11 @@
 #include <list>
 #include <map>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
-#include "base/hashmap.hh"
 #include "base/misc.hh"
+#include "base/trace.hh"
 #include "base/types.hh"
 #include "debug/MemChecker.hh"
 #include "params/MemChecker.hh"
@@ -184,7 +185,7 @@ class MemChecker : public SimObject
          * Map of Serial --> Transaction of all writes in cluster; contains
          * all, in-flight or already completed.
          */
-        m5::hash_map<Serial, Transaction> writes;
+        std::unordered_map<Serial, Transaction> writes;
 
       private:
         Tick completeMax;
@@ -509,7 +510,7 @@ class MemChecker : public SimObject
      *
      * Access via getByteTracker()!
      */
-    m5::hash_map<Addr, ByteTracker> byte_trackers;
+    std::unordered_map<Addr, ByteTracker> byte_trackers;
 };
 
 inline MemChecker::Serial

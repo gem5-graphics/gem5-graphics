@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014 ARM Limited
+ * Copyright (c) 2014-2016 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -45,7 +45,12 @@
 #ifndef __SIM_SUB_SYSTEM_HH__
 #define __SIM_SUB_SYSTEM_HH__
 
+#include <vector>
+
+#include "params/SubSystem.hh"
 #include "sim/sim_object.hh"
+
+class PowerModel;
 
 /**
  * The SubSystem simobject does nothing, it is just a container for
@@ -54,9 +59,19 @@
 class SubSystem : public SimObject
 {
   public:
-    SubSystem(const Params *p) :
-        SimObject(p)
-    {}
+    typedef SubSystemParams Params;
+    SubSystem(const Params *p);
+
+    double getDynamicPower() const;
+
+    double getStaticPower() const;
+
+    void registerPowerProducer(PowerModel *pm) {
+        powerProducers.push_back(pm);
+    }
+
+  protected:
+    std::vector<PowerModel*> powerProducers;
 };
 
 #endif

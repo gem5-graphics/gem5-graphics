@@ -30,6 +30,8 @@
  *          Miguel Serrano
  */
 
+#include "dev/mc146818.hh"
+
 #include <sys/time.h>
 
 #include <ctime>
@@ -39,7 +41,6 @@
 #include "base/time.hh"
 #include "base/trace.hh"
 #include "debug/MC146818.hh"
-#include "dev/mc146818.hh"
 #include "dev/rtcreg.h"
 
 using namespace std;
@@ -275,7 +276,7 @@ MC146818::serialize(const string &base, CheckpointOut &cp) const
     paramOut(cp, base + ".stat_regB", (uint8_t)regB_serial);
 
     //
-    // save the timer tick and rtc clock tick values to correctly reschedule 
+    // save the timer tick and rtc clock tick values to correctly reschedule
     // them during unserialize
     //
     Tick rtcTimerInterruptTickOffset = event.when() - curTick();

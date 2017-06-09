@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2012-2013 ARM Limited
+ * Copyright (c) 2010, 2012-2013, 2016 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -161,6 +161,16 @@ bool ELIs64(ThreadContext *tc, ExceptionLevel el);
 
 bool isBigEndian64(ThreadContext *tc);
 
+static inline uint8_t
+itState(CPSR psr)
+{
+    ITSTATE it = 0;
+    it.top6 = psr.it2;
+    it.bottom2 = psr.it1;
+
+    return (uint8_t)it;
+}
+
 /**
  * Removes the tag from tagged addresses if that mode is enabled.
  * @param addr The address to be purified.
@@ -255,24 +265,10 @@ mcrrMrrc15TrapToHyp(const MiscRegIndex miscReg, CPSR cpsr, SCR scr, HSTR hstr,
 
 bool msrMrs64TrapToSup(const MiscRegIndex miscReg, ExceptionLevel el,
                        CPACR cpacr);
-bool msrMrs64TrapToHyp(const MiscRegIndex miscReg, bool isRead, CPTR cptr,
-                       HCR hcr, bool * isVfpNeon);
+bool msrMrs64TrapToHyp(const MiscRegIndex miscReg, ExceptionLevel el,
+                       bool isRead, CPTR cptr, HCR hcr, bool * isVfpNeon);
 bool msrMrs64TrapToMon(const MiscRegIndex miscReg, CPTR cptr,
                        ExceptionLevel el, bool * isVfpNeon);
-
-bool
-vfpNeonEnabled(uint32_t &seq, HCPTR hcptr, NSACR nsacr, CPACR cpacr, CPSR cpsr,
-               uint32_t &iss, bool &trap, ThreadContext *tc,
-               FPEXC fpexc = (1<<30), bool isSIMD = false);
-
-static inline bool
-vfpNeon64Enabled(CPACR cpacr, ExceptionLevel el)
-{
-    if ((el == EL0 && cpacr.fpen != 0x3) ||
-        (el == EL1 && !(cpacr.fpen & 0x1)))
-        return false;
-    return true;
-}
 
 bool SPAlignmentCheckEnabled(ThreadContext* tc);
 

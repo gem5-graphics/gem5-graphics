@@ -44,7 +44,6 @@
 #include "debug/KvmInt.hh"
 #include "params/BaseArmKvmCPU.hh"
 
-
 #define INTERRUPT_ID(type, vcpu, irq) (                    \
         ((type) << KVM_ARM_IRQ_TYPE_SHIFT) |               \
         ((vcpu) << KVM_ARM_IRQ_VCPU_SHIFT) |               \
@@ -80,14 +79,17 @@ BaseArmKvmCPU::startup()
     memset(&target_config, 0, sizeof(target_config));
 
     vm.kvmArmPreferredTarget(target_config);
+    if (!((ArmSystem *)system)->highestELIs64()) {
+        target_config.features[0] |= (1 << KVM_ARM_VCPU_EL1_32BIT);
+    }
     kvmArmVCpuInit(target_config);
 }
 
 Tick
 BaseArmKvmCPU::kvmRun(Tick ticks)
 {
-    bool simFIQ(interrupts->checkRaw(INT_FIQ));
-    bool simIRQ(interrupts->checkRaw(INT_IRQ));
+    bool simFIQ(interrupts[0]->checkRaw(INT_FIQ));
+    bool simIRQ(interrupts[0]->checkRaw(INT_IRQ));
 
     if (fiqAsserted != simFIQ) {
         fiqAsserted = simFIQ;

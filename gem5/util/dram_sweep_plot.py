@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 
 # Copyright (c) 2014 ARM Limited
 # All rights reserved
@@ -38,10 +38,8 @@
 # Authors: Andreas Hansson
 
 try:
-
     from mpl_toolkits.mplot3d import Axes3D
     from matplotlib import cm
-    from matplotlib.ticker import LinearLocator, FormatStrFormatter
     import matplotlib.pyplot as plt
     import numpy as np
 except ImportError:
@@ -74,13 +72,13 @@ def main():
     try:
         stats = open(sys.argv[2] + '/stats.txt', 'r')
     except IOError:
-        print "Failed to open ", sys.argv[1] + '/stats.txt', " for reading"
+        print "Failed to open ", sys.argv[2] + '/stats.txt', " for reading"
         exit(-1)
 
     try:
         simout = open(sys.argv[2] + '/simout', 'r')
     except IOError:
-        print "Failed to open ", sys.argv[1] + '/simout', " for reading"
+        print "Failed to open ", sys.argv[2] + '/simout', " for reading"
         exit(-1)
 
     # Get the burst size, number of banks and the maximum stride from
@@ -116,7 +114,7 @@ def main():
         if match:
             peak_bw.append(float(match.groups(0)[0]))
 
-        match = re.match(".*averagePower\s+(\d+\.\d+)\s+#.*", line)
+        match = re.match(".*averagePower\s+(\d+\.?\d*)\s+#.*", line)
         if match:
             avg_pwr.append(float(match.groups(0)[0]))
     stats.close()

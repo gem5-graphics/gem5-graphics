@@ -45,10 +45,10 @@
 #ifndef __MEM_SE_TRANSLATING_PORT_PROXY_HH__
 #define __MEM_SE_TRANSLATING_PORT_PROXY_HH__
 
-#include "mem/page_table.hh"
 #include "mem/port_proxy.hh"
 
 class Process;
+class PageTableBase; 
 
 /**
  * @file
@@ -83,6 +83,8 @@ class SETranslatingPortProxy : public PortProxy
     SETranslatingPortProxy(MasterPort& port, Process* p, AllocType alloc);
     virtual ~SETranslatingPortProxy();
 
+    void setPageTable(PageTableBase *p) { pTable = p; }
+    void setProcess(Process *p) { process = p; }
     bool tryReadBlob(Addr addr, uint8_t *p, int size) const;
     bool tryWriteBlob(Addr addr, const uint8_t *p, int size) const;
     bool tryMemsetBlob(Addr addr, uint8_t val, int size) const;

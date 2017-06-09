@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2014 ARM Limited
+ * Copyright (c) 2012-2014,2016 ARM Limited
  * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
@@ -67,9 +67,17 @@ class BaseTags : public ClockedObject
   protected:
     /** The block size of the cache. */
     const unsigned blkSize;
+    /** Mask out all bits that aren't part of the block offset. */
+    const Addr blkMask;
     /** The size of the cache. */
     const unsigned size;
-    /** The access latency of the cache. */
+    /** The tag lookup latency of the cache. */
+    const Cycles lookupLatency;
+    /**
+     * The total access latency of the cache. This latency
+     * is different depending on the cache access mode
+     * (parallel or sequential)
+     */
     const Cycles accessLatency;
     /** Pointer to the parent cache. */
     BaseCache *cache;
@@ -181,13 +189,23 @@ class BaseTags : public ClockedObject
     virtual CacheBlk * findBlock(Addr addr, bool is_secure) const = 0;
 
     /**
+     * Align an address to the block size.
+     * @param addr the address to align.
+     * @return The block address.
+     */
+    Addr blkAlign(Addr addr) const
+    {
+        return addr & ~blkMask;
+    }
+
+    /**
      * Calculate the block offset of an address.
      * @param addr the address to get the offset of.
      * @return the block offset.
      */
     int extractBlkOffset(Addr addr) const
     {
-        return (addr & (Addr)(blkSize-1));
+        return (addr & blkMask);
     }
 
     /**
@@ -217,14 +235,9 @@ class BaseTags : public ClockedObject
         return -1;
     }
 
-    virtual unsigned getNumSets() const = 0;
-
-    virtual unsigned getNumWays() const = 0;
-
     virtual void invalidate(CacheBlk *blk) = 0;
 
-    virtual CacheBlk* accessBlock(Addr addr, bool is_secure, Cycles &lat,
-                                  int context_src) = 0;
+    virtual CacheBlk* accessBlock(Addr addr, bool is_secure, Cycles &lat) = 0;
 
     virtual Addr extractTag(Addr addr) const = 0;
 

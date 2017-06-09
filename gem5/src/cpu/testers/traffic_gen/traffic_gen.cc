@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013 ARM Limited
+ * Copyright (c) 2012-2013, 2016 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -38,12 +38,15 @@
  *          Andreas Hansson
  *          Sascha Bischoff
  */
+#include "cpu/testers/traffic_gen/traffic_gen.hh"
+
+#include <libgen.h>
+#include <unistd.h>
 
 #include <sstream>
 
 #include "base/intmath.hh"
 #include "base/random.hh"
-#include "cpu/testers/traffic_gen/traffic_gen.hh"
 #include "debug/Checkpoint.hh"
 #include "debug/TrafficGen.hh"
 #include "sim/stats.hh"
@@ -57,13 +60,16 @@ TrafficGen::TrafficGen(const TrafficGenParams* p)
       masterID(system->getMasterId(name())),
       configFile(p->config_file),
       elasticReq(p->elastic_req),
+      progressCheck(p->progress_check),
+      noProgressEvent(this),
       nextTransitionTick(0),
       nextPacketTick(0),
       currState(0),
       port(name() + ".port", *this),
       retryPkt(NULL),
       retryPktTick(0),
-      updateEvent(this)
+      updateEvent(this),
+      numSuppressed(0)
 {
 }
 
@@ -178,6 +184,9 @@ TrafficGen::unserialize(CheckpointIn &cp)
 void
 TrafficGen::update()
 {
+    // shift our progress-tracking event forward
+    reschedule(noProgressEvent, curTick() + progressCheck, true);
+
     // if we have reached the time for the next state transition, then
     // perform the transition
     if (curTick() >= nextTransitionTick) {
@@ -198,6 +207,15 @@ TrafficGen::update()
         } else {
             DPRINTF(TrafficGen, "Suppressed packet %s 0x%x\n",
                     pkt->cmdString(), pkt->getAddr());
+
+            ++numSuppressed;
+            if (numSuppressed % 10000)
+                warn("%s suppressed %d packets with non-memory addresses\n",
+                     name(), numSuppressed);
+
+            delete pkt->req;
+            delete pkt;
+            pkt = nullptr;
         }
     }
 
@@ -212,6 +230,27 @@ TrafficGen::update()
         DPRINTF(TrafficGen, "Next event scheduled at %lld\n", nextEventTick);
         schedule(updateEvent, nextEventTick);
     }
+}
+
+std::string
+TrafficGen::resolveFile(const std::string &name)
+{
+    // Do nothing for empty and absolute file names
+    if (name.empty() || name[0] == '/')
+        return name;
+
+    char *config_path = strdup(configFile.c_str());
+    char *config_dir = dirname(config_path);
+    const std::string config_rel = csprintf("%s/%s", config_dir, name);
+    free(config_path);
+
+    // Check the path relative to the config file first
+    if (access(config_rel.c_str(), R_OK) == 0)
+        return config_rel;
+
+    // Fall back to the old behavior and search relative to the
+    // current working directory.
+    return name;
 }
 
 void
@@ -258,6 +297,7 @@ TrafficGen::parseConfig()
                     Addr addrOffset;
 
                     is >> traceFile >> addrOffset;
+                    traceFile = resolveFile(traceFile);
 
                     states[id] = new TraceGen(name(), masterID, duration,
                                               traceFile, addrOffset);
@@ -502,8 +542,17 @@ TrafficGen::recvReqRetry()
 }
 
 void
+TrafficGen::noProgress()
+{
+    fatal("TrafficGen %s spent %llu ticks without making progress",
+          name(), progressCheck);
+}
+
+void
 TrafficGen::regStats()
 {
+    ClockedObject::regStats();
+
     // Initialise all the stats
     using namespace Stats;
 

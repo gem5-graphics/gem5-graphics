@@ -33,19 +33,18 @@ from m5.objects import *
 from m5.defines import buildEnv
 from m5.util import addToPath
 import os, optparse, sys
-addToPath('../common')
-addToPath('../ruby')
-addToPath('../topologies')
 
-import Options
-import Ruby
+addToPath('../')
+
+from common import Options
+from ruby import Ruby
 
 # Get paths we might need.  It's expected this file is in m5/configs/example.
 config_path = os.path.dirname(os.path.abspath(__file__))
 config_root = os.path.dirname(config_path)
 
 parser = optparse.OptionParser()
-Options.addCommonOptions(parser)
+Options.addNoISAOptions(parser)
 
 parser.add_option("--maxloads", metavar="N", default=0,
                   help="Stop after N loads")
@@ -142,7 +141,7 @@ system.ruby.clk_domain = SrcClockDomain(clock = options.ruby_clock,
 # artifical delay is randomly inserted on messages
 #
 system.ruby.randomization = True
- 
+
 assert(len(cpus) == len(system.ruby._cpu_ports))
 
 for (i, cpu) in enumerate(cpus):

@@ -29,12 +29,13 @@
  *          Ron Dreslinski
  */
 
+#include "cpu/intr_control.hh"
+
 #include <string>
 #include <vector>
 
 #include "base/trace.hh"
 #include "cpu/base.hh"
-#include "cpu/intr_control.hh"
 #include "cpu/thread_context.hh"
 #include "debug/IntrControl.hh"
 #include "sim/sim_object.hh"
@@ -51,7 +52,7 @@ IntrControl::post(int cpu_id, int int_num, int index)
     DPRINTF(IntrControl, "post  %d:%d (cpu %d)\n", int_num, index, cpu_id);
     std::vector<ThreadContext *> &tcvec = sys->threadContexts;
     BaseCPU *cpu = tcvec[cpu_id]->getCpuPtr();
-    cpu->postInterrupt(int_num, index);
+    cpu->postInterrupt(tcvec[cpu_id]->threadId(), int_num, index);
 }
 
 void
@@ -60,7 +61,7 @@ IntrControl::clear(int cpu_id, int int_num, int index)
     DPRINTF(IntrControl, "clear %d:%d (cpu %d)\n", int_num, index, cpu_id);
     std::vector<ThreadContext *> &tcvec = sys->threadContexts;
     BaseCPU *cpu = tcvec[cpu_id]->getCpuPtr();
-    cpu->clearInterrupt(int_num, index);
+    cpu->clearInterrupt(tcvec[cpu_id]->threadId(), int_num, index);
 }
 
 IntrControl *

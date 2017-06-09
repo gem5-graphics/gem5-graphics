@@ -1,6 +1,6 @@
 // -*- mode:c++ -*-
 
-// Copyright (c) 2010-2013 ARM Limited
+// Copyright (c) 2010-2013,2017 ARM Limited
 // All rights reserved
 //
 // The license below extends only to copyright in the software and shall
@@ -130,7 +130,8 @@ let {{
     eretIop = InstObjParams("eret", "Eret", "PredOp",
                            { "code": eretCode,
                              "predicate_test": predicateTest },
-                           ["IsNonSpeculative", "IsSerializeAfter"])
+                           ["IsNonSpeculative", "IsSerializeAfter",
+                            "IsSquashAfter"])
     header_output += BasicDeclare.subst(eretIop)
     decoder_output += BasicConstructor.subst(eretIop)
     exec_output += PredOpExecute.subst(eretIop)
@@ -649,7 +650,8 @@ let {{
     if (SevMailbox == 1) {
         SevMailbox = 0;
         PseudoInst::quiesceSkip(tc);
-    } else if (tc->getCpuPtr()->getInterruptController()->checkInterrupts(tc)) {
+    } else if (tc->getCpuPtr()->getInterruptController(
+                tc->threadId())->checkInterrupts(tc)) {
         PseudoInst::quiesceSkip(tc);
     } else if (cpsr.el == EL0 && !sctlr.ntwe) {
         PseudoInst::quiesceSkip(tc);
@@ -692,8 +694,8 @@ let {{
 
     // WFI doesn't sleep if interrupts are pending (masked or not)
     ThreadContext *tc = xc->tcBase();
-    if (tc->getCpuPtr()->getInterruptController()->checkWfiWake(hcr, cpsr,
-                                                                scr)) {
+    if (tc->getCpuPtr()->getInterruptController(
+                tc->threadId())->checkWfiWake(hcr, cpsr, scr)) {
         PseudoInst::quiesceSkip(tc);
     } else if (cpsr.el == EL0 && !sctlr.ntwi) {
         PseudoInst::quiesceSkip(tc);
@@ -711,7 +713,7 @@ let {{
     } else {
         PseudoInst::quiesce(tc);
     }
-    tc->getCpuPtr()->clearInterrupt(INT_ABT, 0);
+    tc->getCpuPtr()->clearInterrupt(tc->threadId(), INT_ABT, 0);
     '''
     wfiIop = InstObjParams("wfi", "WfiInst", "PredOp", \
             { "code" : wfiCode, "predicate_test" : predicateTest },
@@ -731,7 +733,7 @@ let {{
         // Wake CPU with interrupt if they were sleeping
         if (oc->readMiscReg(MISCREG_SEV_MAILBOX) == 0) {
             // Post Interrupt and wake cpu if needed
-            oc->getCpuPtr()->postInterrupt(INT_SEV, 0);
+            oc->getCpuPtr()->postInterrupt(oc->threadId(), INT_SEV, 0);
         }
     }
     '''
@@ -812,7 +814,9 @@ let {{
 
     mrc14code = '''
     MiscRegIndex miscReg = (MiscRegIndex) xc->tcBase()->flattenMiscIndex(op1);
-    if (!canReadCoprocReg(miscReg, Scr, Cpsr, xc->tcBase())) {
+    bool can_read, undefined;
+    std::tie(can_read, undefined) = canReadCoprocReg(miscReg, Scr, Cpsr);
+    if (!can_read || undefined) {
         return std::make_shared<UndefinedInstruction>(machInst, false,
                                                       mnemonic);
     }
@@ -834,7 +838,9 @@ let {{
 
     mcr14code = '''
     MiscRegIndex miscReg = (MiscRegIndex) xc->tcBase()->flattenMiscIndex(dest);
-    if (!canWriteCoprocReg(miscReg, Scr, Cpsr, xc->tcBase())) {
+    bool can_write, undefined;
+    std::tie(can_write, undefined) = canWriteCoprocReg(miscReg, Scr, Cpsr);
+    if (undefined || !can_write) {
         return std::make_shared<UndefinedInstruction>(machInst, false,
                                                       mnemonic);
     }
@@ -859,12 +865,13 @@ let {{
                            xc->tcBase()->flattenMiscIndex(preFlatOp1);
     bool hypTrap = mcrMrc15TrapToHyp(miscReg, Hcr, Cpsr, Scr, Hdcr, Hstr,
                                      Hcptr, imm);
-    bool canRead = canReadCoprocReg(miscReg, Scr, Cpsr, xc->tcBase());
-
+    bool can_read, undefined;
+    std::tie(can_read, undefined) = canReadCoprocReg(miscReg, Scr, Cpsr);
     // if we're in non secure PL1 mode then we can trap regargless of whether
     // the register is accessable, in other modes we trap if only if the register
     // IS accessable.
-    if (!canRead && !(hypTrap && !inUserMode(Cpsr) && !inSecureState(Scr, Cpsr))) {
+    if (undefined || (!can_read && !(hypTrap && !inUserMode(Cpsr) &&
+                                    !inSecureState(Scr, Cpsr)))) {
         return std::make_shared<UndefinedInstruction>(machInst, false,
                                                       mnemonic);
     }
@@ -889,12 +896,14 @@ let {{
                        xc->tcBase()->flattenMiscIndex(preFlatDest);
     bool hypTrap  = mcrMrc15TrapToHyp(miscReg, Hcr, Cpsr, Scr, Hdcr, Hstr,
                                       Hcptr, imm);
-    bool canWrite = canWriteCoprocReg(miscReg, Scr, Cpsr, xc->tcBase());
+    bool can_write, undefined;
+    std::tie(can_write, undefined) = canWriteCoprocReg(miscReg, Scr, Cpsr);
 
     // if we're in non secure PL1 mode then we can trap regargless of whether
     // the register is accessable, in other modes we trap if only if the register
     // IS accessable.
-    if (!canWrite & !(hypTrap & !inUserMode(Cpsr) & !inSecureState(Scr, Cpsr))) {
+    if (undefined || (!can_write && !(hypTrap && !inUserMode(Cpsr) &&
+                                      !inSecureState(Scr, Cpsr)))) {
         return std::make_shared<UndefinedInstruction>(machInst, false,
                                                       mnemonic);
     }
@@ -918,12 +927,13 @@ let {{
     MiscRegIndex miscReg = (MiscRegIndex)
                            xc->tcBase()->flattenMiscIndex(preFlatOp1);
     bool hypTrap = mcrrMrrc15TrapToHyp(miscReg, Cpsr, Scr, Hstr, Hcr, imm);
-    bool canRead = canReadCoprocReg(miscReg, Scr, Cpsr, xc->tcBase());
-
+    bool can_read, undefined;
+    std::tie(can_read, undefined) = canReadCoprocReg(miscReg, Scr, Cpsr);
     // if we're in non secure PL1 mode then we can trap regargless of whether
     // the register is accessable, in other modes we trap if only if the register
     // IS accessable.
-    if (!canRead && !(hypTrap && !inUserMode(Cpsr) && !inSecureState(Scr, Cpsr))) {
+    if (undefined || (!can_read && !(hypTrap && !inUserMode(Cpsr) &&
+                                     !inSecureState(Scr, Cpsr)))) {
         return std::make_shared<UndefinedInstruction>(machInst, false,
                                                       mnemonic);
     }
@@ -947,12 +957,14 @@ let {{
     MiscRegIndex miscReg = (MiscRegIndex)
                            xc->tcBase()->flattenMiscIndex(preFlatDest);
     bool hypTrap  = mcrrMrrc15TrapToHyp(miscReg, Cpsr, Scr, Hstr, Hcr, imm);
-    bool canWrite = canWriteCoprocReg(miscReg, Scr, Cpsr, xc->tcBase());
+    bool can_write, undefined;
+    std::tie(can_write, undefined) = canWriteCoprocReg(miscReg, Scr, Cpsr);
 
     // if we're in non secure PL1 mode then we can trap regargless of whether
     // the register is accessable, in other modes we trap if only if the register
     // IS accessable.
-    if (!canWrite & !(hypTrap & !inUserMode(Cpsr) & !inSecureState(Scr, Cpsr))) {
+    if (undefined || (!can_write && !(hypTrap && !inUserMode(Cpsr) &&
+                                     !inSecureState(Scr, Cpsr)))) {
         return std::make_shared<UndefinedInstruction>(machInst, false,
                                                       mnemonic);
     }

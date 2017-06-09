@@ -33,12 +33,11 @@ from m5.objects import *
 from m5.defines import buildEnv
 from m5.util import addToPath
 import os, optparse, sys
-addToPath('../common')
-addToPath('../ruby')
-addToPath('../topologies')
 
-import Options
-import Ruby
+addToPath('../')
+
+from common import Options
+from ruby import Ruby
 
 # Get paths we might need.  It's expected this file is in m5/configs/example.
 config_path = os.path.dirname(os.path.abspath(__file__))
@@ -46,7 +45,7 @@ config_root = os.path.dirname(config_path)
 m5_root = os.path.dirname(config_root)
 
 parser = optparse.OptionParser()
-Options.addCommonOptions(parser)
+Options.addNoISAOptions(parser)
 
 parser.add_option("--maxloads", metavar="N", default=100,
                   help="Stop after N loads")
@@ -125,10 +124,15 @@ for ruby_port in system.ruby._cpu_ports:
     #
     # Tie the ruby tester ports to the ruby cpu read and write ports
     #
-    if ruby_port.support_data_reqs:
-         tester.cpuDataPort = ruby_port.slave
-    if ruby_port.support_inst_reqs:
-         tester.cpuInstPort = ruby_port.slave
+    if ruby_port.support_data_reqs and ruby_port.support_inst_reqs:
+        tester.cpuInstDataPort = ruby_port.slave
+    elif ruby_port.support_data_reqs:
+        tester.cpuDataPort = ruby_port.slave
+    elif ruby_port.support_inst_reqs:
+        tester.cpuInstPort = ruby_port.slave
+
+    # Do not automatically retry stalled Ruby requests
+    ruby_port.no_retry_on_stall = True
 
     #
     # Tell each sequencer this is the ruby tester so that it

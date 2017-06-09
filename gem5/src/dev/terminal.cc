@@ -108,18 +108,14 @@ Terminal::DataEvent::process(int revent)
  */
 Terminal::Terminal(const Params *p)
     : SimObject(p), termDataAvail(NULL), listenEvent(NULL), dataEvent(NULL),
-      number(p->number), data_fd(-1), txbuf(16384), rxbuf(16384), outfile(NULL)
+      number(p->number), data_fd(-1), txbuf(16384), rxbuf(16384),
+      outfile(p->output ? simout.findOrCreate(p->name) : NULL)
 #if TRACING_ON == 1
       , linebuf(16384)
 #endif
 {
-    if (p->output) {
-        outfile = simout.find(p->name);
-        if (!outfile)
-            outfile = simout.create(p->name);
-
-        outfile->setf(ios::unitbuf);
-    }
+    if (outfile)
+        outfile->stream()->setf(ios::unitbuf);
 
     if (p->port)
         listen(p->port);
@@ -208,7 +204,7 @@ Terminal::accept()
     char buf[1024];
     for (size_t i = 0; i < txbuf.size(); i += sizeof(buf)) {
         const size_t chunk_len(std::min(txbuf.size() - i, sizeof(buf)));
-        txbuf.peek(buf, chunk_len);
+        txbuf.peek(buf, i, chunk_len);
         write((const uint8_t *)buf, chunk_len);
     }
 }
@@ -249,7 +245,7 @@ Terminal::read(uint8_t *buf, size_t len)
     if (data_fd < 0)
         panic("Terminal not properly attached.\n");
 
-    size_t ret;
+    ssize_t ret;
     do {
       ret = ::read(data_fd, buf, len);
     } while (ret == -1 && errno == EINTR);
@@ -347,7 +343,7 @@ Terminal::out(char c)
         write(c);
 
     if (outfile)
-        outfile->write(&c, 1);
+        outfile->stream()->write(&c, 1);
 
     DPRINTF(TerminalVerbose, "out: \'%c\' %#02x\n",
             isprint(c) ? c : ' ', (int)c);

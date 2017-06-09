@@ -51,7 +51,7 @@ using namespace ArmISA;
 using namespace FreeBSD;
 
 FreebsdArmSystem::FreebsdArmSystem(Params *p)
-    : GenericArmSystem(p), dumpStatsPCEventF(nullptr),
+    : GenericArmSystem(p),
       enableContextSwitchStatsDump(p->enable_context_switch_stats_dump),
       taskFile(nullptr), kernelPanicEvent(nullptr), kernelOopsEvent(nullptr)
 {
@@ -86,8 +86,8 @@ FreebsdArmSystem::initState()
     // to do this permanently, for but early bootup work
     // it is helpful.
     if (params()->early_kernel_symbols) {
-        kernel->loadGlobalSymbols(kernelSymtab, loadAddrMask);
-        kernel->loadGlobalSymbols(debugSymbolTable, loadAddrMask);
+        kernel->loadGlobalSymbols(kernelSymtab, 0, 0, loadAddrMask);
+        kernel->loadGlobalSymbols(debugSymbolTable, 0, 0, loadAddrMask);
     }
 
     // Setup boot data structure
@@ -150,9 +150,6 @@ FreebsdArmSystem::~FreebsdArmSystem()
         delete uDelaySkipEvent;
     if (constUDelaySkipEvent)
         delete constUDelaySkipEvent;
-
-    if (dumpStatsPCEventF)
-        delete dumpStatsPCEventF;
 }
 
 FreebsdArmSystem *

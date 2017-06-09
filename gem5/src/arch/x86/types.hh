@@ -45,7 +45,6 @@
 #include "arch/generic/types.hh"
 #include "base/bitunion.hh"
 #include "base/cprintf.hh"
-#include "base/hashmap.hh"
 #include "base/types.hh"
 #include "sim/serialize.hh"
 
@@ -107,47 +106,45 @@ namespace X86ISA
         Bitfield<0> b;
     EndBitUnion(Rex)
 
-    BitUnion(uint32_t, ThreeByteVex)
-        Bitfield<7,0> zero;
-        SubBitUnion(first, 15, 8)
-            // Inverted one-bit extension of ModRM reg field
-            Bitfield<15> r;
-            // Inverted one-bit extension of SIB index field
-            Bitfield<14> x;
-            // Inverted one-bit extension, r/m field or SIB base field
-            Bitfield<13> b;
-            // Opcode map select
-            Bitfield<12, 8> map_select;
-        EndSubBitUnion(first)
-        SubBitUnion(second, 23, 16)
-            // Default operand size override for a general purpose register to
-            // 64-bit size in 64-bit mode; operand configuration specifier for
-            // certain YMM/XMM-based operations.
-            Bitfield<23> w;
-            // Source or destination register selector, in ones' complement
-            // format
-            Bitfield<22, 19>  vvvv;
-            // Vector length specifier
-            Bitfield<18> l;
-            // Implied 66, F2, or F3 opcode extension
-            Bitfield<17, 16> pp;
-        EndSubBitUnion(second)
-    EndBitUnion(ThreeByteVex)
+    BitUnion8(Vex2Of3)
+        // Inverted bits from the REX prefix.
+        Bitfield<7> r;
+        Bitfield<6> x;
+        Bitfield<5> b;
+        // Selector for what would be two or three byte opcode types.
+        Bitfield<4, 0> m;
+    EndBitUnion(Vex2Of3)
 
-    BitUnion16(TwoByteVex)
-        Bitfield<7,0> zero;
-        SubBitUnion(first, 15, 8)
-            // Inverted one-bit extension of ModRM reg field
-            Bitfield<15> r;
-            // Source or destination register selector, in ones' complement
-            // format
-            Bitfield<14, 11>  vvvv;
-            // Vector length specifier
-            Bitfield<10> l;
-            // Implied 66, F2, or F3 opcode extension
-            Bitfield<9, 8> pp;
-        EndSubBitUnion(first)
-    EndBitUnion(TwoByteVex)
+    BitUnion8(Vex3Of3)
+        // Bit from the REX prefix.
+        Bitfield<7> w;
+        // Inverted extra register index.
+        Bitfield<6, 3>  v;
+        // Vector length specifier.
+        Bitfield<2> l;
+        // Implied 66, F2, or F3 opcode prefix.
+        Bitfield<1, 0> p;
+    EndBitUnion(Vex3Of3)
+
+    BitUnion8(Vex2Of2)
+        // Inverted bit from the REX prefix.
+        Bitfield<7> r;
+        // Inverted extra register index.
+        Bitfield<6, 3>  v;
+        // Vector length specifier
+        Bitfield<2> l;
+        // Implied 66, F2, or F3 opcode prefix.
+        Bitfield<1, 0> p;
+    EndBitUnion(Vex2Of2)
+
+    BitUnion8(VexInfo)
+        // Extra register index.
+        Bitfield<6, 3> v;
+        // Vector length specifier.
+        Bitfield<2> l;
+        // Whether the VEX prefix was used.
+        Bitfield<0> present;
+    EndBitUnion(VexInfo)
 
     enum OpcodeType {
         BadOpcode,
@@ -155,7 +152,6 @@ namespace X86ISA
         TwoByteOpcode,
         ThreeByte0F38Opcode,
         ThreeByte0F3AOpcode,
-        Vex,
     };
 
     static inline const char *
@@ -172,8 +168,6 @@ namespace X86ISA
             return "three byte 0f38";
           case ThreeByte0F3AOpcode:
             return "three byte 0f3a";
-          case Vex:
-            return "vex";
           default:
             return "unrecognized!";
         }
@@ -208,9 +202,7 @@ namespace X86ISA
         //Prefixes
         LegacyPrefixVector legacy;
         Rex rex;
-        // We use the following field for encoding both two byte and three byte
-        // escape sequences
-        ThreeByteVex vex;
+        VexInfo vex;
 
         //This holds all of the bytes of the opcode
         struct
@@ -249,7 +241,7 @@ namespace X86ISA
                      "immediate = %#x,\n\tdisplacement = %#x\n\t"
                      "dispSize = %d}\n",
                      (uint8_t)emi.legacy, (uint8_t)emi.rex,
-                     (uint32_t)emi.vex,
+                     (uint8_t)emi.vex,
                      opcodeTypeToStr(emi.opcode.type), (uint8_t)emi.opcode.op,
                      (uint8_t)emi.modRM, (uint8_t)emi.sib,
                      emi.immediate, emi.displacement, emi.dispSize);
@@ -259,31 +251,33 @@ namespace X86ISA
     inline static bool
         operator == (const ExtMachInst &emi1, const ExtMachInst &emi2)
     {
-        if(emi1.legacy != emi2.legacy)
+        if (emi1.legacy != emi2.legacy)
             return false;
-        if(emi1.rex != emi2.rex)
+        if (emi1.rex != emi2.rex)
             return false;
-        if(emi1.opcode.type != emi2.opcode.type)
+        if (emi1.vex != emi2.vex)
             return false;
-        if(emi1.opcode.op != emi2.opcode.op)
+        if (emi1.opcode.type != emi2.opcode.type)
             return false;
-        if(emi1.modRM != emi2.modRM)
+        if (emi1.opcode.op != emi2.opcode.op)
             return false;
-        if(emi1.sib != emi2.sib)
+        if (emi1.modRM != emi2.modRM)
             return false;
-        if(emi1.immediate != emi2.immediate)
+        if (emi1.sib != emi2.sib)
             return false;
-        if(emi1.displacement != emi2.displacement)
+        if (emi1.immediate != emi2.immediate)
             return false;
-        if(emi1.mode != emi2.mode)
+        if (emi1.displacement != emi2.displacement)
             return false;
-        if(emi1.opSize != emi2.opSize)
+        if (emi1.mode != emi2.mode)
             return false;
-        if(emi1.addrSize != emi2.addrSize)
+        if (emi1.opSize != emi2.opSize)
             return false;
-        if(emi1.stackSize != emi2.stackSize)
+        if (emi1.addrSize != emi2.addrSize)
             return false;
-        if(emi1.dispSize != emi2.dispSize)
+        if (emi1.stackSize != emi2.stackSize)
+            return false;
+        if (emi1.dispSize != emi2.dispSize)
             return false;
         return true;
     }
@@ -306,13 +300,21 @@ namespace X86ISA
         PCState() {}
         PCState(Addr val) { set(val); }
 
+        void
+        setNPC(Addr val)
+        {
+            Base::setNPC(val);
+            _size = 0;
+        }
+
         uint8_t size() const { return _size; }
         void size(uint8_t newSize) { _size = newSize; }
 
         bool
         branching() const
         {
-            return this->npc() != this->pc() + size();
+            return (this->npc() != this->pc() + size()) ||
+                   (this->nupc() != this->upc() + 1);
         }
 
         void
@@ -346,12 +348,13 @@ namespace X86ISA
 
 }
 
-__hash_namespace_begin
+namespace std {
     template<>
     struct hash<X86ISA::ExtMachInst> {
         size_t operator()(const X86ISA::ExtMachInst &emi) const {
-            return (((uint64_t)emi.legacy << 40) |
-                    ((uint64_t)emi.rex  << 32) |
+            return (((uint64_t)emi.legacy << 48) |
+                    ((uint64_t)emi.rex << 40) |
+                    ((uint64_t)emi.vex << 32) |
                     ((uint64_t)emi.modRM << 24) |
                     ((uint64_t)emi.sib << 16) |
                     ((uint64_t)emi.opcode.type << 8) |
@@ -362,7 +365,7 @@ __hash_namespace_begin
                     emi.stackSize ^ emi.dispSize;
         };
     };
-__hash_namespace_end
+}
 
 // These two functions allow ExtMachInst to be used with SERIALIZE_SCALAR
 // and UNSERIALIZE_SCALAR.

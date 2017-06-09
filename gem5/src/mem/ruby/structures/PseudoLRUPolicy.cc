@@ -30,8 +30,6 @@
 
 #include "mem/ruby/structures/PseudoLRUPolicy.hh"
 
-
-
 PseudoLRUPolicy::PseudoLRUPolicy(const Params * p)
     : AbstractReplacementPolicy(p)
 {
@@ -51,7 +49,7 @@ PseudoLRUPolicy::PseudoLRUPolicy(const Params * p)
     int tmp_assoc = m_effective_assoc;
     while (true) {
         tmp_assoc /= 2;
-        if(!tmp_assoc) break;
+        if (!tmp_assoc) break;
         m_num_levels++;
     }
     assert(m_num_levels < sizeof(unsigned int)*4);

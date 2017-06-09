@@ -1,4 +1,4 @@
-# Copyright (c) 2009-2015 ARM Limited
+# Copyright (c) 2009-2017 ARM Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -45,7 +45,7 @@ from m5.proxy import *
 from ClockDomain import ClockDomain
 from VoltageDomain import VoltageDomain
 from Device import BasicPioDevice, PioDevice, IsaFake, BadAddr, DmaDevice
-from Pci import PciConfigAll
+from PciHost import *
 from Ethernet import NSGigE, IGbE_igb, IGbE_e1000
 from Ide import *
 from Platform import Platform
@@ -54,6 +54,20 @@ from Uart import Uart
 from SimpleMemory import SimpleMemory
 from Gic import *
 from EnergyCtrl import EnergyCtrl
+from ClockDomain import SrcClockDomain
+from SubSystem import SubSystem
+
+# Platforms with KVM support should generally use in-kernel GIC
+# emulation. Use a GIC model that automatically switches between
+# gem5's GIC model and KVM's GIC model if KVM is available.
+try:
+    from KvmGic import MuxingKvmGic
+    kvm_gicv2_class = MuxingKvmGic
+except ImportError:
+    # KVM support wasn't compiled into gem5. Fallback to a
+    # software-only GIC.
+    kvm_gicv2_class = Pl390
+    pass
 
 class AmbaPioDevice(BasicPioDevice):
     type = 'AmbaPioDevice'
@@ -84,6 +98,20 @@ class A9SCU(BasicPioDevice):
     type = 'A9SCU'
     cxx_header = "dev/arm/a9scu.hh"
 
+class ArmPciIntRouting(Enum): vals = [
+    'ARM_PCI_INT_STATIC',
+    'ARM_PCI_INT_DEV',
+    'ARM_PCI_INT_PIN',
+    ]
+
+class GenericArmPciHost(GenericPciHost):
+    type = 'GenericArmPciHost'
+    cxx_header = "dev/arm/pci_host.hh"
+
+    int_policy = Param.ArmPciIntRouting("PCI interrupt routing policy")
+    int_base = Param.Unsigned("PCI interrupt base")
+    int_count = Param.Unsigned("Maximum number of interrupts used by this host")
+
 class RealViewCtrl(BasicPioDevice):
     type = 'RealViewCtrl'
     cxx_header = "dev/arm/rv_ctrl.hh"
@@ -113,26 +141,62 @@ class RealViewOsc(ClockDomain):
 
     freq = Param.Clock("Default frequency")
 
-class VExpressCoreTileCtrl(RealViewCtrl):
-    class MotherBoardOsc(RealViewOsc):
+class RealViewTemperatureSensor(SimObject):
+    type = 'RealViewTemperatureSensor'
+    cxx_header = "dev/arm/rv_ctrl.hh"
+
+    parent = Param.RealViewCtrl(Parent.any, "RealView controller")
+
+    system = Param.System(Parent.any, "system")
+
+    # See ARM DUI 0447J (ARM Motherboard Express uATX -- V2M-P1) and
+    # the individual core/logic tile reference manuals for details
+    # about the site/position/dcc/device allocation.
+    site = Param.UInt8("Board Site")
+    position = Param.UInt8("Position in device stack")
+    dcc = Param.UInt8("Daughterboard Configuration Controller")
+    device = Param.UInt8("Device ID")
+
+class VExpressMCC(SubSystem):
+    """ARM V2M-P1 Motherboard Configuration Controller
+
+This subsystem describes a subset of the devices that sit behind the
+motherboard configuration controller on the the ARM Motherboard
+Express (V2M-P1) motherboard. See ARM DUI 0447J for details.
+    """
+
+    class Osc(RealViewOsc):
         site, position, dcc = (0, 0, 0)
 
-    class CoreTileOsc(RealViewOsc):
+    class Temperature(RealViewTemperatureSensor):
+        site, position, dcc = (0, 0, 0)
+
+    osc_mcc = Osc(device=0, freq="50MHz")
+    osc_clcd = Osc(device=1, freq="23.75MHz")
+    osc_peripheral = Osc(device=2, freq="24MHz")
+    osc_system_bus = Osc(device=4, freq="24MHz")
+
+    # See Table 4.19 in ARM DUI 0447J (Motherboard Express uATX TRM).
+    temp_crtl = Temperature(device=0)
+
+class CoreTile2A15DCC(SubSystem):
+    """ARM CoreTile Express A15x2 Daughterboard Configuration Controller
+
+This subsystem describes a subset of the devices that sit behind the
+daughterboard configuration controller on a CoreTile Express A15x2. See
+ARM DUI 0604E for details.
+    """
+
+    class Osc(RealViewOsc):
         site, position, dcc = (1, 0, 0)
 
-    # See ARM DUI 0447J (ARM Motherboard Express uATX -- V2M-P1)
-    osc_mcc = MotherBoardOsc(device=0, freq="50MHz")
-    osc_clcd = MotherBoardOsc(device=1, freq="23.75MHz")
-    osc_peripheral = MotherBoardOsc(device=2, freq="24MHz")
-    osc_system_bus = MotherBoardOsc(device=4, freq="24MHz")
-
-    # See Table 2.8 in ARM DUI 0604E (CoreTile Express A15x2 TRM).
-    osc_cpu = CoreTileOsc(device=0, freq="60MHz")
-    osc_hsbm = CoreTileOsc(device=4, freq="40MHz")
-    osc_pxl = CoreTileOsc(device=5, freq="23.75MHz")
-    osc_smb = CoreTileOsc(device=6, freq="50MHz")
-    osc_sys = CoreTileOsc(device=7, freq="60MHz")
-    osc_ddr = CoreTileOsc(device=8, freq="40MHz")
+    # See Table 2.8 in ARM DUI 0604E (CoreTile Express A15x2 TRM)
+    osc_cpu = Osc(device=0, freq="60MHz")
+    osc_hsbm = Osc(device=4, freq="40MHz")
+    osc_pxl = Osc(device=5, freq="23.75MHz")
+    osc_smb = Osc(device=6, freq="50MHz")
+    osc_sys = Osc(device=7, freq="60MHz")
+    osc_ddr = Osc(device=8, freq="40MHz")
 
 class VGic(PioDevice):
     type = 'VGic'
@@ -179,7 +243,7 @@ class CpuLocalTimer(BasicPioDevice):
 class GenericTimer(SimObject):
     type = 'GenericTimer'
     cxx_header = "dev/arm/generic_timer.hh"
-    system = Param.System(Parent.any, "system")
+    system = Param.ArmSystem(Parent.any, "system")
     gic = Param.BaseGic(Parent.any, "GIC to use for interrupting")
     # @todo: for now only two timers per CPU is supported, which is the
     # normal behaviour when security extensions are disabled.
@@ -218,32 +282,56 @@ class Pl111(AmbaDmaDevice):
     amba_id = 0x00141111
     enable_capture = Param.Bool(True, "capture frame to system.framebuffer.bmp")
 
-
 class HDLcd(AmbaDmaDevice):
     type = 'HDLcd'
     cxx_header = "dev/arm/hdlcd.hh"
-    # For reference, 1024x768MR-16@60  ~= 56 MHz
-    #                1920x1080MR-16@60 ~= 137 MHz
-    #                3840x2160MR-16@60 ~= 533 MHz
-    # Match against the resolution selected in the Linux DTS/DTB file.
-    pixel_clock = Param.Clock('137MHz', "Clock frequency of the pixel clock "
-                                        "(i.e. PXLREFCLK / OSCCLK 5")
     vnc = Param.VncInput(Parent.any, "Vnc server for remote frame buffer "
                                      "display")
     amba_id = 0x00141000
-    workaround_swap_rb = Param.Bool(True, "Workaround incorrect color "
+    workaround_swap_rb = Param.Bool(False, "Workaround incorrect color "
                                     "selector order in some kernels")
+    workaround_dma_line_count = Param.Bool(True, "Workaround incorrect "
+                                           "DMA line count (off by 1)")
     enable_capture = Param.Bool(True, "capture frame to system.framebuffer.bmp")
+
+    pixel_buffer_size = Param.MemorySize32("2kB", "Size of address range")
+
+    pxl_clk = Param.ClockDomain("Pixel clock source")
+    pixel_chunk = Param.Unsigned(32, "Number of pixels to handle in one batch")
+    virt_refresh_rate = Param.Frequency("20Hz", "Frame refresh rate "
+                                        "in KVM mode")
 
 class RealView(Platform):
     type = 'RealView'
     cxx_header = "dev/arm/realview.hh"
     system = Param.System(Parent.any, "system")
-    pci_io_base = Param.Addr(0, "Base address of PCI IO Space")
-    pci_cfg_base = Param.Addr(0, "Base address of PCI Configuraiton Space")
-    pci_cfg_gen_offsets = Param.Bool(False, "Should the offsets used for PCI cfg access"
-            " be compatible with the pci-generic-host or the legacy host bridge?")
     _mem_regions = [(Addr(0), Addr('256MB'))]
+
+    def _on_chip_devices(self):
+        return []
+
+    def _off_chip_devices(self):
+        return []
+
+    _off_chip_ranges = []
+
+    def _attach_device(self, device, bus, dma_ports=None):
+        if hasattr(device, "pio"):
+            device.pio = bus.master
+        if hasattr(device, "dma"):
+            if dma_ports is None:
+                device.dma = bus.slave
+            else:
+                dma_ports.append(device.dma)
+
+    def _attach_io(self, devices, *args, **kwargs):
+        for d in devices:
+            self._attach_device(d, *args, **kwargs)
+
+    def _attach_clk(self, devices, clkdomain):
+        for d in devices:
+            if hasattr(d, "clk_domain"):
+                d.clk_domain = clkdomain
 
     def attachPciDevices(self):
         pass
@@ -252,10 +340,19 @@ class RealView(Platform):
         pass
 
     def onChipIOClkDomain(self, clkdomain):
-        pass
+        self._attach_clk(self._on_chip_devices(), clkdomain)
 
     def offChipIOClkDomain(self, clkdomain):
-        pass
+        self._attach_clk(self._off_chip_devices(), clkdomain)
+
+    def attachOnChipIO(self, bus, bridge=None, **kwargs):
+        self._attach_io(self._on_chip_devices(), bus, **kwargs)
+        if bridge:
+            bridge.ranges = self._off_chip_ranges
+
+    def attachIO(self, *args, **kwargs):
+        self._attach_io(self._off_chip_devices(), *args, **kwargs)
+
 
     def setupBootLoader(self, mem_bus, cur_sys, loc):
         self.nvmem = SimpleMemory(range = AddrRange('2GB', size = '64MB'),
@@ -272,8 +369,13 @@ class RealView(Platform):
 # Chapter 4: Programmer's Reference
 class RealViewPBX(RealView):
     uart = Pl011(pio_addr=0x10009000, int_num=44)
-    realview_io = VExpressCoreTileCtrl(pio_addr=0x10000000)
+    realview_io = RealViewCtrl(pio_addr=0x10000000)
+    mcc = VExpressMCC()
+    dcc = CoreTile2A15DCC()
     gic = Pl390()
+    pci_host = GenericPciHost(
+        conf_base=0x30000000, conf_size='256MB', conf_device_bits=16,
+        pci_pio_base=0)
     timer0 = Sp804(int_num0=36, int_num1=36, pio_addr=0x10011000)
     timer1 = Sp804(int_num0=37, int_num1=37, pio_addr=0x10012000)
     local_cpu_timer = CpuLocalTimer(int_num_timer=29, int_num_watchdog=30, pio_addr=0x1f000600)
@@ -338,6 +440,7 @@ class RealViewPBX(RealView):
     def attachIO(self, bus, dma_ports = []):
        self.uart.pio          = bus.master
        self.realview_io.pio   = bus.master
+       self.pci_host.pio      = bus.master
        self.timer0.pio        = bus.master
        self.timer1.pio        = bus.master
        self.clcd.pio          = bus.master
@@ -346,7 +449,6 @@ class RealViewPBX(RealView):
        self.kmi0.pio          = bus.master
        self.kmi1.pio          = bus.master
        self.cf_ctrl.pio       = bus.master
-       self.cf_ctrl.config    = bus.master
        if dma_ports.count(self.cf_ctrl.dma) == 0:
           self.cf_ctrl.dma       = bus.slave
        self.dmac_fake.pio     = bus.master
@@ -401,7 +503,9 @@ class RealViewPBX(RealView):
 # Chapter 4: Programmer's Reference
 class RealViewEB(RealView):
     uart = Pl011(pio_addr=0x10009000, int_num=44)
-    realview_io = VExpressCoreTileCtrl(pio_addr=0x10000000, idreg=0x01400500)
+    realview_io = RealViewCtrl(pio_addr=0x10000000, idreg=0x01400500)
+    mcc = VExpressMCC()
+    dcc = CoreTile2A15DCC()
     gic = Pl390(dist_addr=0x10041000, cpu_addr=0x10040000)
     timer0 = Sp804(int_num0=36, int_num1=36, pio_addr=0x10011000)
     timer1 = Sp804(int_num0=37, int_num1=37, pio_addr=0x10012000)
@@ -454,6 +558,7 @@ class RealViewEB(RealView):
     def attachIO(self, bus, dma_ports = []):
        self.uart.pio          = bus.master
        self.realview_io.pio   = bus.master
+       self.pci_host.pio      = bus.master
        self.timer0.pio        = bus.master
        self.timer1.pio        = bus.master
        self.clcd.pio          = bus.master
@@ -511,18 +616,24 @@ class RealViewEB(RealView):
 
 class VExpress_EMM(RealView):
     _mem_regions = [(Addr('2GB'), Addr('2GB'))]
-    pci_cfg_base = 0x30000000
     uart = Pl011(pio_addr=0x1c090000, int_num=37)
-    realview_io = VExpressCoreTileCtrl(
+    realview_io = RealViewCtrl(
         proc_id0=0x14000000, proc_id1=0x14000000,
         idreg=0x02250000, pio_addr=0x1C010000)
+    mcc = VExpressMCC()
+    dcc = CoreTile2A15DCC()
     gic = Pl390(dist_addr=0x2C001000, cpu_addr=0x2C002000)
+    pci_host = GenericPciHost(
+        conf_base=0x30000000, conf_size='256MB', conf_device_bits=16,
+        pci_pio_base=0)
     local_cpu_timer = CpuLocalTimer(int_num_timer=29, int_num_watchdog=30, pio_addr=0x2C080000)
     generic_timer = GenericTimer(int_phys=29, int_virt=27)
     timer0 = Sp804(int_num0=34, int_num1=34, pio_addr=0x1C110000, clock0='1MHz', clock1='1MHz')
     timer1 = Sp804(int_num0=35, int_num1=35, pio_addr=0x1C120000, clock0='1MHz', clock1='1MHz')
     clcd   = Pl111(pio_addr=0x1c1f0000, int_num=46)
-    hdlcd  = HDLcd(pio_addr=0x2b000000, int_num=117)
+    hdlcd  = HDLcd(pxl_clk=dcc.osc_pxl,
+                   pio_addr=0x2b000000, int_num=117,
+                   workaround_swap_rb=True)
     kmi0   = Pl050(pio_addr=0x1c060000, int_num=44)
     kmi1   = Pl050(pio_addr=0x1c070000, int_num=45, is_mouse=True)
     vgic   = VGic(vcpu_addr=0x2c006000, hv_addr=0x2c004000, ppint=25)
@@ -532,7 +643,6 @@ class VExpress_EMM(RealView):
                             BAR1 = 0x1C1A0100, BAR1Size = '4096B',
                             BAR0LegacyIO = True, BAR1LegacyIO = True)
 
-    pciconfig = PciConfigAll(size='256MB')
     vram           = SimpleMemory(range = AddrRange(0x18000000, size='32MB'), 
                                         conf_table_reported = False)
     rtc            = PL031(pio_addr=0x1C170000, int_num=36)
@@ -605,6 +715,7 @@ class VExpress_EMM(RealView):
     def attachIO(self, bus, dma_ports =[]):
        self.uart.pio            = bus.master
        self.realview_io.pio     = bus.master
+       self.pci_host.pio        = bus.master
        self.timer0.pio          = bus.master
        self.timer1.pio          = bus.master
        self.clcd.pio            = bus.master
@@ -616,11 +727,8 @@ class VExpress_EMM(RealView):
        self.cf_ctrl.pio         = bus.master
        if dma_ports.count(self.cf_ctrl.dma) == 0:
           self.cf_ctrl.dma         = bus.slave
-       self.cf_ctrl.config      = bus.master
        self.rtc.pio             = bus.master
-       bus.use_default_range    = True
        self.vram.port           = bus.master
-       self.pciconfig.pio       = bus.default
 
        self.l2x0_fake.pio       = bus.master
        self.uart1_fake.pio      = bus.master
@@ -637,11 +745,9 @@ class VExpress_EMM(RealView):
        # Try to attach the I/O if it exists
        try:
            self.ide.pio         = bus.master
-           self.ide.config      = bus.master
            if dma_ports.count(self.ide.dma) == 0:
               self.ide.dma         = bus.slave
            self.ethernet.pio    = bus.master
-           self.ethernet.config = bus.master
            if dma_ports.count(self.ethernet.dma) == 0:
               self.ethernet.dma    = bus.slave
        except:
@@ -660,7 +766,6 @@ class VExpress_EMM(RealView):
         self.cf_ctrl.clk_domain       = clkdomain
         self.rtc.clk_domain           = clkdomain
         self.vram.clk_domain          = clkdomain
-        self.pciconfig.clk_domain     = clkdomain
 
         self.l2x0_fake.clk_domain     = clkdomain
         self.uart1_fake.clk_domain    = clkdomain
@@ -675,13 +780,16 @@ class VExpress_EMM(RealView):
         self.energy_ctrl.clk_domain   = clkdomain
 
 class VExpress_EMM64(VExpress_EMM):
-    pci_io_base = 0x2f000000
-    pci_cfg_gen_offsets = True
     # Three memory regions are specified totalling 512GB
     _mem_regions = [(Addr('2GB'), Addr('2GB')), (Addr('34GB'), Addr('30GB')),
                     (Addr('512GB'), Addr('480GB'))]
+    pci_host = GenericPciHost(
+        conf_base=0x30000000, conf_size='256MB', conf_device_bits=12,
+        pci_pio_base=0x2f000000)
+
     def setupBootLoader(self, mem_bus, cur_sys, loc):
-        self.nvmem = SimpleMemory(range = AddrRange(0, size = '64MB'))
+        self.nvmem = SimpleMemory(range=AddrRange(0, size='64MB'),
+                                  conf_table_reported=False)
         self.nvmem.port = mem_bus.master
         cur_sys.boot_loader = loc('boot_emm.arm64')
         cur_sys.atags_addr = 0x8000000
@@ -689,3 +797,177 @@ class VExpress_EMM64(VExpress_EMM):
         cur_sys.load_offset = 0x80000000
 
 
+class VExpress_GEM5_V1(RealView):
+    """
+The VExpress gem5 memory map is loosely based on a modified
+Versatile Express RS1 memory map.
+
+The gem5 platform has been designed to implement a subset of the
+original Versatile Express RS1 memory map. Off-chip peripherals should,
+when possible, adhere to the Versatile Express memory map. Non-PCI
+off-chip devices that are gem5-specific should live in the CS5 memory
+space to avoid conflicts with existing devices that we might want to
+model in the future. Such devices should normally have interrupts in
+the gem5-specific SPI range.
+
+On-chip peripherals are loosely modeled after the ARM CoreTile Express
+A15x2 A7x3 memory and interrupt map. In particular, the GIC and
+Generic Timer have the same interrupt lines and base addresses. Other
+on-chip devices are gem5 specific.
+
+Unlike the original Versatile Express RS2 extended platform, gem5 implements a
+large contigious DRAM space, without aliases or holes, starting at the
+2GiB boundary. This means that PCI memory is limited to 1GiB.
+
+Memory map:
+   0x00000000-0x03ffffff: Boot memory (CS0)
+   0x04000000-0x07ffffff: Reserved
+   0x08000000-0x0bffffff: Reserved (CS0 alias)
+   0x0c000000-0x0fffffff: Reserved (Off-chip, CS4)
+   0x10000000-0x13ffffff: gem5-specific peripherals (Off-chip, CS5)
+       0x10000000-0x1000ffff: gem5 energy controller
+       0x10010000-0x1001ffff: gem5 pseudo-ops
+
+   0x14000000-0x17ffffff: Reserved (Off-chip, PSRAM, CS1)
+   0x18000000-0x1bffffff: Reserved (Off-chip, Peripherals, CS2)
+   0x1c000000-0x1fffffff: Peripheral block 1 (Off-chip, CS3):
+       0x1c010000-0x1c01ffff: realview_io (VE system control regs.)
+       0x1c060000-0x1c06ffff: KMI0 (keyboard)
+       0x1c070000-0x1c07ffff: KMI1 (mouse)
+       0x1c090000-0x1c09ffff: UART0
+       0x1c0a0000-0x1c0affff: UART1 (reserved)
+       0x1c0b0000-0x1c0bffff: UART2 (reserved)
+       0x1c0c0000-0x1c0cffff: UART3 (reserved)
+       0x1c170000-0x1c17ffff: RTC
+
+   0x20000000-0x3fffffff: On-chip peripherals:
+       0x2b000000-0x2b00ffff: HDLCD
+
+       0x2c001000-0x2c001fff: GIC (distributor)
+       0x2c002000-0x2c0020ff: GIC (CPU interface)
+       0x2c004000-0x2c005fff: vGIC (HV)
+       0x2c006000-0x2c007fff: vGIC (VCPU)
+       0x2c1c0000-0x2c1cffff: GICv2m MSI frame 0
+
+       0x2d000000-0x2d00ffff: GPU (reserved)
+
+       0x2f000000-0x2fffffff: PCI IO space
+       0x30000000-0x3fffffff: PCI config space
+
+   0x40000000-0x7fffffff: Ext. AXI: Used as PCI memory
+
+   0x80000000-X: DRAM
+
+Interrupts:
+      0- 15: Software generated interrupts (SGIs)
+     16- 31: On-chip private peripherals (PPIs)
+        25   : vgic
+        26   : generic_timer (hyp)
+        27   : generic_timer (virt)
+        28   : Reserved (Legacy FIQ)
+        29   : generic_timer (phys, sec)
+        30   : generic_timer (phys, non-sec)
+        31   : Reserved (Legacy IRQ)
+    32- 95: Mother board peripherals (SPIs)
+        32   : Reserved (SP805)
+        33   : Reserved (IOFPGA SW int)
+        34-35: Reserved (SP804)
+        36   : RTC
+        37-40: uart0-uart3
+        41-42: Reserved (PL180)
+        43   : Reserved (AACI)
+        44-45: kmi0-kmi1
+        46   : Reserved (CLCD)
+        47   : Reserved (Ethernet)
+        48   : Reserved (USB)
+    95-255: On-chip interrupt sources (we use these for
+            gem5-specific devices, SPIs)
+         95    : HDLCD
+         96- 98: GPU (reserved)
+        100-103: PCI
+   256-319: MSI frame 0 (gem5-specific, SPIs)
+   320-511: Unused
+
+    """
+
+    # Everything above 2GiB is memory
+    _mem_regions = [(Addr('2GB'), Addr('510GB'))]
+
+    _off_chip_ranges = [
+        # CS1-CS5
+        AddrRange(0x0c000000, 0x1fffffff),
+        # External AXI interface (PCI)
+        AddrRange(0x2f000000, 0x7fffffff),
+    ]
+
+    # Platform control device (off-chip)
+    realview_io = RealViewCtrl(proc_id0=0x14000000, proc_id1=0x14000000,
+                               idreg=0x02250000, pio_addr=0x1c010000)
+    mcc = VExpressMCC()
+    dcc = CoreTile2A15DCC()
+
+    ### On-chip devices ###
+    gic = kvm_gicv2_class(dist_addr=0x2c001000, cpu_addr=0x2c002000,
+                          it_lines=512)
+    vgic = VGic(vcpu_addr=0x2c006000, hv_addr=0x2c004000, ppint=25)
+    gicv2m = Gicv2m()
+    gicv2m.frames = [
+        Gicv2mFrame(spi_base=256, spi_len=64, addr=0x2c1c0000),
+    ]
+
+    generic_timer = GenericTimer(int_phys=29, int_virt=27)
+
+    hdlcd  = HDLcd(pxl_clk=dcc.osc_pxl,
+                   pio_addr=0x2b000000, int_num=95)
+
+    def _on_chip_devices(self):
+        return [
+            self.gic, self.vgic, self.gicv2m,
+            self.hdlcd,
+            self.generic_timer,
+        ]
+
+    ### Off-chip devices ###
+    uart0 = Pl011(pio_addr=0x1c090000, int_num=37)
+
+    kmi0 = Pl050(pio_addr=0x1c060000, int_num=44)
+    kmi1 = Pl050(pio_addr=0x1c070000, int_num=45, is_mouse=True)
+
+    rtc = PL031(pio_addr=0x1c170000, int_num=36)
+
+    ### gem5-specific off-chip devices ###
+    pci_host = GenericArmPciHost(
+        conf_base=0x30000000, conf_size='256MB', conf_device_bits=12,
+        pci_pio_base=0x2f000000,
+        int_policy="ARM_PCI_INT_DEV", int_base=100, int_count=4)
+
+    energy_ctrl = EnergyCtrl(pio_addr=0x10000000)
+
+
+    def _off_chip_devices(self):
+        return [
+            self.realview_io,
+            self.uart0,
+            self.kmi0, self.kmi1,
+            self.rtc,
+            self.pci_host,
+            self.energy_ctrl,
+        ]
+
+    def attachPciDevice(self, device, *args, **kwargs):
+        device.host = self.pci_host
+        self._attach_device(device, *args, **kwargs)
+
+    def setupBootLoader(self, mem_bus, cur_sys, loc):
+        self.nvmem = SimpleMemory(range=AddrRange(0, size='64MB'),
+                                  conf_table_reported=False)
+        self.nvmem.port = mem_bus.master
+        cur_sys.boot_loader = [ loc('boot_emm.arm64'), loc('boot_emm.arm') ]
+        cur_sys.atags_addr = 0x8000000
+        cur_sys.load_addr_mask = 0xfffffff
+        cur_sys.load_offset = 0x80000000
+
+        #  Setup m5ops. It's technically not a part of the boot
+        #  loader, but this is the only place we can configure the
+        #  system.
+        cur_sys.m5ops_base = 0x10010000

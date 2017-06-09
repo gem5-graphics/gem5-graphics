@@ -51,16 +51,17 @@ from m5.defines import buildEnv
 from m5.objects import *
 from m5.util import addToPath, fatal
 
-addToPath('../common')
-addToPath('../ruby')
+addToPath('../')
 
-import Options
-import Ruby
-import Simulation
-import CacheConfig
-import MemConfig
-from Caches import *
-from cpu2000 import *
+from ruby import Ruby
+
+from common import Options
+from common import Simulation
+from common import CacheConfig
+from common import CpuConfig
+from common import MemConfig
+from common.Caches import *
+from common.cpu2000 import *
 
 # Check if KVM support has been enabled, we might need to do VM
 # configuration if that's the case.
@@ -90,7 +91,7 @@ def get_processes(options):
 
     idx = 0
     for wrkld in workloads:
-        process = LiveProcess()
+        process = Process()
         process.executable = wrkld
         process.cwd = os.getcwd()
 
@@ -114,7 +115,7 @@ def get_processes(options):
         idx += 1
 
     if options.smt:
-        assert(options.cpu_type == "detailed")
+        assert(options.cpu_type == "DerivO3CPU")
         return multiprocesses, idx
     else:
         return multiprocesses, 1
@@ -153,7 +154,7 @@ if options.bench:
             else:
                 exec("workload = %s(buildEnv['TARGET_ISA', 'linux', '%s')" % (
                         app, options.spec_input))
-            multiprocesses.append(workload.makeLiveProcess())
+            multiprocesses.append(workload.makeProcess())
         except:
             print >>sys.stderr, "Unable to find workload for %s: %s" % (
                     buildEnv['TARGET_ISA'], app)
@@ -178,6 +179,9 @@ system = System(cpu = [CPUClass(cpu_id=i) for i in xrange(np)],
                 mem_ranges = [AddrRange(options.mem_size)],
                 cache_line_size = options.cacheline_size)
 
+if numThreads > 1:
+    system.multi_thread = True
+
 # Create a top-level voltage domain
 system.voltage_domain = VoltageDomain(voltage = options.sys_voltage)
 
@@ -193,6 +197,11 @@ system.cpu_clk_domain = SrcClockDomain(clock = options.cpu_clock,
                                        voltage_domain =
                                        system.cpu_voltage_domain)
 
+# If elastic tracing is enabled, then configure the cpu and attach the elastic
+# trace probe
+if options.elastic_trace_en:
+    CpuConfig.config_etrace(CPUClass, system.cpu, options)
+
 # All cpus belong to a common cpu_clk_domain, therefore running at a common
 # frequency.
 for cpu in system.cpu:
@@ -200,7 +209,7 @@ for cpu in system.cpu:
 
 if is_kvm_cpu(CPUClass) or is_kvm_cpu(FutureClass):
     if buildEnv['TARGET_ISA'] == 'x86':
-        system.vm = KvmVM()
+        system.kvm_vm = KvmVM()
         for process in multiprocesses:
             process.useArchPT = True
             process.kvmInSE = True
@@ -241,8 +250,8 @@ for i in xrange(np):
     system.cpu[i].createThreads()
 
 if options.ruby:
-    if not (options.cpu_type == "detailed" or options.cpu_type == "timing"):
-        print >> sys.stderr, "Ruby requires TimingSimpleCPU or O3CPU!!"
+    if options.cpu_type == "AtomicSimpleCPU":
+        print >> sys.stderr, "Ruby does not work with atomic cpu!!"
         sys.exit(1)
 
     Ruby.create_system(options, False, system)
@@ -262,9 +271,9 @@ if options.ruby:
         system.cpu[i].icache_port = ruby_port.slave
         system.cpu[i].dcache_port = ruby_port.slave
         if buildEnv['TARGET_ISA'] == 'x86':
-            system.cpu[i].interrupts.pio = ruby_port.master
-            system.cpu[i].interrupts.int_master = ruby_port.slave
-            system.cpu[i].interrupts.int_slave = ruby_port.master
+            system.cpu[i].interrupts[0].pio = ruby_port.master
+            system.cpu[i].interrupts[0].int_master = ruby_port.slave
+            system.cpu[i].interrupts[0].int_slave = ruby_port.master
             system.cpu[i].itb.walker.port = ruby_port.slave
             system.cpu[i].dtb.walker.port = ruby_port.slave
 else:

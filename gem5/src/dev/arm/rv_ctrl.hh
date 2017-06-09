@@ -44,6 +44,7 @@
 #include "dev/io_device.hh"
 #include "params/RealViewCtrl.hh"
 #include "params/RealViewOsc.hh"
+#include "params/RealViewTemperatureSensor.hh"
 
 /** @file
  * This implements the simple real view registers on a PBXA9
@@ -171,17 +172,17 @@ class RealViewCtrl : public BasicPioDevice
      * @param pkt The memory request.
      * @param data Where to put the data.
      */
-    Tick read(PacketPtr pkt) M5_ATTR_OVERRIDE;
+    Tick read(PacketPtr pkt) override;
 
     /**
      * All writes are simply ignored.
      * @param pkt The memory request.
      * @param data the data
      */
-    Tick write(PacketPtr pkt) M5_ATTR_OVERRIDE;
+    Tick write(PacketPtr pkt) override;
 
-    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
-    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 
   public:
     void registerDevice(DeviceFunc func, uint8_t site, uint8_t pos,
@@ -206,17 +207,44 @@ class RealViewOsc
     RealViewOsc(RealViewOscParams *p);
     virtual ~RealViewOsc() {};
 
-    void startup() M5_ATTR_OVERRIDE;
+    void startup() override;
 
-    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
-    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 
   public: // RealViewCtrl::Device interface
-    uint32_t read() const M5_ATTR_OVERRIDE;
-    void write(uint32_t freq) M5_ATTR_OVERRIDE;
+    uint32_t read() const override;
+    void write(uint32_t freq) override;
 
   protected:
     void clockPeriod(Tick clock_period);
+};
+
+/**
+ * This device implements the temperature sensor used in the
+ * RealView/Versatile Express platform.
+ *
+ * See ARM DUI 0447J (ARM  Motherboard Express uATX -- V2M-P1).
+ */
+class RealViewTemperatureSensor
+    : public SimObject, RealViewCtrl::Device
+{
+  public:
+    RealViewTemperatureSensor(RealViewTemperatureSensorParams *p)
+    : SimObject(p),
+      RealViewCtrl::Device(*p->parent, RealViewCtrl::FUNC_TEMP,
+                           p->site, p->position, p->dcc, p->device),
+      system(p->system)
+    {}
+    virtual ~RealViewTemperatureSensor() {};
+
+  public: // RealViewCtrl::Device interface
+    uint32_t read() const override;
+    void write(uint32_t temp) override {}
+
+  protected:
+    /** The system this RV device belongs to */
+    System * system;
 };
 
 

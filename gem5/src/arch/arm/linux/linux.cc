@@ -41,113 +41,14 @@
  * Authors: Stephen Hines
  */
 
-#include <fcntl.h>
-
 #include "arch/arm/linux/linux.hh"
 
-// open(2) flags translation table
-OpenFlagTransTable ArmLinux32::openFlagTable[] = {
-#ifdef _MSC_VER
-  { ArmLinux32::TGT_O_RDONLY,     _O_RDONLY },
-  { ArmLinux32::TGT_O_WRONLY,     _O_WRONLY },
-  { ArmLinux32::TGT_O_RDWR,       _O_RDWR },
-  { ArmLinux32::TGT_O_APPEND,     _O_APPEND },
-  { ArmLinux32::TGT_O_CREAT,      _O_CREAT },
-  { ArmLinux32::TGT_O_TRUNC,      _O_TRUNC },
-  { ArmLinux32::TGT_O_EXCL,       _O_EXCL },
-#ifdef _O_NONBLOCK
-  { ArmLinux32::TGT_O_NONBLOCK,   _O_NONBLOCK },
-#endif
-#ifdef _O_NOCTTY
-  { ArmLinux32::TGT_O_NOCTTY,     _O_NOCTTY },
-#endif
-#ifdef _O_SYNC
-  { ArmLinux32::TGT_O_SYNC,       _O_SYNC },
-#endif
-#else /* !_MSC_VER */
-  { ArmLinux32::TGT_O_RDONLY,     O_RDONLY },
-  { ArmLinux32::TGT_O_WRONLY,     O_WRONLY },
-  { ArmLinux32::TGT_O_RDWR,       O_RDWR },
-  { ArmLinux32::TGT_O_CREAT,      O_CREAT },
-  { ArmLinux32::TGT_O_EXCL,       O_EXCL },
-  { ArmLinux32::TGT_O_NOCTTY,     O_NOCTTY },
-  { ArmLinux32::TGT_O_TRUNC,      O_TRUNC },
-  { ArmLinux32::TGT_O_APPEND,     O_APPEND },
-  { ArmLinux32::TGT_O_NONBLOCK,   O_NONBLOCK },
-#ifdef O_SYNC
-  { ArmLinux32::TGT_O_SYNC,       O_SYNC },
-#endif
-#ifdef FASYNC
-  { ArmLinux32::TGT_FASYNC,       FASYNC },
-#endif
-#ifdef O_DIRECT
-  { ArmLinux32::TGT_O_DIRECT,     O_DIRECT },
-#endif
-#ifdef O_LARGEFILE
-  { ArmLinux32::TGT_O_LARGEFILE,  O_LARGEFILE },
-#endif
-#ifdef O_DIRECTORY
-  { ArmLinux32::TGT_O_DIRECTORY,  O_DIRECTORY },
-#endif
-#ifdef O_NOFOLLOW
-  { ArmLinux32::TGT_O_NOFOLLOW,   O_NOFOLLOW },
-#endif
-#endif /* _MSC_VER */
-};
+#include <fcntl.h>
+#include <sys/mman.h>
 
-const int ArmLinux32::NUM_OPEN_FLAGS = sizeof(ArmLinux32::openFlagTable) /
-                                       sizeof(ArmLinux32::openFlagTable[0]);
+#define TARGET ArmLinux32
+#include "kern/linux/flag_tables.hh"
 
-// open(2) flags translation table
-OpenFlagTransTable ArmLinux64::openFlagTable[] = {
-#ifdef _MSC_VER
-  { ArmLinux64::TGT_O_RDONLY,     _O_RDONLY },
-  { ArmLinux64::TGT_O_WRONLY,     _O_WRONLY },
-  { ArmLinux64::TGT_O_RDWR,       _O_RDWR },
-  { ArmLinux64::TGT_O_APPEND,     _O_APPEND },
-  { ArmLinux64::TGT_O_CREAT,      _O_CREAT },
-  { ArmLinux64::TGT_O_TRUNC,      _O_TRUNC },
-  { ArmLinux64::TGT_O_EXCL,       _O_EXCL },
-#ifdef _O_NONBLOCK
-  { ArmLinux64::TGT_O_NONBLOCK,   _O_NONBLOCK },
-#endif
-#ifdef _O_NOCTTY
-  { ArmLinux64::TGT_O_NOCTTY,     _O_NOCTTY },
-#endif
-#ifdef _O_SYNC
-  { ArmLinux64::TGT_O_SYNC,       _O_SYNC },
-#endif
-#else /* !_MSC_VER */
-  { ArmLinux64::TGT_O_RDONLY,     O_RDONLY },
-  { ArmLinux64::TGT_O_WRONLY,     O_WRONLY },
-  { ArmLinux64::TGT_O_RDWR,       O_RDWR },
-  { ArmLinux64::TGT_O_CREAT,      O_CREAT },
-  { ArmLinux64::TGT_O_EXCL,       O_EXCL },
-  { ArmLinux64::TGT_O_NOCTTY,     O_NOCTTY },
-  { ArmLinux64::TGT_O_TRUNC,      O_TRUNC },
-  { ArmLinux64::TGT_O_APPEND,     O_APPEND },
-  { ArmLinux64::TGT_O_NONBLOCK,   O_NONBLOCK },
-#ifdef O_SYNC
-  { ArmLinux64::TGT_O_SYNC,       O_SYNC },
-#endif
-#ifdef FASYNC
-  { ArmLinux64::TGT_FASYNC,       FASYNC },
-#endif
-#ifdef O_DIRECT
-  { ArmLinux64::TGT_O_DIRECT,     O_DIRECT },
-#endif
-#ifdef O_LARGEFILE
-  { ArmLinux64::TGT_O_LARGEFILE,  O_LARGEFILE },
-#endif
-#ifdef O_DIRECTORY
-  { ArmLinux64::TGT_O_DIRECTORY,  O_DIRECTORY },
-#endif
-#ifdef O_NOFOLLOW
-  { ArmLinux64::TGT_O_NOFOLLOW,   O_NOFOLLOW },
-#endif
-#endif /* _MSC_VER */
-};
-
-const int ArmLinux64::NUM_OPEN_FLAGS = sizeof(ArmLinux64::openFlagTable) /
-                                       sizeof(ArmLinux64::openFlagTable[0]);
-
+#undef TARGET
+#define TARGET ArmLinux64
+#include "kern/linux/flag_tables.hh"

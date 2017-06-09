@@ -26,7 +26,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-machine(Directory, "Directory protocol")
+machine(MachineType:Directory, "Directory protocol")
 :  DirectoryMemory * directory;
    Cycles directory_latency := 6;
    Cycles to_memory_controller_latency := 1;
@@ -42,6 +42,7 @@ machine(Directory, "Directory protocol")
    MessageBuffer * responseFromDir, network="To", virtual_network="2",
         vnet_type="response";  // Dir -> mod-L2 bank
 
+   MessageBuffer * responseFromMemory;
 {
   // STATES
   state_declaration(State, desc="Directory states", default="Directory_State_I") {
@@ -118,6 +119,8 @@ machine(Directory, "Directory protocol")
   // ** OBJECTS **
   TBETable TBEs, template="<Directory_TBE>", constructor="m_number_of_TBEs";
 
+  Tick clockEdge();
+  Tick cyclesToTicks(Cycles c);
   void set_tbe(TBE b);
   void unset_tbe();
 
@@ -220,8 +223,6 @@ machine(Directory, "Directory protocol")
     return false;
   }
 
-  MessageBuffer responseFromMemory;
-
   // ** OUT_PORTS **
   out_port(forwardNetwork_out, RequestMsg, forwardFromDir);
   out_port(responseNetwork_out, ResponseMsg, responseFromDir);
@@ -229,7 +230,7 @@ machine(Directory, "Directory protocol")
   // ** IN_PORTS **
 
   in_port(unblockNetwork_in, ResponseMsg, responseToDir) {
-    if (unblockNetwork_in.isReady()) {
+    if (unblockNetwork_in.isReady(clockEdge())) {
       peek(unblockNetwork_in, ResponseMsg) {
         if (in_msg.Type == CoherenceResponseType:UNBLOCK) {
           if (getDirectoryEntry(in_msg.addr).WaitingUnblocks == 1) {
@@ -262,7 +263,7 @@ machine(Directory, "Directory protocol")
   }
 
   in_port(requestQueue_in, RequestMsg, requestToDir) {
-    if (requestQueue_in.isReady()) {
+    if (requestQueue_in.isReady(clockEdge())) {
       peek(requestQueue_in, RequestMsg) {
         if (in_msg.Type == CoherenceRequestType:GETS) {
           trigger(Event:GETS, in_msg.addr, TBEs[in_msg.addr]);
@@ -289,7 +290,7 @@ machine(Directory, "Directory protocol")
 
   // off-chip memory request/response is done
   in_port(memQueue_in, MemoryMsg, responseFromMemory) {
-    if (memQueue_in.isReady()) {
+    if (memQueue_in.isReady(clockEdge())) {
       peek(memQueue_in, MemoryMsg) {
         if (in_msg.Type == MemoryRequestType:MEMORY_READ) {
           trigger(Event:Memory_Data, in_msg.addr, TBEs[in_msg.addr]);
@@ -439,11 +440,11 @@ machine(Directory, "Directory protocol")
   }
 
   action(i_popIncomingRequestQueue, "i", desc="Pop incoming request queue") {
-    requestQueue_in.dequeue();
+    requestQueue_in.dequeue(clockEdge());
   }
 
   action(j_popIncomingUnblockQueue, "j", desc="Pop incoming unblock queue") {
-    unblockNetwork_in.dequeue();
+    unblockNetwork_in.dequeue(clockEdge());
   }
 
   action(m_addUnlockerToSharers, "m", desc="Add the unlocker to the sharer list") {
@@ -462,7 +463,7 @@ machine(Directory, "Directory protocol")
   }
 
   action(q_popMemQueue, "q", desc="Pop off-chip request queue") {
-    memQueue_in.dequeue();
+    memQueue_in.dequeue(clockEdge());
   }
 
   action(qf_queueMemoryFetchRequest, "qf", desc="Queue off-chip fetch request") {
@@ -502,7 +503,7 @@ machine(Directory, "Directory protocol")
   }
 
   action(zz_recycleRequest, "\z", desc="Recycle the request queue") {
-    requestQueue_in.recycle();
+    requestQueue_in.recycle(clockEdge(), cyclesToTicks(recycle_latency));
   }
 
   action(a_sendDMAAck, "\a", desc="Send DMA Ack that write completed, along with Inv Ack count") {

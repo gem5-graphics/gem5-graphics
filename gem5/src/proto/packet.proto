@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2013 ARM Limited
+// Copyright (c) 2012-2013,2017 ARM Limited
 // All rights reserved
 //
 // The license below extends only to copyright in the software and shall
@@ -35,6 +35,8 @@
 //
 // Authors: Andreas Hansson
 
+syntax = "proto2";
+
 // Put all the generated messages in a namespace
 package ProtoMessage;
 
@@ -55,6 +57,8 @@ message PacketHeader {
 // not, etc. An optional id field is added for generic use to identify
 // the packet or the "owner" of the packet. An example of the latter
 // is the sequential id of an instruction, or the master id etc.
+// An optional field for PC of the instruction for which this request is made
+// is provided.
 message Packet {
   required uint64 tick = 1;
   required uint32 cmd = 2;
@@ -62,4 +66,5 @@ message Packet {
   required uint32 size = 4;
   optional uint32 flags = 5;
   optional uint64 pkt_id = 6;
+  optional uint64 pc = 7;
 }

@@ -26,10 +26,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "mem/ruby/structures/Prefetcher.hh"
+
 #include "debug/RubyPrefetcher.hh"
 #include "mem/ruby/slicc_interface/RubySlicc_ComponentMapping.hh"
-#include "mem/ruby/structures/Prefetcher.hh"
-#include "mem/ruby/system/System.hh"
+#include "mem/ruby/system/RubySystem.hh"
 
 Prefetcher*
 PrefetcherParams::create()
@@ -86,6 +87,8 @@ Prefetcher::~Prefetcher()
 void
 Prefetcher::regStats()
 {
+    SimObject::regStats();
+
     numMissObserved
         .name(name() + ".miss_observed")
         .desc("number of misses observed")
@@ -135,7 +138,7 @@ Prefetcher::regStats()
 void
 Prefetcher::observeMiss(Addr address, const RubyRequestType& type)
 {
-    DPRINTF(RubyPrefetcher, "Observed miss for %s\n", address);
+    DPRINTF(RubyPrefetcher, "Observed miss for %#x\n", address);
     Addr line_addr = makeLineAddress(address);
     numMissObserved++;
 
@@ -204,7 +207,7 @@ void
 Prefetcher::observePfMiss(Addr address)
 {
     numPartialHits++;
-    DPRINTF(RubyPrefetcher, "Observed partial hit for %s\n", address);
+    DPRINTF(RubyPrefetcher, "Observed partial hit for %#x\n", address);
     issueNextPrefetch(address, NULL);
 }
 
@@ -212,7 +215,7 @@ void
 Prefetcher::observePfHit(Addr address)
 {
     numHits++;
-    DPRINTF(RubyPrefetcher, "Observed hit for %s\n", address);
+    DPRINTF(RubyPrefetcher, "Observed hit for %#x\n", address);
     issueNextPrefetch(address, NULL);
 }
 
@@ -250,7 +253,7 @@ Prefetcher::issueNextPrefetch(Addr address, PrefetchEntry *stream)
     // launch next prefetch
     stream->m_address = line_addr;
     stream->m_use_time = m_controller->curCycle();
-    DPRINTF(RubyPrefetcher, "Requesting prefetch for %s\n", line_addr);
+    DPRINTF(RubyPrefetcher, "Requesting prefetch for %#x\n", line_addr);
     m_controller->enqueuePrefetch(line_addr, stream->m_type);
 }
 
@@ -314,7 +317,7 @@ Prefetcher::initializeStream(Addr address, int stride,
 
         // launch prefetch
         numPrefetchRequested++;
-        DPRINTF(RubyPrefetcher, "Requesting prefetch for %s\n", line_addr);
+        DPRINTF(RubyPrefetcher, "Requesting prefetch for %#x\n", line_addr);
         m_controller->enqueuePrefetch(line_addr, m_array[index].m_type);
     }
 

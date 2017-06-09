@@ -36,13 +36,17 @@
  *
  * Authors: Andrew Bardsley
  *          Curtis Dunham
+ *          Christian Menard
  */
+
+#include "mem/external_master.hh"
 
 #include <cctype>
 #include <iomanip>
 
+#include "base/trace.hh"
 #include "debug/ExternalPort.hh"
-#include "mem/external_master.hh"
+#include "sim/system.hh"
 
 std::map<std::string, ExternalMaster::Handler *>
     ExternalMaster::portHandlers;
@@ -52,7 +56,8 @@ ExternalMaster::ExternalMaster(ExternalMasterParams *params) :
     externalPort(NULL),
     portName(params->name + ".port"),
     portType(params->port_type),
-    portData(params->port_data)
+    portData(params->port_data),
+    masterId(params->system->getMasterId(params->name))
 {}
 
 BaseMasterPort &

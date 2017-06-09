@@ -693,7 +693,7 @@ UFSHostDevice::UFSSCSIDevice::readFlash(uint8_t* readaddr, uint64_t offset,
                                    uint32_t size)
 {
     /** read from image, and get to memory */
-    for(int count = 0; count < (size / SectorSize); count++)
+    for (int count = 0; count < (size / SectorSize); count++)
         flashDisk->read(&(readaddr[SectorSize*count]), (offset /
                                                         SectorSize) + count);
 }
@@ -707,7 +707,7 @@ UFSHostDevice::UFSSCSIDevice::writeFlash(uint8_t* writeaddr, uint64_t offset,
                                     uint32_t size)
 {
     /** Get from fifo and write to image*/
-    for(int count = 0; count < (size / SectorSize); count++)
+    for (int count = 0; count < (size / SectorSize); count++)
         flashDisk->write(&(writeaddr[SectorSize * count]),
                          (offset / SectorSize) + count);
 }
@@ -745,7 +745,7 @@ UFSHostDevice::UFSHostDevice(const UFSHostDeviceParams* p) :
     memReadCallback = new MakeCallback<UFSHostDevice,
         &UFSHostDevice::readCallback>(this);
 
-    for(int count = 0; count < lunAvail; count++) {
+    for (int count = 0; count < lunAvail; count++) {
         UFSDevice[count] = new UFSSCSIDevice(p, count, transferDoneCallback,
                                              memReadCallback);
     }
@@ -774,6 +774,8 @@ UFSHostDeviceParams::create()
 void
 UFSHostDevice::regStats()
 {
+    DmaDevice::regStats();
+
     using namespace Stats;
 
     std::string UFSHost_name = name() + ".UFSDiskHost";
@@ -1672,7 +1674,7 @@ UFSHostDevice::LUNSignal()
     uint8_t this_lun = 0;
 
     //while we haven't found the right lun, keep searching
-    while((this_lun < lunAvail) && !UFSDevice[this_lun]->finishedCommand())
+    while ((this_lun < lunAvail) && !UFSDevice[this_lun]->finishedCommand())
         ++this_lun;
 
     if (this_lun < lunAvail) {
@@ -1796,13 +1798,13 @@ UFSHostDevice::readDone()
         }
 
     /**done, generate interrupt if we havent got one already*/
-    if(!(UFSHCIMem.ORInterruptStatus & 0x01)) {
+    if (!(UFSHCIMem.ORInterruptStatus & 0x01)) {
         UFSHCIMem.ORInterruptStatus |= UTPTransferREQCOMPL;
         generateInterrupt();
     }
 
 
-    if(!readDoneEvent.empty()) {
+    if (!readDoneEvent.empty()) {
         readDoneEvent.pop_front();
     }
 }
@@ -1822,6 +1824,8 @@ UFSHostDevice::generateInterrupt()
     pendingDoorbells = 0;
     DPRINTF(UFSHostDevice, "Clear doorbell %X\n", UFSHCIMem.TRUTRLDBR);
 
+    checkDrain();
+
     /**step6 raise interrupt*/
     gic->sendInt(intNum);
     DPRINTF(UFSHostDevice, "Send interrupt @ transaction: 0x%8x!\n",
@@ -1837,6 +1841,8 @@ UFSHostDevice::clearInterrupt()
 {
     gic->clearInt(intNum);
     DPRINTF(UFSHostDevice, "Clear interrupt: 0x%8x!\n", countInt);
+
+    checkDrain();
 
     if (!(UFSHCIMem.TRUTRLDBR)) {
         idlePhaseStart = curTick();
@@ -1880,7 +1886,7 @@ UFSHostDevice::writeDevice(Event* additional_action, bool toDisk, Addr
     if (toDisk) {
         ++writePendingNum;
 
-        while(!writeDoneEvent.empty() && (writeDoneEvent.front().when()
+        while (!writeDoneEvent.empty() && (writeDoneEvent.front().when()
                                           < curTick()))
             writeDoneEvent.pop_front();
 
@@ -2239,7 +2245,7 @@ UFSHostDevice::readCallback()
     uint8_t this_lun = 0;
 
     //while we haven't found the right lun, keep searching
-    while((this_lun < lunAvail) && !UFSDevice[this_lun]->finishedRead())
+    while ((this_lun < lunAvail) && !UFSDevice[this_lun]->finishedRead())
         ++this_lun;
 
     DPRINTF(UFSHostDevice, "Found LUN %d messages pending for clean: %d\n",

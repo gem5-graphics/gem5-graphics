@@ -33,23 +33,27 @@
 #endif
 
 #if defined(__sun)
-#include <math.h>
+#include <cmath>
+
 #endif
 
 #include <cassert>
+
 #ifdef __SUNPRO_CC
-#include <math.h>
+#include <cmath>
+
 #endif
+#include "base/stats/text.hh"
+
 #include <cmath>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
 
-#include "base/stats/info.hh"
-#include "base/stats/text.hh"
 #include "base/cast.hh"
 #include "base/misc.hh"
+#include "base/stats/info.hh"
 #include "base/str.hh"
 
 using namespace std;
@@ -588,7 +592,6 @@ Text::visit(const Vector2dInfo &info)
     }
 
     VResult tot_vec(info.y);
-    VResult super_total(1, 0.0);
     for (off_type i = 0; i < info.x; ++i) {
         if (havesub && (i >= info.subnames.size() || info.subnames[i].empty()))
             continue;
@@ -601,7 +604,6 @@ Text::visit(const Vector2dInfo &info)
             yvec[j] = info.cvec[iy + j];
             tot_vec[j] += yvec[j];
             total += yvec[j];
-            super_total[0] += yvec[j];
         }
 
         print.name = info.name + "_" +
@@ -620,7 +622,7 @@ Text::visit(const Vector2dInfo &info)
         print.name = info.name;
         print.subnames = total_subname;
         print.desc = info.desc;
-        print.vec = super_total;
+        print.vec = VResult(1, info.total());
         print.flags = print.flags & ~total;
         print(*stream);
     }
@@ -740,11 +742,7 @@ initText(const string &filename, bool desc)
     static bool connected = false;
 
     if (!connected) {
-        ostream *os = simout.find(filename);
-        if (!os)
-            os = simout.create(filename);
-
-        text.open(*os);
+        text.open(*simout.findOrCreate(filename)->stream());
         text.descriptions = desc;
         connected = true;
     }

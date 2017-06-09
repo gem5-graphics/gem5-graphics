@@ -63,9 +63,9 @@ struct ThreadState : public Serializable {
 
     virtual ~ThreadState();
 
-    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
+    void serialize(CheckpointOut &cp) const override;
 
-    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
+    void unserialize(CheckpointIn &cp) override;
 
     int cpuId() const { return baseCpu->cpuId(); }
 
@@ -106,6 +106,21 @@ struct ThreadState : public Serializable {
     FSTranslatingPortProxy &getVirtProxy();
 
     Process *getProcessPtr() { return process; }
+
+    void setProcessPtr(Process *p)
+    {
+        process = p;
+        /**
+         * When the process pointer changes while operating in SE Mode,
+         * the se translating port proxy needs to be reinitialized since it
+         * holds a pointer to the process class.
+         */
+        if (proxy) {
+            delete proxy;
+            proxy = NULL;
+            initMemProxies(NULL);
+        }
+    }
 
     SETranslatingPortProxy &getMemProxy();
 

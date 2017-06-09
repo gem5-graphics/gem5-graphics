@@ -38,13 +38,12 @@
 
 #include <string>
 
-#include "arch/isa_traits.hh"
 #include "arch/tlb.hh"
 #include "base/types.hh"
 #include "config/the_isa.hh"
 #include "mem/page_table.hh"
-#include "sim/serialize.hh"
-#include "sim/system.hh"
+
+class System;
 
 /**
  * This class implements an in-memory multi-level page table that can be
@@ -145,15 +144,15 @@ public:
                         System *_sys);
     ~MultiLevelPageTable();
 
-    void initState(ThreadContext* tc);
+    void initState(ThreadContext* tc) override;
 
     void map(Addr vaddr, Addr paddr, int64_t size,
-             uint64_t flags = 0);
-    void remap(Addr vaddr, int64_t size, Addr new_vaddr);
-    void unmap(Addr vaddr, int64_t size);
-    bool isUnmapped(Addr vaddr, int64_t size);
-    bool lookup(Addr vaddr, TheISA::TlbEntry &entry);
-    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
-    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
+             uint64_t flags = 0) override;
+    void remap(Addr vaddr, int64_t size, Addr new_vaddr) override;
+    void unmap(Addr vaddr, int64_t size) override;
+    bool isUnmapped(Addr vaddr, int64_t size) override;
+    bool lookup(Addr vaddr, TheISA::TlbEntry &entry) override;
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 };
 #endif // __MEM_MULTI_LEVEL_PAGE_TABLE_HH__

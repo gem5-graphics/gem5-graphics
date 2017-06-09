@@ -251,7 +251,7 @@ ShaderLSQ::addLaneRequest(int lane_id, PacketPtr pkt)
 
     if (!dispatchWarpInstBuf) {
         assert(!dispatchInstEvent.scheduled());
-        assert(pkt->req->threadId() < maxNumWarpsPerCore);
+        assert(pkt->req->contextId() < maxNumWarpsPerCore);
 
         // TODO: Consider putting in a per-warp limitation on number of
         // concurrent warp instructions in the LSQ
@@ -274,7 +274,7 @@ ShaderLSQ::addLaneRequest(int lane_id, PacketPtr pkt)
         schedule(dispatchInstEvent, clockEdge(Cycles(0)));
         DPRINTF(ShaderLSQ,
                 "[%d: ] Starting %s instruction (pc: 0x%x) at tick: %llu\n",
-                pkt->req->threadId(), dispatchWarpInstBuf->getInstTypeString(),
+                pkt->req->contextId(), dispatchWarpInstBuf->getInstTypeString(),
                 pkt->req->getPC(), clockEdge(Cycles(0)));
     }
 
@@ -283,13 +283,13 @@ ShaderLSQ::addLaneRequest(int lane_id, PacketPtr pkt)
     if (request_added) {
         DPRINTF(ShaderLSQ,
                 "[%d:%d] Received %s request for vaddr: %p, size: %d\n",
-                pkt->req->threadId(), lane_id,
+                pkt->req->contextId(), lane_id,
                 dispatchWarpInstBuf->getInstTypeString(),
                 pkt->req->getVaddr(), pkt->getSize());
     } else {
         DPRINTF(ShaderLSQ,
                 "[%d:%d] Rejected %s request for vaddr: %p, size: %d\n",
-                pkt->req->threadId(), lane_id,
+                pkt->req->contextId(), lane_id,
                 dispatchWarpInstBuf->getInstTypeString(),
                 pkt->req->getVaddr(), pkt->getSize());
     }

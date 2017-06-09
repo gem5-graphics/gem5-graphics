@@ -506,9 +506,9 @@ void GPUCopyEngine::cePrintStats(std::ostream& out) {
 
 void GPUCopyEngine::CEExitCallback::process()
 {
-    std::ostream *os = simout.find(statsFilename);
+    std::ostream *os = simout.find(statsFilename)->stream();
     if (!os) {
-        os = simout.create(statsFilename);
+        os = simout.create(statsFilename)->stream();
     }
     engine->cePrintStats(*os);
     *os << std::endl;

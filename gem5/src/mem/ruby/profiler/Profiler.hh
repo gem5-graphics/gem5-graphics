@@ -50,7 +50,6 @@
 #include <vector>
 
 #include "base/callback.hh"
-#include "base/hashmap.hh"
 #include "base/statistics.hh"
 #include "mem/protocol/AccessType.hh"
 #include "mem/protocol/PrefetchBit.hh"
@@ -80,8 +79,8 @@ class Profiler
     void addAddressTraceSample(const RubyRequest& msg, NodeID id);
 
     // added by SS
-    bool getHotLines() { return m_hot_lines; }
-    bool getAllInstructions() { return m_all_instructions; }
+    bool getHotLines() const { return m_hot_lines; }
+    bool getAllInstructions() const { return m_all_instructions; }
 
   private:
     // Private copy constructor and assignment operator
@@ -95,42 +94,54 @@ class Profiler
     std::vector<Stats::Histogram *> delayVCHistogram;
 
     //! Histogram for number of outstanding requests per cycle.
-    Stats::Histogram m_outstandReqHist;
+    Stats::Histogram m_outstandReqHistSeqr;
+    Stats::Histogram m_outstandReqHistCoalsr;
 
     //! Histogram for holding latency profile of all requests.
-    Stats::Histogram m_latencyHist;
-    std::vector<Stats::Histogram *> m_typeLatencyHist;
+    Stats::Histogram m_latencyHistSeqr;
+    Stats::Histogram m_latencyHistCoalsr;
+    std::vector<Stats::Histogram *> m_typeLatencyHistSeqr;
+    std::vector<Stats::Histogram *> m_typeLatencyHistCoalsr;
 
     //! Histogram for holding latency profile of all requests that
     //! hit in the controller connected to this sequencer.
-    Stats::Histogram m_hitLatencyHist;
-    std::vector<Stats::Histogram *> m_hitTypeLatencyHist;
+    Stats::Histogram m_hitLatencyHistSeqr;
+    std::vector<Stats::Histogram *> m_hitTypeLatencyHistSeqr;
 
     //! Histograms for profiling the latencies for requests that
     //! did not required external messages.
-    std::vector<Stats::Histogram *> m_hitMachLatencyHist;
-    std::vector< std::vector<Stats::Histogram *> > m_hitTypeMachLatencyHist;
+    std::vector<Stats::Histogram *> m_hitMachLatencyHistSeqr;
+    std::vector< std::vector<Stats::Histogram *> > m_hitTypeMachLatencyHistSeqr;
 
     //! Histogram for holding latency profile of all requests that
     //! miss in the controller connected to this sequencer.
-    Stats::Histogram m_missLatencyHist;
-    std::vector<Stats::Histogram *> m_missTypeLatencyHist;
+    Stats::Histogram m_missLatencyHistSeqr;
+    Stats::Histogram m_missLatencyHistCoalsr;
+    std::vector<Stats::Histogram *> m_missTypeLatencyHistSeqr;
+    std::vector<Stats::Histogram *> m_missTypeLatencyHistCoalsr;
 
     //! Histograms for profiling the latencies for requests that
     //! required external messages.
-    std::vector<Stats::Histogram *> m_missMachLatencyHist;
-    std::vector< std::vector<Stats::Histogram *> > m_missTypeMachLatencyHist;
+    std::vector<Stats::Histogram *> m_missMachLatencyHistSeqr;
+    std::vector< std::vector<Stats::Histogram *> > m_missTypeMachLatencyHistSeqr;
+    std::vector<Stats::Histogram *> m_missMachLatencyHistCoalsr;
+    std::vector< std::vector<Stats::Histogram *> > m_missTypeMachLatencyHistCoalsr;
 
     //! Histograms for recording the breakdown of miss latency
-    std::vector<Stats::Histogram *> m_IssueToInitialDelayHist;
-    std::vector<Stats::Histogram *> m_InitialToForwardDelayHist;
-    std::vector<Stats::Histogram *> m_ForwardToFirstResponseDelayHist;
-    std::vector<Stats::Histogram *> m_FirstResponseToCompletionDelayHist;
-    Stats::Scalar m_IncompleteTimes[MachineType_NUM];
+    std::vector<Stats::Histogram *> m_IssueToInitialDelayHistSeqr;
+    std::vector<Stats::Histogram *> m_InitialToForwardDelayHistSeqr;
+    std::vector<Stats::Histogram *> m_ForwardToFirstResponseDelayHistSeqr;
+    std::vector<Stats::Histogram *> m_FirstResponseToCompletionDelayHistSeqr;
+    Stats::Scalar m_IncompleteTimesSeqr[MachineType_NUM];
+    std::vector<Stats::Histogram *> m_IssueToInitialDelayHistCoalsr;
+    std::vector<Stats::Histogram *> m_InitialToForwardDelayHistCoalsr;
+    std::vector<Stats::Histogram *> m_ForwardToFirstResponseDelayHistCoalsr;
+    std::vector<Stats::Histogram *> m_FirstResponseToCompletionDelayHistCoalsr;
 
     //added by SS
-    bool m_hot_lines;
-    bool m_all_instructions;
+    const bool m_hot_lines;
+    const bool m_all_instructions;
+    const uint32_t m_num_vnets;
 };
 
 #endif // __MEM_RUBY_PROFILER_PROFILER_HH__

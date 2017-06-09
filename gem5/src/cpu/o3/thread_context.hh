@@ -119,6 +119,8 @@ class O3ThreadContext : public ThreadContext
     /** Returns a pointer to this thread's process. */
     virtual Process *getProcessPtr() { return thread->getProcessPtr(); }
 
+    virtual void setProcessPtr(Process *p) { thread->setProcessPtr(p); }
+
     virtual PortProxy &getPhysProxy() { return thread->getPhysProxy(); }
 
     virtual FSTranslatingPortProxy &getVirtProxy();
@@ -261,8 +263,8 @@ class O3ThreadContext : public ThreadContext
     { thread->storeCondFailures = sc_failures; }
 
     /** Executes a syscall in SE mode. */
-    virtual void syscall(int64_t callnum)
-    { return cpu->syscall(callnum, thread->threadId()); }
+    virtual void syscall(int64_t callnum, Fault *fault)
+    { return cpu->syscall(callnum, thread->threadId(), fault); }
 
     /** Reads the funcExeInst counter. */
     virtual Counter readFuncExeInst() { return thread->funcExeInst; }

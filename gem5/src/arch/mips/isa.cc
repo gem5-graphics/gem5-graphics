@@ -29,6 +29,7 @@
  */
 
 #include "arch/mips/isa.hh"
+
 #include "arch/mips/mt.hh"
 #include "arch/mips/mt_constants.hh"
 #include "arch/mips/pra_constants.hh"
@@ -150,7 +151,7 @@ ISA::params() const
 void
 ISA::clear()
 {
-    for(int i = 0; i < NumMiscRegs; i++) {
+    for (int i = 0; i < NumMiscRegs; i++) {
         for (int j = 0; j < miscRegFile[i].size(); j++)
             miscRegFile[i][j] = 0;
 

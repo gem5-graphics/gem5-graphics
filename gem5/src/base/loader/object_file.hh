@@ -35,6 +35,7 @@
 #include <limits>
 #include <string>
 
+#include "base/misc.hh"
 #include "base/types.hh"
 
 class PortProxy;
@@ -55,7 +56,8 @@ class ObjectFile
         Arm64,
         Arm,
         Thumb,
-        Power
+        Power,
+        Riscv
     };
 
     enum OpSys {
@@ -72,7 +74,7 @@ class ObjectFile
     uint8_t *fileData;
     size_t len;
 
-    Arch  arch;
+    Arch arch;
     OpSys opSys;
 
     ObjectFile(const std::string &_filename, size_t _len, uint8_t *_data,
@@ -81,20 +83,29 @@ class ObjectFile
   public:
     virtual ~ObjectFile();
 
-    void close();
+    static const Addr maxAddr = std::numeric_limits<Addr>::max();
 
-    virtual bool loadSections(PortProxy& memProxy, Addr addrMask =
-                              std::numeric_limits<Addr>::max(),
-                              Addr offset = 0);
-    virtual bool loadGlobalSymbols(SymbolTable *symtab, Addr addrMask =
-            std::numeric_limits<Addr>::max()) = 0;
-    virtual bool loadLocalSymbols(SymbolTable *symtab, Addr addrMask =
-            std::numeric_limits<Addr>::max()) = 0;
-    virtual bool loadWeakSymbols(SymbolTable *symtab, Addr addrMask =
-            std::numeric_limits<Addr>::max())
+    virtual bool loadSections(PortProxy& mem_proxy,
+                              Addr mask = maxAddr, Addr offset = 0);
+
+    virtual bool loadAllSymbols(SymbolTable *symtab, Addr base = 0,
+                                Addr offset = 0, Addr mask = maxAddr) = 0;
+    virtual bool loadGlobalSymbols(SymbolTable *symtab, Addr base = 0,
+                                   Addr offset = 0, Addr mask = maxAddr) = 0;
+    virtual bool loadLocalSymbols(SymbolTable *symtab, Addr base = 0,
+                                  Addr offset = 0, Addr mask = maxAddr) = 0;
+    virtual bool loadWeakSymbols(SymbolTable *symtab, Addr base = 0,
+                                 Addr offset = 0, Addr mask = maxAddr)
     { return false; }
 
-    virtual bool isDynamic() { return false; }
+    virtual ObjectFile *getInterpreter() const { return nullptr; }
+    virtual bool relocatable() const { return false; }
+    virtual Addr mapSize() const
+    { panic("mapSize() should only be called on relocatable objects\n"); }
+    virtual void updateBias(Addr bias_addr)
+    { panic("updateBias() should only be called on relocatable objects\n"); }
+    virtual Addr bias() const { return 0; }
+
     virtual bool hasTLS() { return false; }
 
     Arch  getArch()  const { return arch; }
@@ -103,9 +114,9 @@ class ObjectFile
   protected:
 
     struct Section {
-        Addr     baseAddr;
+        Addr baseAddr;
         uint8_t *fileImage;
-        size_t   size;
+        size_t size;
     };
 
     Addr entry;
@@ -115,7 +126,7 @@ class ObjectFile
     Section data;
     Section bss;
 
-    bool loadSection(Section *sec, PortProxy& memProxy, Addr addrMask,
+    bool loadSection(Section *sec, PortProxy& mem_proxy, Addr mask,
                      Addr offset = 0);
     void setGlobalPointer(Addr global_ptr) { globalPtr = global_ptr; }
 

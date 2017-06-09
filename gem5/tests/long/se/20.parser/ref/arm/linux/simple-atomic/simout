@@ -1,13 +1,14 @@
+Redirecting stdout to build/ARM/tests/opt/long/se/20.parser/arm/linux/simple-atomic/simout
+Redirecting stderr to build/ARM/tests/opt/long/se/20.parser/arm/linux/simple-atomic/simerr
 gem5 Simulator System.  http://gem5.org
 gem5 is copyrighted software; use the --copyright option for details.
 
-gem5 compiled Jan 23 2014 12:08:08
-gem5 started Jan 23 2014 17:19:30
-gem5 executing on u200540-lin
-command line: build/ARM/gem5.opt -d build/ARM/tests/opt/long/se/20.parser/arm/linux/simple-atomic -re tests/run.py build/ARM/tests/opt/long/se/20.parser/arm/linux/simple-atomic
+gem5 compiled Apr  3 2017 17:55:48
+gem5 started Apr  3 2017 17:56:13
+gem5 executing on gabeblack-desktop.mtv.corp.google.com, pid 54223
+command line: /usr/local/google/home/gabeblack/gem5/gem5-public/build/ARM/gem5.opt -d build/ARM/tests/opt/long/se/20.parser/arm/linux/simple-atomic --stats-file 'text://stats.txt?desc=False' -re /usr/local/google/home/gabeblack/gem5/gem5-public/tests/testing/../run.py long/se/20.parser/arm/linux/simple-atomic
+
 Global frequency set at 1000000000000 ticks per second
-      0: system.cpu.isa: ISA system set to: 0 0x5d016c0
-info: Entering event queue @ 0.  Starting simulation...
 
  Reading the dictionary files: *************************************************
 
@@ -18,12 +19,10 @@ Welcome to the Link Parser -- Version 2.1
 
 Processing sentences in batch mode
 
-info: Increasing stack size by one page.
 Echoing of input sentence turned on.
 * as had expected the party to be a success , it was a success 
 * do you know where John 's 
 * he said that , finding that it was impossible to get work as a waiter , he would work as a janitor 
-info: Increasing stack size by one page.
 * how fast the program is it 
 * I am wondering whether to invite to the party 
 * I gave him for his birthday it 
@@ -68,4 +67,4 @@ info: Increasing stack size by one page.
   about 2 million people attended 
   the five best costumes got prizes 
 No errors!
-Exiting @ tick 290498967000 because target called exit()
+Exiting @ tick 279360903000 because exiting with last active thread context

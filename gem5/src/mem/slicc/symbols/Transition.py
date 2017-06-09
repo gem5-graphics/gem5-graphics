@@ -40,10 +40,10 @@ class Transition(Symbol):
             # check to make sure there is a getNextState function declared
             found = False
             for func in machine.functions:
-                if func.c_ident == 'getNextState_Address':
+                if func.c_ident == 'getNextState_Addr':
                     found = True
                     break
-            if found == False:
+            if not found:
                 fatal("Machine uses a wildcard transition without getNextState defined")
             self.nextState = WildcardState(machine.symtab,
                                            '*', location)

@@ -31,8 +31,8 @@
 
 //
 // **PLEASE NOTE!**  When adding objects to this file you must also add a line
-// in the src/mem/ruby/SConscript file.  Otherwise the external object's .hh 
-// file will not be copied to the protocol directory and you will encounter a 
+// in the src/mem/ruby/SConscript file.  Otherwise the external object's .hh
+// file will not be copied to the protocol directory and you will encounter a
 // undefined declaration error.
 //
 
@@ -41,9 +41,9 @@ external_type(OutPort, primitive="yes");
 external_type(Scalar, primitive="yes");
 
 structure(InPort, external = "yes", primitive="yes") {
-  bool isReady();
-  Cycles dequeue();
-  void recycle();
+  bool isReady(Tick current_time);
+  Tick dequeue(Tick current_time);
+  void recycle(Tick current_time, Tick recycle_latency);
   bool isEmpty();
   bool isStallMapEmpty();
   int getStallMapSize();
@@ -95,6 +95,8 @@ structure (NetDest, external = "yes", non_obj="yes") {
   bool intersectionIsEmpty(Set);
   bool intersectionIsEmpty(NetDest);
   MachineID smallestElement(MachineType);
+  NetDest OR(NetDest);
+  NetDest AND(NetDest);
 }
 
 structure (Sequencer, external = "yes") {
@@ -117,6 +119,44 @@ structure (Sequencer, external = "yes") {
   void invalidateSC(Addr);
 }
 
+structure (GPUCoalescer, external = "yes") {
+  void readCallback(Addr, DataBlock);
+  void readCallback(Addr, MachineType, DataBlock);
+  void readCallback(Addr, MachineType, DataBlock,
+                    Cycles, Cycles, Cycles);
+  void readCallback(Addr, MachineType, DataBlock,
+                    Cycles, Cycles, Cycles, bool);
+  void writeCallback(Addr, DataBlock);
+  void writeCallback(Addr, MachineType, DataBlock);
+  void writeCallback(Addr, MachineType, DataBlock,
+                     Cycles, Cycles, Cycles);
+  void writeCallback(Addr, MachineType, DataBlock,
+                     Cycles, Cycles, Cycles, bool);
+  void checkCoherence(Addr);
+  void evictionCallback(Addr);
+  void recordCPReadCallBack(MachineID, MachineID);
+  void recordCPWriteCallBack(MachineID, MachineID);
+}
+
+structure (VIPERCoalescer, external = "yes") {
+  void readCallback(Addr, DataBlock);
+  void readCallback(Addr, MachineType, DataBlock);
+  void readCallback(Addr, MachineType, DataBlock,
+                    Cycles, Cycles, Cycles);
+  void readCallback(Addr, MachineType, DataBlock,
+                    Cycles, Cycles, Cycles, bool);
+  void writeCallback(Addr, DataBlock);
+  void writeCallback(Addr, MachineType, DataBlock);
+  void writeCallback(Addr, MachineType, DataBlock,
+                     Cycles, Cycles, Cycles);
+  void writeCallback(Addr, MachineType, DataBlock,
+                     Cycles, Cycles, Cycles, bool);
+  void invCallback(Addr);
+  void wbCallback(Addr);
+  void checkCoherence(Addr);
+  void evictionCallback(Addr);
+}
+
 structure(RubyRequest, desc="...", interface="Message", external="yes") {
   Addr LineAddress,       desc="Line address for this request";
   Addr PhysicalAddress,   desc="Physical address for this request";
@@ -126,6 +166,12 @@ structure(RubyRequest, desc="...", interface="Message", external="yes") {
   int Size,                  desc="size in bytes of access";
   PrefetchBit Prefetch,      desc="Is this a prefetch request";
   int contextId,             desc="this goes away but must be replace with Nilay";
+  WriteMask writeMask,       desc="Writethrough mask";
+  DataBlock WTData,          desc="Writethrough data block";
+  int wfid,                  desc="Writethrough wavefront";
+  HSAScope scope,            desc="HSA scope";
+  HSASegment segment,        desc="HSA segment";
+  PacketPtr pkt,             desc="Packet associated with this request";
   void writeData(DataBlock);
 }
 
@@ -157,6 +203,8 @@ structure (CacheMemory, external = "yes") {
   Cycles getTagLatency();
   Cycles getDataLatency();
   void setMRU(Addr);
+  void setMRU(Addr, int);
+  void setMRU(AbstractCacheEntry);
   void recordRequestType(CacheRequestType, Addr);
   bool checkResourceAvailable(CacheResourceType, Addr);
   void flashInvalidate();
@@ -174,20 +222,20 @@ structure (WireBuffer, inport="yes", outport="yes", external = "yes") {
 }
 
 structure (DMASequencer, external = "yes") {
-  void ackCallback();
-  void dataCallback(DataBlock);
+  void ackCallback(Addr);
+  void dataCallback(DataBlock,Addr);
   void recordRequestType(CacheRequestType);
 }
 
 structure (TimerTable, inport="yes", external = "yes") {
-  bool isReady();
-  Addr readyAddress();
-  void set(Addr, Cycles);
+  bool isReady(Tick);
+  Addr nextAddress();
+  void set(Addr, Tick);
   void unset(Addr);
   bool isSet(Addr);
 }
 
-structure (GenericBloomFilter, external = "yes") {
+structure (AbstractBloomFilter, external = "yes") {
   void clear(int);
   void increment(Addr, int);
   void decrement(Addr, int);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 ARM Limited
+ * Copyright (c) 2010-2016 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -884,25 +884,25 @@ class TableWalker : public MemObject
         return dynamic_cast<const Params *>(_params);
     }
 
-    virtual void init();
+    void init() override;
 
     bool haveLPAE() const { return _haveLPAE; }
     bool haveVirtualization() const { return _haveVirtualization; }
     bool haveLargeAsid64() const { return _haveLargeAsid64; }
     /** Checks if all state is cleared and if so, completes drain */
     void completeDrain();
-    DrainState drain() M5_ATTR_OVERRIDE;
-    virtual void drainResume() M5_ATTR_OVERRIDE;
+    DrainState drain() override;
+    void drainResume() override;
 
-    virtual BaseMasterPort& getMasterPort(const std::string &if_name,
-                                          PortID idx = InvalidPortID);
+    BaseMasterPort& getMasterPort(const std::string &if_name,
+                                  PortID idx = InvalidPortID) override;
 
-    void regStats();
+    void regStats() override;
 
     Fault walk(RequestPtr req, ThreadContext *tc, uint16_t asid, uint8_t _vmid,
                bool _isHyp, TLB::Mode mode, TLB::Translation *_trans,
                bool timing, bool functional, bool secure,
-               TLB::ArmTranslationType tranType);
+               TLB::ArmTranslationType tranType, bool _stage2Req);
 
     void setTlb(TLB *_tlb) { tlb = _tlb; }
     TLB* getTlb() { return tlb; }
@@ -911,8 +911,8 @@ class TableWalker : public MemObject
                   uint8_t texcb, bool s);
     void memAttrsLPAE(ThreadContext *tc, TlbEntry &te,
                       LongDescriptor &lDescriptor);
-    void memAttrsAArch64(ThreadContext *tc, TlbEntry &te, uint8_t attrIndx,
-                         uint8_t sh);
+    void memAttrsAArch64(ThreadContext *tc, TlbEntry &te,
+                         LongDescriptor &lDescriptor);
 
     static LookupLevel toLookupLevel(uint8_t lookup_level_as_int);
 
@@ -944,6 +944,7 @@ class TableWalker : public MemObject
                  &TableWalker::doL3LongDescriptorWrapper> doL3LongDescEvent;
 
     void doLongDescriptorWrapper(LookupLevel curr_lookup_level);
+    Event* LongDescEventByLevel[4];
 
     bool fetchDescriptor(Addr descAddr, uint8_t *data, int numBytes,
         Request::Flags flags, int queueIndex, Event *event,
@@ -966,6 +967,9 @@ class TableWalker : public MemObject
     void pendingChange();
 
     static uint8_t pageSizeNtoStatBin(uint8_t N);
+
+    Fault testWalk(Addr pa, Addr size, TlbEntry::DomainType domain,
+                   LookupLevel lookup_level);
 };
 
 } // namespace ArmISA

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2015 ARM Limited
+ * Copyright (c) 2011-2016 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -48,13 +48,14 @@
  * between a single level of the memory heirarchy (ie L1->L2).
  */
 
+#include "mem/packet.hh"
+
 #include <cstring>
 #include <iostream>
 
 #include "base/cprintf.hh"
 #include "base/misc.hh"
 #include "base/trace.hh"
-#include "mem/packet.hh"
 
 using namespace std;
 
@@ -65,6 +66,8 @@ using namespace std;
 #define SET4(a1, a2, a3, a4)         (SET3(a1, a2, a3) | SET1(a4))
 #define SET5(a1, a2, a3, a4, a5)     (SET4(a1, a2, a3, a4) | SET1(a5))
 #define SET6(a1, a2, a3, a4, a5, a6) (SET5(a1, a2, a3, a4, a5) | SET1(a6))
+#define SET7(a1, a2, a3, a4, a5, a6, a7) (SET6(a1, a2, a3, a4, a5, a6) | \
+                                          SET1(a7))
 
 const MemCmd::CommandInfo
 MemCmd::commandInfo[] =
@@ -80,20 +83,25 @@ MemCmd::commandInfo[] =
     { SET4(IsRead, IsResponse, HasData, IsInvalidate),
             InvalidCmd, "ReadRespWithInvalidate" },
     /* WriteReq */
-    { SET5(IsWrite, NeedsExclusive, IsRequest, NeedsResponse, HasData),
+    { SET5(IsWrite, NeedsWritable, IsRequest, NeedsResponse, HasData),
             WriteResp, "WriteReq" },
     /* WriteResp */
-    { SET3(IsWrite, NeedsExclusive, IsResponse), InvalidCmd, "WriteResp" },
-    /* Writeback */
-    { SET4(IsWrite, NeedsExclusive, IsRequest, HasData),
-            InvalidCmd, "Writeback" },
+    { SET2(IsWrite, IsResponse), InvalidCmd, "WriteResp" },
+    /* WritebackDirty */
+    { SET5(IsWrite, IsRequest, IsEviction, HasData, FromCache),
+            InvalidCmd, "WritebackDirty" },
+    /* WritebackClean - This allows the upstream cache to writeback a
+     * line to the downstream cache without it being considered
+     * dirty. */
+    { SET5(IsWrite, IsRequest, IsEviction, HasData, FromCache),
+            InvalidCmd, "WritebackClean" },
     /* CleanEvict */
-    { SET2(IsWrite, IsRequest), InvalidCmd, "CleanEvict" },
+    { SET3(IsRequest, IsEviction, FromCache), InvalidCmd, "CleanEvict" },
     /* SoftPFReq */
     { SET4(IsRead, IsRequest, IsSWPrefetch, NeedsResponse),
             SoftPFResp, "SoftPFReq" },
     /* HardPFReq */
-    { SET4(IsRead, IsRequest, IsHWPrefetch, NeedsResponse),
+    { SET5(IsRead, IsRequest, IsHWPrefetch, NeedsResponse, FromCache),
             HardPFResp, "HardPFReq" },
     /* SoftPFResp */
     { SET4(IsRead, IsResponse, IsSWPrefetch, HasData),
@@ -102,77 +110,77 @@ MemCmd::commandInfo[] =
     { SET4(IsRead, IsResponse, IsHWPrefetch, HasData),
             InvalidCmd, "HardPFResp" },
     /* WriteLineReq */
-    { SET5(IsWrite, NeedsExclusive, IsRequest, NeedsResponse, HasData),
+    { SET5(IsWrite, NeedsWritable, IsRequest, NeedsResponse, HasData),
             WriteResp, "WriteLineReq" },
     /* UpgradeReq */
-    { SET5(IsInvalidate, NeedsExclusive, IsUpgrade, IsRequest, NeedsResponse),
+    { SET6(IsInvalidate, NeedsWritable, IsUpgrade, IsRequest, NeedsResponse,
+            FromCache),
             UpgradeResp, "UpgradeReq" },
     /* SCUpgradeReq: response could be UpgradeResp or UpgradeFailResp */
-    { SET6(IsInvalidate, NeedsExclusive, IsUpgrade, IsLlsc,
-           IsRequest, NeedsResponse),
+    { SET7(IsInvalidate, NeedsWritable, IsUpgrade, IsLlsc,
+           IsRequest, NeedsResponse, FromCache),
             UpgradeResp, "SCUpgradeReq" },
     /* UpgradeResp */
-    { SET3(NeedsExclusive, IsUpgrade, IsResponse),
+    { SET2(IsUpgrade, IsResponse),
             InvalidCmd, "UpgradeResp" },
     /* SCUpgradeFailReq: generates UpgradeFailResp but still gets the data */
-    { SET6(IsRead, NeedsExclusive, IsInvalidate,
-           IsLlsc, IsRequest, NeedsResponse),
+    { SET7(IsRead, NeedsWritable, IsInvalidate,
+           IsLlsc, IsRequest, NeedsResponse, FromCache),
             UpgradeFailResp, "SCUpgradeFailReq" },
     /* UpgradeFailResp - Behaves like a ReadExReq, but notifies an SC
      * that it has failed, acquires line as Dirty*/
-    { SET4(IsRead, NeedsExclusive, IsResponse, HasData),
+    { SET3(IsRead, IsResponse, HasData),
             InvalidCmd, "UpgradeFailResp" },
     /* ReadExReq - Read issues by a cache, always cache-line aligned,
      * and the response is guaranteed to be writeable (exclusive or
      * even modified) */
-    { SET5(IsRead, NeedsExclusive, IsInvalidate, IsRequest, NeedsResponse),
+    { SET6(IsRead, NeedsWritable, IsInvalidate, IsRequest, NeedsResponse,
+            FromCache),
             ReadExResp, "ReadExReq" },
     /* ReadExResp - Response matching a read exclusive, as we check
      * the need for exclusive also on responses */
-    { SET4(IsRead, NeedsExclusive, IsResponse, HasData),
+    { SET3(IsRead, IsResponse, HasData),
             InvalidCmd, "ReadExResp" },
     /* ReadCleanReq - Read issued by a cache, always cache-line
      * aligned, and the response is guaranteed to not contain dirty data
      * (exclusive or shared).*/
-    { SET3(IsRead, IsRequest, NeedsResponse), ReadResp, "ReadCleanReq" },
+    { SET4(IsRead, IsRequest, NeedsResponse, FromCache),
+            ReadResp, "ReadCleanReq" },
     /* ReadSharedReq - Read issued by a cache, always cache-line
      * aligned, response is shared, possibly exclusive, owned or even
      * modified. */
-    { SET3(IsRead, IsRequest, NeedsResponse), ReadResp, "ReadSharedReq" },
+    { SET4(IsRead, IsRequest, NeedsResponse, FromCache),
+            ReadResp, "ReadSharedReq" },
     /* LoadLockedReq: note that we use plain ReadResp as response, so that
      *                we can also use ReadRespWithInvalidate when needed */
     { SET4(IsRead, IsLlsc, IsRequest, NeedsResponse),
             ReadResp, "LoadLockedReq" },
     /* StoreCondReq */
-    { SET6(IsWrite, NeedsExclusive, IsLlsc,
+    { SET6(IsWrite, NeedsWritable, IsLlsc,
            IsRequest, NeedsResponse, HasData),
             StoreCondResp, "StoreCondReq" },
     /* StoreCondFailReq: generates failing StoreCondResp */
-    { SET6(IsWrite, NeedsExclusive, IsLlsc,
+    { SET6(IsWrite, NeedsWritable, IsLlsc,
            IsRequest, NeedsResponse, HasData),
             StoreCondResp, "StoreCondFailReq" },
     /* StoreCondResp */
-    { SET4(IsWrite, NeedsExclusive, IsLlsc, IsResponse),
+    { SET3(IsWrite, IsLlsc, IsResponse),
             InvalidCmd, "StoreCondResp" },
     /* SwapReq -- for Swap ldstub type operations */
-    { SET6(IsRead, IsWrite, NeedsExclusive, IsRequest, HasData, NeedsResponse),
+    { SET6(IsRead, IsWrite, NeedsWritable, IsRequest, HasData, NeedsResponse),
         SwapResp, "SwapReq" },
     /* SwapResp -- for Swap ldstub type operations */
-    { SET5(IsRead, IsWrite, NeedsExclusive, IsResponse, HasData),
+    { SET4(IsRead, IsWrite, IsResponse, HasData),
             InvalidCmd, "SwapResp" },
     /* IntReq -- for interrupts */
     { SET4(IsWrite, IsRequest, NeedsResponse, HasData),
         MessageResp, "MessageReq" },
     /* IntResp -- for interrupts */
     { SET2(IsWrite, IsResponse), InvalidCmd, "MessageResp" },
-    /* ReleaseReq -- for release synchronization */
-    { SET2(IsRequest, NeedsResponse), ReleaseResp, "ReleaseReq" },
-    /* ReleaseResp -- for release synchronization */
-    { SET1(IsResponse), InvalidCmd, "ReleaseResp" },
-    /* AcquireReq -- for release synchronization */
-    { SET2(IsRequest, NeedsResponse), AcquireResp, "AcquireReq" },
-    /* AcquireResp -- for release synchronization */
-    { SET2(IsResponse, NeedsResponse), InvalidCmd, "AcquireResp" },
+    /* MemFenceReq -- for synchronization requests */
+    {SET2(IsRequest, NeedsResponse), MemFenceResp, "MemFenceReq"},
+    /* MemFenceResp -- for synchronization responses */
+    {SET1(IsResponse), InvalidCmd, "MemFenceResp"},
     /* InvalidDestError  -- packet dest field invalid */
     { SET2(IsResponse, IsError), InvalidCmd, "InvalidDestError" },
     /* BadAddressError   -- memory address invalid */
@@ -184,16 +192,16 @@ MemCmd::commandInfo[] =
     /* PrintReq */
     { SET2(IsRequest, IsPrint), InvalidCmd, "PrintReq" },
     /* Flush Request */
-    { SET4(IsRequest, IsFlush, NeedsExclusive, NeedsResponse), FlushResp,
+    { SET4(IsRequest, IsFlush, NeedsWritable, NeedsResponse), FlushResp,
            "FlushReq" },
     /* Flush Response */
-    { SET3(IsResponse, IsFlush, NeedsExclusive), InvalidCmd,
+    { SET3(IsResponse, IsFlush, NeedsWritable), InvalidCmd,
            "FlushResp" },
     /* Invalidation Request */
-    { SET4(IsInvalidate, IsRequest, NeedsExclusive, NeedsResponse),
+    { SET5(IsInvalidate, IsRequest, NeedsWritable, NeedsResponse, FromCache),
       InvalidateResp, "InvalidateReq" },
     /* Invalidation Response */
-    { SET3(IsInvalidate, IsResponse, NeedsExclusive),
+    { SET2(IsInvalidate, IsResponse),
       InvalidCmd, "InvalidateResp" },
     /* FlushAll Request */
     { SET4(IsRequest, NeedsResponse, IsFlush, IsInvalidate), FlushAllResp,
@@ -351,8 +359,12 @@ Packet::popSenderState()
 void
 Packet::print(ostream &o, const int verbosity, const string &prefix) const
 {
-    ccprintf(o, "%s[%x:%x] %s\n", prefix,
-             getAddr(), getAddr() + getSize() - 1, cmdString());
+    ccprintf(o, "%s%s [%x:%x]%s%s%s%s", prefix, cmdString(),
+             getAddr(), getAddr() + getSize() - 1,
+             req->isSecure() ? " (s)" : "",
+             req->isInstFetch() ? " IF" : "",
+             req->isUncacheable() ? " UC" : "",
+             isExpressSnoop() ? " ES" : "");
 }
 
 std::string

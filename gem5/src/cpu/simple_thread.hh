@@ -154,8 +154,8 @@ class SimpleThread : public ThreadState
 
     void copyState(ThreadContext *oldContext);
 
-    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
-    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
     void startup();
 
     /***************************************************************
@@ -355,6 +355,12 @@ class SimpleThread : public ThreadState
         return _pcState.nextInstAddr();
     }
 
+    void
+    setNPC(Addr val)
+    {
+        _pcState.setNPC(val);
+    }
+
     MicroPC
     microPC()
     {
@@ -430,9 +436,9 @@ class SimpleThread : public ThreadState
     void setStCondFailures(unsigned sc_failures)
     { storeCondFailures = sc_failures; }
 
-    void syscall(int64_t callnum)
+    void syscall(int64_t callnum, Fault *fault)
     {
-        process->syscall(callnum, tc);
+        process->syscall(callnum, tc, fault);
     }
 
     uint64_t readIntRegFlat(int idx) { return intRegs[idx]; }

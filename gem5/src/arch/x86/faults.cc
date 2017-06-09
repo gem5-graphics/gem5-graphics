@@ -40,8 +40,9 @@
  * Authors: Gabe Black
  */
 
-#include "arch/x86/generated/decoder.hh"
 #include "arch/x86/faults.hh"
+
+#include "arch/x86/generated/decoder.hh"
 #include "arch/x86/isa_traits.hh"
 #include "base/trace.hh"
 #include "cpu/thread_context.hh"
@@ -103,7 +104,7 @@ namespace X86ISA
 
         return ss.str();
     }
-    
+
     void X86Trap::invoke(ThreadContext * tc, const StaticInstPtr &inst)
     {
         X86FaultBase::invoke(tc);
@@ -135,6 +136,9 @@ namespace X86ISA
     void PageFault::invoke(ThreadContext * tc, const StaticInstPtr &inst)
     {
         if (FullSystem) {
+            /* Invalidate any matching TLB entries before handling the page fault */
+            tc->getITBPtr()->demapPage(addr, 0);
+            tc->getDTBPtr()->demapPage(addr, 0);
             HandyM5Reg m5reg = tc->readMiscRegNoEffect(MISCREG_M5_REG);
             X86FaultBase::invoke(tc);
             /*

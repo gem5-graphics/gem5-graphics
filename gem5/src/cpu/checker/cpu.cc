@@ -41,13 +41,14 @@
  *          Geoffrey Blake
  */
 
+#include "cpu/checker/cpu.hh"
+
 #include <list>
 #include <string>
 
 #include "arch/generic/tlb.hh"
 #include "arch/kernel_stats.hh"
 #include "arch/vtophys.hh"
-#include "cpu/checker/cpu.hh"
 #include "cpu/base.hh"
 #include "cpu/simple_thread.hh"
 #include "cpu/static_inst.hh"
@@ -139,7 +140,8 @@ CheckerCPU::unserialize(CheckpointIn &cp)
 }
 
 Fault
-CheckerCPU::readMem(Addr addr, uint8_t *data, unsigned size, unsigned flags)
+CheckerCPU::readMem(Addr addr, uint8_t *data, unsigned size,
+                    Request::Flags flags)
 {
     Fault fault = NoFault;
     int fullSize = size;
@@ -155,7 +157,7 @@ CheckerCPU::readMem(Addr addr, uint8_t *data, unsigned size, unsigned flags)
     // Need to account for multiple accesses like the Atomic and TimingSimple
     while (1) {
         memReq = new Request(0, addr, size, flags, masterId,
-                             thread->pcState().instAddr(), tc->contextId(), 0);
+                             thread->pcState().instAddr(), tc->contextId());
 
         // translate to physical address
         fault = dtb->translateFunctional(memReq, tc, BaseTLB::Read);
@@ -225,7 +227,7 @@ CheckerCPU::readMem(Addr addr, uint8_t *data, unsigned size, unsigned flags)
 
 Fault
 CheckerCPU::writeMem(uint8_t *data, unsigned size,
-                     Addr addr, unsigned flags, uint64_t *res)
+                     Addr addr, Request::Flags flags, uint64_t *res)
 {
     Fault fault = NoFault;
     bool checked_flags = false;
@@ -243,7 +245,7 @@ CheckerCPU::writeMem(uint8_t *data, unsigned size,
     // Need to account for a multiple access like Atomic and Timing CPUs
     while (1) {
         memReq = new Request(0, addr, size, flags, masterId,
-                             thread->pcState().instAddr(), tc->contextId(), 0);
+                             thread->pcState().instAddr(), tc->contextId());
 
         // translate to physical address
         fault = dtb->translateFunctional(memReq, tc, BaseTLB::Write);

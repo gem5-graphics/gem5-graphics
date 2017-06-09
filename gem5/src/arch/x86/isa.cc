@@ -28,8 +28,9 @@
  * Authors: Gabe Black
  */
 
-#include "arch/x86/decoder.hh"
 #include "arch/x86/isa.hh"
+
+#include "arch/x86/decoder.hh"
 #include "arch/x86/tlb.hh"
 #include "cpu/base.hh"
 #include "cpu/thread_context.hh"
@@ -129,13 +130,7 @@ ISA::readMiscRegNoEffect(int miscReg) const
     // Make sure we're not dealing with an illegal control register.
     // Instructions should filter out these indexes, and nothing else should
     // attempt to read them directly.
-    assert(miscReg >= MISCREG_CR0 &&
-           miscReg < NUM_MISCREGS &&
-           miscReg != MISCREG_CR1 &&
-           !(miscReg > MISCREG_CR4 &&
-             miscReg < MISCREG_CR8) &&
-           !(miscReg > MISCREG_CR8 &&
-             miscReg <= MISCREG_CR15));
+    assert(isValidMiscReg(miscReg));
 
     return regVal[miscReg];
 }
@@ -162,13 +157,7 @@ ISA::setMiscRegNoEffect(int miscReg, MiscReg val)
     // Make sure we're not dealing with an illegal control register.
     // Instructions should filter out these indexes, and nothing else should
     // attempt to write to them directly.
-    assert(miscReg >= MISCREG_CR0 &&
-           miscReg < NUM_MISCREGS &&
-           miscReg != MISCREG_CR1 &&
-           !(miscReg > MISCREG_CR4 &&
-             miscReg < MISCREG_CR8) &&
-           !(miscReg > MISCREG_CR8 &&
-             miscReg <= MISCREG_CR15));
+    assert(isValidMiscReg(miscReg));
 
     HandyM5Reg m5Reg = readMiscRegNoEffect(MISCREG_M5_REG);
     switch (miscReg) {

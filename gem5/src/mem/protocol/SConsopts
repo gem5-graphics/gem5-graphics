@@ -33,13 +33,18 @@ import os
 Import('*')
 
 all_protocols.extend([
+    'GPU_VIPER',
+    'GPU_VIPER_Baseline',
+    'GPU_VIPER_Region',
+    'GPU_RfO',
+    'MOESI_AMD_Base',
     'MESI_Two_Level',
     'MESI_Three_Level',
     'MI_example',
     'MOESI_CMP_directory',
     'MOESI_CMP_token',
     'MOESI_hammer',
-    'Network_test',
+    'Garnet_standalone',
     'None'
     ])
 

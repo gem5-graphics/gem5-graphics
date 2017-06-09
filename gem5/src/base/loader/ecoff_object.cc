@@ -28,9 +28,10 @@
  * Authors: Steve Reinhardt
  */
 
+#include "base/loader/ecoff_object.hh"
+
 #include <string>
 
-#include "base/loader/ecoff_object.hh"
 #include "base/loader/symtab.hh"
 #include "base/misc.hh"
 #include "base/trace.hh"
@@ -39,7 +40,7 @@
 
 // Only alpha will be able to load ecoff files for now.
 // base/types.hh and ecoff_machdep.h must be before the other .h files
-// because they are are gathered from other code bases and require some 
+// because they are are gathered from other code bases and require some
 // typedefs from those files.
 #include "arch/alpha/ecoff_machdep.h"
 #include "base/loader/coff_sym.h"
@@ -89,9 +90,18 @@ EcoffObject::EcoffObject(const string &_filename, size_t _len, uint8_t *_data,
              bss.baseAddr, bss.size);
 }
 
+bool
+EcoffObject::loadAllSymbols(SymbolTable *symtab, Addr base, Addr offset,
+                            Addr addr_mask)
+{
+    bool retval = loadGlobalSymbols(symtab, base, offset, addr_mask);
+    retval = retval && loadLocalSymbols(symtab, base, offset, addr_mask);
+    return retval;
+}
 
 bool
-EcoffObject::loadGlobalSymbols(SymbolTable *symtab, Addr addrMask)
+EcoffObject::loadGlobalSymbols(SymbolTable *symtab, Addr base, Addr offset,
+                               Addr addr_mask)
 {
     if (!symtab)
         return false;
@@ -120,7 +130,8 @@ EcoffObject::loadGlobalSymbols(SymbolTable *symtab, Addr addrMask)
 }
 
 bool
-EcoffObject::loadLocalSymbols(SymbolTable *symtab, Addr addrMask)
+EcoffObject::loadLocalSymbols(SymbolTable *symtab, Addr base, Addr offset,
+                              Addr addr_mask)
 {
     if (!symtab)
         return false;

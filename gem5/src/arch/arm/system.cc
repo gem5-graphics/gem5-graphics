@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2012-2013 ARM Limited
+ * Copyright (c) 2010, 2012-2013, 2015 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -40,21 +40,24 @@
  * Authors: Ali Saidi
  */
 
+#include "arch/arm/system.hh"
+
 #include <iostream>
 
-#include "arch/arm/system.hh"
 #include "base/loader/object_file.hh"
 #include "base/loader/symtab.hh"
 #include "cpu/thread_context.hh"
-#include "mem/physical.hh"
 #include "mem/fs_translating_port_proxy.hh"
+#include "mem/physical.hh"
 #include "sim/full_system.hh"
 
 using namespace std;
 using namespace Linux;
 
 ArmSystem::ArmSystem(Params *p)
-    : System(p), bootldr(NULL), _haveSecurity(p->have_security),
+    : System(p),
+      bootLoaders(), bootldr(nullptr),
+      _haveSecurity(p->have_security),
       _haveLPAE(p->have_lpae),
       _haveVirtualization(p->have_virtualization),
       _genericTimer(nullptr),
@@ -62,6 +65,9 @@ ArmSystem::ArmSystem(Params *p)
       _resetAddr64(p->reset_addr_64),
       _physAddrRange64(p->phys_addr_range_64),
       _haveLargeAsid64(p->have_large_asid_64),
+      _m5opRange(p->m5ops_base ?
+                 RangeSize(p->m5ops_base, 0x10000) :
+                 AddrRange(1, 0)), // Create an empty range if disabled
       multiProc(p->multi_proc)
 {
     // Check if the physical address range is valid
@@ -72,12 +78,27 @@ ArmSystem::ArmSystem(Params *p)
         fatal("Invalid physical address range (%d)\n", _physAddrRange64);
     }
 
-    if (p->boot_loader != "") {
-        bootldr = createObjectFile(p->boot_loader);
+    bootLoaders.reserve(p->boot_loader.size());
+    for (const auto &bl : p->boot_loader) {
+        std::unique_ptr<ObjectFile> obj;
+        obj.reset(createObjectFile(bl));
 
-        if (!bootldr)
-            fatal("Could not read bootloader: %s\n", p->boot_loader);
+        fatal_if(!obj, "Could not read bootloader: %s\n", bl);
+        bootLoaders.emplace_back(std::move(obj));
+    }
 
+    if (kernel) {
+        bootldr = getBootLoader(kernel);
+    } else if (!bootLoaders.empty()) {
+        // No kernel specified, default to the first boot loader
+        bootldr = bootLoaders[0].get();
+    }
+
+    if (!bootLoaders.empty() && !bootldr)
+        fatal("Can't find a matching boot loader / kernel combination!");
+
+    if (bootldr) {
+        bootldr->loadGlobalSymbols(debugSymbolTable);
         if ((bootldr->getArch() == ObjectFile::Arm64) && !_highestELIs64) {
             warn("Highest ARM exception-level set to AArch32 but bootloader "
                   "is for AArch64. Assuming you wanted these to match.\n");
@@ -87,10 +108,8 @@ ArmSystem::ArmSystem(Params *p)
                   "is for AArch32. Assuming you wanted these to match.\n");
             _highestELIs64 = false;
         }
-
-        bootldr->loadGlobalSymbols(debugSymbolTable);
-
     }
+
     debugPrintkEvent = addKernelFuncEvent<DebugPrintkEvent>("dprintk");
 }
 
@@ -168,6 +187,17 @@ ArmSystem::~ArmSystem()
         delete debugPrintkEvent;
 }
 
+ObjectFile *
+ArmSystem::getBootLoader(ObjectFile *const obj)
+{
+    for (auto &bl : bootLoaders) {
+        if (bl->getArch() == obj->getArch())
+            return bl.get();
+    }
+
+    return nullptr;
+}
+
 bool
 ArmSystem::haveLPAE(ThreadContext *tc)
 {
@@ -193,13 +223,17 @@ ArmSystem::haveVirtualization(ThreadContext *tc)
 bool
 ArmSystem::highestELIs64(ThreadContext *tc)
 {
-    return dynamic_cast<ArmSystem *>(tc->getSystemPtr())->highestELIs64();
+    return FullSystem ?
+        dynamic_cast<ArmSystem *>(tc->getSystemPtr())->highestELIs64() :
+        true;
 }
 
 ExceptionLevel
 ArmSystem::highestEL(ThreadContext *tc)
 {
-    return dynamic_cast<ArmSystem *>(tc->getSystemPtr())->highestEL();
+    return FullSystem ?
+        dynamic_cast<ArmSystem *>(tc->getSystemPtr())->highestEL() :
+        EL1;
 }
 
 Addr

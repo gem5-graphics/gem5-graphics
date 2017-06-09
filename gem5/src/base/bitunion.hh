@@ -32,7 +32,6 @@
 #define __BASE_BITUNION_HH__
 
 #include "base/bitfield.hh"
-#include "base/types.hh"
 
 //      The following implements the BitUnion system of defining bitfields
 //on top of an underlying class. This is done through the pervasive use of
@@ -89,7 +88,7 @@ namespace BitfieldBackend
                           "Bitfield ranges must be specified as <msb, lsb>");
 
           public:
-            operator const uint64_t () const
+            operator uint64_t () const
             {
                 return this->getBits(first, last);
             }
@@ -129,7 +128,7 @@ namespace BitfieldBackend
         class BitfieldWO : public Bitfield<first, last>
         {
           private:
-            operator const uint64_t () const;
+            operator uint64_t () const;
 
           public:
             using Bitfield<first, last>::operator=;
@@ -148,7 +147,7 @@ namespace BitfieldBackend
         class SignedBitfield : public BitfieldBase<Type>
         {
           public:
-            operator const int64_t () const
+            operator int64_t () const
             {
                 return sext<first - last + 1>(this->getBits(first, last));
             }
@@ -188,7 +187,7 @@ namespace BitfieldBackend
         class SignedBitfieldWO : public SignedBitfield<first, last>
         {
           private:
-            operator const int64_t () const;
+            operator int64_t () const;
 
           public:
             using SignedBitfield<first, last>::operator=;
@@ -304,10 +303,10 @@ namespace BitfieldBackend
 //do so.
 #define EndSubBitUnion(name) \
         }; \
-        inline operator const __DataType () const \
+        inline operator __DataType () const \
         { return __data; } \
         \
-        inline const __DataType operator = (const __DataType & _data) \
+        inline __DataType operator = (const __DataType & _data) \
         { return __data = _data;} \
     } name;
 

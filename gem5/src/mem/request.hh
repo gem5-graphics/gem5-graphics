@@ -58,6 +58,7 @@
 #include "base/flags.hh"
 #include "base/misc.hh"
 #include "base/types.hh"
+#include "cpu/inst_seq.hh"
 #include "sim/core.hh"
 
 /**
@@ -154,8 +155,24 @@ class Request
         PF_EXCLUSIVE                = 0x02000000,
         /** The request should be marked as LRU. */
         EVICT_NEXT                  = 0x04000000,
+        /** The request should be marked with ACQUIRE. */
+        ACQUIRE                     = 0x00020000,
+        /** The request should be marked with RELEASE. */
+        RELEASE                     = 0x00040000,
+
+        /** The request is an atomic that returns data. */
+        ATOMIC_RETURN_OP            = 0x40000000,
+        /** The request is an atomic that does not return data. */
+        ATOMIC_NO_RETURN_OP         = 0x80000000,
+
         /** The request should bypass the L1 cache. */
         BYPASS_L1                   = 0x08000000,
+
+        /** The request should be marked with KERNEL.
+          * Used to indicate the synchronization associated with a GPU kernel
+          * launch or completion.
+          */
+        KERNEL                      = 0x00001000,
 
         /**
          * The request should be handled by the generic IPR code (only
@@ -199,6 +216,37 @@ class Request
     };
     /** @} */
 
+    typedef uint32_t MemSpaceConfigFlagsType;
+    typedef ::Flags<MemSpaceConfigFlagsType> MemSpaceConfigFlags;
+
+    enum : MemSpaceConfigFlagsType {
+        /** Has a synchronization scope been set? */
+        SCOPE_VALID            = 0x00000001,
+        /** Access has Wavefront scope visibility */
+        WAVEFRONT_SCOPE        = 0x00000002,
+        /** Access has Workgroup scope visibility */
+        WORKGROUP_SCOPE        = 0x00000004,
+        /** Access has Device (e.g., GPU) scope visibility */
+        DEVICE_SCOPE           = 0x00000008,
+        /** Access has System (e.g., CPU + GPU) scope visibility */
+        SYSTEM_SCOPE           = 0x00000010,
+
+        /** Global Segment */
+        GLOBAL_SEGMENT         = 0x00000020,
+        /** Group Segment */
+        GROUP_SEGMENT          = 0x00000040,
+        /** Private Segment */
+        PRIVATE_SEGMENT        = 0x00000080,
+        /** Kergarg Segment */
+        KERNARG_SEGMENT        = 0x00000100,
+        /** Readonly Segment */
+        READONLY_SEGMENT       = 0x00000200,
+        /** Spill Segment */
+        SPILL_SEGMENT          = 0x00000400,
+        /** Arg Segment */
+        ARG_SEGMENT            = 0x00000800,
+    };
+
   private:
     typedef uint8_t PrivateFlagsType;
     typedef ::Flags<PrivateFlagsType> PrivateFlags;
@@ -210,19 +258,19 @@ class Request
         VALID_PADDR          = 0x00000002,
         /** Whether or not the vaddr & asid are valid. */
         VALID_VADDR          = 0x00000004,
+        /** Whether or not the instruction sequence number is valid. */
+        VALID_INST_SEQ_NUM   = 0x00000008,
         /** Whether or not the pc is valid. */
         VALID_PC             = 0x00000010,
         /** Whether or not the context ID is valid. */
         VALID_CONTEXT_ID     = 0x00000020,
-        VALID_THREAD_ID      = 0x00000040,
         /** Whether or not the sc result is valid. */
         VALID_EXTRA_DATA     = 0x00000080,
-
         /**
          * These flags are *not* cleared when a Request object is reused
          * (assigned a new address).
          */
-        STICKY_PRIVATE_FLAGS = VALID_CONTEXT_ID | VALID_THREAD_ID
+        STICKY_PRIVATE_FLAGS = VALID_CONTEXT_ID
     };
 
   private:
@@ -234,7 +282,6 @@ class Request
     void
     setPhys(Addr paddr, unsigned size, Flags flags, MasterID mid, Tick time)
     {
-        assert(size >= 0);
         _paddr = paddr;
         _size = size;
         _time = time;
@@ -269,6 +316,9 @@ class Request
     /** Flag structure for the request. */
     Flags _flags;
 
+    /** Memory space configuraiton flag structure for the request. */
+    MemSpaceConfigFlags _memSpaceConfigFlags;
+
     /** Private flags for field validity checking. */
     PrivateFlags privateFlags;
 
@@ -295,13 +345,17 @@ class Request
      * store conditional or the compare value for a CAS. */
     uint64_t _extraData;
 
-    /** The context ID (for statistics, typically). */
+    /** The context ID (for statistics, locks, and wakeups). */
     ContextID _contextId;
-    /** The thread ID (id within this CPU) */
-    ThreadID _threadId;
 
     /** program counter of initiating access; for tracing/debugging */
     Addr _pc;
+
+    /** Sequence number of the instruction that creates the request */
+    InstSeqNum _reqInstSeqNum;
+
+    /** A pointer to an atomic operation */
+    AtomicOpFunctor *atomicOpFunctor;
 
   public:
 
@@ -313,9 +367,23 @@ class Request
     Request()
         : _paddr(0), _size(0), _masterId(invldMasterId), _time(0),
           _taskId(ContextSwitchTaskId::Unknown), _asid(0), _vaddr(0),
-          _extraData(0), _contextId(0), _threadId(0), _pc(0),
-          translateDelta(0), accessDelta(0), depth(0)
+          _extraData(0), _contextId(0), _pc(0),
+          _reqInstSeqNum(0), atomicOpFunctor(nullptr), translateDelta(0),
+          accessDelta(0), depth(0)
     {}
+
+    Request(Addr paddr, unsigned size, Flags flags, MasterID mid,
+            InstSeqNum seq_num, ContextID cid)
+        : _paddr(0), _size(0), _masterId(invldMasterId), _time(0),
+          _taskId(ContextSwitchTaskId::Unknown), _asid(0), _vaddr(0),
+          _extraData(0), _contextId(0), _pc(0),
+          _reqInstSeqNum(seq_num), atomicOpFunctor(nullptr), translateDelta(0),
+          accessDelta(0), depth(0)
+    {
+        setPhys(paddr, size, flags, mid, curTick());
+        setContext(cid);
+        privateFlags.set(VALID_INST_SEQ_NUM);
+    }
 
     /**
      * Constructor for physical (e.g. device) requests.  Initializes
@@ -325,8 +393,9 @@ class Request
     Request(Addr paddr, unsigned size, Flags flags, MasterID mid)
         : _paddr(0), _size(0), _masterId(invldMasterId), _time(0),
           _taskId(ContextSwitchTaskId::Unknown), _asid(0), _vaddr(0),
-          _extraData(0), _contextId(0), _threadId(0), _pc(0),
-          translateDelta(0), accessDelta(0), depth(0)
+          _extraData(0), _contextId(0), _pc(0),
+          _reqInstSeqNum(0), atomicOpFunctor(nullptr), translateDelta(0),
+          accessDelta(0), depth(0)
     {
         setPhys(paddr, size, flags, mid, curTick());
     }
@@ -334,8 +403,9 @@ class Request
     Request(Addr paddr, unsigned size, Flags flags, MasterID mid, Tick time)
         : _paddr(0), _size(0), _masterId(invldMasterId), _time(0),
           _taskId(ContextSwitchTaskId::Unknown), _asid(0), _vaddr(0),
-          _extraData(0), _contextId(0), _threadId(0), _pc(0),
-          translateDelta(0), accessDelta(0), depth(0)
+          _extraData(0), _contextId(0), _pc(0),
+          _reqInstSeqNum(0), atomicOpFunctor(nullptr), translateDelta(0),
+          accessDelta(0), depth(0)
     {
         setPhys(paddr, size, flags, mid, time);
     }
@@ -344,36 +414,49 @@ class Request
             Addr pc)
         : _paddr(0), _size(0), _masterId(invldMasterId), _time(0),
           _taskId(ContextSwitchTaskId::Unknown), _asid(0), _vaddr(0),
-          _extraData(0), _contextId(0), _threadId(0), _pc(0),
-          translateDelta(0), accessDelta(0), depth(0)
+          _extraData(0), _contextId(0), _pc(pc),
+          _reqInstSeqNum(0), atomicOpFunctor(nullptr), translateDelta(0),
+          accessDelta(0), depth(0)
     {
         setPhys(paddr, size, flags, mid, time);
         privateFlags.set(VALID_PC);
-        _pc = pc;
     }
 
     Request(int asid, Addr vaddr, unsigned size, Flags flags, MasterID mid,
-            Addr pc, ContextID cid, ThreadID tid)
+            Addr pc, ContextID cid)
         : _paddr(0), _size(0), _masterId(invldMasterId), _time(0),
           _taskId(ContextSwitchTaskId::Unknown), _asid(0), _vaddr(0),
-          _extraData(0), _contextId(0), _threadId(0), _pc(0),
-          translateDelta(0), accessDelta(0), depth(0)
+          _extraData(0), _contextId(0), _pc(0),
+          _reqInstSeqNum(0), atomicOpFunctor(nullptr), translateDelta(0),
+          accessDelta(0), depth(0)
     {
         setVirt(asid, vaddr, size, flags, mid, pc);
-        setThreadContext(cid, tid);
+        setContext(cid);
     }
 
-    ~Request() {}
+    Request(int asid, Addr vaddr, unsigned size, Flags flags, MasterID mid,
+            Addr pc, ContextID cid, AtomicOpFunctor *atomic_op)
+        : atomicOpFunctor(atomic_op)
+    {
+        setVirt(asid, vaddr, size, flags, mid, pc);
+        setContext(cid);
+    }
+
+    ~Request()
+    {
+        if (hasAtomicOpFunctor()) {
+            delete atomicOpFunctor;
+        }
+    }
 
     /**
-     * Set up CPU and thread numbers.
+     * Set up Context numbers.
      */
     void
-    setThreadContext(ContextID context_id, ThreadID tid)
+    setContext(ContextID context_id)
     {
         _contextId = context_id;
-        _threadId = tid;
-        privateFlags.set(VALID_CONTEXT_ID|VALID_THREAD_ID);
+        privateFlags.set(VALID_CONTEXT_ID);
     }
 
     /**
@@ -487,6 +570,22 @@ class Request
         return _time;
     }
 
+    /**
+     * Accessor for atomic-op functor.
+     */
+    bool
+    hasAtomicOpFunctor()
+    {
+        return atomicOpFunctor != NULL;
+    }
+
+    AtomicOpFunctor *
+    getAtomicOpFunctor()
+    {
+        assert(atomicOpFunctor != NULL);
+        return atomicOpFunctor;
+    }
+
     /** Accessor for flags. */
     Flags
     getFlags()
@@ -504,6 +603,13 @@ class Request
     {
         assert(privateFlags.isSet(VALID_PADDR|VALID_VADDR));
         _flags.set(flags);
+    }
+
+    void
+    setMemSpaceConfigFlags(MemSpaceConfigFlags extraFlags)
+    {
+        assert(privateFlags.isSet(VALID_PADDR | VALID_VADDR));
+        _memSpaceConfigFlags.set(extraFlags);
     }
 
     /** Accessor function for vaddr.*/
@@ -598,14 +704,6 @@ class Request
         return _contextId;
     }
 
-    /** Accessor function for thread ID. */
-    ThreadID
-    threadId() const
-    {
-        assert(privateFlags.isSet(VALID_THREAD_ID));
-        return _threadId;
-    }
-
     void
     setPC(Addr pc)
     {
@@ -647,7 +745,31 @@ class Request
     void setAccessLatency() { accessDelta = curTick() - _time - translateDelta; }
     Tick getAccessLatency() const { return accessDelta; }
 
-    /** Accessor functions for flags.  Note that these are for testing
+    /**
+     * Accessor for the sequence number of instruction that creates the
+     * request.
+     */
+    bool
+    hasInstSeqNum() const
+    {
+        return privateFlags.isSet(VALID_INST_SEQ_NUM);
+    }
+
+    InstSeqNum
+    getReqInstSeqNum() const
+    {
+        assert(privateFlags.isSet(VALID_INST_SEQ_NUM));
+        return _reqInstSeqNum;
+    }
+
+    void
+    setReqInstSeqNum(const InstSeqNum seq_num)
+    {
+        privateFlags.set(VALID_INST_SEQ_NUM);
+        _reqInstSeqNum = seq_num;
+    }
+
+    /** Accessor functions for flags. Note that these are for testing
         only; setting flags should be done via setFlags(). */
     bool isUncacheable() const { return _flags.isSet(UNCACHEABLE); }
     bool isStrictlyOrdered() const { return _flags.isSet(STRICT_ORDER); }
@@ -661,9 +783,102 @@ class Request
     bool isMmappedIpr() const { return _flags.isSet(MMAPPED_IPR); }
     bool isSecure() const { return _flags.isSet(SECURE); }
     bool isPTWalk() const { return _flags.isSet(PT_WALK); }
+    bool isAcquire() const { return _flags.isSet(ACQUIRE); }
+    bool isRelease() const { return _flags.isSet(RELEASE); }
+    bool isKernel() const { return _flags.isSet(KERNEL); }
+    bool isAtomicReturn() const { return _flags.isSet(ATOMIC_RETURN_OP); }
+    bool isAtomicNoReturn() const { return _flags.isSet(ATOMIC_NO_RETURN_OP); }
     bool isBypassL1() const { return _flags.isSet(BYPASS_L1); }
     bool isTexFetch() const {return _flags.isSet(TEX_FETCH); }
     bool isZFetch() const {return _flags.isSet(Z_FETCH); }
+
+    bool
+    isAtomic() const
+    {
+        return _flags.isSet(ATOMIC_RETURN_OP) ||
+               _flags.isSet(ATOMIC_NO_RETURN_OP);
+    }
+
+    /**
+     * Accessor functions for the memory space configuration flags and used by
+     * GPU ISAs such as the Heterogeneous System Architecture (HSA). Note that
+     * these are for testing only; setting extraFlags should be done via
+     * setMemSpaceConfigFlags().
+     */
+    bool isScoped() const { return _memSpaceConfigFlags.isSet(SCOPE_VALID); }
+
+    bool
+    isWavefrontScope() const
+    {
+        assert(isScoped());
+        return _memSpaceConfigFlags.isSet(WAVEFRONT_SCOPE);
+    }
+
+    bool
+    isWorkgroupScope() const
+    {
+        assert(isScoped());
+        return _memSpaceConfigFlags.isSet(WORKGROUP_SCOPE);
+    }
+
+    bool
+    isDeviceScope() const
+    {
+        assert(isScoped());
+        return _memSpaceConfigFlags.isSet(DEVICE_SCOPE);
+    }
+
+    bool
+    isSystemScope() const
+    {
+        assert(isScoped());
+        return _memSpaceConfigFlags.isSet(SYSTEM_SCOPE);
+    }
+
+    bool
+    isGlobalSegment() const
+    {
+        return _memSpaceConfigFlags.isSet(GLOBAL_SEGMENT) ||
+               (!isGroupSegment() && !isPrivateSegment() &&
+                !isKernargSegment() && !isReadonlySegment() &&
+                !isSpillSegment() && !isArgSegment());
+    }
+
+    bool
+    isGroupSegment() const
+    {
+        return _memSpaceConfigFlags.isSet(GROUP_SEGMENT);
+    }
+
+    bool
+    isPrivateSegment() const
+    {
+        return _memSpaceConfigFlags.isSet(PRIVATE_SEGMENT);
+    }
+
+    bool
+    isKernargSegment() const
+    {
+        return _memSpaceConfigFlags.isSet(KERNARG_SEGMENT);
+    }
+
+    bool
+    isReadonlySegment() const
+    {
+        return _memSpaceConfigFlags.isSet(READONLY_SEGMENT);
+    }
+
+    bool
+    isSpillSegment() const
+    {
+        return _memSpaceConfigFlags.isSet(SPILL_SEGMENT);
+    }
+
+    bool
+    isArgSegment() const
+    {
+        return _memSpaceConfigFlags.isSet(ARG_SEGMENT);
+    }
 };
 
 #endif // __MEM_REQUEST_HH__

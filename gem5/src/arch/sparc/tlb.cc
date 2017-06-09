@@ -28,12 +28,13 @@
  * Authors: Ali Saidi
  */
 
+#include "arch/sparc/tlb.hh"
+
 #include <cstring>
 
 #include "arch/sparc/asi.hh"
 #include "arch/sparc/faults.hh"
 #include "arch/sparc/registers.hh"
-#include "arch/sparc/tlb.hh"
 #include "base/bitfield.hh"
 #include "base/trace.hh"
 #include "cpu/base.hh"
@@ -1022,7 +1023,7 @@ TLB::doMmuRegRead(ThreadContext *tc, Packet *pkt)
         {
             SparcISA::Interrupts * interrupts =
                 dynamic_cast<SparcISA::Interrupts *>(
-                        tc->getCpuPtr()->getInterruptController());
+                        tc->getCpuPtr()->getInterruptController(0));
             pkt->set(interrupts->get_vec(IT_INT_VEC));
         }
         break;
@@ -1030,9 +1031,9 @@ TLB::doMmuRegRead(ThreadContext *tc, Packet *pkt)
         {
             SparcISA::Interrupts * interrupts =
                 dynamic_cast<SparcISA::Interrupts *>(
-                        tc->getCpuPtr()->getInterruptController());
+                        tc->getCpuPtr()->getInterruptController(0));
             temp = findMsbSet(interrupts->get_vec(IT_INT_VEC));
-            tc->getCpuPtr()->clearInterrupt(IT_INT_VEC, temp);
+            tc->getCpuPtr()->clearInterrupt(0, IT_INT_VEC, temp);
             pkt->set(temp);
         }
         break;
@@ -1278,16 +1279,16 @@ TLB::doMmuRegWrite(ThreadContext *tc, Packet *pkt)
             // clear all the interrupts that aren't set in the write
             SparcISA::Interrupts * interrupts =
                 dynamic_cast<SparcISA::Interrupts *>(
-                        tc->getCpuPtr()->getInterruptController());
+                        tc->getCpuPtr()->getInterruptController(0));
             while (interrupts->get_vec(IT_INT_VEC) & data) {
                 msb = findMsbSet(interrupts->get_vec(IT_INT_VEC) & data);
-                tc->getCpuPtr()->clearInterrupt(IT_INT_VEC, msb);
+                tc->getCpuPtr()->clearInterrupt(0, IT_INT_VEC, msb);
             }
         }
         break;
       case ASI_SWVR_UDB_INTR_W:
             tc->getSystemPtr()->threadContexts[bits(data,12,8)]->getCpuPtr()->
-            postInterrupt(bits(data, 5, 0), 0);
+            postInterrupt(0, bits(data, 5, 0), 0);
         break;
       default:
 doMmuWriteError:

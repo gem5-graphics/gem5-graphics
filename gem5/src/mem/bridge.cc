@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2013 ARM Limited
+ * Copyright (c) 2011-2013, 2015 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -48,9 +48,10 @@
  * and a slave through a request and response queue.
  */
 
+#include "mem/bridge.hh"
+
 #include "base/trace.hh"
 #include "debug/Bridge.hh"
-#include "mem/bridge.hh"
 #include "params/Bridge.hh"
 
 Bridge::BridgeSlavePort::BridgeSlavePort(const std::string& _name,
@@ -136,10 +137,14 @@ Bridge::BridgeMasterPort::recvTimingResp(PacketPtr pkt)
 
     DPRINTF(Bridge, "Request queue size: %d\n", transmitList.size());
 
-    // @todo: We need to pay for this and not just zero it out
+    // technically the packet only reaches us after the header delay,
+    // and typically we also need to deserialise any payload (unless
+    // the two sides of the bridge are synchronous)
+    Tick receive_delay = pkt->headerDelay + pkt->payloadDelay;
     pkt->headerDelay = pkt->payloadDelay = 0;
 
-    slavePort.schedTimingResp(pkt, bridge.clockEdge(delay));
+    slavePort.schedTimingResp(pkt, bridge.clockEdge(delay) +
+                              receive_delay);
 
     return true;
 }
@@ -150,8 +155,14 @@ Bridge::BridgeSlavePort::recvTimingReq(PacketPtr pkt)
     DPRINTF(Bridge, "recvTimingReq: %s addr 0x%x\n",
             pkt->cmdString(), pkt->getAddr());
 
-    // we should not see a timing request if we are already in a retry
-    assert(!retryReq);
+    panic_if(pkt->cacheResponding(), "Should not see packets where cache "
+             "is responding");
+
+    // we should not get a new request after committing to retry the
+    // current one, but unfortunately the CPU violates this rule, so
+    // simply ignore it for now
+    if (retryReq)
+        return false;
 
     DPRINTF(Bridge, "Response queue size: %d outresp: %d\n",
             transmitList.size(), outstandingResponses);
@@ -162,8 +173,7 @@ Bridge::BridgeSlavePort::recvTimingReq(PacketPtr pkt)
         retryReq = true;
     } else {
         // look at the response queue if we expect to see a response
-        bool expects_response = pkt->needsResponse() &&
-            !pkt->memInhibitAsserted();
+        bool expects_response = pkt->needsResponse();
         if (expects_response) {
             if (respQueueFull()) {
                 DPRINTF(Bridge, "Response queue full\n");
@@ -180,10 +190,15 @@ Bridge::BridgeSlavePort::recvTimingReq(PacketPtr pkt)
         }
 
         if (!retryReq) {
-            // @todo: We need to pay for this and not just zero it out
+            // technically the packet only reaches us after the header
+            // delay, and typically we also need to deserialise any
+            // payload (unless the two sides of the bridge are
+            // synchronous)
+            Tick receive_delay = pkt->headerDelay + pkt->payloadDelay;
             pkt->headerDelay = pkt->payloadDelay = 0;
 
-            masterPort.schedTimingReq(pkt, bridge.clockEdge(delay));
+            masterPort.schedTimingReq(pkt, bridge.clockEdge(delay) +
+                                      receive_delay);
         }
     }
 
@@ -332,6 +347,9 @@ Bridge::BridgeSlavePort::recvRespRetry()
 Tick
 Bridge::BridgeSlavePort::recvAtomic(PacketPtr pkt)
 {
+    panic_if(pkt->cacheResponding(), "Should not see packets where cache "
+             "is responding");
+
     return delay * bridge.clockPeriod() + masterPort.sendAtomic(pkt);
 }
 
@@ -365,7 +383,7 @@ Bridge::BridgeMasterPort::checkFunctional(PacketPtr pkt)
     bool found = false;
     auto i = transmitList.begin();
 
-    while(i != transmitList.end() && !found) {
+    while (i != transmitList.end() && !found) {
         if (pkt->checkFunctional((*i).pkt)) {
             pkt->makeResponse();
             found = true;

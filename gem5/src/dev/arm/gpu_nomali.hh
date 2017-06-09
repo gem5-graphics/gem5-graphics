@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2015 ARM Limited
+ * Copyright (c) 2014-2016 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -46,6 +46,7 @@
 #include "libnomali/nomali.h"
 
 class NoMaliGpuParams;
+class CustomNoMaliGpuParams;
 class RealView;
 
 class NoMaliGpu : public PioDevice
@@ -54,31 +55,25 @@ class NoMaliGpu : public PioDevice
     NoMaliGpu(const NoMaliGpuParams *p);
     virtual ~NoMaliGpu();
 
+    void init() override;
+
   public: /* Checkpointing */
-    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
-    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 
   public: /* IO device interfaces */
-    Tick read(PacketPtr pkt) M5_ATTR_OVERRIDE;
-    Tick write(PacketPtr pkt) M5_ATTR_OVERRIDE;
-    AddrRangeList getAddrRanges() const M5_ATTR_OVERRIDE;
+    Tick read(PacketPtr pkt) override;
+    Tick write(PacketPtr pkt) override;
+    AddrRangeList getAddrRanges() const override;
 
-  private:
+  protected: /* API wrappers/helpers */
     /**
-     * Interrupt callback from the NoMali library.
-     *
-     * This method calls onInterrupt() on the NoMaliGpu owning this
-     * device.
-     *
-     * @param h NoMali library handle.
-     * @param usr Pointer to an instance of the NoMaliGpu
-     * @param intno GPU interrupt type
-     * @param set Was the interrupt raised (1) or lowered (0)?
+     * @{
+     * @name API wrappers
      */
-    static void _interrupt(nomali_handle_t h, void *usr,
-                           nomali_int_t intno, int set);
 
-    void onInterrupt(nomali_handle_t h, nomali_int_t intno, bool set);
+    /** Wrapper around nomali_reset(). */
+    void reset();
 
     /** Wrapper around nomali_reg_read(). */
     uint32_t readReg(nomali_addr_t reg);
@@ -89,6 +84,16 @@ class NoMaliGpu : public PioDevice
     uint32_t readRegRaw(nomali_addr_t reg) const;
     /** Wrapper around nomali_reg_write_raw(). */
     void writeRegRaw(nomali_addr_t reg, uint32_t value);
+
+    /**
+     * Wrapper around nomali_int_state()
+     *
+     * @param intno Interrupt number
+     * @return True if asserted, false otherwise.
+     */
+    bool intState(nomali_int_t intno);
+
+    /** @} */
 
     /**
      * Format a NoMali error into an error message and panic.
@@ -108,6 +113,62 @@ class NoMaliGpu : public PioDevice
             gpuPanic(err, msg);
     }
 
+  protected: /* Callbacks */
+    /**
+     * @{
+     * @name Callbacks
+     */
+
+    /**
+     * Interrupt callback from the NoMali library
+     *
+     * This method is called whenever there is an interrupt state change.
+     *
+     * @param intno Interrupt number
+     * @param set True is the interrupt is being asserted, false otherwise.
+     */
+    virtual void onInterrupt(nomali_int_t intno, bool set);
+
+    /**
+     * Reset callback from the NoMali library
+     *
+     * This method is called whenever the GPU is reset through the
+     * register interface or the API (reset() or nomali_reset()).
+     */
+    virtual void onReset();
+
+    /** @} */
+
+  private: /* Callback helpers */
+    /** Wrapper around nomali_set_callback() */
+    void setCallback(const nomali_callback_t &callback);
+
+    /**
+     * Interrupt callback from the NoMali library.
+     *
+     * This method calls onInterrupt() on the NoMaliGpu owning this
+     * device.
+     *
+     * @param h NoMali library handle.
+     * @param usr Pointer to an instance of the NoMaliGpu
+     * @param intno GPU interrupt type
+     * @param set Was the interrupt raised (1) or lowered (0)?
+     */
+    static void _interrupt(nomali_handle_t h, void *usr,
+                           nomali_int_t intno, int set);
+
+    /**
+     * Reset callback from the NoMali library.
+     *
+     * This method calls onReset() on the NoMaliGpu owning this
+     * device.
+     *
+     * @param h NoMali library handle.
+     * @param usr Pointer to an instance of the NoMaliGpu
+     */
+    static void _reset(nomali_handle_t h, void *usr);
+
+  protected:
     /** Device base address */
     const Addr pioAddr;
 
@@ -118,7 +179,6 @@ class NoMaliGpu : public PioDevice
      * interrupts */
     const std::map<nomali_int_t, uint32_t> interruptMap;
 
-
     /** Cached information struct from the NoMali library */
     nomali_info_t nomaliInfo;
 
@@ -126,5 +186,19 @@ class NoMaliGpu : public PioDevice
     nomali_handle_t nomali;
 };
 
+
+class CustomNoMaliGpu : public NoMaliGpu
+{
+  public:
+    CustomNoMaliGpu(const CustomNoMaliGpuParams *p);
+    virtual ~CustomNoMaliGpu();
+
+  protected:
+    void onReset() override;
+
+  private:
+    /** Map between GPU registers and their custom reset values */
+    std::map<nomali_addr_t, uint32_t> idRegs;
+};
 
 #endif // __DEV_ARM_NOMALI_GPU_HH__

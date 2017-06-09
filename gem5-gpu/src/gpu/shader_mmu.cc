@@ -350,7 +350,7 @@ ShaderMMU::raisePageFaultInterrupt(ThreadContext *tc)
     // TODO: Add interrupt called "triggerGPUInterrupt()" to the ARM
     // interrupts device
 #elif THE_ISA == X86_ISA
-    Interrupts *interrupts = tc->getCpuPtr()->getInterruptController();
+    Interrupts *interrupts = tc->getCpuPtr()->getInterruptController(tc->threadId());
     interrupts->triggerGPUInterrupt();
 #endif
 

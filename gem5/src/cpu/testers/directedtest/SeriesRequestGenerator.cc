@@ -27,10 +27,12 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "cpu/testers/directedtest/SeriesRequestGenerator.hh"
+
 #include "base/random.hh"
+#include "base/trace.hh"
 #include "cpu/testers/directedtest/DirectedGenerator.hh"
 #include "cpu/testers/directedtest/RubyDirectedTester.hh"
-#include "cpu/testers/directedtest/SeriesRequestGenerator.hh"
 #include "debug/DirectedTest.hh"
 
 SeriesRequestGenerator::SeriesRequestGenerator(const Params *p)
@@ -87,11 +89,11 @@ SeriesRequestGenerator::initiate()
     }
 }
 
-void 
+void
 SeriesRequestGenerator::performCallback(uint32_t proc, Addr address)
 {
     assert(m_active_node == proc);
-    assert(m_address == address);  
+    assert(m_address == address);
     assert(m_status == SeriesRequestGeneratorStatus_Request_Pending);
 
     m_status = SeriesRequestGeneratorStatus_Thinking;

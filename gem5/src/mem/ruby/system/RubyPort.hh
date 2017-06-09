@@ -11,7 +11,7 @@
  * unmodified and in its entirety in all distributions of the software,
  * modified or unmodified, in source code or in binary form.
  *
- * Copyright (c) 2009 Advanced Micro Devices, Inc.
+ * Copyright (c) 2009-2013 Advanced Micro Devices, Inc.
  * Copyright (c) 2011 Mark D. Hill and David A. Wood
  * All rights reserved.
  *
@@ -47,7 +47,7 @@
 
 #include "mem/protocol/RequestStatus.hh"
 #include "mem/ruby/network/MessageBuffer.hh"
-#include "mem/ruby/system/System.hh"
+#include "mem/ruby/system/RubySystem.hh"
 #include "mem/mem_object.hh"
 #include "mem/tport.hh"
 #include "params/RubyPort.hh"
@@ -76,10 +76,12 @@ class RubyPort : public MemObject
       private:
         RespPacketQueue queue;
         bool access_backing_store;
+        bool no_retry_on_stall;
 
       public:
         MemSlavePort(const std::string &_name, RubyPort *_port,
-                     bool _access_backing_store, PortID id);
+                     bool _access_backing_store,
+                     PortID id, bool _no_retry_on_stall);
         void hitCallback(PacketPtr pkt);
         void evictionCallback(Addr address);
 
@@ -93,6 +95,8 @@ class RubyPort : public MemObject
 
         AddrRangeList getAddrRanges() const
         { AddrRangeList ranges; return ranges; }
+
+        void addToRetryList();
 
       private:
         bool isPhysMemAddress(Addr addr) const;
@@ -143,12 +147,12 @@ class RubyPort : public MemObject
     RubyPort(const Params *p);
     virtual ~RubyPort() {}
 
-    void init();
+    void init() override;
 
     BaseMasterPort &getMasterPort(const std::string &if_name,
-                                  PortID idx = InvalidPortID);
+                                  PortID idx = InvalidPortID) override;
     BaseSlavePort &getSlavePort(const std::string &if_name,
-                                PortID idx = InvalidPortID);
+                                PortID idx = InvalidPortID) override;
 
     virtual RequestStatus makeRequest(PacketPtr pkt) = 0;
     virtual int outstandingCount() const = 0;
@@ -161,9 +165,12 @@ class RubyPort : public MemObject
     //
     void setController(AbstractController* _cntrl) { m_controller = _cntrl; }
     uint32_t getId() { return m_version; }
-    DrainState drain() M5_ATTR_OVERRIDE;
+    DrainState drain() override;
+
+    bool isCPUSequencer() { return m_isCPUSequencer; }
 
   protected:
+    void trySendRetries();
     void ruby_hit_callback(PacketPtr pkt);
     void testDrainComplete();
     void ruby_eviction_callback(Addr address);
@@ -185,11 +192,17 @@ class RubyPort : public MemObject
     bool m_usingRubyTester;
     System* system;
 
+    std::vector<MemSlavePort *> slave_ports;
+
   private:
+    bool onRetryList(MemSlavePort * port)
+    {
+        return (std::find(retryList.begin(), retryList.end(), port) !=
+                retryList.end());
+    }
     void addToRetryList(MemSlavePort * port)
     {
-        if (std::find(retryList.begin(), retryList.end(), port) !=
-               retryList.end()) return;
+        if (onRetryList(port)) return;
         retryList.push_back(port);
     }
 
@@ -201,7 +214,6 @@ class RubyPort : public MemObject
 
     /** Vector of M5 Ports attached to this Ruby port. */
     typedef std::vector<MemSlavePort *>::iterator CpuPortIter;
-    std::vector<MemSlavePort *> slave_ports;
     std::vector<PioMasterPort *> master_ports;
 
     //
@@ -209,6 +221,8 @@ class RubyPort : public MemObject
     // that should be called when the Sequencer becomes available after a stall.
     //
     std::vector<MemSlavePort *> retryList;
+
+    bool m_isCPUSequencer;
 };
 
 #endif // __MEM_RUBY_SYSTEM_RUBYPORT_HH__

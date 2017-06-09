@@ -1,6 +1,8 @@
 /*
  * Copyright (c) 2012-2013, 2015 ARM Limited
- * All rights reserved
+ * Copyright (c) 2016 Google Inc.
+ * Copyright (c) 2017, Centre National de la Recherche Scientifique
+ * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
  * not be construed as granting a license to any other intellectual
@@ -36,6 +38,8 @@
  *
  * Authors: Thomas Grass
  *          Andreas Hansson
+ *          Rahul Thakur
+ *          Pierre-Yves Peneau
  */
 
 #ifndef __MEM_COMM_MONITOR_HH__
@@ -74,17 +78,17 @@ class CommMonitor : public MemObject
      */
     CommMonitor(Params* params);
 
-    void init() M5_ATTR_OVERRIDE;
-    void regStats() M5_ATTR_OVERRIDE;
-    void startup() M5_ATTR_OVERRIDE;
-    void regProbePoints() M5_ATTR_OVERRIDE;
+    void init() override;
+    void regStats() override;
+    void startup() override;
+    void regProbePoints() override;
 
   public: // MemObject interfaces
     BaseMasterPort& getMasterPort(const std::string& if_name,
-                                  PortID idx = InvalidPortID) M5_ATTR_OVERRIDE;
+                                  PortID idx = InvalidPortID) override;
 
     BaseSlavePort& getSlavePort(const std::string& if_name,
-                                PortID idx = InvalidPortID) M5_ATTR_OVERRIDE;
+                                PortID idx = InvalidPortID) override;
 
   private:
 
@@ -165,6 +169,11 @@ class CommMonitor : public MemObject
         void recvReqRetry()
         {
             mon.recvReqRetry();
+        }
+
+        void recvRetrySnoopResp()
+        {
+            mon.recvRetrySnoopResp();
         }
 
       private:
@@ -248,6 +257,8 @@ class CommMonitor : public MemObject
 
     bool recvTimingSnoopResp(PacketPtr pkt);
 
+    void recvRetrySnoopResp();
+
     AddrRangeList getAddrRanges() const;
 
     bool isSnooping() const;
@@ -262,7 +273,7 @@ class CommMonitor : public MemObject
     struct MonitorStats
     {
 
-        /** Disable flag for burst length historgrams **/
+        /** Disable flag for burst length histograms **/
         bool disableBurstLengthHists;
 
         /** Histogram of read burst lengths */
@@ -350,6 +361,12 @@ class CommMonitor : public MemObject
         /** Disable flag for address distributions. */
         bool disableAddrDists;
 
+        /** Address mask for sources of read accesses to be captured */
+        const Addr readAddrMask;
+
+        /** Address mask for sources of write accesses to be captured */
+        const Addr writeAddrMask;
+
         /**
          * Histogram of number of read accesses to addresses over
          * time.
@@ -378,9 +395,15 @@ class CommMonitor : public MemObject
             outstandingReadReqs(0), outstandingWriteReqs(0),
             disableTransactionHists(params->disable_transaction_hists),
             readTrans(0), writeTrans(0),
-            disableAddrDists(params->disable_addr_dists)
+            disableAddrDists(params->disable_addr_dists),
+            readAddrMask(params->read_addr_mask),
+            writeAddrMask(params->write_addr_mask)
         { }
 
+        void updateReqStats(const ProbePoints::PacketInfo& pkt, bool is_atomic,
+                            bool expects_response);
+        void updateRespStats(const ProbePoints::PacketInfo& pkt, Tick latency,
+                             bool is_atomic);
     };
 
     /** This function is called periodically at the end of each time bin */
@@ -398,12 +421,6 @@ class CommMonitor : public MemObject
     const Tick samplePeriodTicks;
     /** Sample period in seconds */
     const double samplePeriod;
-
-    /** Address mask for sources of read accesses to be captured */
-    const Addr readAddrMask;
-
-    /** Address mask for sources of write accesses to be captured */
-    const Addr writeAddrMask;
 
     /** @} */
 

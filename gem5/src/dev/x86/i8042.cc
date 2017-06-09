@@ -28,9 +28,10 @@
  * Authors: Gabe Black
  */
 
+#include "dev/x86/i8042.hh"
+
 #include "base/bitunion.hh"
 #include "debug/I8042.hh"
-#include "dev/x86/i8042.hh"
 #include "mem/packet.hh"
 #include "mem/packet_access.hh"
 
@@ -490,7 +491,7 @@ X86ISA::I8042::serialize(CheckpointOut &cp) const
 {
     uint8_t statusRegData = statusReg.__data;
     uint8_t commandByteData = commandByte.__data;
-    
+
     SERIALIZE_SCALAR(dataPort);
     SERIALIZE_SCALAR(commandPort);
     SERIALIZE_SCALAR(statusRegData);

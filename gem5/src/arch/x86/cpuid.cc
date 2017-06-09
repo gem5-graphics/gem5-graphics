@@ -29,6 +29,7 @@
  */
 
 #include "arch/x86/cpuid.hh"
+
 #include "base/bitfield.hh"
 #include "cpu/thread_context.hh"
 
@@ -49,7 +50,7 @@ namespace X86ISA {
         L2L3CacheAndL2TLB,
         APMInfo,
         LongModeAddressSize,
- 
+
         /*
          * The following are defined by the spec but not yet implemented
          */
@@ -138,10 +139,11 @@ namespace X86ISA {
               case TLB1GBPageInfo:
               case PerformanceInfo:*/
               default:
-                warn("x86 cpuid: unimplemented function %u", funcNum);
+                warn("x86 cpuid family 0x8000: unimplemented function %u",
+                    funcNum);
                 return false;
             }
-        } else if(family == 0x0000) {
+        } else if (family == 0x0000) {
             // The standard functions
             switch (funcNum) {
               case VendorAndLargestStdFunc:
@@ -157,7 +159,8 @@ namespace X86ISA {
                                      0xe7dbfbff, 0x04000209);
                 break;
               default:
-                warn("x86 cpuid: unimplemented function %u", funcNum);
+                warn("x86 cpuid family 0x0000: unimplemented function %u",
+                    funcNum);
                 return false;
             }
         } else {

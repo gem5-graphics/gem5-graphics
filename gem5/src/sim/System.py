@@ -28,7 +28,7 @@
 # Authors: Nathan Binkert
 #          Rick Strong
 
-from m5.SimObject import SimObject
+from m5.SimObject import *
 from m5.defines import buildEnv
 from m5.params import *
 from m5.proxy import *
@@ -44,24 +44,22 @@ class System(MemObject):
     cxx_header = "sim/system.hh"
     system_port = MasterPort("System port")
 
-    @classmethod
-    def export_method_cxx_predecls(cls, code):
-        code('#include "sim/system.hh"')
-
-    @classmethod
-    def export_methods(cls, code):
-        code('''
-      Enums::MemoryMode getMemoryMode() const;
-      void setMemoryMode(Enums::MemoryMode mode);
-''')
+    cxx_exports = [
+        PyBindMethod("getMemoryMode"),
+        PyBindMethod("setMemoryMode"),
+    ]
 
     memories = VectorParam.AbstractMemory(Self.all,
                                           "All memories in the system")
     mem_mode = Param.MemoryMode('atomic', "The mode the memory system is in")
 
+    thermal_model = Param.ThermalModel(NULL, "Thermal model")
+    thermal_components = VectorParam.SimObject([],
+            "A collection of all thermal components in the system.")
+
     # When reserving memory on the host, we have the option of
     # reserving swap space or not (by passing MAP_NORESERVE to
-    # mmap). By enabling this flag, we accomodate cases where a large
+    # mmap). By enabling this flag, we accommodate cases where a large
     # (but sparse) memory is simulated.
     mmap_using_noreserve = Param.Bool(False, "mmap the backing store " \
                                           "without reserving swap")
@@ -73,6 +71,8 @@ class System(MemObject):
 
     cache_line_size = Param.Unsigned(64, "Cache line size in bytes")
 
+    exit_on_work_items = Param.Bool(False, "Exit from the simulation loop when "
+                                    "encountering work item annotations.")
     work_item_id = Param.Int(-1, "specific work item id")
     num_work_ids = Param.Int(16, "Number of distinct work item types")
     work_begin_cpu_id_exit = Param.Int(-1,
@@ -99,6 +99,12 @@ class System(MemObject):
             "Address to mask loading binaries with")
     load_offset = Param.UInt64(0, "Address to offset loading binaries with")
 
+    multi_thread = Param.Bool(False,
+            "Supports multi-threaded CPUs? Impacts Thread/Context IDs")
+
     # Dynamic voltage and frequency handler for the system, disabled by default
     # Provide list of domains that need to be controlled by the handler
     dvfs_handler = DVFSHandler()
+
+    if buildEnv['USE_KVM']:
+        kvm_vm = Param.KvmVM(NULL, 'KVM VM (i.e., shared memory domain)')

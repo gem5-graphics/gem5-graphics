@@ -47,7 +47,8 @@
 
 MemTraceProbe::MemTraceProbe(MemTraceProbeParams *p)
     : BaseMemProbe(p),
-      traceStream(nullptr)
+      traceStream(nullptr),
+      withPC(p->with_pc)
 {
     std::string filename;
     if (p->trace_file != "") {
@@ -93,15 +94,17 @@ MemTraceProbe::closeStreams()
 }
 
 void
-MemTraceProbe::handleRequest(const PacketPtr &pkt)
+MemTraceProbe::handleRequest(const ProbePoints::PacketInfo &pkt_info)
 {
     ProtoMessage::Packet pkt_msg;
 
     pkt_msg.set_tick(curTick());
-    pkt_msg.set_cmd(pkt->cmdToIndex());
-    pkt_msg.set_flags(pkt->req->getFlags());
-    pkt_msg.set_addr(pkt->getAddr());
-    pkt_msg.set_size(pkt->getSize());
+    pkt_msg.set_cmd(pkt_info.cmd.toInt());
+    pkt_msg.set_flags(pkt_info.flags);
+    pkt_msg.set_addr(pkt_info.addr);
+    pkt_msg.set_size(pkt_info.size);
+    if (withPC && pkt_info.pc != 0)
+        pkt_msg.set_pc(pkt_info.pc);
 
     traceStream->write(pkt_msg);
 }

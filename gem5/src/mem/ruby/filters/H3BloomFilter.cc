@@ -26,9 +26,9 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "base/intmath.hh"
-#include "base/str.hh"
 #include "mem/ruby/filters/H3BloomFilter.hh"
+
+#include "base/intmath.hh"
 
 using namespace std;
 
@@ -354,7 +354,7 @@ static int H3[64][16] = {
       394261773,  848616745,  15446017,   517723271,  },
 };
 
-H3BloomFilter::H3BloomFilter(string str)
+H3BloomFilter::H3BloomFilter(int size, int hashes, bool parallel)
 {
     //TODO: change this ugly init code...
     primes_list[0] = 9323;
@@ -378,21 +378,9 @@ H3BloomFilter::H3BloomFilter(string str)
     adds_list[4] = 7777;
     adds_list[5] = 65931;
 
-    vector<string> items;
-    tokenize(items, str, '_');
-    assert(items.size() == 3);
-
-    // head contains filter size, tail contains bit offset from block number
-    m_filter_size = atoi(items[0].c_str());
-    m_num_hashes = atoi(items[1].c_str());
-
-    if (items[2] == "Regular") {
-        isParallel = false;
-    } else if (items[2] == "Parallel") {
-        isParallel = true;
-    } else {
-        panic("ERROR: Incorrect config string for MultiHash Bloom! :%s", str);
-    }
+    m_filter_size = size;
+    m_num_hashes = hashes;
+    isParallel = parallel;
 
     m_filter_size_bits = floorLog2(m_filter_size);
 
@@ -432,7 +420,7 @@ H3BloomFilter::merge(AbstractBloomFilter *other_filter)
 {
     // assumes both filters are the same size!
     H3BloomFilter * temp = (H3BloomFilter*) other_filter;
-    for(int i = 0; i < m_filter_size; ++i){
+    for (int i = 0; i < m_filter_size; ++i){
         m_filter[i] |= (*temp)[i];
     }
 }
@@ -526,7 +514,7 @@ H3BloomFilter::hash_H3(uint64_t value, int index)
     int result = 0;
 
     for (int i = 0; i < 64; i++) {
-        if(val&mask) result ^= H3[i][index];
+        if (val&mask) result ^= H3[i][index];
         val = val >> 1;
     }
     return result;

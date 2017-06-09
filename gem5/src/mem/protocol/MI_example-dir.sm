@@ -27,7 +27,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-machine(Directory, "Directory protocol") 
+machine(MachineType:Directory, "Directory protocol") 
     : DirectoryMemory * directory;
       Cycles directory_latency := 12;
       Cycles to_memory_controller_latency := 1;
@@ -43,6 +43,7 @@ machine(Directory, "Directory protocol")
             vnet_type="request";
       MessageBuffer * dmaRequestToDir, network="From", virtual_network="0",
             vnet_type="request";
+      MessageBuffer * responseFromMemory;
 {
   // STATES
   state_declaration(State, desc="Directory states", default="Directory_State_I") {
@@ -107,6 +108,9 @@ machine(Directory, "Directory protocol")
   // ** OBJECTS **
   TBETable TBEs, template="<Directory_TBE>", constructor="m_number_of_TBEs";
 
+  Tick clockEdge();
+  Cycles ticksToCycles(Tick t);
+  Tick cyclesToTicks(Cycles c);
   void set_tbe(TBE b);
   void unset_tbe();
 
@@ -195,8 +199,6 @@ machine(Directory, "Directory protocol")
     return num_functional_writes;
   }
 
-  MessageBuffer responseFromMemory;
-
   // ** OUT_PORTS **
   out_port(forwardNetwork_out, RequestMsg, forwardFromDir);
   out_port(responseNetwork_out, ResponseMsg, responseFromDir);
@@ -205,7 +207,7 @@ machine(Directory, "Directory protocol")
 
   // ** IN_PORTS **
   in_port(dmaRequestQueue_in, DMARequestMsg, dmaRequestToDir) {
-    if (dmaRequestQueue_in.isReady()) {
+    if (dmaRequestQueue_in.isReady(clockEdge())) {
       peek(dmaRequestQueue_in, DMARequestMsg) {
         TBE tbe := TBEs[in_msg.LineAddress];
         if (in_msg.Type == DMARequestType:READ) {
@@ -220,7 +222,7 @@ machine(Directory, "Directory protocol")
   }
 
   in_port(requestQueue_in, RequestMsg, requestToDir) {
-    if (requestQueue_in.isReady()) {
+    if (requestQueue_in.isReady(clockEdge())) {
       peek(requestQueue_in, RequestMsg) {
         TBE tbe := TBEs[in_msg.addr];
         if (in_msg.Type == CoherenceRequestType:GETS) {
@@ -243,7 +245,7 @@ machine(Directory, "Directory protocol")
 //added by SS
   // off-chip memory request/response is done
   in_port(memQueue_in, MemoryMsg, responseFromMemory) {
-    if (memQueue_in.isReady()) {
+    if (memQueue_in.isReady(clockEdge())) {
       peek(memQueue_in, MemoryMsg) {
         TBE tbe := TBEs[in_msg.addr];
         if (in_msg.Type == MemoryRequestType:MEMORY_READ) {
@@ -393,11 +395,11 @@ machine(Directory, "Directory protocol")
   }
 
   action(i_popIncomingRequestQueue, "i", desc="Pop incoming request queue") {
-    requestQueue_in.dequeue();
+    requestQueue_in.dequeue(clockEdge());
   }
 
   action(p_popIncomingDMARequestQueue, "p", desc="Pop incoming DMA queue") {
-    dmaRequestQueue_in.dequeue();
+    dmaRequestQueue_in.dequeue(clockEdge());
   }
   
   action(v_allocateTBE, "v", desc="Allocate TBE") {
@@ -433,11 +435,11 @@ machine(Directory, "Directory protocol")
   }
 
   action(z_recycleRequestQueue, "z", desc="recycle request queue") {
-    requestQueue_in.recycle();
+    requestQueue_in.recycle(clockEdge(), cyclesToTicks(recycle_latency));
   }
 
   action(y_recycleDMARequestQueue, "y", desc="recycle dma request queue") {
-    dmaRequestQueue_in.recycle();
+    dmaRequestQueue_in.recycle(clockEdge(), cyclesToTicks(recycle_latency));
   }
 
 
@@ -477,7 +479,7 @@ machine(Directory, "Directory protocol")
   }
 
   action(l_popMemQueue, "q", desc="Pop off-chip request queue") {
-    memQueue_in.dequeue();
+    memQueue_in.dequeue(clockEdge());
   }
 
   // TRANSITIONS

@@ -50,6 +50,7 @@
 #include "cpu/minor/stats.hh"
 #include "cpu/base.hh"
 #include "cpu/simple_thread.hh"
+#include "enums/ThreadPolicy.hh"
 #include "params/MinorCPU.hh"
 
 namespace Minor
@@ -107,17 +108,16 @@ class MinorCPU : public BaseCPU
             : MasterPort(name_, &cpu_), cpu(cpu_)
         { }
 
-      protected:
-        /** Snooping a coherence request, do nothing.  */
-        virtual void recvTimingSnoopReq(PacketPtr pkt) { }
     };
 
+    /** Thread Scheduling Policy (RoundRobin, Random, etc) */
+    Enums::ThreadPolicy threadPolicy;
   protected:
      /** Return a reference to the data port. */
-    MasterPort &getDataPort();
+    MasterPort &getDataPort() override;
 
     /** Return a reference to the instruction port. */
-    MasterPort &getInstPort();
+    MasterPort &getInstPort() override;
 
   public:
     MinorCPU(MinorCPUParams *params);
@@ -126,9 +126,9 @@ class MinorCPU : public BaseCPU
 
   public:
     /** Starting, waking and initialisation */
-    void init();
-    void startup();
-    void wakeup();
+    void init() override;
+    void startup() override;
+    void wakeup(ThreadID tid) override;
 
     Addr dbg_vtophys(Addr addr);
 
@@ -136,35 +136,54 @@ class MinorCPU : public BaseCPU
     Minor::MinorStats stats;
 
     /** Stats interface from SimObject (by way of BaseCPU) */
-    void regStats();
+    void regStats() override;
 
     /** Simple inst count interface from BaseCPU */
-    Counter totalInsts() const;
-    Counter totalOps() const;
+    Counter totalInsts() const override;
+    Counter totalOps() const override;
 
-    void serializeThread(CheckpointOut &cp,
-                         ThreadID tid) const M5_ATTR_OVERRIDE;
-    void unserializeThread(CheckpointIn &cp, ThreadID tid) M5_ATTR_OVERRIDE;
+    void serializeThread(CheckpointOut &cp, ThreadID tid) const override;
+    void unserializeThread(CheckpointIn &cp, ThreadID tid) override;
 
     /** Serialize pipeline data */
-    void serialize(CheckpointOut &cp) const;
-    void unserialize(CheckpointIn &cp);
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 
     /** Drain interface */
-    DrainState drain() M5_ATTR_OVERRIDE;
-    void drainResume() M5_ATTR_OVERRIDE;
+    DrainState drain() override;
+    void drainResume() override;
     /** Signal from Pipeline that MinorCPU should signal that a drain
      *  is complete and set its drainState */
     void signalDrainDone();
-    void memWriteback();
+    void memWriteback() override;
 
     /** Switching interface from BaseCPU */
-    void switchOut();
-    void takeOverFrom(BaseCPU *old_cpu);
+    void switchOut() override;
+    void takeOverFrom(BaseCPU *old_cpu) override;
 
     /** Thread activation interface from BaseCPU. */
-    void activateContext(ThreadID thread_id);
-    void suspendContext(ThreadID thread_id);
+    void activateContext(ThreadID thread_id) override;
+    void suspendContext(ThreadID thread_id) override;
+
+    /** Thread scheduling utility functions */
+    std::vector<ThreadID> roundRobinPriority(ThreadID priority)
+    {
+        std::vector<ThreadID> prio_list;
+        for (ThreadID i = 1; i <= numThreads; i++) {
+            prio_list.push_back((priority + i) % numThreads);
+        }
+        return prio_list;
+    }
+
+    std::vector<ThreadID> randomPriority()
+    {
+        std::vector<ThreadID> prio_list;
+        for (ThreadID i = 0; i < numThreads; i++) {
+            prio_list.push_back(i);
+        }
+        std::random_shuffle(prio_list.begin(), prio_list.end());
+        return prio_list;
+    }
 
     /** Interface for stages to signal that they have become active after
      *  a callback or eventq event where the pipeline itself may have

@@ -28,9 +28,10 @@
  * Authors: Steve Reinhardt
  */
 
+#include "base/loader/aout_object.hh"
+
 #include <string>
 
-#include "base/loader/aout_object.hh"
 #include "base/loader/exec_aout.h"
 #include "base/loader/symtab.hh"
 #include "base/trace.hh"
@@ -80,14 +81,23 @@ AoutObject::AoutObject(const string &_filename,
 
 
 bool
-AoutObject::loadGlobalSymbols(SymbolTable *symtab, Addr addrMask)
+AoutObject::loadAllSymbols(SymbolTable *symtab, Addr base, Addr offset,
+                           Addr addr_mask)
+{
+    return false;
+}
+
+bool
+AoutObject::loadGlobalSymbols(SymbolTable *symtab, Addr base, Addr offset,
+                              Addr addr_mask)
 {
     // a.out symbols not supported yet
     return false;
 }
 
 bool
-AoutObject::loadLocalSymbols(SymbolTable *symtab, Addr addrMask)
+AoutObject::loadLocalSymbols(SymbolTable *symtab, Addr base, Addr offset,
+                             Addr addr_mask)
 {
     // a.out symbols not supported yet
     return false;

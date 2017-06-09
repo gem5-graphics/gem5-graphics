@@ -37,6 +37,8 @@
  * Authors: Andrew Bardsley
  */
 
+#include "cpu/minor/lsq.hh"
+
 #include <iomanip>
 #include <sstream>
 
@@ -45,7 +47,6 @@
 #include "cpu/minor/cpu.hh"
 #include "cpu/minor/exec_context.hh"
 #include "cpu/minor/execute.hh"
-#include "cpu/minor/lsq.hh"
 #include "cpu/minor/pipeline.hh"
 #include "debug/Activity.hh"
 #include "debug/MinorMem.hh"
@@ -216,13 +217,14 @@ operator <<(std::ostream &os, LSQ::LSQRequest::LSQRequestState state)
 void
 LSQ::clearMemBarrier(MinorDynInstPtr inst)
 {
-    bool is_last_barrier = inst->id.execSeqNum >= lastMemBarrier;
+    bool is_last_barrier =
+        inst->id.execSeqNum >= lastMemBarrier[inst->id.threadId];
 
     DPRINTF(MinorMem, "Moving %s barrier out of store buffer inst: %s\n",
         (is_last_barrier ? "last" : "a"), *inst);
 
     if (is_last_barrier)
-        lastMemBarrier = 0;
+        lastMemBarrier[inst->id.threadId] = 0;
 }
 
 void
@@ -422,7 +424,7 @@ LSQ::SplitDataRequest::makeFragmentRequests()
 
         Request *fragment = new Request();
 
-        fragment->setThreadContext(request.contextId(), /* thread id */ 0);
+        fragment->setContext(request.contextId());
         fragment->setVirt(0 /* asid */,
             fragment_addr, fragment_size, request.getFlags(),
             request.masterId(),
@@ -676,7 +678,8 @@ LSQ::StoreBuffer::canForwardDataToLoad(LSQRequestPtr request,
     while (ret == NoAddrRangeCoverage && i != slots.rend()) {
         LSQRequestPtr slot = *i;
 
-        if (slot->packet) {
+        if (slot->packet &&
+            slot->inst->id.threadId == request->inst->id.threadId) {
             AddrRangeCoverage coverage = slot->containsAddrRangeOf(request);
 
             if (coverage != NoAddrRangeCoverage) {
@@ -1042,8 +1045,9 @@ LSQ::tryToSendToTransfers(LSQRequestPtr request)
             request->issuedToMemory = true;
         }
 
-        if (tryToSend(request))
+        if (tryToSend(request)) {
             moveFromRequestsToTransfers(request);
+        }
     } else {
         request->setState(LSQRequest::Complete);
         moveFromRequestsToTransfers(request);
@@ -1070,7 +1074,8 @@ LSQ::tryToSend(LSQRequestPtr request)
 
         if (request->request.isMmappedIpr()) {
             ThreadContext *thread =
-                cpu.getContext(request->request.threadId());
+                cpu.getContext(cpu.contextToThread(
+                                request->request.contextId()));
 
             if (request->isLoad) {
                 DPRINTF(MinorMem, "IPR read inst: %s\n", *(request->inst));
@@ -1143,6 +1148,9 @@ LSQ::tryToSend(LSQRequestPtr request)
             }
         }
     }
+
+    if (ret)
+        threadSnoop(request);
 
     return ret;
 }
@@ -1292,7 +1300,7 @@ LSQ::LSQ(std::string name_, std::string dcache_port_name_,
     cpu(cpu_),
     execute(execute_),
     dcachePort(dcache_port_name_, *this, cpu_),
-    lastMemBarrier(0),
+    lastMemBarrier(cpu.numThreads, 0),
     state(MemoryRunning),
     inMemorySystemLimit(in_memory_system_limit),
     lineWidth((line_width == 0 ? cpu.cacheLineSize() : line_width)),
@@ -1464,7 +1472,8 @@ LSQ::needsToTick()
 
 void
 LSQ::pushRequest(MinorDynInstPtr inst, bool isLoad, uint8_t *data,
-    unsigned int size, Addr addr, unsigned int flags, uint64_t *res)
+                 unsigned int size, Addr addr, Request::Flags flags,
+                 uint64_t *res)
 {
     bool needs_burst = transferNeedsBurst(addr, size, lineWidth);
     LSQRequestPtr request;
@@ -1501,7 +1510,8 @@ LSQ::pushRequest(MinorDynInstPtr inst, bool isLoad, uint8_t *data,
     if (inst->traceData)
         inst->traceData->setMem(addr, size, flags);
 
-    request->request.setThreadContext(cpu.cpuId(), /* thread id */ 0);
+    int cid = cpu.threads[inst->id.threadId]->getTC()->contextId();
+    request->request.setContext(cid);
     request->request.setVirt(0 /* asid */,
         addr, size, flags, cpu.dataMasterId(),
         /* I've no idea why we need the PC, but give it */
@@ -1524,7 +1534,7 @@ LSQ::minorTrace() const
     MINORTRACE("state=%s in_tlb_mem=%d/%d stores_in_transfers=%d"
         " lastMemBarrier=%d\n",
         state, numAccessesInDTLB, numAccessesInMemorySystem,
-        numStoresInTransfers, lastMemBarrier);
+        numStoresInTransfers, lastMemBarrier[0]);
     requests.minorTrace();
     transfers.minorTrace();
     storeBuffer.minorTrace();
@@ -1563,12 +1573,12 @@ void
 LSQ::issuedMemBarrierInst(MinorDynInstPtr inst)
 {
     assert(inst->isInst() && inst->staticInst->isMemBarrier());
-    assert(inst->id.execSeqNum > lastMemBarrier);
+    assert(inst->id.execSeqNum > lastMemBarrier[inst->id.threadId]);
 
     /* Remember the barrier.  We only have a notion of one
      *  barrier so this may result in some mem refs being
      *  delayed if they are between barriers */
-    lastMemBarrier = inst->id.execSeqNum;
+    lastMemBarrier[inst->id.threadId] = inst->id.execSeqNum;
 }
 
 void
@@ -1614,9 +1624,41 @@ LSQ::recvTimingSnoopReq(PacketPtr pkt)
     /* LLSC operations in Minor can't be speculative and are executed from
      * the head of the requests queue.  We shouldn't need to do more than
      * this action on snoops. */
+    for (ThreadID tid = 0; tid < cpu.numThreads; tid++) {
+        if (cpu.getCpuAddrMonitor(tid)->doMonitor(pkt)) {
+            cpu.wakeup(tid);
+        }
+    }
 
-    /* THREAD */
-    TheISA::handleLockedSnoop(cpu.getContext(0), pkt, cacheBlockMask);
+    if (pkt->isInvalidate() || pkt->isWrite()) {
+        for (ThreadID tid = 0; tid < cpu.numThreads; tid++) {
+            TheISA::handleLockedSnoop(cpu.getContext(tid), pkt,
+                                      cacheBlockMask);
+        }
+    }
+}
+
+void
+LSQ::threadSnoop(LSQRequestPtr request)
+{
+    /* LLSC operations in Minor can't be speculative and are executed from
+     * the head of the requests queue.  We shouldn't need to do more than
+     * this action on snoops. */
+    ThreadID req_tid = request->inst->id.threadId;
+    PacketPtr pkt = request->packet;
+
+    for (ThreadID tid = 0; tid < cpu.numThreads; tid++) {
+        if (tid != req_tid) {
+            if (cpu.getCpuAddrMonitor(tid)->doMonitor(pkt)) {
+                cpu.wakeup(tid);
+            }
+
+            if (pkt->isInvalidate() || pkt->isWrite()) {
+                TheISA::handleLockedSnoop(cpu.getContext(tid), pkt,
+                                          cacheBlockMask);
+            }
+        }
+    }
 }
 
 }

@@ -1,4 +1,4 @@
-# Copyright (c) 2012-2014 ARM Limited
+# Copyright (c) 2012-2016 ARM Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -12,6 +12,7 @@
 #
 # Copyright (c) 2013 Amin Farmahini-Farahani
 # Copyright (c) 2015 University of Kaiserslautern
+# Copyright (c) 2015 The University of Bologna
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -41,6 +42,7 @@
 #          Ani Udipi
 #          Omar Naji
 #          Matthias Jung
+#          Erfan Azarkhish
 
 from m5.params import *
 from AbstractMemory import *
@@ -313,7 +315,7 @@ class DRAMCtrl(AbstractMemory):
 # A single DDR3-1600 x64 channel (one command and address bus), with
 # timings based on a DDR3-1600 4 Gbit datasheet (Micron MT41J512M8) in
 # an 8x8 configuration.
-class DDR3_1600_x64(DRAMCtrl):
+class DDR3_1600_8x8(DRAMCtrl):
     # size of device in bytes
     device_size = '512MB'
 
@@ -368,13 +370,22 @@ class DDR3_1600_x64(DRAMCtrl):
     # <=85C, half for >85C
     tREFI = '7.8us'
 
-    # Current values from datasheet
-    IDD0 = '75mA'
-    IDD2N = '50mA'
-    IDD3N = '57mA'
-    IDD4W = '165mA'
-    IDD4R = '187mA'
-    IDD5 = '220mA'
+    # active powerdown and precharge powerdown exit time
+    tXP = '6ns'
+
+    # self refresh exit time
+    tXS = '270ns'
+
+    # Current values from datasheet Die Rev E,J
+    IDD0 = '55mA'
+    IDD2N = '32mA'
+    IDD3N = '38mA'
+    IDD4W = '125mA'
+    IDD4R = '157mA'
+    IDD5 = '235mA'
+    IDD3P1 = '38mA'
+    IDD2P1 = '32mA'
+    IDD6 = '20mA'
     VDD = '1.5V'
 
 # A single HMC-2500 x32 model based on:
@@ -382,8 +393,8 @@ class DDR3_1600_x64(DRAMCtrl):
 # developed at the University of Kaiserslautern. This high level tool
 # uses RC (resistance-capacitance) and CV (capacitance-voltage) models to
 # estimate the DRAM bank latency and power numbers.
-# [2] A Logic-base Interconnect for Supporting Near Memory Computation in the
-# Hybrid Memory Cube (E. Azarkhish et. al)
+# [2] High performance AXI-4.0 based interconnect for extensible smart memory
+# cubes (E. Azarkhish et. al)
 # Assumed for the HMC model is a 30 nm technology node.
 # The modelled HMC consists of 4 Gbit layers which sum up to 2GB of memory (4
 # layers).
@@ -397,9 +408,9 @@ class DDR3_1600_x64(DRAMCtrl):
 # devices per rank (DDR) => devices per layer ( 1 for HMC).
 # The parameters for which no input is available are inherited from the DDR3
 # configuration.
-# This configuration includes the latencies from the DRAM to the logic layer of
-# the HMC
-class HMC_2500_x32(DDR3_1600_x64):
+# This configuration includes the latencies from the DRAM to the logic layer
+# of the HMC
+class HMC_2500_1x32(DDR3_1600_8x8):
     # size of device
     # two banks per device with each bank 4MB [2]
     device_size = '8MB'
@@ -441,7 +452,8 @@ class HMC_2500_x32(DDR3_1600_x64):
     # cycles (Assumption)
     tRRD = '3.2ns'
 
-    # activation limit is set to 0 since there are only 2 banks per vault layer.
+    # activation limit is set to 0 since there are only 2 banks per vault
+    # layer.
     activation_limit = 0
 
     # Values using DRAMSpec HMC model [1]
@@ -449,25 +461,38 @@ class HMC_2500_x32(DDR3_1600_x64):
     tWR = '8ns'
     tRTP = '4.9ns'
 
-    # Default different rank bus delay assumed to 1 CK for TSVs, @1250 MHz = 0.8
-    # ns (Assumption)
+    # Default different rank bus delay assumed to 1 CK for TSVs, @1250 MHz =
+    # 0.8 ns (Assumption)
     tCS = '0.8ns'
 
     # Value using DRAMSpec HMC model [1]
     tREFI = '3.9us'
 
-    # Set default controller parameters
-    page_policy = 'close'
-    write_buffer_size = 8
-    read_buffer_size = 8
+    # The default page policy in the vault controllers is simple closed page
+    # [2] nevertheless 'close' policy opens and closes the row multiple times
+    # for bursts largers than 32Bytes. For this reason we use 'close_adaptive'
+    page_policy = 'close_adaptive'
+
+    # RoCoRaBaCh resembles the default address mapping in HMC
     addr_mapping = 'RoCoRaBaCh'
     min_writes_per_switch = 8
+
+    # These parameters do not directly correlate with buffer_size in real
+    # hardware. Nevertheless, their value has been tuned to achieve a
+    # bandwidth similar to the cycle-accurate model in [2]
+    write_buffer_size = 32
+    read_buffer_size = 32
+
+    # The static latency of the vault controllers is estimated to be smaller
+    # than a full DRAM channel controller
+    static_backend_latency='4ns'
+    static_frontend_latency='4ns'
 
 # A single DDR3-2133 x64 channel refining a selected subset of the
 # options for the DDR-1600 configuration, based on the same DDR3-1600
 # 4 Gbit datasheet (Micron MT41J512M8). Most parameters are kept
 # consistent across the two configurations.
-class DDR3_2133_x64(DDR3_1600_x64):
+class DDR3_2133_8x8(DDR3_1600_8x8):
     # 1066 MHz
     tCK = '0.938ns'
 
@@ -489,36 +514,41 @@ class DDR3_2133_x64(DDR3_1600_x64):
     IDD4W = '157mA'
     IDD4R = '191mA'
     IDD5 = '250mA'
+    IDD3P1 = '44mA'
+    IDD2P1 = '43mA'
+    IDD6 ='20mA'
     VDD = '1.5V'
 
 # A single DDR4-2400 x64 channel (one command and address bus), with
-# timings based on a DDR4-2400 4 Gbit datasheet (Micron MT40A512M8)
-# in an 8x8 configuration.
-class DDR4_2400_x64(DRAMCtrl):
+# timings based on a DDR4-2400 8 Gbit datasheet (Micron MT40A2G4)
+# in an 16x4 configuration.
+# Total channel capacity is 32GB
+# 16 devices/rank * 2 ranks/channel * 1GB/device = 32GB/channel
+class DDR4_2400_16x4(DRAMCtrl):
     # size of device
-    device_size = '512MB'
+    device_size = '1GB'
 
-    # 8x8 configuration, 8 devices each with an 8-bit interface
-    device_bus_width = 8
+    # 16x4 configuration, 16 devices each with a 4-bit interface
+    device_bus_width = 4
 
     # DDR4 is a BL8 device
     burst_length = 8
 
-    # Each device has a page (row buffer) size of 1 Kbyte (1K columns x8)
-    device_rowbuffer_size = '1kB'
+    # Each device has a page (row buffer) size of 512 byte (1K columns x4)
+    device_rowbuffer_size = '512B'
 
-    # 8x8 configuration, so 8 devices
-    devices_per_rank = 8
+    # 16x4 configuration, so 16 devices
+    devices_per_rank = 16
 
     # Match our DDR3 configurations which is dual rank
     ranks_per_channel = 2
 
     # DDR4 has 2 (x16) or 4 (x4 and x8) bank groups
-    # Set to 4 for x4, x8 case
+    # Set to 4 for x4 case
     bank_groups_per_rank = 4
 
-    # DDR4 has 16 banks (4 bank groups) in all
-    # configurations. Currently we do not capture the additional
+    # DDR4 has 16 banks(x4,x8) and 8 banks(x16) (4 bank groups in all
+    # configurations). Currently we do not capture the additional
     # constraints incurred by the bank groups
     banks_per_rank = 16
 
@@ -534,7 +564,7 @@ class DDR4_2400_x64(DRAMCtrl):
     # tBURST is equivalent to the CAS-to-CAS delay (tCCD)
     # With bank group architectures, tBURST represents the CAS-to-CAS
     # delay for bursts to different bank groups (tCCD_S)
-    tBURST = '3.333ns'
+    tBURST = '3.332ns'
 
     # @2400 data rate, tCCD_L is 6 CK
     # CAS-to-CAS delay for bursts to the same bank group
@@ -548,14 +578,16 @@ class DDR4_2400_x64(DRAMCtrl):
     tRP = '14.16ns'
     tRAS = '32ns'
 
-    # RRD_S (different bank group) for 1K page is MAX(4 CK, 3.3ns)
-    tRRD = '3.3ns'
+    # RRD_S (different bank group) for 512B page is MAX(4 CK, 3.3ns)
+    tRRD = '3.332ns'
 
-    # RRD_L (same bank group) for 1K page is MAX(4 CK, 4.9ns)
+    # RRD_L (same bank group) for 512B page is MAX(4 CK, 4.9ns)
     tRRD_L = '4.9ns';
 
-    tXAW = '21ns'
+    # tFAW for 512B page is MAX(16 CK, 13ns)
+    tXAW = '13.328ns'
     activation_limit = 4
+    # tRFC is 350ns
     tRFC = '350ns'
 
     tWR = '15ns'
@@ -575,22 +607,102 @@ class DDR4_2400_x64(DRAMCtrl):
     # <=85C, half for >85C
     tREFI = '7.8us'
 
+    # active powerdown and precharge powerdown exit time
+    tXP = '6ns'
+
+    # self refresh exit time
+    # exit delay to ACT, PRE, PREALL, REF, SREF Enter, and PD Enter is:
+    # tRFC + 10ns = 340ns
+    tXS = '340ns'
+
     # Current values from datasheet
-    IDD0 = '64mA'
-    IDD02 = '4mA'
-    IDD2N = '50mA'
-    IDD3N = '67mA'
+    IDD0 = '43mA'
+    IDD02 = '3mA'
+    IDD2N = '34mA'
+    IDD3N = '38mA'
     IDD3N2 = '3mA'
-    IDD4W = '180mA'
-    IDD4R = '160mA'
-    IDD5 = '192mA'
+    IDD4W = '103mA'
+    IDD4R = '110mA'
+    IDD5 = '250mA'
+    IDD3P1 = '32mA'
+    IDD2P1 = '25mA'
+    IDD6 = '30mA'
     VDD = '1.2V'
     VDD2 = '2.5V'
+
+# A single DDR4-2400 x64 channel (one command and address bus), with
+# timings based on a DDR4-2400 8 Gbit datasheet (Micron MT40A1G8)
+# in an 8x8 configuration.
+# Total channel capacity is 16GB
+# 8 devices/rank * 2 ranks/channel * 1GB/device = 16GB/channel
+class DDR4_2400_8x8(DDR4_2400_16x4):
+    # 8x8 configuration, 8 devices each with an 8-bit interface
+    device_bus_width = 8
+
+    # Each device has a page (row buffer) size of 1 Kbyte (1K columns x8)
+    device_rowbuffer_size = '1kB'
+
+    # RRD_L (same bank group) for 1K page is MAX(4 CK, 4.9ns)
+    tRRD_L = '4.9ns';
+
+    tXAW = '21ns'
+
+    # Current values from datasheet
+    IDD0 = '48mA'
+    IDD3N = '43mA'
+    IDD4W = '123mA'
+    IDD4R = '135mA'
+    IDD3P1 = '37mA'
+
+# A single DDR4-2400 x64 channel (one command and address bus), with
+# timings based on a DDR4-2400 8 Gbit datasheet (Micron MT40A512M16)
+# in an 4x16 configuration.
+# Total channel capacity is 4GB
+# 4 devices/rank * 1 ranks/channel * 1GB/device = 4GB/channel
+class DDR4_2400_4x16(DDR4_2400_16x4):
+    # 4x16 configuration, 4 devices each with an 16-bit interface
+    device_bus_width = 16
+
+    # Each device has a page (row buffer) size of 2 Kbyte (1K columns x16)
+    device_rowbuffer_size = '2kB'
+
+    # 4x16 configuration, so 4 devices
+    devices_per_rank = 4
+
+    # Single rank for x16
+    ranks_per_channel = 1
+
+    # DDR4 has 2 (x16) or 4 (x4 and x8) bank groups
+    # Set to 2 for x16 case
+    bank_groups_per_rank = 2
+
+    # DDR4 has 16 banks(x4,x8) and 8 banks(x16) (4 bank groups in all
+    # configurations). Currently we do not capture the additional
+    # constraints incurred by the bank groups
+    banks_per_rank = 8
+
+    # RRD_S (different bank group) for 2K page is MAX(4 CK, 5.3ns)
+    tRRD = '5.3ns'
+
+    # RRD_L (same bank group) for 2K page is MAX(4 CK, 6.4ns)
+    tRRD_L = '6.4ns';
+
+    tXAW = '30ns'
+
+    # Current values from datasheet
+    IDD0 = '80mA'
+    IDD02 = '4mA'
+    IDD2N = '34mA'
+    IDD3N = '47mA'
+    IDD4W = '228mA'
+    IDD4R = '243mA'
+    IDD5 = '280mA'
+    IDD3P1 = '41mA'
 
 # A single LPDDR2-S4 x32 interface (one command/address bus), with
 # default timings based on a LPDDR2-1066 4 Gbit part (Micron MT42L128M32D1)
 # in a 1x32 configuration.
-class LPDDR2_S4_1066_x32(DRAMCtrl):
+class LPDDR2_S4_1066_1x32(DRAMCtrl):
     # No DLL in LPDDR2
     dll = False
 
@@ -643,6 +755,12 @@ class LPDDR2_S4_1066_x32(DRAMCtrl):
     tRFC = '130ns'
     tREFI = '3.9us'
 
+    # active powerdown and precharge powerdown exit time
+    tXP = '7.5ns'
+
+    # self refresh exit time
+    tXS = '140ns'
+
     # Irrespective of speed grade, tWTR is 7.5 ns
     tWTR = '7.5ns'
 
@@ -672,12 +790,18 @@ class LPDDR2_S4_1066_x32(DRAMCtrl):
     IDD4R2 = '220mA'
     IDD5 = '40mA'
     IDD52 = '150mA'
+    IDD3P1 = '1.2mA'
+    IDD3P12 = '8mA'
+    IDD2P1 = '0.6mA'
+    IDD2P12 = '0.8mA'
+    IDD6 = '1mA'
+    IDD62 = '3.2mA'
     VDD = '1.8V'
     VDD2 = '1.2V'
 
 # A single WideIO x128 interface (one command and address bus), with
 # default timings based on an estimated WIO-200 8 Gbit part.
-class WideIO_200_x128(DRAMCtrl):
+class WideIO_200_1x128(DRAMCtrl):
     # No DLL for WideIO
     dll = False
 
@@ -746,7 +870,7 @@ class WideIO_200_x128(DRAMCtrl):
 # A single LPDDR3 x32 interface (one command/address bus), with
 # default timings based on a LPDDR3-1600 4 Gbit part (Micron
 # EDF8132A1MC) in a 1x32 configuration.
-class LPDDR3_1600_x32(DRAMCtrl):
+class LPDDR3_1600_1x32(DRAMCtrl):
     # No DLL for LPDDR3
     dll = False
 
@@ -799,6 +923,12 @@ class LPDDR3_1600_x32(DRAMCtrl):
     tRFC = '130ns'
     tREFI = '3.9us'
 
+    # active powerdown and precharge powerdown exit time
+    tXP = '7.5ns'
+
+    # self refresh exit time
+    tXS = '140ns'
+
     # Irrespective of speed grade, tWTR is 7.5 ns
     tWTR = '7.5ns'
 
@@ -828,13 +958,19 @@ class LPDDR3_1600_x32(DRAMCtrl):
     IDD4R2 = '230mA'
     IDD5 = '28mA'
     IDD52 = '150mA'
+    IDD3P1 = '1.4mA'
+    IDD3P12 = '11mA'
+    IDD2P1 = '0.8mA'
+    IDD2P12 = '1.8mA'
+    IDD6 = '0.5mA'
+    IDD62 = '1.8mA'
     VDD = '1.8V'
     VDD2 = '1.2V'
 
 # A single GDDR5 x64 interface, with
 # default timings based on a GDDR5-4000 1 Gbit part (SK Hynix
 # H5GQ1H24AFR) in a 2x32 configuration.
-class GDDR5_4000_x64(DRAMCtrl):
+class GDDR5_4000_2x32(DRAMCtrl):
     # size of device
     device_size = '128MB'
 
@@ -912,6 +1048,138 @@ class GDDR5_4000_x64(DRAMCtrl):
     # Assume 2 cycles
     tRTW = '2ns'
 
+# A single HBM x128 interface (one command and address bus), with
+# default timings based on data publically released
+# ("HBM: Memory Solution for High Performance Processors", MemCon, 2014),
+# IDD measurement values, and by extrapolating data from other classes.
+# Architecture values based on published HBM spec
+# A 4H stack is defined, 2Gb per die for a total of 1GB of memory.
+class HBM_1000_4H_1x128(DRAMCtrl):
+    # HBM gen1 supports up to 8 128-bit physical channels
+    # Configuration defines a single channel, with the capacity
+    # set to (full_ stack_capacity / 8) based on 2Gb dies
+    # To use all 8 channels, set 'channels' parameter to 8 in
+    # system configuration
+
+    # 128-bit interface legacy mode
+    device_bus_width = 128
+
+    # HBM supports BL4 and BL2 (legacy mode only)
+    burst_length = 4
+
+    # size of channel in bytes, 4H stack of 2Gb dies is 1GB per stack;
+    # with 8 channels, 128MB per channel
+    device_size = '128MB'
+
+    device_rowbuffer_size = '2kB'
+
+    # 1x128 configuration
+    devices_per_rank = 1
+
+    # HBM does not have a CS pin; set rank to 1
+    ranks_per_channel = 1
+
+    # HBM has 8 or 16 banks depending on capacity
+    # 2Gb dies have 8 banks
+    banks_per_rank = 8
+
+    # depending on frequency, bank groups may be required
+    # will always have 4 bank groups when enabled
+    # current specifications do not define the minimum frequency for
+    # bank group architecture
+    # setting bank_groups_per_rank to 0 to disable until range is defined
+    bank_groups_per_rank = 0
+
+    # 500 MHz for 1Gbps DDR data rate
+    tCK = '2ns'
+
+    # use values from IDD measurement in JEDEC spec
+    # use tRP value for tRCD and tCL similar to other classes
+    tRP = '15ns'
+    tRCD = '15ns'
+    tCL = '15ns'
+    tRAS = '33ns'
+
+    # BL2 and BL4 supported, default to BL4
+    # DDR @ 500 MHz means 4 * 2ns / 2 = 4ns
+    tBURST = '4ns'
+
+    # value for 2Gb device from JEDEC spec
+    tRFC = '160ns'
+
+    # value for 2Gb device from JEDEC spec
+    tREFI = '3.9us'
+
+    # extrapolate the following from LPDDR configs, using ns values
+    # to minimize burst length, prefetch differences
+    tWR = '18ns'
+    tRTP = '7.5ns'
+    tWTR = '10ns'
+
+    # start with 2 cycles turnaround, similar to other memory classes
+    # could be more with variations across the stack
+    tRTW = '4ns'
+
+    # single rank device, set to 0
+    tCS = '0ns'
+
+    # from MemCon example, tRRD is 4ns with 2ns tCK
+    tRRD = '4ns'
+
+    # from MemCon example, tFAW is 30ns with 2ns tCK
+    tXAW = '30ns'
+    activation_limit = 4
+
+    # 4tCK
+    tXP = '8ns'
+
+    # start with tRFC + tXP -> 160ns + 8ns = 168ns
+    tXS = '168ns'
+
+# A single HBM x64 interface (one command and address bus), with
+# default timings based on HBM gen1 and data publically released
+# A 4H stack is defined, 8Gb per die for a total of 4GB of memory.
+# Note: This defines a pseudo-channel with a unique controller
+# instantiated per pseudo-channel
+# Stay at same IO rate (1Gbps) to maintain timing relationship with
+# HBM gen1 class (HBM_1000_4H_x128) where possible
+class HBM_1000_4H_1x64(HBM_1000_4H_1x128):
+    # For HBM gen2 with pseudo-channel mode, configure 2X channels.
+    # Configuration defines a single pseudo channel, with the capacity
+    # set to (full_ stack_capacity / 16) based on 8Gb dies
+    # To use all 16 pseudo channels, set 'channels' parameter to 16 in
+    # system configuration
+
+    # 64-bit pseudo-channle interface
+    device_bus_width = 64
+
+    # HBM pseudo-channel only supports BL4
+    burst_length = 4
+
+    # size of channel in bytes, 4H stack of 8Gb dies is 4GB per stack;
+    # with 16 channels, 256MB per channel
+    device_size = '256MB'
+
+    # page size is halved with pseudo-channel; maintaining the same same number
+    # of rows per pseudo-channel with 2X banks across 2 channels
+    device_rowbuffer_size = '1kB'
+
+    # HBM has 8 or 16 banks depending on capacity
+    # Starting with 4Gb dies, 16 banks are defined
+    banks_per_rank = 16
+
+    # reset tRFC for larger, 8Gb device
+    # use HBM1 4Gb value as a starting point
+    tRFC = '260ns'
+
+    # start with tRFC + tXP -> 160ns + 8ns = 168ns
+    tXS = '268ns'
     # Default different rank bus delay to 2 CK, @1000 MHz = 2 ns
     tCS = '2ns'
     tREFI = '3.9us'
+
+    # active powerdown and precharge powerdown exit time
+    tXP = '10ns'
+
+    # self refresh exit time
+    tXS = '65ns'

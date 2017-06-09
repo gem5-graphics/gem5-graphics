@@ -35,16 +35,15 @@
 #include <string>
 #include <vector>
 
+#include "mem/page_table.hh"
 #include "sim/process.hh"
 
-class LiveProcess;
 class ObjectFile;
-class System;
 
-class MipsLiveProcess : public LiveProcess
+class MipsProcess : public Process
 {
   protected:
-    MipsLiveProcess(LiveProcessParams * params, ObjectFile *objFile);
+    MipsProcess(ProcessParams * params, ObjectFile *objFile);
 
     void initState();
 
@@ -54,7 +53,7 @@ class MipsLiveProcess : public LiveProcess
   public:
     MipsISA::IntReg getSyscallArg(ThreadContext *tc, int &i);
     /// Explicitly import the otherwise hidden getSyscallArg
-    using LiveProcess::getSyscallArg;
+    using Process::getSyscallArg;
     void setSyscallArg(ThreadContext *tc, int i, MipsISA::IntReg val);
     void setSyscallReturn(ThreadContext *tc, SyscallReturn return_value);
 };

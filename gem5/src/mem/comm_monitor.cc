@@ -1,6 +1,8 @@
 /*
  * Copyright (c) 2012-2013, 2015 ARM Limited
- * All rights reserved
+ * Copyright (c) 2016 Google Inc.
+ * Copyright (c) 2017, Centre National de la Recherche Scientifique
+ * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
  * not be construed as granting a license to any other intellectual
@@ -36,11 +38,14 @@
  *
  * Authors: Thomas Grass
  *          Andreas Hansson
+ *          Rahul Thakur
+ *          Pierre-Yves Peneau
  */
+
+#include "mem/comm_monitor.hh"
 
 #include "base/trace.hh"
 #include "debug/CommMonitor.hh"
-#include "mem/comm_monitor.hh"
 #include "sim/stats.hh"
 
 CommMonitor::CommMonitor(Params* params)
@@ -50,8 +55,6 @@ CommMonitor::CommMonitor(Params* params)
       samplePeriodicEvent(this),
       samplePeriodTicks(params->sample_period),
       samplePeriod(params->sample_period / SimClock::Float::s),
-      readAddrMask(params->read_addr_mask),
-      writeAddrMask(params->write_addr_mask),
       stats(params)
 {
     DPRINTF(CommMonitor,
@@ -112,14 +115,122 @@ CommMonitor::recvFunctionalSnoop(PacketPtr pkt)
     slavePort.sendFunctionalSnoop(pkt);
 }
 
+void
+CommMonitor::MonitorStats::updateReqStats(
+    const ProbePoints::PacketInfo& pkt_info, bool is_atomic,
+    bool expects_response)
+{
+    if (pkt_info.cmd.isRead()) {
+        // Increment number of observed read transactions
+        if (!disableTransactionHists)
+            ++readTrans;
+
+        // Get sample of burst length
+        if (!disableBurstLengthHists)
+            readBurstLengthHist.sample(pkt_info.size);
+
+        // Sample the masked address
+        if (!disableAddrDists)
+            readAddrDist.sample(pkt_info.addr & readAddrMask);
+
+        if (!disableITTDists) {
+            // Sample value of read-read inter transaction time
+            if (timeOfLastRead != 0)
+                ittReadRead.sample(curTick() - timeOfLastRead);
+            timeOfLastRead = curTick();
+
+            // Sample value of req-req inter transaction time
+            if (timeOfLastReq != 0)
+                ittReqReq.sample(curTick() - timeOfLastReq);
+            timeOfLastReq = curTick();
+        }
+        if (!is_atomic && !disableOutstandingHists && expects_response)
+            ++outstandingReadReqs;
+
+    } else if (pkt_info.cmd.isWrite()) {
+        // Same as for reads
+        if (!disableTransactionHists)
+            ++writeTrans;
+
+        if (!disableBurstLengthHists)
+            writeBurstLengthHist.sample(pkt_info.size);
+
+        // Update the bandwidth stats on the request
+        if (!disableBandwidthHists) {
+            writtenBytes += pkt_info.size;
+            totalWrittenBytes += pkt_info.size;
+        }
+
+        // Sample the masked write address
+        if (!disableAddrDists)
+            writeAddrDist.sample(pkt_info.addr & writeAddrMask);
+
+        if (!disableITTDists) {
+            // Sample value of write-to-write inter transaction time
+            if (timeOfLastWrite != 0)
+                ittWriteWrite.sample(curTick() - timeOfLastWrite);
+            timeOfLastWrite = curTick();
+
+            // Sample value of req-to-req inter transaction time
+            if (timeOfLastReq != 0)
+                ittReqReq.sample(curTick() - timeOfLastReq);
+            timeOfLastReq = curTick();
+        }
+
+        if (!is_atomic && !disableOutstandingHists && expects_response)
+            ++outstandingWriteReqs;
+    }
+}
+
+void
+CommMonitor::MonitorStats::updateRespStats(
+    const ProbePoints::PacketInfo& pkt_info, Tick latency, bool is_atomic)
+{
+    if (pkt_info.cmd.isRead()) {
+        // Decrement number of outstanding read requests
+        if (!is_atomic && !disableOutstandingHists) {
+            assert(outstandingReadReqs != 0);
+            --outstandingReadReqs;
+        }
+
+        if (!disableLatencyHists)
+            readLatencyHist.sample(latency);
+
+        // Update the bandwidth stats based on responses for reads
+        if (!disableBandwidthHists) {
+            readBytes += pkt_info.size;
+            totalReadBytes += pkt_info.size;
+        }
+
+    } else if (pkt_info.cmd.isWrite()) {
+        // Decrement number of outstanding write requests
+        if (!is_atomic && !disableOutstandingHists) {
+            assert(outstandingWriteReqs != 0);
+            --outstandingWriteReqs;
+        }
+
+        if (!disableLatencyHists)
+            writeLatencyHist.sample(latency);
+    }
+}
+
 Tick
 CommMonitor::recvAtomic(PacketPtr pkt)
 {
-    ppPktReq->notify(pkt);
+    const bool expects_response(pkt->needsResponse() &&
+                                !pkt->cacheResponding());
+    ProbePoints::PacketInfo req_pkt_info(pkt);
+    ppPktReq->notify(req_pkt_info);
 
     const Tick delay(masterPort.sendAtomic(pkt));
+
+    stats.updateReqStats(req_pkt_info, true, expects_response);
+    if (expects_response)
+        stats.updateRespStats(req_pkt_info, delay, true);
+
     assert(pkt->isResponse());
-    ppPktResp->notify(pkt);
+    ProbePoints::PacketInfo resp_pkt_info(pkt);
+    ppPktResp->notify(resp_pkt_info);
     return delay;
 }
 
@@ -137,24 +248,20 @@ CommMonitor::recvTimingReq(PacketPtr pkt)
 
     // Store relevant fields of packet, because packet may be modified
     // or even deleted when sendTiming() is called.
-    const bool is_read = pkt->isRead();
-    const bool is_write = pkt->isWrite();
-    const MemCmd cmd = pkt->cmd;
-    const unsigned size = pkt->getSize();
-    const Addr addr = pkt->getAddr();
-    const bool expects_response(
-        pkt->needsResponse() && !pkt->memInhibitAsserted());
+    const ProbePoints::PacketInfo pkt_info(pkt);
+
+    const bool expects_response(pkt->needsResponse() &&
+                                !pkt->cacheResponding());
 
     // If a cache miss is served by a cache, a monitor near the memory
     // would see a request which needs a response, but this response
-    // would be inhibited and not come back from the memory. Therefore
-    // we additionally have to check the inhibit flag.
+    // would not come back from the memory. Therefore we additionally
+    // have to check the cacheResponding flag
     if (expects_response && !stats.disableLatencyHists) {
         pkt->pushSenderState(new CommMonitorSenderState(curTick()));
     }
 
-    // Attempt to send the packet (always succeeds for inhibited
-    // packets)
+    // Attempt to send the packet
     bool successful = masterPort.sendTimingReq(pkt);
 
     // If not successful, restore the sender state
@@ -163,97 +270,14 @@ CommMonitor::recvTimingReq(PacketPtr pkt)
     }
 
     if (successful) {
-        // The receiver might already have modified the packet. We
-        // want to give the probe access to the original packet, which
-        // means we need to fake the original packet by temporarily
-        // restoring the command.
-        const MemCmd response_cmd(pkt->cmd);
-        pkt->cmd = cmd;
-        ppPktReq->notify(pkt);
-        pkt->cmd = response_cmd;
+        ppPktReq->notify(pkt_info);
     }
 
-    if (successful && is_read) {
-        DPRINTF(CommMonitor, "Forwarded read request\n");
-
-        // Increment number of observed read transactions
-        if (!stats.disableTransactionHists) {
-            ++stats.readTrans;
-        }
-
-        // Get sample of burst length
-        if (!stats.disableBurstLengthHists) {
-            stats.readBurstLengthHist.sample(size);
-        }
-
-        // Sample the masked address
-        if (!stats.disableAddrDists) {
-            stats.readAddrDist.sample(addr & readAddrMask);
-        }
-
-        // If it needs a response increment number of outstanding read
-        // requests
-        if (!stats.disableOutstandingHists && expects_response) {
-            ++stats.outstandingReadReqs;
-        }
-
-        if (!stats.disableITTDists) {
-            // Sample value of read-read inter transaction time
-            if (stats.timeOfLastRead != 0) {
-                stats.ittReadRead.sample(curTick() - stats.timeOfLastRead);
-            }
-            stats.timeOfLastRead = curTick();
-
-            // Sample value of req-req inter transaction time
-            if (stats.timeOfLastReq != 0) {
-                stats.ittReqReq.sample(curTick() - stats.timeOfLastReq);
-            }
-            stats.timeOfLastReq = curTick();
-        }
-    } else if (successful && is_write) {
-        DPRINTF(CommMonitor, "Forwarded write request\n");
-
-        // Same as for reads
-        if (!stats.disableTransactionHists) {
-            ++stats.writeTrans;
-        }
-
-        if (!stats.disableBurstLengthHists) {
-            stats.writeBurstLengthHist.sample(size);
-        }
-
-        // Update the bandwidth stats on the request
-        if (!stats.disableBandwidthHists) {
-            stats.writtenBytes += size;
-            stats.totalWrittenBytes += size;
-        }
-
-        // Sample the masked write address
-        if (!stats.disableAddrDists) {
-            stats.writeAddrDist.sample(addr & writeAddrMask);
-        }
-
-        if (!stats.disableOutstandingHists && expects_response) {
-            ++stats.outstandingWriteReqs;
-        }
-
-        if (!stats.disableITTDists) {
-            // Sample value of write-to-write inter transaction time
-            if (stats.timeOfLastWrite != 0) {
-                stats.ittWriteWrite.sample(curTick() - stats.timeOfLastWrite);
-            }
-            stats.timeOfLastWrite = curTick();
-
-            // Sample value of req-to-req inter transaction time
-            if (stats.timeOfLastReq != 0) {
-                stats.ittReqReq.sample(curTick() - stats.timeOfLastReq);
-            }
-            stats.timeOfLastReq = curTick();
-        }
-    } else if (successful) {
-        DPRINTF(CommMonitor, "Forwarded non read/write request\n");
+    if (successful) {
+        DPRINTF(CommMonitor, "Forwarded %s request\n", pkt->isRead() ? "read" :
+                pkt->isWrite() ? "write" : "non read/write");
+        stats.updateReqStats(pkt_info, false, expects_response);
     }
-
     return successful;
 }
 
@@ -265,9 +289,8 @@ CommMonitor::recvTimingResp(PacketPtr pkt)
 
     // Store relevant fields of packet, because packet may be modified
     // or even deleted when sendTiming() is called.
-    bool is_read = pkt->isRead();
-    bool is_write = pkt->isWrite();
-    unsigned size = pkt->getSize();
+    const ProbePoints::PacketInfo pkt_info(pkt);
+
     Tick latency = 0;
     CommMonitorSenderState* received_state =
         dynamic_cast<CommMonitorSenderState*>(pkt->senderState);
@@ -299,41 +322,10 @@ CommMonitor::recvTimingResp(PacketPtr pkt)
     }
 
     if (successful) {
-        assert(pkt->isResponse());
-        ppPktResp->notify(pkt);
-    }
-
-    if (successful && is_read) {
-        // Decrement number of outstanding read requests
-        DPRINTF(CommMonitor, "Received read response\n");
-        if (!stats.disableOutstandingHists) {
-            assert(stats.outstandingReadReqs != 0);
-            --stats.outstandingReadReqs;
-        }
-
-        if (!stats.disableLatencyHists) {
-            stats.readLatencyHist.sample(latency);
-        }
-
-        // Update the bandwidth stats based on responses for reads
-        if (!stats.disableBandwidthHists) {
-            stats.readBytes += size;
-            stats.totalReadBytes += size;
-        }
-
-    } else if (successful && is_write) {
-        // Decrement number of outstanding write requests
-        DPRINTF(CommMonitor, "Received write response\n");
-        if (!stats.disableOutstandingHists) {
-            assert(stats.outstandingWriteReqs != 0);
-            --stats.outstandingWriteReqs;
-        }
-
-        if (!stats.disableLatencyHists) {
-            stats.writeLatencyHist.sample(latency);
-        }
-    } else if (successful) {
-        DPRINTF(CommMonitor, "Received non read/write response\n");
+        ppPktResp->notify(pkt_info);
+        DPRINTF(CommMonitor, "Received %s response\n", pkt->isRead() ? "read" :
+                pkt->isWrite() ?  "write" : "non read/write");
+        stats.updateRespStats(pkt_info, latency, false);
     }
     return successful;
 }
@@ -348,6 +340,12 @@ bool
 CommMonitor::recvTimingSnoopResp(PacketPtr pkt)
 {
     return masterPort.sendTimingSnoopResp(pkt);
+}
+
+void
+CommMonitor::recvRetrySnoopResp()
+{
+    slavePort.sendRetrySnoopResp();
 }
 
 bool
@@ -385,6 +383,8 @@ CommMonitor::recvRangeChange()
 void
 CommMonitor::regStats()
 {
+    MemObject::regStats();
+
     // Initialise all the monitor stats
     using namespace Stats;
 
@@ -492,7 +492,7 @@ CommMonitor::regStats()
     stats.writeTransHist
         .init(params()->transaction_bins)
         .name(name() + ".writeTransHist")
-        .desc("Histogram of read transactions per sample period")
+        .desc("Histogram of write transactions per sample period")
         .flags(stats.disableTransactionHists ? nozero : pdf);
 
     stats.readAddrDist

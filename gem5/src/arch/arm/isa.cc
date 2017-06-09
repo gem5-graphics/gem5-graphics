@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 ARM Limited
+ * Copyright (c) 2010-2016 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -39,10 +39,11 @@
  */
 
 #include "arch/arm/isa.hh"
+
 #include "arch/arm/pmu.hh"
 #include "arch/arm/system.hh"
-#include "cpu/checker/cpu.hh"
 #include "cpu/base.hh"
+#include "cpu/checker/cpu.hh"
 #include "debug/Arm.hh"
 #include "debug/MiscRegs.hh"
 #include "dev/arm/generic_timer.hh"
@@ -56,83 +57,162 @@ namespace ArmISA
 
 
 /**
- * Some registers aliase with others, and therefore need to be translated.
+ * Some registers alias with others, and therefore need to be translated.
  * For each entry:
  * The first value is the misc register that is to be looked up
  * the second value is the lower part of the translation
  * the third the upper part
+ * aligned with reference documentation ARM DDI 0487A.i pp 1540-1543
  */
 const struct ISA::MiscRegInitializerEntry
-    ISA::MiscRegSwitch[miscRegTranslateMax] = {
-    {MISCREG_CSSELR_EL1, {MISCREG_CSSELR, 0}},
-    {MISCREG_SCTLR_EL1, {MISCREG_SCTLR, 0}},
-    {MISCREG_SCTLR_EL2, {MISCREG_HSCTLR, 0}},
-    {MISCREG_ACTLR_EL1, {MISCREG_ACTLR, 0}},
-    {MISCREG_ACTLR_EL2, {MISCREG_HACTLR, 0}},
+    ISA::MiscRegSwitch[] = {
+    {MISCREG_ACTLR_EL1, {MISCREG_ACTLR_NS, 0}},
+    {MISCREG_AFSR0_EL1, {MISCREG_ADFSR_NS, 0}},
+    {MISCREG_AFSR1_EL1, {MISCREG_AIFSR_NS, 0}},
+    {MISCREG_AMAIR_EL1, {MISCREG_AMAIR0_NS, MISCREG_AMAIR1_NS}},
+    {MISCREG_CONTEXTIDR_EL1, {MISCREG_CONTEXTIDR_NS, 0}},
     {MISCREG_CPACR_EL1, {MISCREG_CPACR, 0}},
-    {MISCREG_CPTR_EL2, {MISCREG_HCPTR, 0}},
-    {MISCREG_HCR_EL2, {MISCREG_HCR, 0}},
-    {MISCREG_MDCR_EL2, {MISCREG_HDCR, 0}},
-    {MISCREG_HSTR_EL2, {MISCREG_HSTR, 0}},
+    {MISCREG_CSSELR_EL1, {MISCREG_CSSELR_NS, 0}},
+    {MISCREG_DACR32_EL2, {MISCREG_DACR_NS, 0}},
+    {MISCREG_FAR_EL1, {MISCREG_DFAR_NS, MISCREG_IFAR_NS}},
+    // ESR_EL1 -> DFSR
     {MISCREG_HACR_EL2, {MISCREG_HACR, 0}},
-    {MISCREG_TTBR0_EL1, {MISCREG_TTBR0, 0}},
-    {MISCREG_TTBR1_EL1, {MISCREG_TTBR1, 0}},
-    {MISCREG_TTBR0_EL2, {MISCREG_HTTBR, 0}},
-    {MISCREG_VTTBR_EL2, {MISCREG_VTTBR, 0}},
-    {MISCREG_TCR_EL1, {MISCREG_TTBCR, 0}},
-    {MISCREG_TCR_EL2, {MISCREG_HTCR, 0}},
-    {MISCREG_VTCR_EL2, {MISCREG_VTCR, 0}},
-    {MISCREG_AFSR0_EL1, {MISCREG_ADFSR, 0}},
-    {MISCREG_AFSR1_EL1, {MISCREG_AIFSR, 0}},
+    {MISCREG_ACTLR_EL2, {MISCREG_HACTLR, 0}},
     {MISCREG_AFSR0_EL2, {MISCREG_HADFSR, 0}},
     {MISCREG_AFSR1_EL2, {MISCREG_HAIFSR, 0}},
-    {MISCREG_ESR_EL2, {MISCREG_HSR, 0}},
-    {MISCREG_FAR_EL1, {MISCREG_DFAR, MISCREG_IFAR}},
+    {MISCREG_AMAIR_EL2, {MISCREG_HAMAIR0, MISCREG_HAMAIR1}},
+    {MISCREG_CPTR_EL2, {MISCREG_HCPTR, 0}},
+    {MISCREG_HCR_EL2, {MISCREG_HCR, 0 /*MISCREG_HCR2*/}},
+    {MISCREG_MDCR_EL2, {MISCREG_HDCR, 0}},
     {MISCREG_FAR_EL2, {MISCREG_HDFAR, MISCREG_HIFAR}},
-    {MISCREG_HPFAR_EL2, {MISCREG_HPFAR, 0}},
-    {MISCREG_PAR_EL1, {MISCREG_PAR, 0}},
-    {MISCREG_MAIR_EL1, {MISCREG_PRRR, MISCREG_NMRR}},
     {MISCREG_MAIR_EL2, {MISCREG_HMAIR0, MISCREG_HMAIR1}},
-    {MISCREG_AMAIR_EL1, {MISCREG_AMAIR0, MISCREG_AMAIR1}},
-    {MISCREG_VBAR_EL1, {MISCREG_VBAR, 0}},
-    {MISCREG_VBAR_EL2, {MISCREG_HVBAR, 0}},
-    {MISCREG_CONTEXTIDR_EL1, {MISCREG_CONTEXTIDR, 0}},
-    {MISCREG_TPIDR_EL0, {MISCREG_TPIDRURW, 0}},
-    {MISCREG_TPIDRRO_EL0, {MISCREG_TPIDRURO, 0}},
-    {MISCREG_TPIDR_EL1, {MISCREG_TPIDRPRW, 0}},
+    {MISCREG_HPFAR_EL2, {MISCREG_HPFAR, 0}},
+    {MISCREG_SCTLR_EL2, {MISCREG_HSCTLR, 0}},
+    {MISCREG_ESR_EL2, {MISCREG_HSR, 0}},
+    {MISCREG_HSTR_EL2, {MISCREG_HSTR, 0}},
+    {MISCREG_TCR_EL2, {MISCREG_HTCR, 0}},
     {MISCREG_TPIDR_EL2, {MISCREG_HTPIDR, 0}},
-    {MISCREG_TEECR32_EL1, {MISCREG_TEECR, 0}},
+    {MISCREG_TTBR0_EL2, {MISCREG_HTTBR, 0}},
+    {MISCREG_VBAR_EL2, {MISCREG_HVBAR, 0}},
+    {MISCREG_IFSR32_EL2, {MISCREG_IFSR_NS, 0}},
+    {MISCREG_MAIR_EL1, {MISCREG_PRRR_NS, MISCREG_NMRR_NS}},
+    {MISCREG_PAR_EL1, {MISCREG_PAR_NS, 0}},
+    // RMR_EL1 -> RMR
+    // RMR_EL2 -> HRMR
+    {MISCREG_SCTLR_EL1, {MISCREG_SCTLR_NS, 0}},
+    {MISCREG_SDER32_EL3, {MISCREG_SDER, 0}},
+    {MISCREG_TPIDR_EL1, {MISCREG_TPIDRPRW_NS, 0}},
+    {MISCREG_TPIDRRO_EL0, {MISCREG_TPIDRURO_NS, 0}},
+    {MISCREG_TPIDR_EL0, {MISCREG_TPIDRURW_NS, 0}},
+    {MISCREG_TCR_EL1, {MISCREG_TTBCR_NS, 0}},
+    {MISCREG_TTBR0_EL1, {MISCREG_TTBR0_NS, 0}},
+    {MISCREG_TTBR1_EL1, {MISCREG_TTBR1_NS, 0}},
+    {MISCREG_VBAR_EL1, {MISCREG_VBAR_NS, 0}},
+    {MISCREG_VMPIDR_EL2, {MISCREG_VMPIDR, 0}},
+    {MISCREG_VPIDR_EL2, {MISCREG_VPIDR, 0}},
+    {MISCREG_VTCR_EL2, {MISCREG_VTCR, 0}},
+    {MISCREG_VTTBR_EL2, {MISCREG_VTTBR, 0}},
     {MISCREG_CNTFRQ_EL0, {MISCREG_CNTFRQ, 0}},
-    {MISCREG_CNTPCT_EL0, {MISCREG_CNTPCT, 0}},
-    {MISCREG_CNTVCT_EL0, {MISCREG_CNTVCT, 0}},
-    {MISCREG_CNTVOFF_EL2, {MISCREG_CNTVOFF, 0}},
-    {MISCREG_CNTKCTL_EL1, {MISCREG_CNTKCTL, 0}},
     {MISCREG_CNTHCTL_EL2, {MISCREG_CNTHCTL, 0}},
-    {MISCREG_CNTP_TVAL_EL0, {MISCREG_CNTP_TVAL, 0}},
-    {MISCREG_CNTP_CTL_EL0, {MISCREG_CNTP_CTL, 0}},
-    {MISCREG_CNTP_CVAL_EL0, {MISCREG_CNTP_CVAL, 0}},
-    {MISCREG_CNTV_TVAL_EL0, {MISCREG_CNTV_TVAL, 0}},
-    {MISCREG_CNTV_CTL_EL0, {MISCREG_CNTV_CTL, 0}},
-    {MISCREG_CNTV_CVAL_EL0, {MISCREG_CNTV_CVAL, 0}},
-    {MISCREG_CNTHP_TVAL_EL2, {MISCREG_CNTHP_TVAL, 0}},
     {MISCREG_CNTHP_CTL_EL2, {MISCREG_CNTHP_CTL, 0}},
-    {MISCREG_CNTHP_CVAL_EL2, {MISCREG_CNTHP_CVAL, 0}},
-    {MISCREG_DACR32_EL2, {MISCREG_DACR, 0}},
-    {MISCREG_IFSR32_EL2, {MISCREG_IFSR, 0}},
-    {MISCREG_TEEHBR32_EL1, {MISCREG_TEEHBR, 0}},
-    {MISCREG_SDER32_EL3, {MISCREG_SDER, 0}}
+    {MISCREG_CNTHP_CVAL_EL2, {MISCREG_CNTHP_CVAL, 0}}, /* 64b */
+    {MISCREG_CNTHP_TVAL_EL2, {MISCREG_CNTHP_TVAL, 0}},
+    {MISCREG_CNTKCTL_EL1, {MISCREG_CNTKCTL, 0}},
+    {MISCREG_CNTP_CTL_EL0, {MISCREG_CNTP_CTL_NS, 0}},
+    {MISCREG_CNTP_CVAL_EL0, {MISCREG_CNTP_CVAL_NS, 0}}, /* 64b */
+    {MISCREG_CNTP_TVAL_EL0, {MISCREG_CNTP_TVAL_NS, 0}},
+    {MISCREG_CNTPCT_EL0, {MISCREG_CNTPCT, 0}}, /* 64b */
+    {MISCREG_CNTV_CTL_EL0, {MISCREG_CNTV_CTL, 0}},
+    {MISCREG_CNTV_CVAL_EL0, {MISCREG_CNTV_CVAL, 0}}, /* 64b */
+    {MISCREG_CNTV_TVAL_EL0, {MISCREG_CNTV_TVAL, 0}},
+    {MISCREG_CNTVCT_EL0, {MISCREG_CNTVCT, 0}}, /* 64b */
+    {MISCREG_CNTVOFF_EL2, {MISCREG_CNTVOFF, 0}}, /* 64b */
+    {MISCREG_DBGAUTHSTATUS_EL1, {MISCREG_DBGAUTHSTATUS, 0}},
+    {MISCREG_DBGBCR0_EL1, {MISCREG_DBGBCR0, 0}},
+    {MISCREG_DBGBCR1_EL1, {MISCREG_DBGBCR1, 0}},
+    {MISCREG_DBGBCR2_EL1, {MISCREG_DBGBCR2, 0}},
+    {MISCREG_DBGBCR3_EL1, {MISCREG_DBGBCR3, 0}},
+    {MISCREG_DBGBCR4_EL1, {MISCREG_DBGBCR4, 0}},
+    {MISCREG_DBGBCR5_EL1, {MISCREG_DBGBCR5, 0}},
+    {MISCREG_DBGBVR0_EL1, {MISCREG_DBGBVR0, 0 /* MISCREG_DBGBXVR0 */}},
+    {MISCREG_DBGBVR1_EL1, {MISCREG_DBGBVR1, 0 /* MISCREG_DBGBXVR1 */}},
+    {MISCREG_DBGBVR2_EL1, {MISCREG_DBGBVR2, 0 /* MISCREG_DBGBXVR2 */}},
+    {MISCREG_DBGBVR3_EL1, {MISCREG_DBGBVR3, 0 /* MISCREG_DBGBXVR3 */}},
+    {MISCREG_DBGBVR4_EL1, {MISCREG_DBGBVR4, MISCREG_DBGBXVR4}},
+    {MISCREG_DBGBVR5_EL1, {MISCREG_DBGBVR5, MISCREG_DBGBXVR5}},
+    {MISCREG_DBGCLAIMSET_EL1, {MISCREG_DBGCLAIMSET, 0}},
+    {MISCREG_DBGCLAIMCLR_EL1, {MISCREG_DBGCLAIMCLR, 0}},
+    // DBGDTR_EL0 -> DBGDTR{R or T}Xint
+    // DBGDTRRX_EL0 -> DBGDTRRXint
+    // DBGDTRTX_EL0 -> DBGDTRRXint
+    {MISCREG_DBGPRCR_EL1, {MISCREG_DBGPRCR, 0}},
+    {MISCREG_DBGVCR32_EL2, {MISCREG_DBGVCR, 0}},
+    {MISCREG_DBGWCR0_EL1, {MISCREG_DBGWCR0, 0}},
+    {MISCREG_DBGWCR1_EL1, {MISCREG_DBGWCR1, 0}},
+    {MISCREG_DBGWCR2_EL1, {MISCREG_DBGWCR2, 0}},
+    {MISCREG_DBGWCR3_EL1, {MISCREG_DBGWCR3, 0}},
+    {MISCREG_DBGWVR0_EL1, {MISCREG_DBGWVR0, 0}},
+    {MISCREG_DBGWVR1_EL1, {MISCREG_DBGWVR1, 0}},
+    {MISCREG_DBGWVR2_EL1, {MISCREG_DBGWVR2, 0}},
+    {MISCREG_DBGWVR3_EL1, {MISCREG_DBGWVR3, 0}},
+    {MISCREG_ID_DFR0_EL1, {MISCREG_ID_DFR0, 0}},
+    {MISCREG_MDCCSR_EL0, {MISCREG_DBGDSCRint, 0}},
+    {MISCREG_MDRAR_EL1, {MISCREG_DBGDRAR, 0}},
+    {MISCREG_MDSCR_EL1, {MISCREG_DBGDSCRext, 0}},
+    {MISCREG_OSDLR_EL1, {MISCREG_DBGOSDLR, 0}},
+    {MISCREG_OSDTRRX_EL1, {MISCREG_DBGDTRRXext, 0}},
+    {MISCREG_OSDTRTX_EL1, {MISCREG_DBGDTRTXext, 0}},
+    {MISCREG_OSECCR_EL1, {MISCREG_DBGOSECCR, 0}},
+    {MISCREG_OSLAR_EL1, {MISCREG_DBGOSLAR, 0}},
+    {MISCREG_OSLSR_EL1, {MISCREG_DBGOSLSR, 0}},
+    {MISCREG_PMCCNTR_EL0, {MISCREG_PMCCNTR, 0}},
+    {MISCREG_PMCEID0_EL0, {MISCREG_PMCEID0, 0}},
+    {MISCREG_PMCEID1_EL0, {MISCREG_PMCEID1, 0}},
+    {MISCREG_PMCNTENSET_EL0, {MISCREG_PMCNTENSET, 0}},
+    {MISCREG_PMCNTENCLR_EL0, {MISCREG_PMCNTENCLR, 0}},
+    {MISCREG_PMCR_EL0, {MISCREG_PMCR, 0}},
+/*  {MISCREG_PMEVCNTR0_EL0, {MISCREG_PMEVCNTR0, 0}},
+    {MISCREG_PMEVCNTR1_EL0, {MISCREG_PMEVCNTR1, 0}},
+    {MISCREG_PMEVCNTR2_EL0, {MISCREG_PMEVCNTR2, 0}},
+    {MISCREG_PMEVCNTR3_EL0, {MISCREG_PMEVCNTR3, 0}},
+    {MISCREG_PMEVCNTR4_EL0, {MISCREG_PMEVCNTR4, 0}},
+    {MISCREG_PMEVCNTR5_EL0, {MISCREG_PMEVCNTR5, 0}},
+    {MISCREG_PMEVTYPER0_EL0, {MISCREG_PMEVTYPER0, 0}},
+    {MISCREG_PMEVTYPER1_EL0, {MISCREG_PMEVTYPER1, 0}},
+    {MISCREG_PMEVTYPER2_EL0, {MISCREG_PMEVTYPER2, 0}},
+    {MISCREG_PMEVTYPER3_EL0, {MISCREG_PMEVTYPER3, 0}},
+    {MISCREG_PMEVTYPER4_EL0, {MISCREG_PMEVTYPER4, 0}},
+    {MISCREG_PMEVTYPER5_EL0, {MISCREG_PMEVTYPER5, 0}}, */
+    {MISCREG_PMINTENCLR_EL1, {MISCREG_PMINTENCLR, 0}},
+    {MISCREG_PMINTENSET_EL1, {MISCREG_PMINTENSET, 0}},
+//  {MISCREG_PMOVSCLR_EL0, {MISCREG_PMOVSCLR, 0}},
+    {MISCREG_PMOVSSET_EL0, {MISCREG_PMOVSSET, 0}},
+    {MISCREG_PMSELR_EL0, {MISCREG_PMSELR, 0}},
+    {MISCREG_PMSWINC_EL0, {MISCREG_PMSWINC, 0}},
+    {MISCREG_PMUSERENR_EL0, {MISCREG_PMUSERENR, 0}},
+    {MISCREG_PMXEVCNTR_EL0, {MISCREG_PMXEVCNTR, 0}},
+    {MISCREG_PMXEVTYPER_EL0, {MISCREG_PMXEVTYPER, 0}},
+
+    // from ARM DDI 0487A.i, template text
+    // "AArch64 System register ___ can be mapped to
+    //  AArch32 System register ___, but this is not
+    //  architecturally mandated."
+    {MISCREG_SCR_EL3, {MISCREG_SCR, 0}}, // D7-2005
+    // MDCR_EL3 -> SDCR, D7-2108 (the latter is unimpl. in gem5)
+    {MISCREG_SPSR_EL1, {MISCREG_SPSR_SVC, 0}}, // C5.2.17 SPSR_EL1
+    {MISCREG_SPSR_EL2, {MISCREG_SPSR_HYP, 0}}, // C5.2.18 SPSR_EL2
+    {MISCREG_SPSR_EL3, {MISCREG_SPSR_MON, 0}}, // C5.2.19 SPSR_EL3
 };
 
 
 ISA::ISA(Params *p)
     : SimObject(p),
       system(NULL),
+      _decoderFlavour(p->decoderFlavour),
       pmu(p->pmu),
       lookUpMiscReg(NUM_MISCREGS, {0,0})
 {
-    SCTLR sctlr;
-    sctlr = 0;
-    miscRegs[MISCREG_SCTLR_RST] = sctlr;
+    miscRegs[MISCREG_SCTLR_RST] = 0;
 
     // Hook up a dummy device if we haven't been configured with a
     // real PMU. By using a dummy device, we don't need to check that
@@ -147,25 +227,22 @@ ISA::ISA(Params *p)
 
     // Cache system-level properties
     if (FullSystem && system) {
+        highestELIs64 = system->highestELIs64();
         haveSecurity = system->haveSecurity();
         haveLPAE = system->haveLPAE();
         haveVirtualization = system->haveVirtualization();
         haveLargeAsid64 = system->haveLargeAsid64();
         physAddrRange64 = system->physAddrRange64();
     } else {
+        highestELIs64 = true; // ArmSystem::highestELIs64 does the same
         haveSecurity = haveLPAE = haveVirtualization = false;
         haveLargeAsid64 = false;
         physAddrRange64 = 32;  // dummy value
     }
 
     /** Fill in the miscReg translation table */
-    for (uint32_t i = 0; i < miscRegTranslateMax; i++) {
-        struct MiscRegLUTEntry new_entry;
-
-        uint32_t select = MiscRegSwitch[i].index;
-        new_entry = MiscRegSwitch[i].entry;
-
-        lookUpMiscReg[select] = new_entry;
+    for (auto sw : MiscRegSwitch) {
+        lookUpMiscReg[sw.index] = sw.entry;
     }
 
     preUnflattenMiscReg();
@@ -282,10 +359,6 @@ ISA::clear()
 
     miscRegs[MISCREG_CPACR] = 0;
 
-
-    miscRegs[MISCREG_ID_PFR0] = p->id_pfr0;
-    miscRegs[MISCREG_ID_PFR1] = p->id_pfr1;
-
     miscRegs[MISCREG_ID_MMFR0] = p->id_mmfr0;
     miscRegs[MISCREG_ID_MMFR1] = p->id_mmfr1;
     miscRegs[MISCREG_ID_MMFR2] = p->id_mmfr2;
@@ -356,13 +429,14 @@ ISA::clear64(const ArmISAParams *p)
     // Initialize other control registers
     miscRegs[MISCREG_MPIDR_EL1] = 0x80000000;
     if (haveSecurity) {
-        miscRegs[MISCREG_SCTLR_EL3] = 0x30c50870;
+        miscRegs[MISCREG_SCTLR_EL3] = 0x30c50830;
         miscRegs[MISCREG_SCR_EL3]   = 0x00000030;  // RES1 fields
-    // @todo: uncomment this to enable Virtualization
-    // } else if (haveVirtualization) {
-    //     miscRegs[MISCREG_SCTLR_EL2] = 0x30c50870;
+    } else if (haveVirtualization) {
+        // also  MISCREG_SCTLR_EL2 (by mapping)
+        miscRegs[MISCREG_HSCTLR] = 0x30c50830;
     } else {
-        miscRegs[MISCREG_SCTLR_EL1] = 0x30c50870;
+        // also  MISCREG_SCTLR_EL1 (by mapping)
+        miscRegs[MISCREG_SCTLR_NS] = 0x30d00800 | 0x00050030; // RES1 | init
         // Always non-secure
         miscRegs[MISCREG_SCR_EL3] = 1;
     }
@@ -379,8 +453,6 @@ ISA::clear64(const ArmISAParams *p)
     miscRegs[MISCREG_ID_AA64ISAR1_EL1] = p->id_aa64isar1_el1;
     miscRegs[MISCREG_ID_AA64MMFR0_EL1] = p->id_aa64mmfr0_el1;
     miscRegs[MISCREG_ID_AA64MMFR1_EL1] = p->id_aa64mmfr1_el1;
-    miscRegs[MISCREG_ID_AA64PFR0_EL1] = p->id_aa64pfr0_el1;
-    miscRegs[MISCREG_ID_AA64PFR1_EL1] = p->id_aa64pfr1_el1;
 
     miscRegs[MISCREG_ID_DFR0_EL1] =
         (p->pmu ? 0x03000000ULL : 0); // Enable PMUv3
@@ -390,15 +462,13 @@ ISA::clear64(const ArmISAParams *p)
     // Enforce consistency with system-level settings...
 
     // EL3
-    // (no AArch32/64 interprocessing support for now)
     miscRegs[MISCREG_ID_AA64PFR0_EL1] = insertBits(
         miscRegs[MISCREG_ID_AA64PFR0_EL1], 15, 12,
-        haveSecurity ? 0x1 : 0x0);
+        haveSecurity ? 0x2 : 0x0);
     // EL2
-    // (no AArch32/64 interprocessing support for now)
     miscRegs[MISCREG_ID_AA64PFR0_EL1] = insertBits(
         miscRegs[MISCREG_ID_AA64PFR0_EL1], 11, 8,
-        haveVirtualization ? 0x1 : 0x0);
+        haveVirtualization ? 0x2 : 0x0);
     // Large ASID support
     miscRegs[MISCREG_ID_AA64MMFR0_EL1] = insertBits(
         miscRegs[MISCREG_ID_AA64MMFR0_EL1], 7, 4,
@@ -414,25 +484,10 @@ ISA::readMiscRegNoEffect(int misc_reg) const
 {
     assert(misc_reg < NumMiscRegs);
 
-    int flat_idx = flattenMiscIndex(misc_reg);  // Note: indexes of AArch64
-                                                // registers are left unchanged
-    MiscReg val;
-
-    if (lookUpMiscReg[flat_idx].lower == 0 || flat_idx == MISCREG_SPSR
-            || flat_idx == MISCREG_SCTLR_EL1) {
-        if (flat_idx == MISCREG_SPSR)
-            flat_idx = flattenMiscIndex(MISCREG_SPSR);
-        if (flat_idx == MISCREG_SCTLR_EL1)
-            flat_idx = flattenMiscIndex(MISCREG_SCTLR);
-        val = miscRegs[flat_idx];
-    } else
-        if (lookUpMiscReg[flat_idx].upper > 0)
-            val = ((miscRegs[lookUpMiscReg[flat_idx].lower] & mask(32))
-                    | (miscRegs[lookUpMiscReg[flat_idx].upper] << 32));
-        else
-            val = miscRegs[lookUpMiscReg[flat_idx].lower];
-
-    return val;
+    auto regs = getMiscIndices(misc_reg);
+    int lower = regs.first, upper = regs.second;
+    return !upper ? miscRegs[lower] : ((miscRegs[lower] & mask(32))
+                                      |(miscRegs[upper] << 32));
 }
 
 
@@ -539,7 +594,8 @@ ISA::readMiscReg(int misc_reg, ThreadContext *tc)
         warn_once("The ccsidr register isn't implemented and "
                 "always reads as 0.\n");
         break;
-      case MISCREG_CTR:
+      case MISCREG_CTR:                 // AArch32, ARMv7, top bit set
+      case MISCREG_CTR_EL0:             // AArch64
         {
             //all caches have the same line size in gem5
             //4 byte words in ARM
@@ -668,12 +724,12 @@ ISA::readMiscReg(int misc_reg, ThreadContext *tc)
       case MISCREG_DBGDSCRint:
         return 0;
       case MISCREG_ISR:
-        return tc->getCpuPtr()->getInterruptController()->getISR(
+        return tc->getCpuPtr()->getInterruptController(tc->threadId())->getISR(
             readMiscRegNoEffect(MISCREG_HCR),
             readMiscRegNoEffect(MISCREG_CPSR),
             readMiscRegNoEffect(MISCREG_SCR));
       case MISCREG_ISR_EL1:
-        return tc->getCpuPtr()->getInterruptController()->getISR(
+        return tc->getCpuPtr()->getInterruptController(tc->threadId())->getISR(
             readMiscRegNoEffect(MISCREG_HCR_EL2),
             readMiscRegNoEffect(MISCREG_CPSR),
             readMiscRegNoEffect(MISCREG_SCR_EL3));
@@ -703,33 +759,33 @@ ISA::readMiscReg(int misc_reg, ThreadContext *tc)
         return readMiscRegNoEffect(MISCREG_IFAR_S);
       case MISCREG_HVBAR: // bottom bits reserved
         return readMiscRegNoEffect(MISCREG_HVBAR) & 0xFFFFFFE0;
-      case MISCREG_SCTLR: // Some bits hardwired
-        // The FI field (bit 21) is common between S/NS versions of the register
-        return (readMiscRegNoEffect(MISCREG_SCTLR_S) & (1 << 21))  |
-               (readMiscRegNoEffect(misc_reg)        & 0x72DD39FF) | 0x00C00818; // V8 SCTLR
+      case MISCREG_SCTLR:
+        return (readMiscRegNoEffect(misc_reg) & 0x72DD39FF) | 0x00C00818;
       case MISCREG_SCTLR_EL1:
-        // The FI field (bit 21) is common between S/NS versions of the register
-        return (readMiscRegNoEffect(MISCREG_SCTLR_S) & (1 << 21))  |
-               (readMiscRegNoEffect(misc_reg)        & 0x37DDDBFF) | 0x30D00800; // V8 SCTLR_EL1
+        return (readMiscRegNoEffect(misc_reg) & 0x37DDDBBF) | 0x30D00800;
+      case MISCREG_SCTLR_EL2:
       case MISCREG_SCTLR_EL3:
-        // The FI field (bit 21) is common between S/NS versions of the register
-        return (readMiscRegNoEffect(MISCREG_SCTLR_S) & (1 << 21))  |
-               (readMiscRegNoEffect(misc_reg)        & 0x32CD183F) | 0x30C50830; // V8 SCTLR_EL3
-      case MISCREG_HSCTLR: // FI comes from SCTLR
-        {
-            uint32_t mask = 1 << 27;
-            return (readMiscRegNoEffect(MISCREG_HSCTLR) & ~mask) |
-                (readMiscRegNoEffect(MISCREG_SCTLR)  &  mask);
+      case MISCREG_HSCTLR:
+        return (readMiscRegNoEffect(misc_reg) & 0x32CD183F) | 0x30C50830;
+
+      case MISCREG_ID_PFR0:
+        // !ThumbEE | !Jazelle | Thumb | ARM
+        return 0x00000031;
+      case MISCREG_ID_PFR1:
+        {   // Timer | Virti | !M Profile | TrustZone | ARMv4
+            bool haveTimer = (system->getGenericTimer() != NULL);
+            return 0x00000001
+                 | (haveSecurity       ? 0x00000010 : 0x0)
+                 | (haveVirtualization ? 0x00001000 : 0x0)
+                 | (haveTimer          ? 0x00010000 : 0x0);
         }
-      case MISCREG_SCR:
-        {
-            CPSR cpsr = readMiscRegNoEffect(MISCREG_CPSR);
-            if (cpsr.width) {
-                return readMiscRegNoEffect(MISCREG_SCR);
-            } else {
-                return readMiscRegNoEffect(MISCREG_SCR_EL3);
-            }
-        }
+      case MISCREG_ID_AA64PFR0_EL1:
+        return 0x0000000000000002   // AArch{64,32} supported at EL0
+             | 0x0000000000000020                             // EL1
+             | (haveVirtualization ? 0x0000000000000200 : 0)  // EL2
+             | (haveSecurity       ? 0x0000000000002000 : 0); // EL3
+      case MISCREG_ID_AA64PFR1_EL1:
+        return 0; // bits [63:0] RES0 (reserved for future use)
 
       // Generic Timer registers
       case MISCREG_CNTFRQ ... MISCREG_CNTHP_CTL:
@@ -750,27 +806,17 @@ ISA::setMiscRegNoEffect(int misc_reg, const MiscReg &val)
 {
     assert(misc_reg < NumMiscRegs);
 
-    int flat_idx = flattenMiscIndex(misc_reg);  // Note: indexes of AArch64
-                                                // registers are left unchanged
-
-    int flat_idx2 = lookUpMiscReg[flat_idx].upper;
-
-    if (flat_idx2 > 0) {
-        miscRegs[lookUpMiscReg[flat_idx].lower] = bits(val, 31, 0);
-        miscRegs[flat_idx2] = bits(val, 63, 32);
+    auto regs = getMiscIndices(misc_reg);
+    int lower = regs.first, upper = regs.second;
+    if (upper > 0) {
+        miscRegs[lower] = bits(val, 31, 0);
+        miscRegs[upper] = bits(val, 63, 32);
         DPRINTF(MiscRegs, "Writing to misc reg %d (%d:%d) : %#x\n",
-                misc_reg, flat_idx, flat_idx2, val);
+                misc_reg, lower, upper, val);
     } else {
-        if (flat_idx == MISCREG_SPSR)
-            flat_idx = flattenMiscIndex(MISCREG_SPSR);
-        else if (flat_idx == MISCREG_SCTLR_EL1)
-            flat_idx = flattenMiscIndex(MISCREG_SCTLR);
-        else
-            flat_idx = (lookUpMiscReg[flat_idx].lower > 0) ?
-                       lookUpMiscReg[flat_idx].lower : flat_idx;
-        miscRegs[flat_idx] = val;
+        miscRegs[lower] = val;
         DPRINTF(MiscRegs, "Writing to misc reg %d (%d) : %#x\n",
-                misc_reg, flat_idx, val);
+                misc_reg, lower, val);
     }
 }
 
@@ -1047,18 +1093,9 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
           case MISCREG_SCTLR:
             {
                 DPRINTF(MiscRegs, "Writing SCTLR: %#x\n", newVal);
-                MiscRegIndex sctlr_idx;
                 scr = readMiscRegNoEffect(MISCREG_SCR);
-                if (haveSecurity && !scr.ns) {
-                    sctlr_idx = MISCREG_SCTLR_S;
-                } else {
-                    sctlr_idx = MISCREG_SCTLR_NS;
-                    // The FI field (bit 21) is common between S/NS versions
-                    // of the register, we store this in the secure copy of
-                    // the reg
-                    miscRegs[MISCREG_SCTLR_S] &=         ~(1 << 21);
-                    miscRegs[MISCREG_SCTLR_S] |= newVal & (1 << 21);
-                }
+                MiscRegIndex sctlr_idx = (haveSecurity && !scr.ns)
+                                         ? MISCREG_SCTLR_S : MISCREG_SCTLR_NS;
                 SCTLR sctlr = miscRegs[sctlr_idx];
                 SCTLR new_sctlr = newVal;
                 new_sctlr.nmfi =  ((bool)sctlr.nmfi) && !haveVirtualization;
@@ -1395,8 +1432,27 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
           case MISCREG_TLBI_IPAS2E1IS_Xt:
           case MISCREG_TLBI_IPAS2E1_Xt:
             assert64(tc);
-            // @todo: implement these as part of Virtualization
-            warn("Not doing anything for write of miscreg ITLB_IPAS2\n");
+            target_el = 1; // EL 0 and 1 are handled together
+            scr = readMiscReg(MISCREG_SCR, tc);
+            secure_lookup = haveSecurity && !scr.ns;
+            sys = tc->getSystemPtr();
+            for (x = 0; x < sys->numContexts(); x++) {
+                oc = sys->getThreadContext(x);
+                assert(oc->getITBPtr() && oc->getDTBPtr());
+                Addr ipa = ((Addr) bits(newVal, 35, 0)) << 12;
+                oc->getITBPtr()->flushIpaVmid(ipa,
+                    secure_lookup, false, target_el);
+                oc->getDTBPtr()->flushIpaVmid(ipa,
+                    secure_lookup, false, target_el);
+
+                CheckerCPU *checker = oc->getCheckerCpuPtr();
+                if (checker) {
+                    checker->getITBPtr()->flushIpaVmid(ipa,
+                        secure_lookup, false, target_el);
+                    checker->getDTBPtr()->flushIpaVmid(ipa,
+                        secure_lookup, false, target_el);
+                }
+            }
             return;
           case MISCREG_ACTLR:
             warn("Not doing anything for write of miscreg ACTLR\n");
@@ -1448,7 +1504,7 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
           case MISCREG_ATS1HR:
           case MISCREG_ATS1HW:
             {
-              unsigned flags = 0;
+              Request::Flags flags = 0;
               BaseTLB::Mode mode = BaseTLB::Read;
               TLB::ArmTranslationType tranType = TLB::NormalTran;
               Fault fault;
@@ -1519,9 +1575,8 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
               // can't be an atomic translation because that causes problems
               // with unexpected atomic snoop requests.
               warn("Translating via MISCREG(%d) in functional mode! Fix Me!\n", misc_reg);
-              Request req(0, val, 1, flags,  Request::funcMasterId,
-                          tc->pcState().pc(), tc->contextId(),
-                          tc->threadId());
+              Request req(0, val, 0, flags,  Request::funcMasterId,
+                          tc->pcState().pc(), tc->contextId());
               fault = tc->getDTBPtr()->translateFunctional(&req, tc, mode, tranType);
               TTBCR ttbcr = readMiscRegNoEffect(MISCREG_TTBCR);
               HCR   hcr   = readMiscRegNoEffect(MISCREG_HCR);
@@ -1624,11 +1679,13 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
           case MISCREG_DACR:
           case MISCREG_VTTBR:
           case MISCREG_SCR_EL3:
+          case MISCREG_HCR_EL2:
           case MISCREG_TCR_EL1:
           case MISCREG_TCR_EL2:
           case MISCREG_TCR_EL3:
           case MISCREG_SCTLR_EL2:
           case MISCREG_SCTLR_EL3:
+          case MISCREG_HSCTLR:
           case MISCREG_TTBR0_EL1:
           case MISCREG_TTBR1_EL1:
           case MISCREG_TTBR0_EL2:
@@ -1692,69 +1749,69 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
           case MISCREG_AT_S1E3W_Xt:
             {
                 RequestPtr req = new Request;
-                unsigned flags = 0;
+                Request::Flags flags = 0;
                 BaseTLB::Mode mode = BaseTLB::Read;
                 TLB::ArmTranslationType tranType = TLB::NormalTran;
                 Fault fault;
                 switch(misc_reg) {
                   case MISCREG_AT_S1E1R_Xt:
                     flags    = TLB::MustBeOne;
-                    tranType = TLB::S1CTran;
+                    tranType = TLB::S1E1Tran;
                     mode     = BaseTLB::Read;
                     break;
                   case MISCREG_AT_S1E1W_Xt:
                     flags    = TLB::MustBeOne;
-                    tranType = TLB::S1CTran;
+                    tranType = TLB::S1E1Tran;
                     mode     = BaseTLB::Write;
                     break;
                   case MISCREG_AT_S1E0R_Xt:
                     flags    = TLB::MustBeOne | TLB::UserMode;
-                    tranType = TLB::S1CTran;
+                    tranType = TLB::S1E0Tran;
                     mode     = BaseTLB::Read;
                     break;
                   case MISCREG_AT_S1E0W_Xt:
                     flags    = TLB::MustBeOne | TLB::UserMode;
-                    tranType = TLB::S1CTran;
+                    tranType = TLB::S1E0Tran;
                     mode     = BaseTLB::Write;
                     break;
                   case MISCREG_AT_S1E2R_Xt:
                     flags    = TLB::MustBeOne;
-                    tranType = TLB::HypMode;
+                    tranType = TLB::S1E2Tran;
                     mode     = BaseTLB::Read;
                     break;
                   case MISCREG_AT_S1E2W_Xt:
                     flags    = TLB::MustBeOne;
-                    tranType = TLB::HypMode;
+                    tranType = TLB::S1E2Tran;
                     mode     = BaseTLB::Write;
                     break;
                   case MISCREG_AT_S12E0R_Xt:
                     flags    = TLB::MustBeOne | TLB::UserMode;
-                    tranType = TLB::S1S2NsTran;
+                    tranType = TLB::S12E0Tran;
                     mode     = BaseTLB::Read;
                     break;
                   case MISCREG_AT_S12E0W_Xt:
                     flags    = TLB::MustBeOne | TLB::UserMode;
-                    tranType = TLB::S1S2NsTran;
+                    tranType = TLB::S12E0Tran;
                     mode     = BaseTLB::Write;
                     break;
                   case MISCREG_AT_S12E1R_Xt:
                     flags    = TLB::MustBeOne;
-                    tranType = TLB::S1S2NsTran;
+                    tranType = TLB::S12E1Tran;
                     mode     = BaseTLB::Read;
                     break;
                   case MISCREG_AT_S12E1W_Xt:
                     flags    = TLB::MustBeOne;
-                    tranType = TLB::S1S2NsTran;
+                    tranType = TLB::S12E1Tran;
                     mode     = BaseTLB::Write;
                     break;
                   case MISCREG_AT_S1E3R_Xt:
                     flags    = TLB::MustBeOne;
-                    tranType = TLB::HypMode; // There is no TZ mode defined.
+                    tranType = TLB::S1E3Tran;
                     mode     = BaseTLB::Read;
                     break;
                   case MISCREG_AT_S1E3W_Xt:
                     flags    = TLB::MustBeOne;
-                    tranType = TLB::HypMode; // There is no TZ mode defined.
+                    tranType = TLB::S1E3Tran;
                     mode     = BaseTLB::Write;
                     break;
                 }
@@ -1765,9 +1822,9 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
                 // can't be an atomic translation because that causes problems
                 // with unexpected atomic snoop requests.
                 warn("Translating via MISCREG(%d) in functional mode! Fix Me!\n", misc_reg);
-                req->setVirt(0, val, 1, flags,  Request::funcMasterId,
+                req->setVirt(0, val, 0, flags,  Request::funcMasterId,
                                tc->pcState().pc());
-                req->setThreadContext(tc->contextId(), tc->threadId());
+                req->setContext(tc->contextId());
                 fault = tc->getDTBPtr()->translateFunctional(req, tc, mode,
                                                              tranType);
 
@@ -1789,12 +1846,22 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
                     // Set fault bit and FSR
                     FSR fsr = armFault->getFsr(tc);
 
-                    newVal = ((fsr >> 9) & 1) << 11;
-                    // rearange fault status
-                    newVal |= ((fsr >>  0) & 0x3f) << 1;
-                    newVal |= 0x1; // F bit
-                    newVal |= ((armFault->iss() >> 7) & 0x1) << 8;
-                    newVal |= armFault->isStage2() ? 0x200 : 0;
+                    CPSR cpsr = tc->readMiscReg(MISCREG_CPSR);
+                    if (cpsr.width) { // AArch32
+                        newVal = ((fsr >> 9) & 1) << 11;
+                        // rearrange fault status
+                        newVal |= ((fsr >>  0) & 0x3f) << 1;
+                        newVal |= 0x1; // F bit
+                        newVal |= ((armFault->iss() >> 7) & 0x1) << 8;
+                        newVal |= armFault->isStage2() ? 0x200 : 0;
+                    } else { // AArch64
+                        newVal = 1; // F bit
+                        newVal |= fsr << 1; // FST
+                        // TODO: DDI 0487A.f D7-2083, AbortFault's s1ptw bit.
+                        newVal |= armFault->isStage2() ? 1 << 8 : 0; // PTW
+                        newVal |= armFault->isStage2() ? 1 << 9 : 0; // S
+                        newVal |= 1 << 11; // RES1
+                    }
                     DPRINTF(MiscRegs,
                             "MISCREG: Translated addr %#x fault fsr %#x: PAR: %#x\n",
                             val, fsr, newVal);
@@ -1929,7 +1996,7 @@ ISA::getGenericTimer(ThreadContext *tc)
               "been configured to use a generic timer.\n");
     }
 
-    timer.reset(new GenericTimerISA(*generic_timer, tc->cpuId()));
+    timer.reset(new GenericTimerISA(*generic_timer, tc->contextId()));
     return *timer.get();
 }
 

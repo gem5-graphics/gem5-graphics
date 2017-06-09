@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015 ARM Limited
+ * Copyright (c) 2015-2017 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -35,6 +35,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * Authors: Andreas Sandberg
+ *          Curtis Dunham
  */
 
 #ifndef __ARCH_ARM_KVM_GIC_HH__
@@ -43,68 +44,90 @@
 #include "arch/arm/system.hh"
 #include "cpu/kvm/device.hh"
 #include "cpu/kvm/vm.hh"
-#include "dev/arm/base_gic.hh"
+#include "dev/arm/gic_pl390.hh"
 #include "dev/platform.hh"
 
-class KvmGicParams;
-
 /**
- * In-kernel GIC model.
+ * KVM in-kernel GIC abstraction
  *
- * When using a KVM-based CPU model, it is possible to offload GIC
- * emulation to the kernel. This reduces some overheads when the guest
- * accesses the GIC and makes it possible to use in-kernel
- * architected/generic timer emulation.
- *
- * This device uses interfaces with the kernel GicV2 model that is
- * documented in Documentation/virtual/kvm/devices/arm-vgic.txt in the
- * Linux kernel sources.
- *
- * This GIC model has the following known limitations:
- * <ul>
- *   <li>Checkpointing is not supported.
- *   <li>This model only works with kvm. Simulated CPUs are not
- *       supported since this would require the kernel to inject
- *       interrupt into the simulated CPU.
- * </ul>
- *
- * @warn This GIC model cannot be used with simulated CPUs!
+ * This class defines a high-level interface to the KVM in-kernel GIC
+ * model. It exposes an API that is similar to that of
+ * software-emulated GIC models in gem5.
  */
-class KvmGic : public BaseGic
+class KvmKernelGicV2 : public BaseGicRegisters
 {
-  public: // SimObject / Serializable / Drainable
-    KvmGic(const KvmGicParams *p);
-    ~KvmGic();
+  public:
+    /**
+     * Instantiate a KVM in-kernel GIC model.
+     *
+     * This constructor instantiates an in-kernel GIC model and wires
+     * it up to the virtual memory system.
+     *
+     * @param vm KVM VM representing this system
+     * @param cpu_addr GIC CPU interface base address
+     * @param dist_addr GIC distributor base address
+     * @param it_lines Number of interrupt lines to support
+     */
+    KvmKernelGicV2(KvmVM &vm, Addr cpu_addr, Addr dist_addr,
+                   unsigned it_lines);
+    virtual ~KvmKernelGicV2();
 
-    void startup() M5_ATTR_OVERRIDE { verifyMemoryMode(); }
-    void drainResume() M5_ATTR_OVERRIDE { verifyMemoryMode(); }
+    KvmKernelGicV2(const KvmKernelGicV2 &other) = delete;
+    KvmKernelGicV2(const KvmKernelGicV2 &&other) = delete;
+    KvmKernelGicV2 &operator=(const KvmKernelGicV2 &&rhs) = delete;
+    KvmKernelGicV2 &operator=(const KvmKernelGicV2 &rhs) = delete;
 
-    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
-    void unserialize(Checkpoint *cp, const std::string &sec)  M5_ATTR_OVERRIDE;
+  public:
+    /**
+     * @{
+     * @name In-kernel GIC API
+     */
 
-  public: // PioDevice
-    AddrRangeList getAddrRanges() const { return addrRanges; }
-    Tick read(PacketPtr pkt) M5_ATTR_OVERRIDE;
-    Tick write(PacketPtr pkt) M5_ATTR_OVERRIDE;
+    /**
+     * Raise a shared peripheral interrupt
+     *
+     * @param spi SPI number
+     */
+    void setSPI(unsigned spi);
+    /**
+     * Clear a shared peripheral interrupt
+     *
+     * @param spi SPI number
+     */
+    void clearSPI(unsigned spi);
 
-  public: // BaseGic
-    void sendInt(uint32_t num) M5_ATTR_OVERRIDE;
-    void clearInt(uint32_t num) M5_ATTR_OVERRIDE;
+    /**
+     * Raise a private peripheral interrupt
+     *
+     * @param vcpu KVM virtual CPU number
+     * @parma ppi PPI interrupt number
+     */
+    void setPPI(unsigned vcpu, unsigned ppi);
 
-    void sendPPInt(uint32_t num, uint32_t cpu) M5_ATTR_OVERRIDE;
-    void clearPPInt(uint32_t num, uint32_t cpu) M5_ATTR_OVERRIDE;
+    /**
+     * Clear a private peripheral interrupt
+     *
+     * @param vcpu KVM virtual CPU number
+     * @parma ppi PPI interrupt number
+     */
+    void clearPPI(unsigned vcpu, unsigned ppi);
+
+    /** Address range for the CPU interfaces */
+    const AddrRange cpuRange;
+    /** Address range for the distributor interface */
+    const AddrRange distRange;
+
+    /** BaseGicRegisters interface */
+    uint32_t readDistributor(ContextID ctx, Addr daddr) override;
+    uint32_t readCpu(ContextID ctx, Addr daddr) override;
+
+    void writeDistributor(ContextID ctx, Addr daddr,
+                          uint32_t data) override;
+    void writeCpu(ContextID ctx, Addr daddr, uint32_t data) override;
+
+    /* @} */
 
   protected:
-    /**
-     * Do memory mode sanity checks
-     *
-     * This method only really exists to warn users that try to switch
-     * to a simulate CPU. There is no fool proof method to detect
-     * simulated CPUs, but checking that we're in atomic mode and
-     * bypassing caches should be robust enough.
-     */
-    void verifyMemoryMode() const;
-
     /**
      * Update the kernel's VGIC interrupt state
      *
@@ -113,21 +136,96 @@ class KvmGic : public BaseGic
      * @param irq Interrupt number
      * @param high True to signal an interrupt, false to clear it.
      */
-    void setIntState(uint8_t type, uint8_t vcpu, uint16_t irq, bool high);
+    void setIntState(unsigned type, unsigned vcpu, unsigned irq, bool high);
+
+    /**
+     * Get value of GIC register "from" a cpu
+     *
+     * @param group Distributor or CPU (KVM_DEV_ARM_VGIC_GRP_{DIST,CPU}_REGS)
+     * @param vcpu CPU id within KVM
+     * @param offset register offset
+     */
+    uint32_t getGicReg(unsigned group, unsigned vcpu, unsigned offset);
+
+    /**
+     * Set value of GIC register "from" a cpu
+     *
+     * @param group Distributor or CPU (KVM_DEV_ARM_VGIC_GRP_{DIST,CPU}_REGS)
+     * @param vcpu CPU id within KVM
+     * @param offset register offset
+     * @param value value to set register to
+     */
+    void setGicReg(unsigned group, unsigned vcpu, unsigned offset,
+                   unsigned value);
+
+    /** KVM VM in the parent system */
+    KvmVM &vm;
+
+    /** Kernel interface to the GIC */
+    KvmDevice kdev;
+};
+
+
+struct MuxingKvmGicParams;
+
+class MuxingKvmGic : public Pl390
+{
+  public: // SimObject / Serializable / Drainable
+    MuxingKvmGic(const MuxingKvmGicParams *p);
+    ~MuxingKvmGic();
+
+    void loadState(CheckpointIn &cp) override;
+
+    void startup() override;
+    DrainState drain() override;
+    void drainResume() override;
+
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
+
+  public: // PioDevice
+    Tick read(PacketPtr pkt) override;
+    Tick write(PacketPtr pkt) override;
+
+  public: // Pl390
+    void sendInt(uint32_t num) override;
+    void clearInt(uint32_t num) override;
+
+    void sendPPInt(uint32_t num, uint32_t cpu) override;
+    void clearPPInt(uint32_t num, uint32_t cpu) override;
+
+  protected:
+    /** Verify gem5 configuration will support KVM emulation */
+    bool validKvmEnvironment() const;
 
     /** System this interrupt controller belongs to */
     System &system;
-    /** VM for this system */
-    KvmVM &vm;
-    /** Kernel interface to the GIC */
-    KvmDevice kdev;
 
-    /** Address range for the distributor interface */
-    const AddrRange distRange;
-    /** Address range for the CPU interfaces */
-    const AddrRange cpuRange;
-    /** Union of all memory  */
-    const AddrRangeList addrRanges;
+    /** Kernel GIC device */
+    KvmKernelGicV2 *kernelGic;
+
+  private:
+    bool usingKvm;
+
+    /** Multiplexing implementation */
+    void fromPl390ToKvm();
+    void fromKvmToPl390();
+
+    void copyGicState(BaseGicRegisters* from, BaseGicRegisters* to);
+
+    void copyDistRegister(BaseGicRegisters* from, BaseGicRegisters* to,
+                          ContextID ctx, Addr daddr);
+    void copyCpuRegister(BaseGicRegisters* from, BaseGicRegisters* to,
+                         ContextID ctx, Addr daddr);
+
+    void copyBankedDistRange(BaseGicRegisters* from, BaseGicRegisters* to,
+                             Addr daddr, size_t size);
+    void clearBankedDistRange(BaseGicRegisters* to,
+                              Addr daddr, size_t size);
+    void copyDistRange(BaseGicRegisters* from, BaseGicRegisters* to,
+                       Addr daddr, size_t size);
+    void clearDistRange(BaseGicRegisters* to,
+                        Addr daddr, size_t size);
 };
 
 #endif // __ARCH_ARM_KVM_GIC_HH__

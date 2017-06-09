@@ -35,14 +35,19 @@ import re
 
 python_class_map = {
                     "int": "Int",
+                    "NodeID": "Int",
                     "uint32_t" : "UInt32",
                     "std::string": "String",
                     "bool": "Bool",
                     "CacheMemory": "RubyCache",
                     "WireBuffer": "RubyWireBuffer",
                     "Sequencer": "RubySequencer",
+                    "GPUCoalescer" : "RubyGPUCoalescer",
+                    "VIPERCoalescer" : "VIPERCoalescer",
                     "DirectoryMemory": "RubyDirectoryMemory",
+                    "PerfectCacheMemory": "RubyPerfectCacheMemory",
                     "MemoryControl": "MemoryControl",
+                    "MessageBuffer": "MessageBuffer",
                     "DMASequencer": "DMASequencer",
                     "Prefetcher":"Prefetcher",
                     "Cycles":"Cycles",
@@ -195,7 +200,7 @@ class StateMachine(Symbol):
         port_to_buf_map = {}
         in_msg_bufs = {}
         for port in self.in_ports:
-            buf_name = "m_%s_ptr" % port.buffer_expr.name
+            buf_name = "m_%s_ptr" % port.pairs["buffer_expr"].name
             msg_bufs.append(buf_name)
             port_to_buf_map[port] = msg_bufs.index(buf_name)
             if buf_name not in in_msg_bufs:
@@ -234,11 +239,7 @@ class $py_ident(RubyController):
             if param.rvalue is not None:
                 dflt_str = str(param.rvalue.inline()) + ', '
 
-            if param.type_ast.type.c_ident == "MessageBuffer":
-                # The MessageBuffer MUST be instantiated in the protocol config
-                code('${{param.ident}} = Param.MessageBuffer("")')
-
-            elif python_class_map.has_key(param.type_ast.type.c_ident):
+            if python_class_map.has_key(param.type_ast.type.c_ident):
                 python_type = python_class_map[param.type_ast.type.c_ident]
                 code('${{param.ident}} = Param.${{python_type}}(${dflt_str}"")')
 
@@ -246,12 +247,6 @@ class $py_ident(RubyController):
                 self.error("Unknown c++ to python class conversion for c++ " \
                            "type: '%s'. Please update the python_class_map " \
                            "in StateMachine.py", param.type_ast.type.c_ident)
-
-        # Also add any MessageBuffers declared internally to the controller
-        # Note: This includes mandatory and memory queues
-        for var in self.objects:
-            if var.type.c_ident == "MessageBuffer":
-                code('${{var.ident}} = Param.MessageBuffer("")')
 
         code.dedent()
         code.write(path, '%s.py' % py_ident)
@@ -303,8 +298,8 @@ class $c_ident : public AbstractController
     static int getNumControllers();
     void init();
 
-    MessageBuffer* getMandatoryQueue() const;
-    MessageBuffer* getMemoryQueue() const;
+    MessageBuffer *getMandatoryQueue() const;
+    MessageBuffer *getMemoryQueue() const;
     void initNetQueues();
 
     void print(std::ostream& out) const;
@@ -314,7 +309,8 @@ class $c_ident : public AbstractController
     void collateStats();
 
     void recordCacheTrace(int cntrl, CacheRecorder* tr);
-    Sequencer* getSequencer() const;
+    Sequencer* getCPUSequencer() const;
+    GPUCoalescer* getGPUCoalescer() const;
 
     int functionalWriteBuffers(PacketPtr&);
 
@@ -463,6 +459,7 @@ void unset_tbe(${{self.TBEType.c_ident}}*& m_tbe_ptr);
 #include <typeinfo>
 
 #include "base/compiler.hh"
+#include "mem/ruby/common/BoolVec.hh"
 #include "base/cprintf.hh"
 
 ''')
@@ -473,7 +470,8 @@ void unset_tbe(${{self.TBEType.c_ident}}*& m_tbe_ptr);
 #include "mem/protocol/${ident}_Event.hh"
 #include "mem/protocol/${ident}_State.hh"
 #include "mem/protocol/Types.hh"
-#include "mem/ruby/system/System.hh"
+#include "mem/ruby/network/Network.hh"
+#include "mem/ruby/system/RubySystem.hh"
 
 ''')
         for include_path in includes:
@@ -536,18 +534,13 @@ $c_ident::$c_ident(const Params *p)
             else:
                 code('m_${{param.ident}} = p->${{param.ident}};')
 
-            if re.compile("sequencer").search(param.ident):
-                code('m_${{param.ident}}_ptr->setController(this);')
-
-        for var in self.objects:
-            # Some MessageBuffers (e.g. mandatory and memory queues) are
-            # instantiated internally to StateMachines but exposed to
-            # components outside SLICC, so make sure to set up this
-            # controller as their receivers
-            if var.type.c_ident == "MessageBuffer":
+            if re.compile("sequencer").search(param.ident) or \
+                   param.type_ast.type.c_ident == "GPUCoalescer" or \
+                   param.type_ast.type.c_ident == "VIPERCoalescer":
                 code('''
-m_${{var.ident}}_ptr = p->${{var.ident}};
-m_${{var.ident}}_ptr->setReceiver(this);
+if (m_${{param.ident}}_ptr != NULL) {
+    m_${{param.ident}}_ptr->setController(this);
+}
 ''')
 
         code('''
@@ -581,10 +574,9 @@ $c_ident::initNetQueues()
         vnet_dir_set = set()
 
         for var in self.config_parameters:
+            vid = "m_%s_ptr" % var.ident
             if "network" in var:
                 vtype = var.type_ast.type
-                vid = "m_%s_ptr" % var.ident
-
                 code('assert($vid != NULL);')
 
                 # Network port object
@@ -601,12 +593,6 @@ $c_ident::initNetQueues()
 m_net_ptr->set${network}NetQueue(m_version + base, $vid->getOrdered(), $vnet,
                                  "$vnet_type", $vid);
 ''')
-                # Set the end
-                if network == "To":
-                    code('$vid->setSender(this);')
-                else:
-                    code('$vid->setReceiver(this);')
-
                 # Set Priority
                 if "rank" in var:
                     code('$vid->setPriority(${{var["rank"]}})')
@@ -619,7 +605,6 @@ void
 $c_ident::init()
 {
     // initialize objects
-    initNetQueues();
 ''')
 
         code.indent()
@@ -635,14 +620,13 @@ $c_ident::init()
                         code('(*$vid) = ${{var["default"]}};')
                 else:
                     # Normal Object
-                    if var.type.c_ident != "MessageBuffer":
-                        th = var.get("template", "")
-                        expr = "%s  = new %s%s" % (vid, vtype.c_ident, th)
-                        args = ""
-                        if "non_obj" not in vtype and not vtype.isEnumeration:
-                            args = var.get("constructor", "")
-                        code('$expr($args);')
+                    th = var.get("template", "")
+                    expr = "%s  = new %s%s" % (vid, vtype.c_ident, th)
+                    args = ""
+                    if "non_obj" not in vtype and not vtype.isEnumeration:
+                        args = var.get("constructor", "")
 
+                    code('$expr($args);')
                     code('assert($vid != NULL);')
 
                     if "default" in var:
@@ -650,20 +634,6 @@ $c_ident::init()
                     elif "default" in vtype:
                         comment = "Type %s default" % vtype.ident
                         code('*$vid = ${{vtype["default"]}}; // $comment')
-
-                    # Set Priority
-                    if vtype.isBuffer and "rank" in var:
-                        code('$vid->setPriority(${{var["rank"]}});')
-
-                    # Set sender and receiver for trigger queue
-                    if var.ident.find("triggerQueue") >= 0:
-                        code('$vid->setSender(this);')
-                        code('$vid->setReceiver(this);')
-                    elif vtype.c_ident == "TimerTable":
-                        code('$vid->setClockObj(this);')
-                    elif var.ident.find("optionalQueue") >= 0:
-                        code('$vid->setSender(this);')
-                        code('$vid->setReceiver(this);')
 
         # Set the prefetchers
         code()
@@ -712,6 +682,56 @@ $c_ident::init()
             if param.ident == "sequencer":
                 assert(param.pointer)
                 seq_ident = "m_%s_ptr" % param.ident
+
+        coal_ident = "NULL"
+        for param in self.config_parameters:
+            if param.ident == "coalescer":
+                assert(param.pointer)
+                coal_ident = "m_%s_ptr" % param.ident
+
+        if seq_ident != "NULL":
+            code('''
+Sequencer*
+$c_ident::getCPUSequencer() const
+{
+    if (NULL != $seq_ident && $seq_ident->isCPUSequencer()) {
+        return $seq_ident;
+    } else {
+        return NULL;
+    }
+}
+''')
+        else:
+            code('''
+
+Sequencer*
+$c_ident::getCPUSequencer() const
+{
+    return NULL;
+}
+''')
+
+        if coal_ident != "NULL":
+            code('''
+GPUCoalescer*
+$c_ident::getGPUCoalescer() const
+{
+    if (NULL != $coal_ident && !$coal_ident->isCPUSequencer()) {
+        return $coal_ident;
+    } else {
+        return NULL;
+    }
+}
+''')
+        else:
+            code('''
+
+GPUCoalescer*
+$c_ident::getGPUCoalescer() const
+{
+    return NULL;
+}
+''')
 
         code('''
 
@@ -837,12 +857,6 @@ MessageBuffer*
 $c_ident::getMemoryQueue() const
 {
     return $memq_ident;
-}
-
-Sequencer*
-$c_ident::getSequencer() const
-{
-    return $seq_ident;
 }
 
 void
@@ -1054,7 +1068,7 @@ $c_ident::functionalWriteBuffers(PacketPtr& pkt)
 
         code('''
 #include "mem/protocol/Types.hh"
-#include "mem/ruby/system/System.hh"
+#include "mem/ruby/system/RubySystem.hh"
 
 ''')
 
@@ -1123,7 +1137,7 @@ ${ident}_Controller::wakeup()
             if len(ports) > 1:
                 # only produce checks when a buffer is shared by multiple ports
                 code('''
-        if (${{buf_name}}->isReady() && rejected[${{port_to_buf_map[ports[0]]}}] == ${{len(ports)}})
+        if (${{buf_name}}->isReady(clockEdge()) && rejected[${{port_to_buf_map[ports[0]]}}] == ${{len(ports)}})
         {
             // no port claimed the message on the top of this buffer
             panic("Runtime Error at Ruby Time: %d. "
@@ -1162,7 +1176,7 @@ ${ident}_Controller::wakeup()
 #include "mem/protocol/${ident}_Event.hh"
 #include "mem/protocol/${ident}_State.hh"
 #include "mem/protocol/Types.hh"
-#include "mem/ruby/system/System.hh"
+#include "mem/ruby/system/RubySystem.hh"
 
 #define HASH_FUN(state, event)  ((int(state)*${ident}_Event_NUM)+int(event))
 
@@ -1198,7 +1212,7 @@ ${ident}_Controller::doTransition(${ident}_Event event,
         code('''
 ${ident}_State next_state = state;
 
-DPRINTF(RubyGenerated, "%s, Time: %lld, state: %s, event: %s, addr: %s\\n",
+DPRINTF(RubyGenerated, "%s, Time: %lld, state: %s, event: %s, addr: %#x\\n",
         *this, curCycle(), ${ident}_State_to_string(state),
         ${ident}_Event_to_string(event), addr);
 
@@ -1227,7 +1241,7 @@ if (result == TransitionResult_Valid) {
              ${ident}_Event_to_string(event),
              ${ident}_State_to_string(state),
              ${ident}_State_to_string(next_state),
-             addr, GET_TRANSITION_COMMENT());
+             printAddress(addr), GET_TRANSITION_COMMENT());
 
     CLEAR_TRANSITION_COMMENT();
 ''')
@@ -1251,7 +1265,7 @@ if (result == TransitionResult_Valid) {
              ${ident}_Event_to_string(event),
              ${ident}_State_to_string(state),
              ${ident}_State_to_string(next_state),
-             addr, "Resource Stall");
+             printAddress(addr), "Resource Stall");
 } else if (result == TransitionResult_ProtocolStall) {
     DPRINTF(RubyGenerated, "stalling\\n");
     DPRINTFR(ProtocolTrace, "%15s %3s %10s%20s %6s>%-6s %#x %s\\n",
@@ -1259,7 +1273,7 @@ if (result == TransitionResult_Valid) {
              ${ident}_Event_to_string(event),
              ${ident}_State_to_string(state),
              ${ident}_State_to_string(next_state),
-             addr, "Protocol Stall");
+             printAddress(addr), "Protocol Stall");
 }
 
 return result;
@@ -1318,7 +1332,7 @@ ${ident}_Controller::doTransitionWorker(${ident}_Event event,
             res = trans.resources
             for key,val in res.iteritems():
                 val = '''
-if (!%s.areNSlotsAvailable(%s))
+if (!%s.areNSlotsAvailable(%s, clockEdge()))
     return TransitionResult_ResourceStall;
 ''' % (key.code, val)
                 case_sorter.append(val)

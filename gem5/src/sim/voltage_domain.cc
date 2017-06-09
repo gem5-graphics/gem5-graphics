@@ -38,13 +38,15 @@
  *          Akash Bagdia
  */
 
+#include "sim/voltage_domain.hh"
+
 #include <algorithm>
 
 #include "base/statistics.hh"
+#include "base/trace.hh"
 #include "debug/VoltageDomain.hh"
 #include "params/VoltageDomain.hh"
 #include "sim/sim_object.hh"
-#include "sim/voltage_domain.hh"
 
 VoltageDomain::VoltageDomain(const Params *p)
     : SimObject(p), voltageOpPoints(p->voltage), _perfLevel(0)
@@ -128,6 +130,8 @@ VoltageDomain::startup() {
 void
 VoltageDomain::regStats()
 {
+    SimObject::regStats();
+
     currentVoltage
         .method(this, &VoltageDomain::voltage)
         .name(params()->name + ".voltage")

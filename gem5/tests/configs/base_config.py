@@ -40,9 +40,9 @@ from abc import ABCMeta, abstractmethod
 import m5
 from m5.objects import *
 from m5.proxy import *
-m5.util.addToPath('../configs/common')
-import FSConfig
-from Caches import *
+m5.util.addToPath('../configs/')
+from common import FSConfig
+from common.Caches import *
 
 _have_kvm_support = 'BaseKvmCPU' in globals()
 
@@ -58,7 +58,8 @@ class BaseSystem(object):
     __metaclass__ = ABCMeta
 
     def __init__(self, mem_mode='timing', mem_class=SimpleMemory,
-                 cpu_class=TimingSimpleCPU, num_cpus=1, checker=False,
+                 cpu_class=TimingSimpleCPU, num_cpus=1, num_threads=1,
+                 checker=False,
                  mem_size=None):
         """Initialize a simple base system.
 
@@ -74,11 +75,13 @@ class BaseSystem(object):
         self.mem_class = mem_class
         self.cpu_class = cpu_class
         self.num_cpus = num_cpus
+        self.num_threads = num_threads
         self.checker = checker
 
     def create_cpus(self, cpu_clk_domain):
         """Return a list of CPU objects to add to a system."""
-        cpus = [ self.cpu_class(clk_domain = cpu_clk_domain,
+        cpus = [ self.cpu_class(clk_domain=cpu_clk_domain,
+                                numThreads=self.num_threads,
                                 cpu_id=i)
                  for i in range(self.num_cpus) ]
         if self.checker:
@@ -146,6 +149,7 @@ class BaseSystem(object):
             self.init_kvm(system)
 
         sha_bus = self.create_caches_shared(system)
+
         for cpu in system.cpu:
             self.init_cpu(system, cpu, sha_bus)
 
@@ -187,7 +191,8 @@ class BaseSESystem(BaseSystem):
     def create_system(self):
         system = System(physmem = self.mem_class(),
                         membus = SystemXBar(),
-                        mem_mode = self.mem_mode)
+                        mem_mode = self.mem_mode,
+                        multi_thread = (self.num_threads > 1))
         system.system_port = system.membus.slave
         system.physmem.port = system.membus.master
         self.init_system(system)

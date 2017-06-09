@@ -152,7 +152,7 @@
 #include "debug/UFSHostDevice.hh"
 #include "dev/arm/abstract_nvm.hh"
 #include "dev/arm/base_gic.hh"
-#include "dev/disk_image.hh"
+#include "dev/storage/disk_image.hh"
 #include "dev/dma_device.hh"
 #include "dev/io_device.hh"
 #include "mem/packet.hh"
@@ -173,10 +173,10 @@ class UFSHostDevice : public DmaDevice
 
     UFSHostDevice(const UFSHostDeviceParams* p);
 
-    DrainState drain() M5_ATTR_OVERRIDE;
+    DrainState drain() override;
     void checkDrain();
-    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
-    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 
   private:
     /**
@@ -823,13 +823,13 @@ class UFSHostDevice : public DmaDevice
     /**
      * Address range functions
      */
-    AddrRangeList getAddrRanges() const;
+    AddrRangeList getAddrRanges() const override;
 
     /**
      * register access functions
      */
-    Tick read(PacketPtr pkt);
-    Tick write(PacketPtr pkt);
+    Tick read(PacketPtr pkt) override;
+    Tick write(PacketPtr pkt) override;
     // end of access functions
 
     /**
@@ -988,7 +988,7 @@ class UFSHostDevice : public DmaDevice
     void readGarbage();
 
     /**register statistics*/
-    void regStats();
+    void regStats() override;
 
     /**
      * Host controller information

@@ -100,25 +100,32 @@ class Cluster(BaseTopology):
             if type(node) == Cluster:
                 node.makeTopology(options, network, IntLink, ExtLink, Router)
 
-                if node.getConnectToParent():
-                    # connect this cluster to the router
-                    link = IntLink(link_id=self.num_int_links(), node_a=self.router,
-                        node_b=node.router)
+                # connect this cluster to the router
+                link_out = IntLink(link_id=self.num_int_links(), src_node=self.router,
+                           dst_node=node.router)
+                link_in = IntLink(link_id=self.num_int_links(), src_node=node.router,
+                                  dst_node=self.router)
 
-                    if node.extBW:
-                        link.bandwidth_factor = node.extBW
+                if node.extBW:
+                    link_out.bandwidth_factor = node.extBW
+                    link_in.bandwidth_factor = node.extBW
 
-                    # if there is an interanl b/w for this node
-                    # and no ext b/w to override
-                    elif self.intBW:
-                        link.bandwidth_factor = self.intBW
 
-                    if node.extLatency:
-                        link.latency = node.extLatency
-                    elif self.intLatency:
-                        link.latency = self.intLatency
+                # if there is an internal b/w for this node
+                # and no ext b/w to override
+                elif self.intBW:
+                    link_out.bandwidth_factor = self.intBW
+                    link_in.bandwidth_factor = self.intBW
 
-                    network.int_links.append(link)
+                if node.extLatency:
+                    link_out.latency = node.extLatency
+                    link_in.latency = node.extLatency
+                elif self.intLatency:
+                    link_out.latency = self.intLatency
+                    link_in.latency = self.intLatency
+
+                network.int_links.append(link_out)
+                network.int_links.append(link_in)
             else:
                 # node is just a controller,
                 # connect it to the router via a ext_link

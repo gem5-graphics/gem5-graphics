@@ -1,4 +1,4 @@
-# Copyright (c) 2012-2013 ARM Limited
+# Copyright (c) 2012-2013, 2015-2016 ARM Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -42,6 +42,9 @@ from m5.SimObject import SimObject
 
 from ArmPMU import ArmPMU
 
+# Enum for DecoderFlavour
+class DecoderFlavour(Enum): vals = ['Generic']
+
 class ArmISA(SimObject):
     type = 'ArmISA'
     cxx_class = 'ArmISA::ISA'
@@ -50,17 +53,9 @@ class ArmISA(SimObject):
     system = Param.System(Parent.any, "System this ISA object belongs to")
 
     pmu = Param.ArmPMU(NULL, "Performance Monitoring Unit")
+    decoderFlavour = Param.DecoderFlavour('Generic', "Decoder flavour specification")
 
     midr = Param.UInt32(0x410fc0f0, "MIDR value")
-
-    # See section B4.1.93 - B4.1.94 of the ARM ARM
-    #
-    # !ThumbEE | !Jazelle | Thumb | ARM
-    # Note: ThumbEE is disabled for now since we don't support CP14
-    # config registers and jumping to ThumbEE vectors
-    id_pfr0 = Param.UInt32(0x00000031, "Processor Feature Register 0")
-    # !Timer | Virti | !M Profile | TrustZone | ARMv4
-    id_pfr1 = Param.UInt32(0x00001011, "Processor Feature Register 1")
 
     # See section B4.1.89 - B4.1.92 of the ARM ARM
     #  VMSAv7 support
@@ -111,11 +106,3 @@ class ArmISA(SimObject):
     # Reserved for future expansion
     id_aa64mmfr1_el1 = Param.UInt64(0x0000000000000000,
         "AArch64 Memory Model Feature Register 1")
-
-    # !GICv3 CP15 | AdvSIMD | FP | !EL3 | !EL2 | EL1 (AArch64) | EL0 (AArch64)
-    # (no AArch32/64 interprocessing support for now)
-    id_aa64pfr0_el1 = Param.UInt64(0x0000000000000011,
-        "AArch64 Processor Feature Register 0")
-    # Reserved for future expansion
-    id_aa64pfr1_el1 = Param.UInt64(0x0000000000000000,
-        "AArch64 Processor Feature Register 1")

@@ -35,6 +35,8 @@
  * well as facilities to send IPIs to other cpus.
  */
 
+#include "dev/sparc/iob.hh"
+
 #include <cstring>
 
 #include "arch/sparc/faults.hh"
@@ -44,7 +46,6 @@
 #include "cpu/intr_control.hh"
 #include "cpu/thread_context.hh"
 #include "debug/Iob.hh"
-#include "dev/sparc/iob.hh"
 #include "dev/platform.hh"
 #include "mem/packet_access.hh"
 #include "mem/port.hh"
@@ -91,7 +92,8 @@ Iob::readIob(PacketPtr pkt)
 {
         Addr accessAddr = pkt->getAddr() - iobManAddr;
 
-        if (accessAddr >= IntManAddr && accessAddr < IntManAddr + IntManSize) {
+        assert(IntManAddr == 0);
+        if (accessAddr < IntManAddr + IntManSize) {
             int index = (accessAddr - IntManAddr) >> 3;
             uint64_t data = intMan[index].cpu << 8 | intMan[index].vector << 0;
             pkt->set(data);
@@ -186,7 +188,8 @@ Iob::writeIob(PacketPtr pkt)
         int index;
         uint64_t data;
 
-        if (accessAddr >= IntManAddr && accessAddr < IntManAddr + IntManSize) {
+        assert(IntManAddr == 0);
+        if (accessAddr < IntManAddr + IntManSize) {
             index = (accessAddr - IntManAddr) >> 3;
             data = pkt->get<uint64_t>();
             intMan[index].cpu = bits(data,12,8);

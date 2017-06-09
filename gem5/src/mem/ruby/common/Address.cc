@@ -27,7 +27,8 @@
  */
 
 #include "mem/ruby/common/Address.hh"
-#include "mem/ruby/system/System.hh"
+
+#include "mem/ruby/system/RubySystem.hh"
 
 Addr
 bitSelect(Addr addr, unsigned int small, unsigned int big)
@@ -119,4 +120,14 @@ makeNextStrideAddress(Addr addr, int stride)
 {
     return maskLowOrderBits(addr, RubySystem::getBlockSizeBits())
         + RubySystem::getBlockSizeBytes() * stride;
+}
+
+std::string
+printAddress(Addr addr)
+{
+    std::stringstream out;
+    out << "[" << std::hex << "0x" << addr << "," << " line 0x"
+       << maskLowOrderBits(addr, RubySystem::getBlockSizeBits())
+       << std::dec << "]";
+    return out.str();
 }

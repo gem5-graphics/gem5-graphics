@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013 ARM Limited
+ * Copyright (c) 2012-2013, 2016 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -40,6 +40,8 @@
  *          Neha Agarwal
  */
 
+#include <algorithm>
+
 #include "base/random.hh"
 #include "base/trace.hh"
 #include "cpu/testers/traffic_gen/generators.hh"
@@ -68,7 +70,7 @@ BaseGen::getPacket(Addr addr, unsigned size, const MemCmd& cmd,
     pkt->dataDynamic(pkt_data);
 
     if (cmd.isWrite()) {
-        memset(pkt_data, 0xA, req->getSize());
+        std::fill_n(pkt_data, req->getSize(), (uint8_t)masterID);
     }
 
     return pkt;
@@ -420,11 +422,9 @@ TraceGen::InputStream::init()
     ProtoMessage::PacketHeader header_msg;
     if (!trace.read(header_msg)) {
         panic("Failed to read packet header from trace\n");
-
-        if (header_msg.tick_freq() != SimClock::Frequency) {
-            panic("Trace was recorded with a different tick frequency %d\n",
-                  header_msg.tick_freq());
-        }
+    } else if (header_msg.tick_freq() != SimClock::Frequency) {
+        panic("Trace was recorded with a different tick frequency %d\n",
+              header_msg.tick_freq());
     }
 }
 

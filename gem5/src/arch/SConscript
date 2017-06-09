@@ -43,8 +43,8 @@ Import('*')
 #
 #################################################################
 
-# List of headers to generate
-isa_switch_hdrs = Split('''
+env.SwitchingHeaders(
+    Split('''
         decoder.hh
         interrupts.hh
         isa.hh
@@ -63,10 +63,17 @@ isa_switch_hdrs = Split('''
         types.hh
         utility.hh
         vtophys.hh
-        ''')
+        '''),
+    env.subst('${TARGET_ISA}'))
 
-# Set up this directory to support switching headers
-make_switching_dir('arch', isa_switch_hdrs, env)
+if env['BUILD_GPU']:
+    env.SwitchingHeaders(
+        Split('''
+            gpu_decoder.hh
+            gpu_isa.hh
+            gpu_types.hh
+            '''),
+        env.subst('${TARGET_GPU_ISA}'))
 
 #################################################################
 #

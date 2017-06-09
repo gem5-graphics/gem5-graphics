@@ -142,8 +142,8 @@ class MinorDefaultIntDivFU(MinorFU):
 
 class MinorDefaultFloatSimdFU(MinorFU):
     opClasses = minorMakeOpClassSet([
-        'FloatAdd', 'FloatCmp', 'FloatCvt', 'FloatMult', 'FloatDiv',
-        'FloatSqrt',
+        'FloatAdd', 'FloatCmp', 'FloatCvt', 'FloatMisc', 'FloatMult',
+        'FloatMultAcc', 'FloatDiv', 'FloatSqrt',
         'SimdAdd', 'SimdAddAcc', 'SimdAlu', 'SimdCmp', 'SimdCvt',
         'SimdMisc', 'SimdMult', 'SimdMultAcc', 'SimdShift', 'SimdShiftAcc',
         'SimdSqrt', 'SimdFloatAdd', 'SimdFloatAlu', 'SimdFloatCmp',
@@ -154,7 +154,8 @@ class MinorDefaultFloatSimdFU(MinorFU):
     opLat = 6
 
 class MinorDefaultMemFU(MinorFU):
-    opClasses = minorMakeOpClassSet(['MemRead', 'MemWrite'])
+    opClasses = minorMakeOpClassSet(['MemRead', 'MemWrite', 'FloatMemRead',
+                                     'FloatMemWrite'])
     timings = [MinorFUTiming(description='Mem',
         srcRegsRelativeLats=[1], extraAssumedLat=2)]
     opLat = 1
@@ -168,6 +169,8 @@ class MinorDefaultFUPool(MinorFUPool):
         MinorDefaultIntMulFU(), MinorDefaultIntDivFU(),
         MinorDefaultFloatSimdFU(), MinorDefaultMemFU(),
         MinorDefaultMiscFU()]
+
+class ThreadPolicy(Enum): vals = ['SingleThreaded', 'RoundRobin', 'Random']
 
 class MinorCPU(BaseCPU):
     type = 'MinorCPU'
@@ -185,6 +188,8 @@ class MinorCPU(BaseCPU):
     def support_take_over(cls):
         return True
 
+    threadPolicy = Param.ThreadPolicy('RoundRobin',
+            "Thread scheduling policy")
     fetch1FetchLimit = Param.Unsigned(1,
         "Number of line fetches allowable in flight at once")
     fetch1LineSnapWidth = Param.Unsigned(0,

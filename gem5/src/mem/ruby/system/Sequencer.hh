@@ -30,8 +30,8 @@
 #define __MEM_RUBY_SYSTEM_SEQUENCER_HH__
 
 #include <iostream>
+#include <unordered_map>
 
-#include "base/hashmap.hh"
 #include "mem/protocol/MachineType.hh"
 #include "mem/protocol/RubyRequestType.hh"
 #include "mem/protocol/SequencerRequestType.hh"
@@ -63,7 +63,6 @@ class Sequencer : public RubyPort
 
     // Public Methods
     void wakeup(); // Used only for deadlock detection
-    void printProgress(std::ostream& out) const;
     void resetStats();
     void collateStats();
     void regStats();
@@ -98,9 +97,9 @@ class Sequencer : public RubyPort
     void checkCoherence(Addr address);
 
     void markRemoved();
-    void removeRequest(SequencerRequest* request);
     void evictionCallback(Addr address);
     void invalidateSC(Addr address);
+    int coreId() const { return m_coreId; }
 
     void recordRequestType(SequencerRequestType requestType);
     Stats::Histogram& getOutstandReqHist() { return m_outstandReqHist; }
@@ -187,7 +186,7 @@ class Sequencer : public RubyPort
     Cycles m_data_cache_hit_latency;
     Cycles m_inst_cache_hit_latency;
 
-    typedef m5::hash_map<Addr, SequencerRequest*> RequestTable;
+    typedef std::unordered_map<Addr, SequencerRequest*> RequestTable;
     RequestTable m_writeRequestTable;
     RequestTable m_readRequestTable;
     // Global outstanding request count, across all request tables
@@ -200,7 +199,9 @@ class Sequencer : public RubyPort
     Stats::Scalar m_load_waiting_on_store;
     Stats::Scalar m_load_waiting_on_load;
 
-    bool m_usingNetworkTester;
+    int m_coreId;
+
+    bool m_runningGarnetStandalone;
 
     //! Histogram for number of outstanding requests per cycle.
     Stats::Histogram m_outstandReqHist;

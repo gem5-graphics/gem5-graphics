@@ -38,6 +38,7 @@
  */
 
 #include "arch/x86/bios/intelmp.hh"
+
 #include "arch/x86/isa_traits.hh"
 #include "base/misc.hh"
 #include "base/types.hh"
@@ -76,7 +77,7 @@ writeOutField(PortProxy& proxy, Addr addr, T val)
     proxy.writeBlob(addr, (uint8_t *)(&guestVal), sizeof(T));
 
     uint8_t checkSum = 0;
-    while(guestVal) {
+    while (guestVal) {
         checkSum += guestVal;
         guestVal >>= 8;
     }

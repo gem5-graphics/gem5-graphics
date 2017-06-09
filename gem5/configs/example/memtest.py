@@ -85,11 +85,11 @@ parser.add_option("-t", "--testers", type="string", default="1:1:0:2",
                   help="Colon-separated tester hierarchy specification, "
                   "see script comments for details "
                   "[default: %default]")
-parser.add_option("-f", "--functional", type="int", default=0,
+parser.add_option("-f", "--functional", type="int", default=10,
                   metavar="PCT",
                   help="Target percentage of functional accesses "
                   "[default: %default]")
-parser.add_option("-u", "--uncacheable", type="int", default=0,
+parser.add_option("-u", "--uncacheable", type="int", default=10,
                   metavar="PCT",
                   help="Target percentage of uncacheable accesses "
                   "[default: %default]")
@@ -176,8 +176,9 @@ else:
 
 # Define a prototype L1 cache that we scale for all successive levels
 proto_l1 = Cache(size = '32kB', assoc = 4,
-                 hit_latency = 1, response_latency = 1,
-                 tgts_per_mshr = 8)
+                 tag_latency = 1, data_latency = 1, response_latency = 1,
+                 tgts_per_mshr = 8, clusivity = 'mostly_incl',
+                 writeback_clean = True)
 
 if options.blocking:
      proto_l1.mshrs = 1
@@ -193,10 +194,21 @@ for scale in cachespec[:-1]:
      prev = cache_proto[0]
      next = prev()
      next.size = prev.size * scale
-     next.hit_latency = prev.hit_latency * 10
+     next.tag_latency = prev.tag_latency * 10
+     next.data_latency = prev.data_latency * 10
      next.response_latency = prev.response_latency * 10
      next.assoc = prev.assoc * scale
      next.mshrs = prev.mshrs * scale
+
+     # Swap the inclusivity/exclusivity at each level. L2 is mostly
+     # exclusive with respect to L1, L3 mostly inclusive, L4 mostly
+     # exclusive etc.
+     next.writeback_clean = not prev.writeback_clean
+     if (prev.clusivity.value == 'mostly_incl'):
+          next.clusivity = 'mostly_excl'
+     else:
+          next.clusivity = 'mostly_incl'
+
      cache_proto.insert(0, next)
 
 # Make a prototype for the tester to be used throughout
@@ -288,6 +300,7 @@ make_cache_level(cachespec, cache_proto, len(cachespec), None)
 # Connect the lowest level crossbar to the memory
 last_subsys = getattr(system, 'l%dsubsys0' % len(cachespec))
 last_subsys.xbar.master = system.physmem.port
+last_subsys.xbar.point_of_coherency = True
 
 root = Root(full_system = False, system = system)
 if options.atomic:

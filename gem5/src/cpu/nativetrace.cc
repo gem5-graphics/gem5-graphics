@@ -28,8 +28,9 @@
  * Authors: Gabe Black
  */
 
-#include "base/socket.hh"
 #include "cpu/nativetrace.hh"
+
+#include "base/socket.hh"
 #include "cpu/static_inst.hh"
 #include "debug/GDBMisc.hh"
 #include "params/NativeTrace.hh"
@@ -45,7 +46,7 @@ NativeTrace::NativeTrace(const Params *p)
         fatal("All listeners are disabled!");
 
     int port = 8000;
-    while(!native_listener.listen(port, true))
+    while (!native_listener.listen(port, true))
     {
         DPRINTF(GDBMisc, "Can't bind port %d\n", port);
         port++;

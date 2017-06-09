@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013, 2015 ARM Limited
+ * Copyright (c) 2010-2013, 2015-2017 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -39,8 +39,11 @@
  *          Giacomo Gabrielli
  */
 
-#include "arch/arm/isa.hh"
 #include "arch/arm/miscregs.hh"
+
+#include <tuple>
+
+#include "arch/arm/isa.hh"
 #include "base/misc.hh"
 #include "cpu/thread_context.hh"
 #include "sim/full_system.hh"
@@ -1291,7 +1294,7 @@ bitset<NUM_MISCREG_INFOS> miscRegInfo[NUM_MISCREGS] = {
     // MISCREG_CNTVOFF_EL2
     bitset<NUM_MISCREG_INFOS>(string("11111100000000000001")),
     // MISCREG_CNTHCTL_EL2
-    bitset<NUM_MISCREG_INFOS>(string("01111000000000000000")),
+    bitset<NUM_MISCREG_INFOS>(string("01111000000000000100")),
     // MISCREG_CNTHP_TVAL_EL2
     bitset<NUM_MISCREG_INFOS>(string("01111000000000000000")),
     // MISCREG_CNTHP_CTL_EL2
@@ -1966,11 +1969,12 @@ decodeCP15Reg64(unsigned crm, unsigned opc1)
     return MISCREG_CP15_UNIMPL;
 }
 
-bool
-canReadCoprocReg(MiscRegIndex reg, SCR scr, CPSR cpsr, ThreadContext *tc)
+std::tuple<bool, bool>
+canReadCoprocReg(MiscRegIndex reg, SCR scr, CPSR cpsr)
 {
     bool secure = !scr.ns;
-    bool canRead;
+    bool canRead = false;
+    bool undefined = false;
 
     switch (cpsr.mode) {
       case MODE_USER:
@@ -1994,18 +1998,19 @@ canReadCoprocReg(MiscRegIndex reg, SCR scr, CPSR cpsr, ThreadContext *tc)
         canRead = miscRegInfo[reg][MISCREG_HYP_RD];
         break;
       default:
-        panic("Unrecognized mode setting in CPSR.\n");
+        undefined = true;
     }
     // can't do permissions checkes on the root of a banked pair of regs
     assert(!miscRegInfo[reg][MISCREG_BANKED]);
-    return canRead;
+    return std::make_tuple(canRead, undefined);
 }
 
-bool
-canWriteCoprocReg(MiscRegIndex reg, SCR scr, CPSR cpsr, ThreadContext *tc)
+std::tuple<bool, bool>
+canWriteCoprocReg(MiscRegIndex reg, SCR scr, CPSR cpsr)
 {
     bool secure = !scr.ns;
-    bool canWrite;
+    bool canWrite = false;
+    bool undefined = false;
 
     switch (cpsr.mode) {
       case MODE_USER:
@@ -2029,22 +2034,18 @@ canWriteCoprocReg(MiscRegIndex reg, SCR scr, CPSR cpsr, ThreadContext *tc)
         canWrite =  miscRegInfo[reg][MISCREG_HYP_WR];
         break;
       default:
-        panic("Unrecognized mode setting in CPSR.\n");
+        undefined = true;
     }
     // can't do permissions checkes on the root of a banked pair of regs
     assert(!miscRegInfo[reg][MISCREG_BANKED]);
-    return canWrite;
+    return std::make_tuple(canWrite, undefined);
 }
 
 int
 flattenMiscRegNsBanked(MiscRegIndex reg, ThreadContext *tc)
 {
-    int reg_as_int = static_cast<int>(reg);
-    if (miscRegInfo[reg][MISCREG_BANKED]) {
-        SCR scr = tc->readMiscReg(MISCREG_SCR);
-        reg_as_int += (ArmSystem::haveSecurity(tc) && !scr.ns) ? 2 : 1;
-    }
-    return reg_as_int;
+    SCR scr = tc->readMiscReg(MISCREG_SCR);
+    return flattenMiscRegNsBanked(reg, tc, scr.ns);
 }
 
 int
@@ -2052,7 +2053,8 @@ flattenMiscRegNsBanked(MiscRegIndex reg, ThreadContext *tc, bool ns)
 {
     int reg_as_int = static_cast<int>(reg);
     if (miscRegInfo[reg][MISCREG_BANKED]) {
-        reg_as_int += (ArmSystem::haveSecurity(tc) && !ns) ? 2 : 1;
+        reg_as_int += (ArmSystem::haveSecurity(tc) &&
+                      !ArmSystem::highestELIs64(tc) && !ns) ? 2 : 1;
     }
     return reg_as_int;
 }
@@ -2118,9 +2120,8 @@ canReadAArch64SysReg(MiscRegIndex reg, SCR scr, CPSR cpsr, ThreadContext *tc)
       case EL1:
         return secure ? miscRegInfo[reg][MISCREG_PRI_S_RD] :
             miscRegInfo[reg][MISCREG_PRI_NS_RD];
-      // @todo: uncomment this to enable Virtualization
-      // case EL2:
-      //   return miscRegInfo[reg][MISCREG_HYP_RD];
+      case EL2:
+        return miscRegInfo[reg][MISCREG_HYP_RD];
       case EL3:
         return secure ? miscRegInfo[reg][MISCREG_MON_NS0_RD] :
             miscRegInfo[reg][MISCREG_MON_NS1_RD];
@@ -2163,9 +2164,8 @@ canWriteAArch64SysReg(MiscRegIndex reg, SCR scr, CPSR cpsr, ThreadContext *tc)
       case EL1:
         return secure ? miscRegInfo[reg][MISCREG_PRI_S_WR] :
             miscRegInfo[reg][MISCREG_PRI_NS_WR];
-      // @todo: uncomment this to enable Virtualization
-      // case EL2:
-      //   return miscRegInfo[reg][MISCREG_HYP_WR];
+      case EL2:
+        return miscRegInfo[reg][MISCREG_HYP_WR];
       case EL3:
         return secure ? miscRegInfo[reg][MISCREG_MON_NS0_WR] :
             miscRegInfo[reg][MISCREG_MON_NS1_WR];

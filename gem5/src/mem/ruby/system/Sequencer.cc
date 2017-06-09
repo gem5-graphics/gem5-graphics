@@ -26,6 +26,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "mem/ruby/system/Sequencer.hh"
+
 #include "arch/x86/ldstflags.hh"
 #include "base/misc.hh"
 #include "base/str.hh"
@@ -34,13 +36,12 @@
 #include "debug/ProtocolTrace.hh"
 #include "debug/RubySequencer.hh"
 #include "debug/RubyStats.hh"
+#include "mem/packet.hh"
 #include "mem/protocol/PrefetchBit.hh"
 #include "mem/protocol/RubyAccessMode.hh"
 #include "mem/ruby/profiler/Profiler.hh"
 #include "mem/ruby/slicc_interface/RubyRequest.hh"
-#include "mem/ruby/system/Sequencer.hh"
-#include "mem/ruby/system/System.hh"
-#include "mem/packet.hh"
+#include "mem/ruby/system/RubySystem.hh"
 #include "sim/system.hh"
 
 using namespace std;
@@ -63,6 +64,7 @@ Sequencer::Sequencer(const Params *p)
     m_max_outstanding_requests = p->max_outstanding_requests;
     m_deadlock_threshold = p->deadlock_threshold;
 
+    m_coreId = p->coreid; // for tracking the two CorePair sequencers
     assert(m_max_outstanding_requests > 0);
     assert(m_deadlock_threshold > 0);
     assert(m_instCache_ptr != NULL);
@@ -70,7 +72,7 @@ Sequencer::Sequencer(const Params *p)
     assert(m_data_cache_hit_latency > 0);
     assert(m_inst_cache_hit_latency > 0);
 
-    m_usingNetworkTester = p->using_network_tester;
+    m_runningGarnetStandalone = p->garnet_standalone;
 }
 
 Sequencer::~Sequencer()
@@ -157,57 +159,6 @@ void Sequencer::resetStats()
     }
 }
 
-void
-Sequencer::printProgress(ostream& out) const
-{
-#if 0
-    int total_demand = 0;
-    out << "Sequencer Stats Version " << m_version << endl;
-    out << "Current time = " << m_ruby_system->getTime() << endl;
-    out << "---------------" << endl;
-    out << "outstanding requests" << endl;
-
-    out << "proc " << m_Read
-        << " version Requests = " << m_readRequestTable.size() << endl;
-
-    // print the request table
-    RequestTable::iterator read = m_readRequestTable.begin();
-    RequestTable::iterator read_end = m_readRequestTable.end();
-    for (; read != read_end; ++read) {
-        SequencerRequest* request = read->second;
-        out << "\tRequest[ " << i << " ] = " << request->type
-            << " Address " << rkeys[i]
-            << " Posted " << request->issue_time
-            << " PF " << PrefetchBit_No << endl;
-        total_demand++;
-    }
-
-    out << "proc " << m_version
-        << " Write Requests = " << m_writeRequestTable.size << endl;
-
-    // print the request table
-    RequestTable::iterator write = m_writeRequestTable.begin();
-    RequestTable::iterator write_end = m_writeRequestTable.end();
-    for (; write != write_end; ++write) {
-        SequencerRequest* request = write->second;
-        out << "\tRequest[ " << i << " ] = " << request.getType()
-            << " Address " << wkeys[i]
-            << " Posted " << request.getTime()
-            << " PF " << request.getPrefetch() << endl;
-        if (request.getPrefetch() == PrefetchBit_No) {
-            total_demand++;
-        }
-    }
-
-    out << endl;
-
-    out << "Total Number Outstanding: " << m_outstanding_count << endl
-        << "Total Number Demand     : " << total_demand << endl
-        << "Total Number Prefetches : " << m_outstanding_count - total_demand
-        << endl << endl << endl;
-#endif
-}
-
 // Insert the request on the correct request table.  Return true if
 // the entry was already present.
 RequestStatus
@@ -223,6 +174,16 @@ Sequencer::insertRequest(PacketPtr pkt, RubyRequestType request_type)
     }
 
     Addr line_addr = makeLineAddress(pkt->getAddr());
+
+    // Check if the line is blocked for a Locked_RMW
+    if (m_controller->isBlocked(line_addr) &&
+        (request_type != RubyRequestType_Locked_RMW_Write)) {
+        // Return that this request's cache line address aliases with
+        // a prior request that locked the cache line. The request cannot
+        // proceed until the cache line is unlocked by a Locked_RMW_Write
+        return RequestStatus_Aliased;
+    }
+
     // Create a default entry, mapping the address to NULL, the cast is
     // there to make gcc 4.4 happy
     RequestTable::value_type default_entry(line_addr,
@@ -292,29 +253,6 @@ Sequencer::markRemoved()
     m_outstanding_count--;
     assert(m_outstanding_count ==
            m_writeRequestTable.size() + m_readRequestTable.size());
-}
-
-void
-Sequencer::removeRequest(SequencerRequest* srequest)
-{
-    assert(m_outstanding_count ==
-           m_writeRequestTable.size() + m_readRequestTable.size());
-
-    Addr line_addr = makeLineAddress(srequest->pkt->getAddr());
-    if ((srequest->m_type == RubyRequestType_ST) ||
-        (srequest->m_type == RubyRequestType_ST_Bypass) ||
-        (srequest->m_type == RubyRequestType_RMW_Read) ||
-        (srequest->m_type == RubyRequestType_RMW_Write) ||
-        (srequest->m_type == RubyRequestType_Load_Linked) ||
-        (srequest->m_type == RubyRequestType_Store_Conditional) ||
-        (srequest->m_type == RubyRequestType_Locked_RMW_Read) ||
-        (srequest->m_type == RubyRequestType_Locked_RMW_Write)) {
-        m_writeRequestTable.erase(line_addr);
-    } else {
-        m_readRequestTable.erase(line_addr);
-    }
-
-    markRemoved();
 }
 
 void
@@ -453,13 +391,21 @@ Sequencer::writeCallback(Addr address, DataBlock& data,
     // For Alpha, properly handle LL, SC, and write requests with respect to
     // locked cache blocks.
     //
-    // Not valid for Network_test protocl
+    // Not valid for Garnet_standalone protocl
     //
     bool success = true;
-    if(!m_usingNetworkTester)
+    if (!m_runningGarnetStandalone)
         success = handleLlsc(address, request);
 
+    // Handle SLICC block_on behavior for Locked_RMW accesses. NOTE: the
+    // address variable here is assumed to be a line address, so when
+    // blocking buffers, must check line addresses.
     if (request->m_type == RubyRequestType_Locked_RMW_Read) {
+        // blockOnQueue blocks all first-level cache controller queues
+        // waiting on memory accesses for the specified address that go to
+        // the specified queue. In this case, a Locked_RMW_Write must go to
+        // the mandatory_q before unblocking the first-level controller.
+        // This will block standard loads, stores, ifetches, etc.
         m_controller->blockOnQueue(address, m_mandatory_q_ptr);
     } else if (request->m_type == RubyRequestType_Locked_RMW_Write) {
         m_controller->unblock(address);
@@ -503,18 +449,14 @@ Sequencer::hitCallback(SequencerRequest* srequest, DataBlock& data,
                        const Cycles forwardRequestTime,
                        const Cycles firstResponseTime)
 {
+    warn_once("Replacement policy updates recently became the responsibility "
+              "of SLICC state machines. Make sure to setMRU() near callbacks "
+              "in .sm files!");
+
     PacketPtr pkt = srequest->pkt;
     Addr request_address(pkt->getAddr());
-    Addr request_line_address = makeLineAddress(pkt->getAddr());
     RubyRequestType type = srequest->m_type;
     Cycles issued_time = srequest->issue_time;
-
-    // Set this cache entry to the most recently used
-    if (type == RubyRequestType_IFETCH) {
-        m_instCache_ptr->setMRU(request_line_address);
-    } else {
-        m_dataCache_ptr->setMRU(request_line_address);
-    }
 
     assert(curCycle() >= issued_time);
     Cycles total_latency = curCycle() - issued_time;
@@ -527,7 +469,7 @@ Sequencer::hitCallback(SequencerRequest* srequest, DataBlock& data,
     DPRINTFR(ProtocolTrace, "%15s %3s %10s%20s %6s>%-6s %#x %d cycles\n",
              curTick(), m_version, "Seq",
              llscSuccess ? "Done" : "SC_Failed", "", "",
-             request_address, total_latency);
+             printAddress(request_address), total_latency);
 
     // update the data unless it is a non-data-carrying flush
     if (RubySystem::getWarmupEnabled()) {
@@ -544,6 +486,16 @@ Sequencer::hitCallback(SequencerRequest* srequest, DataBlock& data,
                    data.getData(getOffset(request_address), pkt->getSize()),
                    pkt->getSize());
             DPRINTF(RubySequencer, "read data %s\n", data);
+        } else if (pkt->req->isSwap()) {
+            std::vector<uint8_t> overwrite_val(pkt->getSize());
+            memcpy(&overwrite_val[0], pkt->getConstPtr<uint8_t>(),
+                   pkt->getSize());
+            memcpy(pkt->getPtr<uint8_t>(),
+                   data.getData(getOffset(request_address), pkt->getSize()),
+                   pkt->getSize());
+            data.setData(&overwrite_val[0],
+                         getOffset(request_address), pkt->getSize());
+            DPRINTF(RubySequencer, "swap data %s\n", data);
         } else {
             data.setData(pkt->getConstPtr<uint8_t>(),
                          getOffset(request_address), pkt->getSize());
@@ -578,6 +530,7 @@ Sequencer::hitCallback(SequencerRequest* srequest, DataBlock& data,
         rs->m_cache_recorder->enqueueNextFlushRequest();
     } else {
         ruby_hit_callback(pkt);
+        testDrainComplete();
     }
 }
 
@@ -642,7 +595,21 @@ Sequencer::makeRequest(PacketPtr pkt)
             secondary_type = RubyRequestType_ATOMIC;
         }
     } else {
-        if (pkt->isRead()) {
+        //
+        // To support SwapReq, we need to check isWrite() first: a SwapReq
+        // should always be treated like a write, but since a SwapReq implies
+        // both isWrite() and isRead() are true, check isWrite() first here.
+        //
+        if (pkt->isWrite()) {
+            //
+            // Note: M5 packets do not differentiate ST from RMW_Write
+            //
+	    if (pkt->req->isBypassL1()) {
+                primary_type = secondary_type = RubyRequestType_ST_Bypass;
+            } else {
+                primary_type = secondary_type = RubyRequestType_ST;
+            }
+        } else if (pkt->isRead()) {
             if (pkt->req->isInstFetch() or pkt->req->isTexFetch()) {
                 primary_type = secondary_type = RubyRequestType_IFETCH;
             } else {
@@ -663,15 +630,6 @@ Sequencer::makeRequest(PacketPtr pkt)
                         primary_type = secondary_type = RubyRequestType_LD;
                     }
                 }
-            }
-        } else if (pkt->isWrite()) {
-            //
-            // Note: M5 packets do not differentiate ST from RMW_Write
-            //
-            if (pkt->req->isBypassL1()) {
-                primary_type = secondary_type = RubyRequestType_ST_Bypass;
-            } else {
-                primary_type = secondary_type = RubyRequestType_ST;
             }
         } else if (pkt->isFlush()) {
             if (pkt->cmd == MemCmd::FlushAllReq) {
@@ -701,6 +659,8 @@ Sequencer::issueRequest(PacketPtr pkt, RubyRequestType secondary_type)
     ContextID proc_id = pkt->req->hasContextId() ?
         pkt->req->contextId() : InvalidContextID;
 
+    ContextID core_id = coreId();
+
     // If valid, copy the pc to the ruby request
     Addr pc = 0;
     if (pkt->req->hasPC()) {
@@ -715,11 +675,11 @@ Sequencer::issueRequest(PacketPtr pkt, RubyRequestType secondary_type)
                                       nullptr : pkt->getPtr<uint8_t>(),
                                       pkt->getSize(), pc, secondary_type,
                                       RubyAccessMode_Supervisor, pkt,
-                                      PrefetchBit_No, proc_id);
+                                      PrefetchBit_No, proc_id, core_id);
 
     DPRINTFR(ProtocolTrace, "%15s %3s %10s%20s %6s>%-6s %#x %s\n",
             curTick(), m_version, "Seq", "Begin", "", "",
-            msg->getPhysicalAddress(),
+            printAddress(msg->getPhysicalAddress()),
             RubyRequestType_to_string(secondary_type));
 
     // The Sequencer currently assesses instruction and data cache hit latency
@@ -738,15 +698,15 @@ Sequencer::issueRequest(PacketPtr pkt, RubyRequestType secondary_type)
     assert(latency > 0);
 
     assert(m_mandatory_q_ptr != NULL);
-    m_mandatory_q_ptr->enqueue(msg, latency);
+    m_mandatory_q_ptr->enqueue(msg, clockEdge(), cyclesToTicks(latency));
 }
 
 template <class KEY, class VALUE>
 std::ostream &
-operator<<(ostream &out, const m5::hash_map<KEY, VALUE> &map)
+operator<<(ostream &out, const std::unordered_map<KEY, VALUE> &map)
 {
-    typename m5::hash_map<KEY, VALUE>::const_iterator i = map.begin();
-    typename m5::hash_map<KEY, VALUE>::const_iterator end = map.end();
+    auto i = map.begin();
+    auto end = map.end();
 
     out << "[";
     for (; i != end; ++i)
@@ -793,6 +753,8 @@ Sequencer::evictionCallback(Addr address)
 void
 Sequencer::regStats()
 {
+    RubyPort::regStats();
+
     m_store_waiting_on_load
         .name(name() + ".store_waiting_on_load")
         .desc("Number of times a store aliased with a pending load")

@@ -1,4 +1,4 @@
-# Copyright (c) 2010-2012, 2015 ARM Limited
+# Copyright (c) 2010-2012, 2015-2016 ARM Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -42,6 +42,7 @@
 from m5.objects import *
 from Benchmarks import *
 from m5.util import *
+from common import PlatformConfig
 
 # Populate to reflect supported os types per target ISA
 os_types = { 'alpha' : [ 'linux' ],
@@ -52,7 +53,8 @@ os_types = { 'alpha' : [ 'linux' ],
                          'android-gingerbread',
                          'android-ics',
                          'android-jellybean',
-                         'android-kitkat' ],
+                         'android-kitkat',
+                         'android-nougat', ],
            }
 
 class CowIdeDisk(IdeDisk):
@@ -98,10 +100,8 @@ def makeLinuxAlphaSystem(mem_mode, mdesc=None, ruby=False, cmdline=None):
     self.tsunami.attachIO(self.iobus)
 
     self.tsunami.ide.pio = self.iobus.master
-    self.tsunami.ide.config = self.iobus.master
 
     self.tsunami.ethernet.pio = self.iobus.master
-    self.tsunami.ethernet.config = self.iobus.master
 
     if ruby:
         # Store the dma devices for later connection to dma ruby ports.
@@ -142,7 +142,7 @@ def makeLinuxAlphaSystem(mem_mode, mdesc=None, ruby=False, cmdline=None):
 
     return self
 
-def makeSparcSystem(mem_mode, mdesc=None):
+def makeSparcSystem(mem_mode, mdesc=None, cmdline=None):
     # Constants from iob.cc and uart8250.cc
     iob_man_addr = 0x9800000000
     uart_pio_size = 8
@@ -175,7 +175,7 @@ def makeSparcSystem(mem_mode, mdesc=None):
     self.partition_desc.port = self.membus.master
     self.intrctrl = IntrControl()
     self.disk0 = CowMmDisk()
-    self.disk0.childImage(disk('disk.s10hw2'))
+    self.disk0.childImage(mdesc.disk())
     self.disk0.pio = self.iobus.master
 
     # The puart0 and hvuart are placed on the IO bus, so create ranges
@@ -212,6 +212,22 @@ def makeArmSystem(mem_mode, machine_type, num_cpus=1, mdesc=None,
                   external_memory="", ruby=False):
     assert machine_type
 
+    default_dtbs = {
+        "RealViewEB": None,
+        "RealViewPBX": None,
+        "VExpress_EMM": "vexpress.aarch32.ll_20131205.0-gem5.%dcpu.dtb" % num_cpus,
+        "VExpress_EMM64": "vexpress.aarch64.20140821.dtb",
+    }
+
+    default_kernels = {
+        "RealViewEB": "vmlinux.arm.smp.fb.2.6.38.8",
+        "RealViewPBX": "vmlinux.arm.smp.fb.2.6.38.8",
+        "VExpress_EMM": "vmlinux.aarch32.ll_20131205.0-gem5",
+        "VExpress_EMM64": "vmlinux.aarch64.20140821",
+    }
+
+    pci_devices = []
+
     if bare_metal:
         self = ArmSystem()
     else:
@@ -224,44 +240,49 @@ def makeArmSystem(mem_mode, machine_type, num_cpus=1, mdesc=None,
     self.readfile = mdesc.script()
     self.iobus = IOXBar()
     if not ruby:
-       self.membus = MemBus()
-       self.membus.badaddr_responder.warn_access = "warn"
-       self.bridge = Bridge(delay='50ns')
-       self.bridge.master = self.iobus.slave
-       self.bridge.slave = self.membus.master
+        self.bridge = Bridge(delay='50ns')
+        self.bridge.master = self.iobus.slave
+        self.membus = MemBus()
+        self.membus.badaddr_responder.warn_access = "warn"
+        self.bridge.slave = self.membus.master
 
     self.mem_mode = mem_mode
 
-    if machine_type == "RealView_PBX":
-        self.realview = RealViewPBX()
-    elif machine_type == "RealView_EB":
-        self.realview = RealViewEB()
-    elif machine_type == "VExpress_EMM":
-        self.realview = VExpress_EMM()
-        if not dtb_filename:
-            dtb_filename = 'vexpress.aarch32.ll_20131205.0-gem5.%dcpu.dtb' % num_cpus
-    elif machine_type == "VExpress_EMM64":
-        self.realview = VExpress_EMM64()
+    platform_class = PlatformConfig.get(machine_type)
+    # Resolve the real platform name, the original machine_type
+    # variable might have been an alias.
+    machine_type = platform_class.__name__
+    self.realview = platform_class()
+
+    if not dtb_filename and not bare_metal:
+        try:
+            dtb_filename = default_dtbs[machine_type]
+        except KeyError:
+            fatal("No DTB specified and no default DTB known for '%s'" % \
+                  machine_type)
+
+    if isinstance(self.realview, VExpress_EMM64):
         if os.path.split(mdesc.disk())[-1] == 'linux-aarch32-ael.img':
             print "Selected 64-bit ARM architecture, updating default disk image..."
             mdesc.diskname = 'linaro-minimal-aarch64.img'
-        if not dtb_filename:
-            dtb_filename = 'vexpress.aarch64.20140821.dtb'
-    else:
-        print "Unknown Machine Type"
-        sys.exit(1)
+
+
+    # Attach any PCI devices this platform supports
+    self.realview.attachPciDevices()
 
     self.cf0 = CowIdeDisk(driveID='master')
     #self.cf0 = RawIdeDisk(driveID='master')
     self.cf0.childImage(mdesc.disk())
-
-    # Attach any PCI devices this platform supports
-    self.realview.attachPciDevices()
-    # default to an IDE controller rather than a CF one
-    try:
+    # Old platforms have a built-in IDE or CF controller. Default to
+    # the IDE controller if both exist. New platforms expect the
+    # storage controller to be added from the config script.
+    if hasattr(self.realview, "ide"):
         self.realview.ide.disks = [self.cf0]
-    except:
+    elif hasattr(self.realview, "cf_ctrl"):
         self.realview.cf_ctrl.disks = [self.cf0]
+    else:
+        self.pci_ide = IdeController(disks=[self.cf0])
+        pci_devices.append(self.pci_ide)
 
     self.mem_ranges = []
     size_remain = long(Addr(mdesc.mem()))
@@ -287,16 +308,15 @@ def makeArmSystem(mem_mode, machine_type, num_cpus=1, mdesc=None,
         # EOT character on UART will end the simulation
         self.realview.uart.end_on_eot = True
     else:
-        if machine_type == "VExpress_EMM64":
-            self.kernel = binary('vmlinux.aarch64.20140821')
-        elif machine_type == "VExpress_EMM":
-            self.kernel = binary('vmlinux.aarch32.ll_20131205.0-gem5')
-        else:
-            self.kernel = binary('vmlinux.arm.smp.fb.2.6.38.8')
+        if machine_type in default_kernels:
+            self.kernel = binary(default_kernels[machine_type])
 
         if dtb_filename:
             self.dtb_filename = binary(dtb_filename)
-        self.machine_type = machine_type
+
+        self.machine_type = machine_type if machine_type in ArmMachineType.map \
+                            else "DTOnly"
+
         # Ensure that writes to the UART actually go out early in the boot
         if not cmdline:
             cmdline = 'earlyprintk=pl011,0x1c090000 console=ttyAMA0 ' + \
@@ -336,7 +356,14 @@ def makeArmSystem(mem_mode, machine_type, num_cpus=1, mdesc=None,
             # release-specific tweaks
             if 'kitkat' in mdesc.os_type():
                 cmdline += " androidboot.hardware=gem5 qemu=1 qemu.gles=0 " + \
-                           "android.bootanim=0"
+                           "android.bootanim=0 "
+            elif 'nougat' in mdesc.os_type():
+                cmdline += " androidboot.hardware=gem5 qemu=1 qemu.gles=0 " + \
+                           "android.bootanim=0 " + \
+                           "vmalloc=640MB " + \
+                           "android.early.fstab=/fstab.gem5 " + \
+                           "androidboot.selinux=permissive " + \
+                           "video=Virtual-1:1920x1080-16"
 
         self.boot_osflags = fillInCmdline(mdesc, cmdline)
 
@@ -356,8 +383,15 @@ def makeArmSystem(mem_mode, machine_type, num_cpus=1, mdesc=None,
         self.bridge.ranges = [self.realview.nvmem.range]
 
         self.realview.attachOnChipIO(self.iobus)
+        # Attach off-chip devices
+        self.realview.attachIO(self.iobus)
     elif ruby:
-        self._dma_ports = [self.realview.cf_ctrl.dma, self.realview.clcd.dma]
+        #self._dma_ports = [ ]
+        #self.realview.attachOnChipIO(self.iobus, dma_ports=self._dma_ports)
+        # Force Ruby to treat the boot ROM as an IO device.
+        self.realview.nvmem.in_addr_map = False
+        #self.realview.attachIO(self.iobus, dma_ports=self._dma_ports)
+	self._dma_ports = [self.realview.cf_ctrl.dma, self.realview.clcd.dma]
                           # may connect later
                           #self.realview.hdlcd.dma, self.realview.h264_decoder.dma] 
         try:
@@ -368,7 +402,15 @@ def makeArmSystem(mem_mode, machine_type, num_cpus=1, mdesc=None,
         self.realview.attachOnChipIO(self.iobus, None, self._dma_ports)
     else:
         self.realview.attachOnChipIO(self.membus, self.bridge)
+#        self.realview.attachIO(self.iobus)
 
+    for dev_id, dev in enumerate(pci_devices):
+        dev.pci_bus, dev.pci_dev, dev.pci_func = (0, dev_id + 1, 0)
+        self.realview.attachPciDevice(
+            dev, self.iobus,
+            dma_ports=self._dma_ports if ruby else None)
+
+    # Attach off-chip devices
     if ruby:
        self.realview.attachIO(self.iobus, self._dma_ports)
     else:
@@ -378,7 +420,12 @@ def makeArmSystem(mem_mode, machine_type, num_cpus=1, mdesc=None,
     self.vncserver = VncServer()
 
     if not ruby:
-       self.system_port = self.membus.slave
+        self.system_port = self.membus.slave
+
+    #if ruby:
+    #    fatal("You're trying to use Ruby on ARM, which is not working " \
+    #          "properly yet. If you want to test it anyway, you " \
+    #          "need to remove this fatal error from FSConfig.py.")
 
     return self
 
@@ -407,10 +454,8 @@ def makeLinuxMipsSystem(mem_mode, mdesc=None, cmdline=None):
     self.malta = BaseMalta()
     self.malta.attachIO(self.iobus)
     self.malta.ide.pio = self.iobus.master
-    self.malta.ide.config = self.iobus.master
     self.malta.ide.dma = self.iobus.slave
     self.malta.ethernet.pio = self.iobus.master
-    self.malta.ethernet.config = self.iobus.master
     self.malta.ethernet.dma = self.iobus.slave
     self.simple_disk = SimpleDisk(disk=RawDiskImage(image_file = mdesc.disk(),
                                                read_only = True))
@@ -554,9 +599,9 @@ def makeX86System(mem_mode, numCPUs=1, mdesc=None, self=None, Ruby=False):
     # In gem5 Pc::calcPciConfigAddr(), it required "assert(bus==0)",
     # but linux kernel cannot config PCI device if it was not connected to PCI bus,
     # so we fix PCI bus id to 0, and ISA bus id to 1.
-    pci_bus = X86IntelMPBus(bus_id = 0, bus_type='PCI')
+    pci_bus = X86IntelMPBus(bus_id = 0, bus_type='PCI   ')
     base_entries.append(pci_bus)
-    isa_bus = X86IntelMPBus(bus_id = 1, bus_type='ISA')
+    isa_bus = X86IntelMPBus(bus_id = 1, bus_type='ISA   ')
     base_entries.append(isa_bus)
     connect_busses = X86IntelMPBusHierarchy(bus_id=1,
             subtractive_decode=True, parent_bus=0)
@@ -663,6 +708,42 @@ def makeDualRoot(full_system, testSystem, driveSystem, dumpfile):
         self.etherlink.int1 = Parent.drivesys.tsunami.ethernet.interface
     else:
         fatal("Don't know how to connect these system together")
+
+    if dumpfile:
+        self.etherdump = EtherDump(file=dumpfile)
+        self.etherlink.dump = Parent.etherdump
+
+    return self
+
+
+def makeDistRoot(testSystem,
+                 rank,
+                 size,
+                 server_name,
+                 server_port,
+                 sync_repeat,
+                 sync_start,
+                 linkspeed,
+                 linkdelay,
+                 dumpfile):
+    self = Root(full_system = True)
+    self.testsys = testSystem
+
+    self.etherlink = DistEtherLink(speed = linkspeed,
+                                   delay = linkdelay,
+                                   dist_rank = rank,
+                                   dist_size = size,
+                                   server_name = server_name,
+                                   server_port = server_port,
+                                   sync_start = sync_start,
+                                   sync_repeat = sync_repeat)
+
+    if hasattr(testSystem, 'realview'):
+        self.etherlink.int0 = Parent.testsys.realview.ethernet.interface
+    elif hasattr(testSystem, 'tsunami'):
+        self.etherlink.int0 = Parent.testsys.tsunami.ethernet.interface
+    else:
+        fatal("Don't know how to connect DistEtherLink to this system")
 
     if dumpfile:
         self.etherdump = EtherDump(file=dumpfile)

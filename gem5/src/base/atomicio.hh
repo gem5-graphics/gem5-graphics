@@ -41,4 +41,28 @@
 ssize_t atomic_read(int fd, void *s, size_t n);
 ssize_t atomic_write(int fd, const void *s, size_t n);
 
+/**
+ * Statically allocate a string and write it to a file descriptor.
+ *
+ * @warning The return value will from atomic_write will be ignored
+ * which means that errors will be ignored. This is normally fine as
+ * this macro is intended to be used in fatal signal handlers where
+ * error handling might not be feasible.
+ */
+#define STATIC_MSG(fd, m)                                       \
+    do {                                                        \
+        static const char msg[] = m;                            \
+        atomic_write(fd, msg, sizeof(msg) - 1);                 \
+    } while (0)
+
+/**
+ * Statically allocate a string and write it to STDERR.
+ *
+ * @warning The return value will from atomic_write will be ignored
+ * which means that errors will be ignored. This is normally fine as
+ * this macro is intended to be used in fatal signal handlers where
+ * error handling might not be feasible.
+ */
+#define STATIC_ERR(m) STATIC_MSG(STDERR_FILENO, m)
+
 #endif // __BASE_ATOMICIO_HH__

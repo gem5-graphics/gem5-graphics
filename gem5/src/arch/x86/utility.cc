@@ -38,14 +38,14 @@
  * Authors: Gabe Black
  */
 
+#include "arch/x86/utility.hh"
+
 #include "arch/x86/interrupts.hh"
 #include "arch/x86/registers.hh"
-#include "arch/x86/tlb.hh"
-#include "arch/x86/utility.hh"
 #include "arch/x86/x86_traits.hh"
 #include "cpu/base.hh"
 #include "fputils/fp80.h"
-#include "sim/system.hh"
+#include "sim/full_system.hh"
 
 namespace X86ISA {
 
@@ -183,7 +183,7 @@ void initCPU(ThreadContext *tc, int cpuId)
     tc->setMiscReg(MISCREG_APIC_BASE, lApicBase);
 
     Interrupts * interrupts = dynamic_cast<Interrupts *>(
-            tc->getCpuPtr()->getInterruptController());
+            tc->getCpuPtr()->getInterruptController(0));
     assert(interrupts);
 
     interrupts->setRegNoEffect(APIC_ID, cpuId << 24);
@@ -217,11 +217,9 @@ copyMiscRegs(ThreadContext *src, ThreadContext *dest)
     // need to be considered while copying state. That will likely not be
     // true in the future.
     for (int i = 0; i < NUM_MISCREGS; ++i) {
-        if ( ( i != MISCREG_CR1 &&
-             !(i > MISCREG_CR4 && i < MISCREG_CR8) &&
-             !(i > MISCREG_CR8 && i <= MISCREG_CR15) ) == false) {
+        if (!isValidMiscReg(i))
              continue;
-        }
+
         dest->setMiscRegNoEffect(i, src->readMiscRegNoEffect(i));
     }
 
@@ -356,17 +354,17 @@ genX87Tags(uint16_t ftw, uint8_t top, int8_t spm)
 double
 loadFloat80(const void *_mem)
 {
-    const fp80_t *fp80((const fp80_t *)_mem);
+    fp80_t fp80;
+    memcpy(fp80.bits, _mem, 10);
 
-    return fp80_cvtd(*fp80);
+    return fp80_cvtd(fp80);
 }
 
 void
 storeFloat80(void *_mem, double value)
 {
-    fp80_t *fp80((fp80_t *)_mem);
-
-    *fp80 = fp80_cvfd(value);
+    fp80_t fp80 = fp80_cvfd(value);
+    memcpy(_mem, fp80.bits, 10);
 }
 
 } // namespace X86_ISA

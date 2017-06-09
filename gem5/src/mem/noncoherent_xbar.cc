@@ -47,11 +47,12 @@
  * Definition of a non-coherent crossbar object.
  */
 
+#include "mem/noncoherent_xbar.hh"
+
 #include "base/misc.hh"
 #include "base/trace.hh"
 #include "debug/NoncoherentXBar.hh"
 #include "debug/XBar.hh"
-#include "mem/noncoherent_xbar.hh"
 
 NoncoherentXBar::NoncoherentXBar(const NoncoherentXBarParams *p)
     : BaseXBar(p)
@@ -142,15 +143,12 @@ NoncoherentXBar::recvTimingReq(PacketPtr pkt, PortID slave_port_id)
     // before forwarding the packet (and possibly altering it),
     // remember if we are expecting a response
     const bool expect_response = pkt->needsResponse() &&
-        !pkt->memInhibitAsserted();
+        !pkt->cacheResponding();
 
     // since it is a normal request, attempt to send the packet
     bool success = masterPorts[master_port_id]->sendTimingReq(pkt);
 
     if (!success)  {
-        // inhibited packets should never be forced to retry
-        assert(!pkt->memInhibitAsserted());
-
         DPRINTF(NoncoherentXBar, "recvTimingReq: src %s %s 0x%x RETRY\n",
                 src_port->name(), pkt->cmdString(), pkt->getAddr());
 

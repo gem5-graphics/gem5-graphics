@@ -40,11 +40,11 @@ import optparse
 import m5
 from m5.objects import *
 from m5.util import addToPath
-from m5.internal.stats import periodicStatDump
+from m5.stats import periodicStatDump
 
-addToPath('../common')
+addToPath('../')
 
-import MemConfig
+from common import MemConfig
 
 # this script is helpful to sweep the efficiency of a specific memory
 # controller configuration, by varying the number of banks accessed,
@@ -53,8 +53,8 @@ import MemConfig
 
 parser = optparse.OptionParser()
 
-# Use a single-channel DDR3-1600 x64 by default
-parser.add_option("--mem-type", type="choice", default="DDR3_1600_x64",
+# Use a single-channel DDR3-1600 x64 (8x8 topology) by default
+parser.add_option("--mem-type", type="choice", default="DDR3_1600_8x8",
                   choices=MemConfig.mem_names(),
                   help = "type of memory to use")
 
@@ -81,11 +81,11 @@ if args:
 # at the moment we stay with the default open-adaptive page policy,
 # and address mapping
 
-# start with the system itself, using a multi-layer 1.5 GHz
-# crossbar, delivering 64 bytes / 5 cycles (one header cycle)
-# which amounts to 19.2 GByte/s per layer and thus per port
-system = System(membus = IOXBar(width = 16))
-system.clk_domain = SrcClockDomain(clock = '1.5GHz',
+# start with the system itself, using a multi-layer 2.0 GHz
+# crossbar, delivering 64 bytes / 3 cycles (one header cycle)
+# which amounts to 42.7 GByte/s per layer and thus per port
+system = System(membus = IOXBar(width = 32))
+system.clk_domain = SrcClockDomain(clock = '2.0GHz',
                                    voltage_domain =
                                    VoltageDomain(voltage = '1V'))
 
@@ -94,12 +94,14 @@ mem_range = AddrRange('256MB')
 system.mem_ranges = [mem_range]
 
 # do not worry about reserving space for the backing store
-mmap_using_noreserve = True
+system.mmap_using_noreserve = True
 
 # force a single channel to match the assumptions in the DRAM traffic
 # generator
 options.mem_channels = 1
 options.external_memory_system = 0
+options.tlm_memory = 0
+options.elastic_trace_en = 0
 MemConfig.config_mem(options, system)
 
 # the following assumes that we are using the native DRAM
@@ -144,8 +146,8 @@ burst_size = int((system.mem_ctrls[0].devices_per_rank.value *
 page_size = system.mem_ctrls[0].devices_per_rank.value * \
     system.mem_ctrls[0].device_rowbuffer_size.value
 
-# match the maximum bandwidth of the memory, the parameter is in ns
-# and we need it in ticks
+# match the maximum bandwidth of the memory, the parameter is in seconds
+# and we need it in ticks (ps)
 itt = system.mem_ctrls[0].tBURST.value * 1000000000000
 
 # assume we start at 0

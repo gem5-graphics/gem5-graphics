@@ -49,21 +49,18 @@
 #ifndef __SIM_OBJECT_HH__
 #define __SIM_OBJECT_HH__
 
-#include <iostream>
-#include <list>
-#include <map>
 #include <string>
 #include <vector>
 
-#include "enums/MemoryMode.hh"
 #include "params/SimObject.hh"
 #include "sim/drain.hh"
+#include "sim/eventq.hh"
 #include "sim/eventq_impl.hh"
 #include "sim/serialize.hh"
 
-class BaseCPU;
-class Event;
+class EventManager;
 class ProbeManager;
+
 /**
  * Abstract superclass for simulation objects.  Represents things that
  * correspond to physical components and can be specified via the
@@ -184,7 +181,7 @@ class SimObject : public EventManager, public Serializable, public Drainable
      * Provide a default implementation of the drain interface for
      * objects that don't need draining.
      */
-    DrainState drain() M5_ATTR_OVERRIDE { return DrainState::Drained; }
+    DrainState drain() override { return DrainState::Drained; }
 
     /**
      * Write back dirty buffers to memory using functional writes.
@@ -209,8 +206,8 @@ class SimObject : public EventManager, public Serializable, public Drainable
      */
     virtual void memInvalidate() {};
 
-    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE {};
-    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE {};
+    void serialize(CheckpointOut &cp) const override {};
+    void unserialize(CheckpointIn &cp) override {};
 
     /**
      * Serialize all SimObjects in the system.
@@ -229,6 +226,21 @@ class SimObject : public EventManager, public Serializable, public Drainable
      * char* rather than std::string to make it callable from gdb.
      */
     static SimObject *find(const char *name);
+};
+
+/**
+ * Base class to wrap object resolving functionality.
+ *
+ * This can be provided to the serialization framework to allow it to
+ * map object names onto C++ objects.
+ */
+class SimObjectResolver
+{
+  public:
+    virtual ~SimObjectResolver() { }
+
+    // Find a SimObject given a full path name
+    virtual SimObject *resolveSimObject(const std::string &name) = 0;
 };
 
 #ifdef DEBUG

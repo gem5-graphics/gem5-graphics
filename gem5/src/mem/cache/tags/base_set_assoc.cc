@@ -45,10 +45,11 @@
  * Definitions of a base set associative tag store.
  */
 
+#include "mem/cache/tags/base_set_assoc.hh"
+
 #include <string>
 
 #include "base/intmath.hh"
-#include "mem/cache/tags/base_set_assoc.hh"
 #include "sim/core.hh"
 
 using namespace std;
@@ -69,7 +70,6 @@ BaseSetAssoc::BaseSetAssoc(const Params *p)
         fatal("associativity must be greater than zero");
     }
 
-    blkMask = blkSize - 1;
     setShift = floorLog2(blkSize);
     setMask = numSets - 1;
     tagShift = setShift + floorLog2(numSets);
@@ -105,7 +105,6 @@ BaseSetAssoc::BaseSetAssoc(const Params *p)
             blk->tag = j;
             blk->whenReady = 0;
             blk->isTouched = false;
-            blk->size = blkSize;
             sets[i].blks[j]=blk;
             blk->set = i;
             blk->way = j;

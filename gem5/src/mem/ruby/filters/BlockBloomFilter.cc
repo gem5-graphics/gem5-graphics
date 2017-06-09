@@ -26,25 +26,17 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "mem/ruby/filters/BlockBloomFilter.hh"
+
 #include "base/intmath.hh"
 #include "base/str.hh"
-#include "mem/ruby/filters/BlockBloomFilter.hh"
-#include "mem/ruby/system/System.hh"
+#include "mem/ruby/system/RubySystem.hh"
 
 using namespace std;
 
-BlockBloomFilter::BlockBloomFilter(string str)
+BlockBloomFilter::BlockBloomFilter(int size)
 {
-    string head, tail;
-
-#ifndef NDEBUG
-    bool success =
-#endif
-        split_first(str, head, tail, '_');
-
-    assert(success);
-
-    m_filter_size = atoi(head.c_str());
+    m_filter_size = size;
     m_filter_size_bits = floorLog2(m_filter_size);
 
     m_filter.resize(m_filter_size);

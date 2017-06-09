@@ -43,18 +43,22 @@
 #ifndef __ARCH_GENERIC_MEMHELPERS_HH__
 #define __ARCH_GENERIC_MEMHELPERS_HH__
 
+#include "arch/isa_traits.hh"
 #include "base/types.hh"
+#include "mem/packet.hh"
 #include "mem/request.hh"
 #include "sim/byteswap.hh"
 #include "sim/insttracer.hh"
 
-/// Read from memory in timing mode.
+/// Initiate a read from memory in timing mode.  Note that the 'mem'
+/// parameter is unused; only the type of that parameter is used
+/// to determine the size of the access.
 template <class XC, class MemT>
 Fault
-readMemTiming(XC *xc, Trace::InstRecord *traceData, Addr addr,
-        MemT &mem, unsigned flags)
+initiateMemRead(XC *xc, Trace::InstRecord *traceData, Addr addr,
+                MemT &mem, Request::Flags flags)
 {
-    return xc->readMem(addr, (uint8_t *)&mem, sizeof(MemT), flags);
+    return xc->initiateMemRead(addr, sizeof(MemT), flags);
 }
 
 /// Extract the data returned from a timing mode read.
@@ -71,10 +75,10 @@ getMem(PacketPtr pkt, MemT &mem, Trace::InstRecord *traceData)
 template <class XC, class MemT>
 Fault
 readMemAtomic(XC *xc, Trace::InstRecord *traceData, Addr addr, MemT &mem,
-        unsigned flags)
+              Request::Flags flags)
 {
     memset(&mem, 0, sizeof(mem));
-    Fault fault = readMemTiming(xc, traceData, addr, mem, flags);
+    Fault fault = xc->readMem(addr, (uint8_t *)&mem, sizeof(MemT), flags);
     if (fault == NoFault) {
         mem = TheISA::gtoh(mem);
         if (traceData)
@@ -87,7 +91,7 @@ readMemAtomic(XC *xc, Trace::InstRecord *traceData, Addr addr, MemT &mem,
 template <class XC, class MemT>
 Fault
 writeMemTiming(XC *xc, Trace::InstRecord *traceData, MemT mem, Addr addr,
-        unsigned flags, uint64_t *res)
+               Request::Flags flags, uint64_t *res)
 {
     if (traceData) {
         traceData->setData(mem);
@@ -100,9 +104,14 @@ writeMemTiming(XC *xc, Trace::InstRecord *traceData, MemT mem, Addr addr,
 template <class XC, class MemT>
 Fault
 writeMemAtomic(XC *xc, Trace::InstRecord *traceData, const MemT &mem,
-        Addr addr, unsigned flags, uint64_t *res)
+               Addr addr, Request::Flags flags, uint64_t *res)
 {
-    Fault fault = writeMemTiming(xc, traceData, mem, addr, flags, res);
+    if (traceData) {
+        traceData->setData(mem);
+    }
+    MemT host_mem = TheISA::htog(mem);
+    Fault fault =
+          xc->writeMem((uint8_t *)&host_mem, sizeof(MemT), addr, flags, res);
     if (fault == NoFault && res != NULL) {
         if (flags & Request::MEM_SWAP || flags & Request::MEM_SWAP_COND)
             *res = TheISA::gtoh((MemT)*res);

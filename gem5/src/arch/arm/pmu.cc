@@ -163,7 +163,7 @@ PMU::setMiscReg(int misc_reg, MiscReg val)
         return;
 
       case MISCREG_PMEVTYPER0_EL0...MISCREG_PMEVTYPER5_EL0:
-        setCounterTypeRegister(misc_reg - MISCREG_PMEVCNTR0_EL0, val);
+        setCounterTypeRegister(misc_reg - MISCREG_PMEVTYPER0_EL0, val);
         return;
 
       case MISCREG_PMCCFILTR:
@@ -573,8 +573,6 @@ PMU::CounterState::add(uint64_t delta)
 {
     const uint64_t msb(1ULL << (overflow64 ? 63 : 31));
     const uint64_t old_value(value);
-
-    assert(delta > 0);
 
     value += delta;
 

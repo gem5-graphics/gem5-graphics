@@ -44,18 +44,13 @@
 
 #include "gem5.hh"
 
-#include <sst_config.h>
-
-#include <mem/packet.hh>
-
-#include <sst/core/component.h>
-#include <sst/core/params.h>
-#include <sst/core/link.h>
-#include <sst/elements/memHierarchy/memNIC.h>
-
 #ifdef fatal  // gem5 sets this
 #undef fatal
 #endif
+
+#include <mem/packet.hh>
+
+#include <elements/memHierarchy/memNIC.h>
 
 using namespace SST;
 using namespace SST::gem5;
@@ -165,7 +160,7 @@ ExtMaster::handleEvent(SST::Event* event)
 
     Request::FlagsType flags = 0;
     if (ev->queryFlag(MemEvent::F_LOCKED))
-        flags |= Request::LOCKED;
+        flags |= Request::LOCKED_RMW;
     if (ev->queryFlag(MemEvent::F_NONCACHEABLE))
         flags |= Request::UNCACHEABLE;
     if (ev->isLoadLink()) {
@@ -177,7 +172,7 @@ ExtMaster::handleEvent(SST::Event* event)
     }
 
     auto req = new Request(ev->getAddr(), ev->getSize(), flags, 0);
-    req->setThreadContext(ev->getGroupId(), 0);
+    req->setContext(ev->getGroupId());
 
     auto pkt = new Packet(req, cmdO);
     pkt->allocate();

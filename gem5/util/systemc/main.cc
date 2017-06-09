@@ -35,6 +35,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * Authors: Andrew Bardsley
+ *          Abdul Mutaal Ahmad
  */
 
 /**
@@ -73,6 +74,9 @@
 #include "sc_module.hh"
 #include "stats.hh"
 
+// Defining global string variable decalred in stats.hh
+std::string filename;
+
 void
 usage(const std::string &prog_name)
 {
@@ -92,6 +96,9 @@ usage(const std::string &prog_name)
         "    -c <from> <to> <ticks>       -- switch from cpu 'from' to cpu"
         " 'to' after\n"
         "                                    the given number of ticks\n"
+        "    -n <#cpus>                      the number of cpus to switch\n"
+        "                                    (appended to 'to' and 'from'"
+        " cpus above)\n"
         "\n"
         );
 
@@ -114,6 +121,7 @@ class SimControl : public Gem5SystemC::Module
     std::string to_cpu;
     Tick pre_run_time;
     Tick pre_switch_time;
+    unsigned num_switch_cpus;
 
   public:
     SC_HAS_PROCESS(SimControl);
@@ -121,6 +129,18 @@ class SimControl : public Gem5SystemC::Module
     SimControl(sc_core::sc_module_name name, int argc_, char **argv_);
 
     void run();
+  private:
+    /**
+     * Switch a single CPU
+     *
+     * If numTotalCpus is greater than 1, the CPU index will be appended to
+     * the object name when searching config manager for the CPU name
+     *
+     * @param The CPU number to switch
+     * @param The total number of CPUs in the system
+     */
+    void switchCpu(unsigned cpuNum, unsigned numTotalCpus);
+
 };
 
 SimControl::SimControl(sc_core::sc_module_name name,
@@ -162,7 +182,7 @@ SimControl::SimControl(sc_core::sc_module_name name,
     Stats::initSimStats();
     Stats::registerHandlers(CxxConfig::statsReset, CxxConfig::statsDump);
 
-    Trace::enabled = true;
+    Trace::enable();
     setDebugFlag("Terminal");
 
     checkpoint_restore = false;
@@ -173,6 +193,7 @@ SimControl::SimControl(sc_core::sc_module_name name,
     to_cpu = "";
     pre_run_time = 1000000;
     pre_switch_time = 1000000;
+    num_switch_cpus = 1;
 
     const std::string config_file(argv[arg_ptr]);
 
@@ -235,12 +256,22 @@ SimControl::SimControl(sc_core::sc_module_name name,
                 to_cpu = argv[arg_ptr + 1];
                 std::istringstream(argv[arg_ptr + 2]) >> pre_switch_time;
                 arg_ptr += 3;
+            } else if (option == "-n") {
+                if (num_args < 1)
+                    usage(prog_name);
+                std::istringstream(argv[arg_ptr]) >> num_switch_cpus;
+                arg_ptr++;
             } else {
                 usage(prog_name);
             }
         }
     } catch (CxxConfigManager::Exception &e) {
         fatal("Config problem in sim object %s: %s", e.name, e.message);
+    }
+
+    if (checkpoint_save && checkpoint_restore) {
+        fatal("Don't try to save and restore a checkpoint in the same"
+                "run");
     }
 
     CxxConfig::statsEnable();
@@ -266,25 +297,31 @@ void SimControl::run()
         if (checkpoint_restore) {
             std::cerr << "Restoring checkpoint\n";
 
-            Checkpoint *checkpoint = new Checkpoint(checkpoint_dir,
+            CheckpointIn *checkpoint = new CheckpointIn(checkpoint_dir,
                 config_manager->getSimObjectResolver());
 
             /* Catch SystemC up with gem5 after checkpoint restore.
              *  Note that gem5 leading SystemC is always a violation of the
              *  required relationship between the two, hence this careful
              *  catchup */
+
+            DrainManager::instance().preCheckpointRestore();
+            Serializable::unserializeGlobals(*checkpoint);
+
             Tick systemc_time = sc_core::sc_time_stamp().value();
             if (curTick() > systemc_time) {
                 Tick wait_period = curTick() - systemc_time;
 
                 std::cerr << "Waiting for " << wait_period << "ps for"
                     " SystemC to catch up to gem5\n";
-                wait(sc_core::sc_time(wait_period, sc_core::SC_PS));
+                wait(sc_core::sc_time::from_value(wait_period));
             }
 
-            config_manager->loadState(checkpoint);
+            config_manager->loadState(*checkpoint);
             config_manager->startup();
             config_manager->drainResume();
+
+            std::cerr << "Restored from Checkpoint\n";
         } else {
             config_manager->initState();
             config_manager->startup();
@@ -298,16 +335,13 @@ void SimControl::run()
     if (checkpoint_save) {
         exit_event = simulate(pre_run_time);
 
-        DrainManager drain_manager;
-
         unsigned int drain_count = 1;
         do {
-            drain_count = config_manager->drain(&drain_manager);
+            drain_count = config_manager->drain();
 
             std::cerr << "Draining " << drain_count << '\n';
 
             if (drain_count > 0) {
-                drain_manager.setCount(drain_count);
                 exit_event = simulate();
             }
         } while (drain_count > 0);
@@ -330,33 +364,23 @@ void SimControl::run()
     if (switch_cpus) {
         exit_event = simulate(pre_switch_time);
 
-        std::cerr << "Switching CPU\n";
-
-        /* Assume the system is called system */
-        System &system = config_manager->getObject<System>("system");
-        BaseCPU &old_cpu = config_manager->getObject<BaseCPU>(from_cpu);
-        BaseCPU &new_cpu = config_manager->getObject<BaseCPU>(to_cpu);
-
-        DrainManager drain_manager;
         unsigned int drain_count = 1;
         do {
-            drain_count = config_manager->drain(&drain_manager);
+            drain_count = config_manager->drain();
 
             std::cerr << "Draining " << drain_count << '\n';
 
             if (drain_count > 0) {
-                drain_manager.setCount(drain_count);
                 exit_event = simulate();
             }
         } while (drain_count > 0);
 
-        old_cpu.switchOut();
-        system.setMemoryMode(Enums::timing);
+        for (unsigned cpu_num = 0; cpu_num < num_switch_cpus; ++cpu_num) {
+            switchCpu(cpu_num, num_switch_cpus);
+        }
 
-        new_cpu.takeOverFrom(&old_cpu);
         config_manager->drainResume();
 
-        std::cerr << "Switched CPU\n";
     }
 
     exit_event = simulate();
@@ -376,7 +400,47 @@ sc_main(int argc, char **argv)
 {
     SimControl sim_control("gem5", argc, argv);
 
+    filename = "m5out/stats-systemc.txt";
+
     sc_core::sc_start();
 
+    CxxConfig::statsDump();
+
     return EXIT_SUCCESS;
+}
+
+void
+SimControl::switchCpu(unsigned cpuNum, unsigned numTotalCpus) {
+    assert(cpuNum < numTotalCpus);
+    std::ostringstream from_cpu_name;
+    std::ostringstream to_cpu_name;
+
+    from_cpu_name << from_cpu;
+    to_cpu_name << to_cpu;
+
+    if (numTotalCpus > 1) {
+        from_cpu_name << cpuNum;
+        to_cpu_name << cpuNum;
+    }
+
+    std::cerr << "Switching CPU "<< cpuNum << "(from='" << from_cpu_name.str()
+        <<"' to '"<< to_cpu_name.str() << "')\n";
+
+    /* Assume the system is called system */
+    System &system = config_manager->getObject<System>("system");
+    BaseCPU &old_cpu = config_manager->getObject<BaseCPU>(from_cpu_name.str());
+    BaseCPU &new_cpu = config_manager->getObject<BaseCPU>(to_cpu_name.str());
+
+    old_cpu.switchOut();
+
+    // I'm not sure if this can be called before old_cpu.switchOut(). If so,
+    // it is best to just move this call before the switchCpu loop in run()
+    // where it previously was
+    if (cpuNum == 0)
+        system.setMemoryMode(Enums::timing);
+
+    new_cpu.takeOverFrom(&old_cpu);
+
+
+    std::cerr << "Switched CPU"<<cpuNum<<"\n";
 }

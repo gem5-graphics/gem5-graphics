@@ -31,12 +31,13 @@
  *          Steve Reinhardt
  */
 
+#include "sim/core.hh"
+
 #include <iostream>
 #include <string>
 
 #include "base/callback.hh"
 #include "base/output.hh"
-#include "sim/core.hh"
 #include "sim/eventq.hh"
 
 using namespace std;
@@ -118,7 +119,7 @@ registerExitCallback(Callback *callback)
 }
 
 /**
- * Do C++ simulator exit processing.  Exported to SWIG to be invoked
+ * Do C++ simulator exit processing.  Exported to Python to be invoked
  * when simulator terminates via Python's atexit mechanism.
  */
 void

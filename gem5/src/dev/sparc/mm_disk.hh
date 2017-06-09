@@ -36,8 +36,8 @@
 #ifndef __DEV_SPARC_MM_DISK_HH__
 #define __DEV_SPARC_MM_DISK_HH__
 
-#include "dev/disk_image.hh"
 #include "dev/io_device.hh"
+#include "dev/storage/disk_image.hh"
 #include "params/MmDisk.hh"
 
 class MmDisk : public BasicPioDevice
@@ -58,10 +58,10 @@ class MmDisk : public BasicPioDevice
         return dynamic_cast<const Params *>(_params);
     }
 
-    virtual Tick read(PacketPtr pkt);
-    virtual Tick write(PacketPtr pkt);
+    Tick read(PacketPtr pkt) override;
+    Tick write(PacketPtr pkt) override;
 
-    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
+    void serialize(CheckpointOut &cp) const override;
 };
 
 #endif //__DEV_SPARC_MM_DISK_HH__

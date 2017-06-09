@@ -37,6 +37,7 @@
 #
 
 from m5.SimObject import SimObject
+from m5.params import *
 
 # An empty simobject. Used for organizing simobjects
 # into logical groups as subsystems of a larger
@@ -50,3 +51,7 @@ class SubSystem(SimObject):
     type = 'SubSystem'
     cxx_header = "sim/sub_system.hh"
     abstract = False
+
+    # Thermal doamin associated to this object, inheriting the parent's
+    # clock domain by default
+    thermal_domain = Param.ThermalDomain(NULL, "Thermal domain")

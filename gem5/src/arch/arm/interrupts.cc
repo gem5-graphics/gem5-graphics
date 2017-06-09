@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009, 2012-2013 ARM Limited
+ * Copyright (c) 2009, 2012-2013, 2016 ARM Limited
  * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
@@ -38,8 +38,9 @@
  */
 
 #include "arch/arm/interrupts.hh"
+
 #include "arch/arm/system.hh"
-    
+
 ArmISA::Interrupts *
 ArmInterruptsParams::create()
 {
@@ -65,7 +66,7 @@ ArmISA::Interrupts::takeInt(ThreadContext *tc, InterruptTypes int_type) const
     else
         scr = tc->readMiscReg(MISCREG_SCR_EL3);
 
-    bool is_secure = inSecureState(scr, cpsr);
+    bool is_secure = inSecureState(tc);
 
     switch(int_type) {
       case INT_FIQ:

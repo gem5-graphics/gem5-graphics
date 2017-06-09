@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015 ARM Limited
+ * Copyright (c) 2015, 2017 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -63,8 +63,8 @@ struct DisplayTimings : public Serializable
                    unsigned hbp, unsigned h_sync, unsigned hfp,
                    unsigned vbp, unsigned v_sync, unsigned vfp);
 
-    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
-    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 
     /** How many pixel clocks are required for one line? */
     Cycles cyclesPerLine() const {
@@ -148,15 +148,22 @@ class BasePixelPump
       public Serializable
 {
   public:
-    BasePixelPump(EventManager &em, ClockDomain &pxl_clk, unsigned pixel_chunk);
+    BasePixelPump(EventManager &em, ClockDomain &pxl_clk,
+                  unsigned pixel_chunk);
     virtual ~BasePixelPump();
 
-    void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
-    void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 
   public: // Public API
-    /** Starting pushing pixels using the supplied display timings. */
-    void start(const DisplayTimings &timings);
+    /** Update frame size using display timing */
+    void updateTimings(const DisplayTimings &timings);
+
+    /** Render an entire frame in KVM execution mode */
+    void renderFrame();
+
+    /** Starting pushing pixels in timing mode */
+    void start();
 
     /** Immediately stop pushing pixels */
     void stop();
@@ -257,14 +264,14 @@ class BasePixelPump
       public:
         PixelEvent(const char *name, BasePixelPump *parent, CallbackType func);
 
-        DrainState drain() M5_ATTR_OVERRIDE;
-        void drainResume() M5_ATTR_OVERRIDE;
+        DrainState drain() override;
+        void drainResume() override;
 
-        void serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE;
-        void unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE;
+        void serialize(CheckpointOut &cp) const override;
+        void unserialize(CheckpointIn &cp) override;
 
-        const std::string name() const M5_ATTR_OVERRIDE { return _name; }
-        void process() M5_ATTR_OVERRIDE {
+        const std::string name() const override { return _name; }
+        void process() override {
             (parent.*func)();
         }
 
@@ -284,6 +291,9 @@ class BasePixelPump
 
     void beginLine();
     void renderPixels();
+
+    /** Fast and event-free line rendering function */
+    void renderLine();
 
     /** Convenience vector when doing operations on all events */
     std::vector<PixelEvent *> pixelEvents;

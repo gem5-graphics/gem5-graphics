@@ -26,6 +26,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "mem/ruby/network/simple/Switch.hh"
+
 #include <numeric>
 
 #include "base/cast.hh"
@@ -33,7 +35,6 @@
 #include "mem/ruby/network/MessageBuffer.hh"
 #include "mem/ruby/network/simple/PerfectSwitch.hh"
 #include "mem/ruby/network/simple/SimpleNetwork.hh"
-#include "mem/ruby/network/simple/Switch.hh"
 #include "mem/ruby/network/simple/Throttle.hh"
 
 using namespace std;
@@ -69,12 +70,6 @@ void
 Switch::addInPort(const vector<MessageBuffer*>& in)
 {
     m_perfect_switch->addInPort(in);
-
-    for (auto& it : in) {
-        if (it != nullptr) {
-            it->setReceiver(this);
-        }
-    }
 }
 
 void
@@ -95,17 +90,10 @@ Switch::addOutPort(const vector<MessageBuffer*>& out,
     vector<MessageBuffer*> intermediateBuffers;
 
     for (int i = 0; i < out.size(); ++i) {
-        if (out[i] != nullptr) {
-            out[i]->setSender(this);
-        }
-
         assert(m_num_connected_buffers < m_port_buffers.size());
         MessageBuffer* buffer_ptr = m_port_buffers[m_num_connected_buffers];
         m_num_connected_buffers++;
         intermediateBuffers.push_back(buffer_ptr);
-
-        buffer_ptr->setSender(this);
-        buffer_ptr->setReceiver(this);
     }
 
     // Hook the queues to the PerfectSwitch
@@ -125,6 +113,8 @@ Switch::getThrottle(LinkID link_number) const
 void
 Switch::regStats()
 {
+    BasicRouter::regStats();
+
     for (int link = 0; link < m_throttles.size(); link++) {
         m_throttles[link]->regStats(name());
     }
@@ -184,12 +174,6 @@ Switch::print(std::ostream& out) const
 bool
 Switch::functionalRead(Packet *pkt)
 {
-    // Access the buffers in the switch for performing a functional read
-    for (unsigned int i = 0; i < m_port_buffers.size(); ++i) {
-        if (m_port_buffers[i]->functionalRead(pkt)) {
-            return true;
-        }
-    }
     return false;
 }
 

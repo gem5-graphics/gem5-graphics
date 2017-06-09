@@ -42,6 +42,8 @@
  * Authors: Nathan Binkert
  *          Steve Reinhardt
  *          Andrew Bardsley
+ *          Matthias Jung
+ *          Christian Menard
  */
 
 /**
@@ -55,15 +57,16 @@
  * most one Gem5Module instantiated in any simulation.
  */
 
+#include "base/misc.hh"
 #include "base/pollevent.hh"
 #include "base/trace.hh"
 #include "debug/Event.hh"
+#include "sc_module.hh"
 #include "sim/async.hh"
 #include "sim/core.hh"
 #include "sim/eventq.hh"
 #include "sim/sim_exit.hh"
 #include "sim/stat_control.hh"
-#include "sc_module.hh"
 
 namespace Gem5SystemC
 {
@@ -76,7 +79,7 @@ setTickFrequency()
     ::setClockFrequency(1000000000000);
 }
 
-Module::Module(sc_core::sc_module_name name) : sc_core::sc_module(name),
+Module::Module(sc_core::sc_module_name name) : sc_core::sc_channel(name),
     in_simulate(false)
 {
     SC_METHOD(eventLoop);
@@ -140,6 +143,7 @@ void
 Module::serviceAsyncEvent()
 {
     EventQueue *eventq = getEventQueue(0);
+    std::lock_guard<EventQueue> lock(*eventq);
 
     assert(async_event);
 
@@ -220,8 +224,8 @@ Module::eventLoop()
 
             /* The next event is scheduled in the future, wait until
              *  then or until externalSchedulingEvent */
-            eventLoopEnterEvent.notify(sc_core::sc_time(
-                sc_dt::uint64(wait_period), 0));
+            eventLoopEnterEvent.notify(sc_core::sc_time::from_value(
+                sc_dt::uint64(wait_period)));
 
             return;
         } else if (gem5_time > next_event_time) {

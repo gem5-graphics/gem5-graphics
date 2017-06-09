@@ -112,7 +112,7 @@ class Pipeline : public Ticked
   public:
     /** Wake up the Fetch unit.  This is needed on thread activation esp.
      *  after quiesce wakeup */
-    void wakeupFetch();
+    void wakeupFetch(ThreadID tid);
 
     /** Try to drain the CPU */
     bool drain();
@@ -124,9 +124,9 @@ class Pipeline : public Ticked
 
     /** A custom evaluate allows report in the right place (between
      *  stages and pipeline advance) */
-    void evaluate();
+    void evaluate() override;
 
-    void countCycles(Cycles delta) M5_ATTR_OVERRIDE
+    void countCycles(Cycles delta) override
     {
         cpu.ppCycles->notify(delta);
     }

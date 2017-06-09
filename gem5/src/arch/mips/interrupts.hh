@@ -107,22 +107,16 @@ class Interrupts : public SimObject
     void updateIntrInfo(ThreadContext *tc) const;
     bool interruptsPending(ThreadContext *tc) const;
     bool onCpuTimerInterrupt(ThreadContext *tc) const;
-
-    bool
-    checkInterrupts(ThreadContext *tc) const
-    {
-        return interruptsPending(tc);
-    }
-
+    bool checkInterrupts(ThreadContext *tc) const;
 
     void
-    serialize(CheckpointOut &cp) const M5_ATTR_OVERRIDE
+    serialize(CheckpointOut &cp) const override
     {
         fatal("Serialization of Interrupts Unimplemented for MIPS");
     }
 
     void
-    unserialize(CheckpointIn &cp) M5_ATTR_OVERRIDE
+    unserialize(CheckpointIn &cp) override
     {
         fatal("Unserialization of Interrupts Unimplemented for MIPS");
     }

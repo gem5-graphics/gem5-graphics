@@ -29,7 +29,6 @@
 # Authors: Nathan Binkert
 
 from m5.SimObject import SimObject
-from m5.defines import buildEnv
 from m5.params import *
 from m5.util import fatal
 
@@ -50,7 +49,7 @@ class Root(SimObject):
         # args.  Seems like a bad design but that's the way it is.
         Root._the_instance = SimObject.__new__(cls)
         return Root._the_instance
-        
+
     @classmethod
     def getInstance(cls):
         return Root._the_instance

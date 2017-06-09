@@ -45,12 +45,10 @@
  * Declaration of an associative set
  */
 
-#ifndef __CACHESET_HH__
-#define __CACHESET_HH__
+#ifndef __MEM_CACHE_TAGS_CACHESET_HH__
+#define __MEM_CACHE_TAGS_CACHESET_HH__
 
 #include <cassert>
-
-#include "mem/cache/blk.hh" // base class
 
 /**
  * An associative set of cache blocks.
@@ -105,7 +103,7 @@ CacheSet<Blktype>::findBlk(Addr tag, bool is_secure, int& way_id) const
             return blks[i];
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 template <class Blktype>
@@ -133,10 +131,7 @@ CacheSet<Blktype>::moveToHead(Blktype *blk)
 
     do {
         assert(i < assoc);
-        // swap blks[i] and next
-        Blktype *tmp = blks[i];
-        blks[i] = next;
-        next = tmp;
+        std::swap(blks[i], next);
         ++i;
     } while (next != blk);
 }
@@ -158,10 +153,7 @@ CacheSet<Blktype>::moveToTail(Blktype *blk)
 
     do {
         assert(i >= 0);
-        // swap blks[i] and next
-        Blktype *tmp = blks[i];
-        blks[i] = next;
-        next = tmp;
+        std::swap(blks[i], next);
         --i;
     } while (next != blk);
 }

@@ -73,6 +73,7 @@
 #include "sim/eventq.hh"
 #include "sim/full_system.hh"
 #include "sim/system.hh"
+#include "cpu/o3/isa_specific.hh"
 
 using namespace std;
 
@@ -151,7 +152,7 @@ DefaultFetch<Impl>::DefaultFetch(O3CPU *_cpu, DerivO3CPUParams *params)
     branchPred = params->branchPred;
 
     for (ThreadID tid = 0; tid < numThreads; tid++) {
-        decoder[tid] = new TheISA::Decoder;
+        decoder[tid] = new TheISA::Decoder(params->isa[tid]);
         // Create space to buffer the cache line data,
         // which may not hold the entire cache line.
         fetchBuffer[tid] = new uint8_t[fetchBufferSize];
@@ -170,6 +171,9 @@ void
 DefaultFetch<Impl>::regProbePoints()
 {
     ppFetch = new ProbePointArg<DynInstPtr>(cpu->getProbeManager(), "Fetch");
+    ppFetchRequestSent = new ProbePointArg<RequestPtr>(cpu->getProbeManager(),
+                                                       "FetchRequest");
+
 }
 
 template <class Impl>
@@ -374,7 +378,7 @@ template<class Impl>
 void
 DefaultFetch<Impl>::processCacheCompletion(PacketPtr pkt)
 {
-    ThreadID tid = pkt->req->threadId();
+    ThreadID tid = cpu->contextToThread(pkt->req->contextId());
 
     DPRINTF(Fetch, "[tid:%u] Waking up from cache miss.\n", tid);
     assert(!cpu->switchedOut());
@@ -420,8 +424,10 @@ template <class Impl>
 void
 DefaultFetch<Impl>::drainResume()
 {
-    for (ThreadID i = 0; i < numThreads; ++i)
+    for (ThreadID i = 0; i < numThreads; ++i) {
+        stalls[i].decode = false;
         stalls[i].drain = false;
+    }
 }
 
 template <class Impl>
@@ -618,7 +624,7 @@ DefaultFetch<Impl>::fetchCacheLine(Addr vaddr, ThreadID tid, Addr pc)
     RequestPtr mem_req =
         new Request(tid, fetchBufferBlockPC, fetchBufferSize,
                     Request::INST_FETCH, cpu->instMasterId(), pc,
-                    cpu->thread[tid]->contextId(), tid);
+                    cpu->thread[tid]->contextId());
 
     mem_req->taskId(cpu->taskId());
 
@@ -636,7 +642,7 @@ template <class Impl>
 void
 DefaultFetch<Impl>::finishTranslation(const Fault &fault, RequestPtr mem_req)
 {
-    ThreadID tid = mem_req->threadId();
+    ThreadID tid = cpu->contextToThread(mem_req->contextId());
     Addr fetchBufferBlockPC = mem_req->getVaddr();
 
     assert(!cpu->switchedOut());
@@ -694,6 +700,9 @@ DefaultFetch<Impl>::finishTranslation(const Fault &fault, RequestPtr mem_req)
                     "response.\n", tid);
             lastIcacheStall[tid] = curTick();
             fetchStatus[tid] = IcacheWaitResponse;
+            // Notify Fetch Request probe when a packet containing a fetch
+            // request is successfully sent
+            ppFetchRequestSent->notify(mem_req);
         }
     } else {
         // Don't send an instruction to decode if we can't handle it.
@@ -1421,6 +1430,9 @@ DefaultFetch<Impl>::recvReqRetry()
 
         if (cpu->getInstPort().sendTimingReq(retryPkt)) {
             fetchStatus[retryTid] = IcacheWaitResponse;
+            // Notify Fetch Request probe when a retryPkt is successfully sent.
+            // Note that notify must be called before retryPkt is set to NULL.
+            ppFetchRequestSent->notify(retryPkt->req);
             retryPkt = NULL;
             retryTid = InvalidThreadID;
             cacheBlocked = false;
