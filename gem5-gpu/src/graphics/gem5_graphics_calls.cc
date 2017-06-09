@@ -36,6 +36,7 @@ void gem5GraphicsCalls_t::executeGraphicsCommand(ThreadContext *tc, uint64_t gpu
     int tid = helper.getTid();
     int pid = helper.getPid();
 
+    //get gpu model, null returned if gpu not enabled
     CudaGPU *cudaGPU = CudaGPU::getCudaGPU(g_active_device);
     switch (gpusysno) {
         case gem5_graphics_mem:
@@ -43,8 +44,11 @@ void gem5GraphicsCalls_t::executeGraphicsCommand(ThreadContext *tc, uint64_t gpu
             CALL_GSERIALIZE_CMD;
             DPRINTF(GraphicsCalls, "gem5pipe: receiving graphics memory address addr=%x, len=%d\n", buf_val, buf_len);
             //setting the tc for graphics
-            if (buf_val != 0)
+            if (buf_val != 0){
+              //check if the gpu model is enabled
+              if(cudaGPU!=NULL)
                 cudaGPU->setGraphicsMem(pid, (Addr) buf_val, (unsigned) buf_len);
+            }
             return;
         }
             break;
@@ -52,7 +56,7 @@ void gem5GraphicsCalls_t::executeGraphicsCommand(ThreadContext *tc, uint64_t gpu
         {
             CALL_GSERIALIZE_CMD;
             //we cannot issue more graphics calls while other are rendering
-            uint32_t blockT = cudaGPU->isStreamManagerEmpty() ? 0 : 1;
+            uint32_t blockT = cudaGPU==NULL? 0 : (cudaGPU->isStreamManagerEmpty() ? 0 : 1);
             DPRINTF(GraphicsCalls, "returning a graphics block flag value of %d\n", blockT);
             helper.setReturn((uint8_t*) & blockT, sizeof (uint32_t));
             return;
@@ -82,7 +86,8 @@ void gem5GraphicsCalls_t::executeGraphicsCommand(ThreadContext *tc, uint64_t gpu
     //================================================
     //================================================
     //graphics communication
-    cudaGPU->setGraphicsTC(tc, pid);
+    if(cudaGPU)
+      cudaGPU->setGraphicsTC(tc, pid);
     int32_t pkt_opcode;
     uint8_t * bufferVal = new uint8_t[buf_len];
     helper.readBlob(buf_val, bufferVal, buf_len);
