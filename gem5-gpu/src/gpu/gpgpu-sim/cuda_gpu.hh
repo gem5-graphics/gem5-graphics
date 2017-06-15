@@ -202,7 +202,12 @@ class CudaGPU : public ClockedObject
      */
     static CudaGPU *getCudaGPU(unsigned id) {
         if (id >= gpuArray.size()) {
-            panic("CUDA GPU ID not found: %u. Only %u GPUs registered!\n", id, gpuArray.size());
+            static unsigned warn_id = -1;
+            if(id != warn_id)
+              warn("%s: CUDA GPU ID (%u) not found. Only %u GPUs registered! returning NULL\n", 
+                        __FUNCTION__, id, gpuArray.size());
+            warn_id = id;
+            return NULL;
         }
         return gpuArray[id];
     }
