@@ -124,7 +124,8 @@
     M5OP(m5_panic, panic_func, 0);                      \
     M5OP(m5_work_begin, work_begin_func, 0);            \
     M5OP(m5_work_end, work_end_func, 0);                \
-    M5OP(m5_togglesync, togglesync_func, 0);
+    M5OP(m5_togglesync, togglesync_func, 0);            \
+    M5OP(m5_gpu, gpu_func, 0);
 
 #define FOREACH_M5_ANNOTATION                   \
     M5_ANNOTATION(m5a_bsm, an_bsm);             \
