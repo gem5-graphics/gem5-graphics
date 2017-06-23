@@ -645,10 +645,11 @@ Serializable::ScopedCheckpointSection::nameOut(CheckpointOut &cp)
     cp << "\n[" << Serializable::currentSection() << "]\n";
 }
 
-void 
-Serializable::unserializeGraphics(CheckpointIn& cp){
-    Serializable::ScopedCheckpointSection sec(cp, "Graphics");
-    checkpointGraphics::unserializeGraphicsState(cp);
+void
+Serializable::unserializeGraphics(std::string cpt_dir, SimObjectResolver &resolver){
+    CheckpointIn gcp(cpt_dir, resolver, CheckpointIn::CheckpointFileType::GraphicsFile);
+    Serializable::ScopedCheckpointSection sec(gcp, "Graphics");
+    checkpointGraphics::unserializeGraphicsState(gcp);
 }
 
 void

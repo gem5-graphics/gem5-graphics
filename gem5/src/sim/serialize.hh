@@ -331,7 +331,7 @@ class Serializable
     static int ckptPrevCount;
     static void serializeAll(const std::string &cpt_dir);
     static void unserializeGlobals(CheckpointIn &cp);
-    static void unserializeGraphics(CheckpointIn &cp);
+    static void unserializeGraphics(std::string cpt_dir, SimObjectResolver &resolver);
 
   private:
     static std::stack<std::string> path;  
