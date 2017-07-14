@@ -67,6 +67,7 @@ class GraphicsSyscallHelper {
     void writeBlob(Addr addr, uint8_t* p, int size) { writeBlob(addr, p, size, tc); }
     int getPid(){return sim_params.pid;}
     int getTid(){return sim_params.tid;}
+    bool hasParams() { return arg_lengths!=NULL; }
 };
 
 #endif

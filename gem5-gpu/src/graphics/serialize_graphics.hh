@@ -2,7 +2,6 @@
 #define __SERIALIZE_GRAPHICS_HH__
 
 #include <vector>
-#include "graphics/graphic_calls.hh"
 #include "sim/serialize.hh"
 
 

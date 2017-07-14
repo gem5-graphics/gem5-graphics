@@ -9,8 +9,12 @@
 ** MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ** GNU General Public License for more details.
 */
-#ifndef ANDROID_UTILS_DLL_H
-#define ANDROID_UTILS_DLL_H
+
+#pragma once
+
+#include "graphics/emugl/android/utils/compiler.h"
+
+ANDROID_BEGIN_HEADER
 
 /* Opaque type to model a dynamic library handle */
 typedef struct ADynamicLibrary   ADynamicLibrary;
@@ -41,4 +45,4 @@ void* adynamicLibrary_findSymbol( ADynamicLibrary*  lib,
 /* Close/unload a given dynamic library */
 void  adynamicLibrary_close( ADynamicLibrary*  lib );
 
-#endif /* ANDROID_UTILS_DLL_H */
+ANDROID_END_HEADER

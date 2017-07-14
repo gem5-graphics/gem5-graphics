@@ -1025,27 +1025,6 @@ if not conf.CheckLibWithHeader('z', 'zlib.h', 'C++','zlibVersion();'):
     print '       Please install zlib and try again.'
     Exit(1)
 
-#Check for X11, SDLmain, SDL and Xext libraries.
-if not conf.CheckLib('X11'):
-    print 'Error: did not find needed X11 library'
-    print '       Please install X11 and try again.'
-    Exit(1)
-
-if not conf.CheckLib('SDLmain'):
-    print 'Error: did not find needed SDLmain library'
-    print '       Please install SDLmain and try again.'
-    Exit(1)
-
-if not conf.CheckLib('SDL'):
-    print 'Error: did not find needed SDL library'
-    print '       Please install SDL and try again.'
-    Exit(1)
-
-if not conf.CheckLib('Xext'):
-    print 'Error: did not find needed Xext library'
-    print '       Please install Xext and try again.'
-    Exit(1)
-
 # If we have the protobuf compiler, also make sure we have the
 # development libraries. If the check passes, libprotobuf will be
 # automatically added to the LIBS environment variable. After

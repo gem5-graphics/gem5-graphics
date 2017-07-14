@@ -1,0 +1,7 @@
+Sources copied from emulator with minimal or no modifications
+repo: https://android.googlesource.com/platform/external/qemu
+revision: 199ef02497cebc8b910435de5662fc27309b52d6
+
+OpenglRender/include copied from ./android/android-emugl/host/include
+android/* from ./android/android-emu/android
+opengles.* from ./android/android-emu/android/opengles.*

@@ -81,7 +81,6 @@
 #include "sim/vptr.hh"
 #include "arch/stacktrace.hh"
 #include "graphics/graphicsStream.hh"
-#include "graphics/graphic_calls.hh"
 #include "gpu/gpgpu-sim/cuda_gpu.hh"
 #include "graphics/serialize_graphics.hh"
 #include "graphics/gem5_graphics_calls.h"
@@ -721,7 +720,7 @@ workend(ThreadContext *tc, uint64_t workid, uint64_t threadid)
 
 void
 gpu(ThreadContext *tc, uint64_t gpusysno, uint64_t call_params)
-{  
+{
     //if not a cuda for a graphics related call then it is ignored and warning is sent
     if (gpusysno >= GEM5_GPU_CALLS_END) {
         panic("Ignoring gpu syscall %d\n", gpusysno);
@@ -732,7 +731,7 @@ gpu(ThreadContext *tc, uint64_t gpusysno, uint64_t call_params)
         gpgpu_funcs[gpusysno](tc, (gpusyscall_t*)call_params);
         return;
     }
-    
+
     //otherwise it is a graphics call
     //first checking if a checkpoint is pending
     bool ret = CheckPointRequest_t::Request.isCheckpointRequested();

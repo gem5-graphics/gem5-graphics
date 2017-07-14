@@ -1,4 +1,4 @@
-/* 
+/*
  * File:   graphicsStream.hh
  * Author: ayub
  *
@@ -6,58 +6,69 @@
  */
 
 #ifndef GRAPHICSSTREAM_HH
-#define	GRAPHICSSTREAM_HH
+#define GRAPHICSSTREAM_HH
 
 #include <map>
-#include "libOpenglRender/UnixStream.hh"
 #include "api/cuda_syscalls.hh"
-#define STREAM_BUFFER_SIZE  4*1024*1024 //big enough to avoid blocking
+#include "graphics/emugl/OpenglRender/include/RenderChannel.h"
 
 enum gem5GraphicsCall {
-    gem5_writeFully = GEM5_GPU_CALLS_START, //start where cuda calls finish
-    gem5_readFully, // 101
-    gem5_read, // 102
-    gem5_recv, // 103
-    gem5_graphics_mem, // 104
-    gem5_block, // 105
-    gem5_debug, // 106
-    gem5_call_buffer_fail, // 107
-    gem5_sim_active, // 108
-    GEM5_GPU_CALLS_END // 109
+    gem5_write = GEM5_GPU_CALLS_START, //start where cuda calls finish
+    gem5_read, // 101
+    gem5_graphics_mem, // 102
+    gem5_block, // 103
+    gem5_debug, // 104
+    gem5_call_buffer_fail, // 105
+    gem5_sim_active, // 106
+    gem5_get_procId, //107
+
+    GEM5_GPU_CALLS_END // 108
 };
 
 enum gem5DebugCall {
-   gmem_alloc_fail, // 1
-   gmem_lock_fail, // 2
-   pipe_mem_alloc_fail, // 3
-   gem5_info // 4
+   gmem_alloc_fail, // 0
+   gmem_lock_fail, // 1
+   pipe_mem_alloc_fail, // 2
+   gem5_info // 3
 };
 
 class graphicsStream {
 public:
     static std::map<int, std::map<int, graphicsStream*> > m_connStreams;
     static graphicsStream * get(int tid, int pid);
-    
-    graphicsStream(UnixStream* unixstream, int tid, int pid){
-        m_stream = unixstream;
+
+    graphicsStream(emugl::RenderChannelPtr channel, int tid, int pid){
+        m_channel = channel;
         m_tid = tid;
         m_pid = pid;
     }
-    int writeFully(const void *buf, size_t len);
-    const unsigned char* readFully(void *buf, size_t len);
-    const unsigned char* read( void *buf, size_t *inout_len);
-    int recv(void *buf, size_t len);
-    void* allocBuffer(size_t size);
-    int getSocketNum() {
-       return m_stream->getSocketNum();
+
+    ~graphicsStream(){
     }
-    
+
+    uint32_t read(uint8_t* buf, size_t len);
+    uint32_t write(uint8_t* buf, size_t len);
+
+    /*int writeFully(const char *buf, size_t len);
+    const unsigned char* readFully(char *buf, size_t len);
+    int recv(char *buf, size_t len);*/
+
 private:
-    UnixStream * m_stream;
+    //IOStream* m_stream;
+    emugl::RenderChannelPtr m_channel;
     int m_pid;
     int m_tid;
+    int sendChannel(const void* buf, size_t len);
+    int recvChannel(const void* buf, size_t len);
+
+    // These two variables serve as a reading buffer for the guest.
+    // Each time we get a read request, first we extract a single chunk from
+    // the |mChannel| into here, and then copy its content into the
+    // guest-supplied memory.
+    // If guest didn't have enough room for the whole buffer, we track the
+    // number of remaining bytes in |mDataForReadingLeft| for the next read().
+    emugl::RenderChannel::Buffer m_dataForReading;
+    size_t m_dataForReadingLeft = 0;
 };
 
-
-#endif	/* GRAPHICSSTREAM_HH */
-
+#endif /* GRAPHICSSTREAM_HH */

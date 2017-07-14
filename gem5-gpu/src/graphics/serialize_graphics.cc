@@ -7,7 +7,7 @@
 #include "base/debug.hh"
 #include "debug/GraphicsCalls.hh"
 #include "graphics/serialize_graphics.hh"
-#include "graphics/libOpenglRender/render_api.h"
+//#include "graphics/libOpenglRender/render_api.h"
 #include "graphics/graphicsStream.hh"
 #include "graphics/gem5_graphics_calls.h"
 
@@ -192,7 +192,7 @@ checkpointGraphics::~checkpointGraphics(){
 
 void checkpointGraphics::unserializeGraphicsState(CheckpointIn& cp){
     //initialize translation library and screen 
-    init_gem5_graphics(); 
+    gem5GraphicsCalls_t::gem5GraphicsCalls.init_gem5_graphics();
     mSerializeObject.unserializeAll(cp);
 }
 
@@ -201,11 +201,11 @@ void checkpointGraphics::unserializeAll(CheckpointIn& cp){
     std::string name = "cmdCount";
     int cmdCount;
     UNSERIALIZE_SCALAR(cmdCount);
-  
+
     for(int i=0; i<cmdCount; i++){
         unserializeCommand(getCmdName(i), cp);
     }
-    
+  
     invokeAll();
 }
 
@@ -218,14 +218,13 @@ void checkpointGraphics::unserializeCommand(std::string name, CheckpointIn& cp){
     if(isWriteCommand(newCmd.commandCode)){
         newCmd.buffer = new uint8_t[newCmd.bufferLen];
         UNSERIALIZE_ARRAY(newCmd.buffer, newCmd.bufferLen);
-    } else if(isMemCommand(newCmd.commandCode)){ 
+    } else if(isMemCommand(newCmd.commandCode)){
        uint64_t buffer;
        UNSERIALIZE_SCALAR(buffer);
        newCmd.buffer = (uint8_t*) buffer;
     } else {
         newCmd.buffer = NULL;
     }
-    
     mCommands.push_back(newCmd);
 }
 
@@ -245,14 +244,8 @@ void checkpointGraphics::invokeCommand(GraphicsCommand_t * cmd){
     graphicsStream * stream = graphicsStream::get(cmd->tid, cmd->pid);
 
     if (isWriteCommand(cmd->commandCode)) {
-       assert(SocketStream::bytesSentFromMain == 0);
-       assert(SocketStream::currentMainWriteSocket == -1);
-       SocketStream::bytesSentFromMain = cmd->bufferLen;
-       SocketStream::currentMainWriteSocket = stream->getSocketNum();
-       stream->writeFully(cmd->buffer, cmd->bufferLen);
-       SocketStream::lockMainThread();
-       while(!SocketStream::allRenderSocketsReady()); //wait till all other threads are waiting
-    } else if(isMemCommand(cmd->commandCode)){        
+       stream->write(cmd->buffer, cmd->bufferLen);
+    } else if(isMemCommand(cmd->commandCode)){
         CudaGPU *cudaGPU = CudaGPU::getCudaGPU(g_active_device);
         if(cmd->buffer != NULL){
             cudaGPU->setGraphicsMem(cmd->pid, (Addr)cmd->buffer, cmd->bufferLen);
@@ -261,36 +254,24 @@ void checkpointGraphics::invokeCommand(GraphicsCommand_t * cmd){
         //read command
         uint8_t *temp = new uint8_t[cmd->bufferLen];
         switch (cmd->commandCode) {
-            case gem5_readFully:
+            case gem5_read:
                {
                   if(cmd->bufferLen > 0){
-                     SocketStream::currentMainReadSocket = stream->getSocketNum();
-                     stream->readFully(temp, cmd->bufferLen);
-                     SocketStream::currentMainReadSocket = -1;
-
-                     int newByteCount = SocketStream::bytesSentToMain - cmd->bufferLen;
-                     assert(newByteCount >= 0);
-                     bool cond = (SocketStream::bytesSentToMain == SocketStream::totalBytesSentToMain) and (cmd->bufferLen > 0);
-                     if(cond){
-                        SocketStream::readUnlock();
-                        SocketStream::lockMainThread();
-                     }
-                     while(!SocketStream::allRenderSocketsReady());
-                     SocketStream::bytesSentToMain = newByteCount;
+                     stream->read(temp, cmd->bufferLen);
                   }
                }
                 break;
             default:
-                //should be one of the above 
-                panic("Unexpected read command");
-                assert(0); 
+                //should be one of the above
+                panic("Unexpected command %d\n", cmd->commandCode);
+                assert(0);
         }
         delete [] temp;
     }
 }
 
 bool checkpointGraphics::isWriteCommand(uint64_t commandCode){
-    return (commandCode==gem5_writeFully);
+    return (commandCode==gem5_write);
 }
 
 bool checkpointGraphics::isMemCommand(uint64_t commandCode){
@@ -302,5 +283,6 @@ bool checkpointGraphics::isControlCommand(uint64_t commandCode){
             or (commandCode==gem5_block)
             or (commandCode==gem5_debug)
             or (commandCode==gem5_call_buffer_fail)
-            or (commandCode==gem5_sim_active));
+            or (commandCode==gem5_sim_active)
+            or (commandCode==gem5_get_procId));
 }

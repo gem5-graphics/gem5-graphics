@@ -7,11 +7,12 @@ mesa_root = os.environ['GPGPUSIM_MESA_ROOT']
 
 env.Append(CXXFLAGS = [
 		     '-I'+mesa_root+'/gem5-gpu/src',
-           '-I'+mesa_root+'/Mesa-7.11.2_GPGPU-Sim/src/mesa',
+		     '-I'+mesa_root+'/Mesa-7.11.2_GPGPU-Sim/src/mesa',
 		     '-I'+mesa_root+'/Mesa-7.11.2_GPGPU-Sim/src/mapi',
-	        '-I'+mesa_root+'/Mesa-7.11.2_GPGPU-Sim/src/mesa/swrast',
+		     '-I'+mesa_root+'/Mesa-7.11.2_GPGPU-Sim/src/mesa/swrast',
  		     '-D_POSIX_SOURCE', '-D_SVID_SOURCE', '-D_BSD_SOURCE',
-           '-D_GNU_SOURCE', '-DPTHREADS', '-DUSE_XSHM', '-DHAVE_POSIX_MEMALIGN'
+           	     '-D_GNU_SOURCE', '-DPTHREADS', '-DUSE_XSHM', '-DHAVE_POSIX_MEMALIGN',
+		     '-Wno-invalid-offsetof'
            ]) 
 
 env.Replace(LIBPATH = [mesa_root+'/Mesa-7.11.2_GPGPU-Sim/lib64', env['LIBPATH']])
@@ -23,22 +24,16 @@ SimObject('ZUnit.py')
 
 Source('fixed_pipeline.cc', Werror=False)
 Source('gem5_graphics_calls.cc')
-Source('graphic_calls.cc')
 Source('graphicsStream.cc')
 Source('graphics_syscall_helper.cc')
 Source('serialize_graphics.cc', Werror=False)
-#Source('gem5_calls.cpp', Werror=False)
 Source('gpgpusim_calls.cc')
 Source('mesa_calls.cc', Werror=False)
 Source('mesa_gpgpusim.cc', Werror=False)
 Source('zunit.cc')
 
-Source('libOpenglRender/socket_local_server.c')
-Source('libOpenglRender/socket_local_client.c')
-Source('libOpenglRender/dll.cc')
-Source('libOpenglRender/SocketStream.cc')
-#Source('libOpenglRender/TcpStream.cc')
-Source('libOpenglRender/UnixStream.cc')
+Source('emugl/opengles.cpp')
+Source('emugl/android/utils/dll.c')
 
 DebugFlag("GraphicsCalls")
 DebugFlag('MesaGpgpusim')

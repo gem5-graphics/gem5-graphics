@@ -46,10 +46,10 @@ extern "C" {
 #include "graphics/mesa_gpgpusim.h"
 #include "sim/simulate.hh"
 #include "graphics/serialize_graphics.hh"
-#include "graphics/libOpenglRender/SocketStream.hh"
 #include "debug/MesaGpgpusim.hh"
 #include "sim/sim_exit.hh"
 #include "base/statistics.hh"
+#include "base/trace.hh"
 
 
 void startEarlyZ(CudaGPU* cudaGPU, uint64_t depthBuffStart, uint64_t depthBuffEnd, unsigned bufWidth, std::vector<RasterTile* >* tiles, DepthSize dSize, GLenum depthFunc,
@@ -1320,7 +1320,7 @@ GLboolean renderData_t::doVertexShading(GLvector4f ** inputParams, vp_stage_data
     m_sShading_info.currentPass = stage_shading_info_t::GraphicsPass::Vertex;
    
     printf("do vertex inc ready sockets\n");fflush(stdout);
-    SocketStream::incReadySockets(-1, true);
+    //SocketStream::incReadySockets(-1, true);
     //waiting the fragment shader to finish
     printf("first vertex lock\n");fflush(stdout);
     vertexFragmentLock.lock();
@@ -1690,17 +1690,17 @@ void renderData_t::endVertexShading(CudaGPU * cudaGPU){
 
 void renderData_t::endFragmentShading() {
     printf("end fragment shading\n");
-    SocketStream::decReadySockets(-1, true); 
+    //SocketStream::decReadySockets(-1, true); 
     m_sShading_info.currentPass = stage_shading_info_t::GraphicsPass::NONE;
     printf("unlock frag lock\n"); fflush(stdout);
     vertexFragmentLock.unlock();
     //printf("set current pass to none\n");
     printf("waiting vertex all render socket ready\n");
-    while(!SocketStream::allRenderSocketsReady())
+    /*while(!SocketStream::allRenderSocketsReady())
     {
        std::this_thread::sleep_for (std::chrono::milliseconds(10));
       //printf("end frag shader waiting\n");
-    }
+    }*/
 }
 
 void renderData_t::checkGraphicsThreadExit(void * kernelPtr, unsigned tid){

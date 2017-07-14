@@ -104,11 +104,19 @@ GraphicsSyscallHelper::decode_package()
     //inform("sim_params.num_args= %d \n", sim_params.num_args);
     //inform("sim_params.total_bytes=%d \n",sim_params.total_bytes);
 
-    arg_lengths = new int[sim_params.num_args];
-    readBlob((Addr)sim_params.arg_lengths, (unsigned char*)arg_lengths, sim_params.num_args * sizeof(int32_t));
+    if(sim_params.num_args > 0){
+      arg_lengths = new int[sim_params.num_args];
+      readBlob((Addr)sim_params.arg_lengths, (unsigned char*)arg_lengths, sim_params.num_args * sizeof(int32_t));
+    } else{
+      arg_lengths = NULL;
+    }
 
-    args = new unsigned char[sim_params.total_bytes];
-    readBlob((Addr)sim_params.args, args, sim_params.total_bytes);
+    if(sim_params.total_bytes > 0){
+      args = new unsigned char[sim_params.total_bytes];
+      readBlob((Addr)sim_params.args, args, sim_params.total_bytes);
+    } else {
+      args = NULL;
+    }
 }
 
 GraphicsSyscallHelper::~GraphicsSyscallHelper()
