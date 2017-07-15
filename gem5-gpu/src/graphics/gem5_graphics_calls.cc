@@ -5,7 +5,9 @@
 #include "graphics/serialize_graphics.hh"
 #include "graphics/mesa_gpgpusim.h"
 #include "graphics/emugl/opengles.h"
-
+#include "base/output.hh"
+#include "base/framebuffer.hh"
+#include "base/bitmap.hh"
 
 extern unsigned g_active_device;
 extern "C" bool GPGPUSimSimulationActive();
@@ -31,20 +33,40 @@ static void onNewGpuFrame(void* opaque,
     assert(format == GL_RGBA);
     assert(type == GL_UNSIGNED_BYTE);
 
-    //image file for the result buffer, used for testing
-    std::ofstream bufferImage;
-    std::stringstream ss;
+    static int fnum = 0;
+    static OutputDirectory* outputDir = NULL;
+    static OutputStream* picOut = simout.create("gem5pipe.framebuffer.bmp", true);
+    static uint64_t lastFbHash = 0;
+    static FrameBuffer fb(width, height);
 
-    static int fnum=0;
-    std::string dumpFolder = std::getenv("DUMP_FOLDER");
-    ss << dumpFolder << "/imageout" << fnum++ << ".rgba";
+    fnum++;
+    fb.copyIn((const uint8_t*) pixels, PixelConverter::rgba8888_le);
 
-    bufferImage.open(ss.str(), std::ios::binary | std::ios::out);
-
-    for (int i = 0; i < (height*width*4); i++) {
-        bufferImage << pixels[i];
+    // skip identical frames
+    uint64_t newFbHash = fb.getHash();
+    if(newFbHash == lastFbHash){
+      return;
     }
-    bufferImage.close();
+    lastFbHash = newFbHash;
+
+    if(!outputDir){
+      std::string dirName = "frames_gem5pipe";
+      simout.remove(dirName);
+      outputDir = simout.createSubdirectory(dirName);
+
+    }
+
+    std::stringstream ss;
+    ss << "fb." << std::setw(9) << std::setfill('0') << fnum-1 << "." << curTick() << ".bmp.gz";
+
+    Bitmap bitmap(&fb);
+
+    OutputStream *fb_out(outputDir->create(ss.str(), true));
+    //(*fb_out->stream()).write((const char*) pixels, width*height*4);
+    bitmap.write(*fb_out->stream());
+    picOut->stream()->seekp(0);
+    bitmap.write(*picOut->stream());
+    outputDir->close(fb_out);
 }
 
 
