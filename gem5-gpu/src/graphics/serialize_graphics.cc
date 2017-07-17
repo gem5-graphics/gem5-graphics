@@ -160,7 +160,13 @@ void checkpointGraphics::serializeGraphicsState (const char* graphicsFile){
 }
 
 void checkpointGraphics::serializeAll(std::ostream &os){
-    std::string name = "cmdCount";
+    std::string name = "fbWidth";
+    SERIALIZE_SCALAR(gem5GraphicsCalls_t::getFrameBufferWidth());
+
+    name = "fbHeight";
+    SERIALIZE_SCALAR(gem5GraphicsCalls_t::getFrameBufferHeight());
+
+    name = "cmdCount";
     int cmdCount = mCommands.size();
     SERIALIZE_SCALAR(cmdCount);
     //serialize graphics commands 
@@ -197,15 +203,21 @@ void checkpointGraphics::unserializeGraphicsState(CheckpointIn& cp){
 }
 
 void checkpointGraphics::unserializeAll(CheckpointIn& cp){
-    //todo: map the created contexts to the older ones?
-    std::string name = "cmdCount";
+    int fbWidth, fbHeight;
+    std::string name = "fbWidth";
+    UNSERIALIZE_SCALAR(fbWidth);
+    name = "fbHeight";
+    UNSERIALIZE_SCALAR(fbHeight);
+    gem5GraphicsCalls_t::setFrameBufferSize(fbWidth, fbHeight);
+
+    name = "cmdCount";
     int cmdCount;
     UNSERIALIZE_SCALAR(cmdCount);
 
     for(int i=0; i<cmdCount; i++){
         unserializeCommand(getCmdName(i), cp);
     }
-  
+
     invokeAll();
 }
 
