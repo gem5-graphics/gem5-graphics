@@ -9,8 +9,17 @@
 class gem5GraphicsCalls_t {
 public:
    static gem5GraphicsCalls_t gem5GraphicsCalls;
+   static void setFrameBufferSize(int bufferWidth, int bufferHeight){
+     _frameBufferWidth = bufferWidth;
+     _frameBufferHeight = bufferHeight;
+   }
+   static int getFrameBufferWidth() { return _frameBufferWidth;}
+   static int getFrameBufferHeight() { return _frameBufferHeight;}
    void init_gem5_graphics();
    void executeGraphicsCommand(ThreadContext *tc, uint64_t gpusysno, uint64_t call_params);
+private:
+   static int _frameBufferWidth;
+   static int _frameBufferHeight;
 };
 
 #endif
