@@ -198,7 +198,6 @@ checkpointGraphics::~checkpointGraphics(){
 
 void checkpointGraphics::unserializeGraphicsState(CheckpointIn& cp){
     //initialize translation library and screen 
-    gem5GraphicsCalls_t::gem5GraphicsCalls.init_gem5_graphics();
     mSerializeObject.unserializeAll(cp);
 }
 
@@ -209,6 +208,7 @@ void checkpointGraphics::unserializeAll(CheckpointIn& cp){
     name = "fbHeight";
     UNSERIALIZE_SCALAR(fbHeight);
     gem5GraphicsCalls_t::setFrameBufferSize(fbWidth, fbHeight);
+    gem5GraphicsCalls_t::gem5GraphicsCalls.init_gem5_graphics();
 
     name = "cmdCount";
     int cmdCount;
