@@ -51,6 +51,7 @@
 #include "mem/packet_access.hh"
 #include "params/HDLcd.hh"
 #include "sim/system.hh"
+#include "graphics/gem5_graphics_calls.h"
 
 using std::vector;
 
@@ -496,7 +497,9 @@ HDLcd::cmdEnable()
     conv = pixelConverter();
 
     // Update timing parameter before rendering frames
-    pixelPump.updateTimings(displayTimings());
+    DisplayTimings dt(displayTimings());
+    pixelPump.updateTimings(dt);
+    gem5GraphicsCalls_t::setFrameBufferSize(dt.width, dt.height);
 
     if (sys->bypassCaches()) {
         schedule(virtRefreshEvent, clockEdge());

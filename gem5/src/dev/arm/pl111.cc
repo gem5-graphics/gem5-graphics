@@ -50,6 +50,7 @@
 #include "mem/packet.hh"
 #include "mem/packet_access.hh"
 #include "sim/system.hh"
+#include "graphics/gem5_graphics_calls.h"
 
 // clang complains about std::set being overloaded with Packet::set if
 // we open up the entire namespace std
@@ -432,6 +433,7 @@ Pl111::updateVideoParams()
     }
 
     fb.resize(width, height);
+    gem5GraphicsCalls_t::setFrameBufferSize(width, height);
     converter = pixelConverter();
 
     // Workaround configuration bugs where multiple display

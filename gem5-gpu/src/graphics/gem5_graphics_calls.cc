@@ -14,13 +14,11 @@ extern "C" bool GPGPUSimSimulationActive();
 extern renderData_t g_renderData;
 
 gem5GraphicsCalls_t gem5GraphicsCalls_t::gem5GraphicsCalls;
+int gem5GraphicsCalls_t::_frameBufferWidth = 0;
+int gem5GraphicsCalls_t::_frameBufferHeight = 0;
 
 #define GL_RGBA 0x1908
 #define GL_UNSIGNED_BYTE 0x1401
-
-//FIXME: should be configurable
-#define SCREEN_WIDTH  1920
-#define SCREEN_HEIGHT 1080
 
 static void onNewGpuFrame(void* opaque,
                           int width,
@@ -82,7 +80,7 @@ void gem5GraphicsCalls_t::init_gem5_graphics(){
     minor = 0;
 
     if(!(0==android_initOpenglesEmulation() and
-         0==android_startOpenglesRenderer(SCREEN_WIDTH, SCREEN_HEIGHT, true, 25, &major, &minor)))
+         0==android_startOpenglesRenderer(gem5GraphicsCalls_t::getFrameBufferWidth(), gem5GraphicsCalls_t::getFrameBufferHeight(), true, 25, &major, &minor)))
     {
         fatal("couldn't initialize openglesEmulation and/or starting openglesRenderer");
     }
