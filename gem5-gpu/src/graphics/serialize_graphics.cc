@@ -7,7 +7,6 @@
 #include "base/debug.hh"
 #include "debug/GraphicsCalls.hh"
 #include "graphics/serialize_graphics.hh"
-//#include "graphics/libOpenglRender/render_api.h"
 #include "graphics/graphicsStream.hh"
 #include "graphics/gem5_graphics_calls.h"
 
@@ -116,14 +115,10 @@ callUnserializeArray(CheckpointIn& cp, const std::string &section, const std::st
     }
 }
 
-const std::string checkpointGraphics::section = "Graphics";
-checkpointGraphics checkpointGraphics::mSerializeObject;
+checkpointGraphics checkpointGraphics::SerializeObject;
 
 void checkpointGraphics::serializeGraphicsCommand(int pid, int tid,
         uint64_t commandCode, uint8_t* buffer, uint32_t bufLen){
-    //giving the command a unique name
-   // std::string name = "cmd" + std::to_string(mCommandsCount);
-    
     uint8_t* nBuffer = NULL;
     if(isMemCommand(commandCode)){
        nBuffer = buffer;
@@ -131,16 +126,26 @@ void checkpointGraphics::serializeGraphicsCommand(int pid, int tid,
        nBuffer = new uint8_t[bufLen];
        memcpy(nBuffer, buffer, bufLen);
     }
-   
+
     DPRINTF(GraphicsCalls, "Serialization: adding command %d: pid=%d, tid=%d, buffer=%08llX, bufLen=%d\n",\
           commandCode, pid, tid, (uint64_t)nBuffer, bufLen);
     GraphicsCommand_t command(pid, tid, commandCode, bufLen, nBuffer);
-    mSerializeObject.mCommands.push_back(command);
+    serializeToTmpFile(&command);
+    if(isWriteCommand(commandCode)){
+      delete [] nBuffer;
+    }
+}
+
+void checkpointGraphics::serializeToTmpFile(GraphicsCommand_t* cmd){
+  if(tmpGem5PipeOutput == NULL){
+    simout.remove(tmpGem5PipeFileName);
+    tmpGem5PipeOutput = simout.create(tmpGem5PipeFileName);
+  }
+  serializeCommand(getCmdName(cmdCount++), cmd, *tmpGem5PipeOutput->stream());
 }
 
 //used to prevent simulation from executing as a result of invoking
 //graphics calls while unserialization is underway
-bool checkpointGraphics::isUnserializing = false;
 bool checkpointGraphics::isUnserializingCp(){
     return isUnserializing;
 }
@@ -153,30 +158,39 @@ void checkpointGraphics::serializeGraphicsState (const char* graphicsFile){
     std::ofstream os(graphicsFile);
     if (!os.is_open())
         fatal("Unable to open file %s for writing\n", graphicsFile);
-    
     os << "\n[" << section << "]\n"; //section name
-    
-    mSerializeObject.serializeAll(os);
+    serializeAll(os);
 }
 
 void checkpointGraphics::serializeAll(std::ostream &os){
     std::string name = "fbWidth";
-    SERIALIZE_SCALAR(gem5GraphicsCalls_t::getFrameBufferWidth());
+    int fbWidth = gem5GraphicsCalls_t::getFrameBufferWidth();
+    SERIALIZE_SCALAR(fbWidth);
 
     name = "fbHeight";
-    SERIALIZE_SCALAR(gem5GraphicsCalls_t::getFrameBufferHeight());
+    int fbHeight = gem5GraphicsCalls_t::getFrameBufferHeight();
+    SERIALIZE_SCALAR(fbHeight);
 
     name = "cmdCount";
-    int cmdCount = mCommands.size();
     SERIALIZE_SCALAR(cmdCount);
-    //serialize graphics commands 
-    for(int i=0; i<cmdCount; i++){
-        serializeCommand(getCmdName(i), &mCommands[i], os);
+
+    //add graphics commands
+    if(!tmpGem5PipeOutput){
+      fatal("Temporary gem5Pipe output file is not defined!\n");
+    }
+    simout.close(tmpGem5PipeOutput);
+
+    std::ifstream cmdFile(simout.resolve(tmpGem5PipeFileName).c_str());
+    if(cmdFile){
+      os << cmdFile.rdbuf();
+      cmdFile.close();
+    } else {
+      fatal("cannot find gem5pipe tmp output file!\n");
     }
 }
 
 void checkpointGraphics::serializeCommand(std::string name, GraphicsCommand_t * cmd, std::ostream &os)
-{    
+{
     SERIALIZE_SCALAR(cmd->pid);
     SERIALIZE_SCALAR(cmd->tid);
     SERIALIZE_SCALAR(cmd->commandCode);
@@ -190,15 +204,12 @@ void checkpointGraphics::serializeCommand(std::string name, GraphicsCommand_t * 
 }
 
 checkpointGraphics::~checkpointGraphics(){
-    for(int i=0; i<mCommands.size(); i++){
-        if(mCommands[i].buffer and !isMemCommand(mCommands[i].commandCode))
-            delete [] mCommands[i].buffer;
-    }
+    simout.remove(tmpGem5PipeFileName);
 }
 
 void checkpointGraphics::unserializeGraphicsState(CheckpointIn& cp){
     //initialize translation library and screen 
-    mSerializeObject.unserializeAll(cp);
+    unserializeAll(cp);
 }
 
 void checkpointGraphics::unserializeAll(CheckpointIn& cp){
@@ -214,11 +225,12 @@ void checkpointGraphics::unserializeAll(CheckpointIn& cp){
     int cmdCount;
     UNSERIALIZE_SCALAR(cmdCount);
 
+    isUnserializing = true;
     for(int i=0; i<cmdCount; i++){
         unserializeCommand(getCmdName(i), cp);
     }
-
-    invokeAll();
+    isUnserializing = false;
+    //invokeAll();
 }
 
 void checkpointGraphics::unserializeCommand(std::string name, CheckpointIn& cp){
@@ -237,15 +249,12 @@ void checkpointGraphics::unserializeCommand(std::string name, CheckpointIn& cp){
     } else {
         newCmd.buffer = NULL;
     }
-    mCommands.push_back(newCmd);
-}
-
-void checkpointGraphics::invokeAll(){
-    isUnserializing = true;
-    for(int i=0; i<mCommands.size(); i++){
-       invokeCommand(&mCommands[i]);
+    //mCommands.push_back(newCmd);
+    invokeCommand(&newCmd);
+    serializeToTmpFile(&newCmd);
+    if(isWriteCommand(newCmd.commandCode)){
+      delete [] newCmd.buffer;
     }
-    isUnserializing = false;
 }
 
 void checkpointGraphics::invokeCommand(GraphicsCommand_t * cmd){

@@ -607,7 +607,7 @@ Serializable::serializeAll(const string &cpt_dir)
 
     SimObject::serializeAll(outstream);
     string graphics_file = dir + CheckpointIn::graphicsFilename;
-    checkpointGraphics::serializeGraphicsState(graphics_file.c_str());
+    checkpointGraphics::SerializeObject.serializeGraphicsState(graphics_file.c_str());
 }
 
 void
@@ -649,7 +649,7 @@ void
 Serializable::unserializeGraphics(std::string cpt_dir, SimObjectResolver &resolver){
     CheckpointIn gcp(cpt_dir, resolver, CheckpointIn::CheckpointFileType::GraphicsFile);
     Serializable::ScopedCheckpointSection sec(gcp, "Graphics");
-    checkpointGraphics::unserializeGraphicsState(gcp);
+    checkpointGraphics::SerializeObject.unserializeGraphicsState(gcp);
 }
 
 void
