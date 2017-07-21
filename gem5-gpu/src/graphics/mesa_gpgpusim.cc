@@ -562,7 +562,7 @@ void renderData_t::incCurrentFrame(){
 bool renderData_t::GPGPUSimActiveFrame(){
    bool isFrame = ((m_currentFrame >= m_startFrame)
           and (m_currentFrame <= m_endFrame) 
-          and !checkpointGraphics::isUnserializingCp());
+          and !checkpointGraphics::SerializeObject.isUnserializingCp());
 
    return isFrame;
 }
@@ -576,7 +576,7 @@ bool renderData_t::GPGPUSimSimulationActive(){
 }
 
 bool renderData_t::GPGPUSimSkipCpFrames(){
-   bool skipCpFrames = (checkpointGraphics::isUnserializingCp() and m_skipCpFrames);
+   bool skipCpFrames = (checkpointGraphics::SerializeObject.isUnserializingCp() and m_skipCpFrames);
    return skipCpFrames; 
 }
 
