@@ -107,11 +107,11 @@ void gem5GraphicsCalls_t::executeGraphicsCommand(ThreadContext *tc, uint64_t gpu
 
 
 #define CALL_GSERIALIZE_CMD \
-    checkpointGraphics::serializeGraphicsCommand(\
+    checkpointGraphics::SerializeObject.serializeGraphicsCommand(\
     pid, tid, gpusysno, (uint8_t*) buf_val64, buf_len );\
 
 #define CALL_GSERIALIZE \
-    checkpointGraphics::serializeGraphicsCommand(\
+    checkpointGraphics::SerializeObject.serializeGraphicsCommand(\
     pid, tid, gpusysno, iobuffer, buf_len );\
 
 
