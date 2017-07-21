@@ -178,7 +178,6 @@ void checkpointGraphics::serializeAll(std::ostream &os){
     if(!tmpGem5PipeOutput){
       fatal("Temporary gem5Pipe output file is not defined!\n");
     }
-    simout.close(tmpGem5PipeOutput);
 
     std::ifstream cmdFile(simout.resolve(tmpGem5PipeFileName).c_str());
     if(cmdFile){
@@ -204,6 +203,7 @@ void checkpointGraphics::serializeCommand(std::string name, GraphicsCommand_t * 
 }
 
 checkpointGraphics::~checkpointGraphics(){
+    simout.close(tmpGem5PipeOutput);
     simout.remove(tmpGem5PipeFileName);
 }
 

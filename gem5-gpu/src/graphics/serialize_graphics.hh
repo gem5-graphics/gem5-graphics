@@ -25,9 +25,9 @@ struct GraphicsCommand_t{
 class checkpointGraphics {
  public:
     static checkpointGraphics SerializeObject;
-    checkpointGraphics(): 
-      section("Graphics"), tmpGem5PipeFileName("_gem5pipe.tmpOut"),
-      tmpGem5PipeOutput(NULL), cmdCount(0), isUnserializing(false){
+
+    checkpointGraphics():
+      section("Graphics"), tmpGem5PipeOutput(NULL), cmdCount(0), isUnserializing(false){
     }
     void serializeGraphicsState (const char* graphicsFile);
     void unserializeGraphicsState(CheckpointIn& cp);
@@ -39,7 +39,7 @@ class checkpointGraphics {
 private:
     //members
     const std::string section;
-    const char* tmpGem5PipeFileName;
+    const char* tmpGem5PipeFileName = "_gem5pipe.tmpOut";
     OutputStream* tmpGem5PipeOutput;
     int cmdCount;
     bool isUnserializing;
