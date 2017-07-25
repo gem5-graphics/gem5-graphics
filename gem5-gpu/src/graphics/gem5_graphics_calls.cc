@@ -37,19 +37,21 @@ static void onNewGpuFrame(void* opaque,
     static uint64_t lastFbHash = 0;
     static FrameBuffer fb(width, height);
 
+    inform("gem5Pipe: a new frame posted (frame %d)\n", fnum);
     fnum++;
     fb.copyIn((const uint8_t*) pixels, PixelConverter::rgba8888_le);
 
     // skip identical frames
     uint64_t newFbHash = fb.getHash();
     if(newFbHash == lastFbHash){
+      inform("no frame chanes detected\n");
       return;
     }
     lastFbHash = newFbHash;
 
     if(!outputDir){
       std::string dirName = "frames_gem5pipe";
-      simout.remove(dirName);
+      simout.remove(dirName, true);
       outputDir = simout.createSubdirectory(dirName);
 
     }
