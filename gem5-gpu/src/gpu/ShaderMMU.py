@@ -55,7 +55,7 @@ class ShaderMMU(ClockedObject):
 
     prefetch_buffer_size = Param.Int(0, "Size of the prefetch buffer")
 
-    def setUpPagewalkers(self, num, port, bypass_l1):
+    def setUpPagewalkers(self, num, bypass_l1, port):
         if buildEnv['TARGET_ISA'] == 'arm':
             from ArmTLB import ArmTLB, ArmStage2DMMU
             self.stage2_mmu = ArmStage2DMMU(tlb = ArmTLB())

@@ -46,7 +46,6 @@
 #include "debug/CudaGPUPageTable.hh"
 #include "debug/CudaGPUTick.hh"
 #include "gpu/gpgpu-sim/cuda_gpu.hh"
-#include "mem/ruby/system/RubySystem.hh"
 #include "mem/page_table.hh"
 #include "params/GPGPUSimComponentWrapper.hh"
 #include "params/CudaGPU.hh"
@@ -76,8 +75,8 @@ CudaGPU::CudaGPU(const Params *p) :
     coresWrapper(*p->cores_wrapper), icntWrapper(*p->icnt_wrapper),
     l2Wrapper(*p->l2_wrapper), dramWrapper(*p->dram_wrapper),
     system(p->sys), warpSize(p->warp_size), 
-    gpgpusimConfigPath(p->config_path), unblockNeeded(false), ruby(p->ruby),
-    system_cacheline_size(p->system_cacheline_size),
+    gpgpusimConfigPath(p->config_path), unblockNeeded(false), 
+    /*ruby(p->ruby),*/ gpuCacheLineSize(p->gpu_cacheline_size),
     runningTC(NULL), runningStream(NULL), runningTID(-1), clearTick(0),
     dumpKernelStats(p->dump_kernel_stats),
     dumpGpgpusimStats(p->dump_gpgpusim_stats), pageTable(),
@@ -313,7 +312,12 @@ void CudaGPU::startup()
 
 void CudaGPU::clearStats()
 {
-    ruby->resetStats();
+    /*if(ruby){
+      ruby->resetStats(); 
+    } else {
+      //AYUB TODO: replace ruby reset?
+      fatal("Cannot reset stats for non-ruby memory!");
+    }*/
     clearTick = curTick();
 }
 
@@ -471,6 +475,7 @@ CudaCore *CudaGPU::getCudaCore(int coreId)
 CudaGPU *CudaGPUParams::create() {
     return new CudaGPU(this);
 }
+
 
 void CudaGPU::gpuPrintStats(std::ostream& out) {
     if(dumpGpgpusimStats){
@@ -843,8 +848,8 @@ Addr CudaGPU::allocateGPUMemory(size_t size)
     // heavily to actually track allocated and free physical and virtual memory
 
     // Cache block align the allocation size
-    size_t block_part = size % ruby->getBlockSizeBytes();
-    size_t aligned_size = size + (block_part ? (ruby->getBlockSizeBytes() - block_part) : 0);
+    size_t block_part = size %   gpuCacheLineSize;
+    size_t aligned_size = size + (block_part ? (gpuCacheLineSize - block_part) : 0);
 
     Addr base_vaddr = virtualGPUBrkAddr;
     virtualGPUBrkAddr += aligned_size;
@@ -875,6 +880,8 @@ Addr CudaGPU::allocateGPUMemory(size_t size)
 
 void CudaGPU::regStats()
 {
+    ClockedObject::regStats();
+
     numKernelsStarted
         .name(name() + ".kernels_started")
         .desc("Number of kernels started");

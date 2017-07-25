@@ -616,6 +616,8 @@ CudaCore *CudaCoreParams::create() {
 void
 CudaCore::regStats()
 {
+    MemObject::regStats();
+
     numLocalLoads
         .name(name() + ".local_loads")
         .desc("Number of loads from local space")

@@ -48,7 +48,8 @@ class CudaGPU(ClockedObject):
 
     warp_size = Param.Int(32, "Number of threads in each warp. Same as cores/SM")
 
-    ruby = Param.RubySystem(Parent.any, "ruby system")
+    #TODO AYUB: re-enable the optoin for ruby
+    #ruby = Param.RubySystem(Parent.any, "ruby system")
 
     stats_filename = Param.String("gpu_stats.txt",
           "file to which gpgpu-sim dumps its stats")
@@ -76,4 +77,4 @@ class CudaGPU(ClockedObject):
     # Must be specified or gem5-gpu will error during initialization
     l2_wrapper = Param.GPGPUSimComponentWrapper("Must define a wrapper to clock the GPGPU-Sim L2 cache")
     dram_wrapper = Param.GPGPUSimComponentWrapper("Must define a wrapper to clock the GPGPU-Sim DRAM")
-    system_cacheline_size = Param.Int(128, "System cache block size")
+    gpu_cacheline_size = Param.Int(128, "System cache block size")

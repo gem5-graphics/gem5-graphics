@@ -616,6 +616,8 @@ ShaderMMU::insertPrefetch(Addr vp_base, Addr pp_base)
 void
 ShaderMMU::regStats()
 {
+    ClockedObject::regStats();
+
     numPagefaults
         .name(name()+".numPagefaults")
         .desc("Number of Pagefaults")
@@ -632,7 +634,6 @@ ShaderMMU::regStats()
         .name(name()+".l2hits")
         .desc("Hits in the shared L2")
         ;
-
     prefetchHits
         .name(name() + ".prefetchHits")
         .desc("Number of prefetch hits")
@@ -647,21 +648,19 @@ ShaderMMU::regStats()
         ;
 
     pagefaultLatency
+        .init(32)
         .name(name()+".pagefaultLatency")
         .desc("Latency to complete the pagefault")
-        .init(32)
         ;
-
-    pagewalkLatency
-        .name(name()+".pagewalkLatency")
-        .desc("Latency to complete the pagewalk")
-        .init(32)
-        ;
-
     concurrentWalks
+        .init(16)
         .name(name()+".concurrentWalks")
         .desc("Number of outstanding walks")
-        .init(16)
+        ;
+    pagewalkLatency
+        .init(32)
+        .name(name()+".pagewalkLatency")
+        .desc("Latency to complete the pagewalk")
         ;
 }
 

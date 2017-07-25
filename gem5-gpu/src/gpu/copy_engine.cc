@@ -439,6 +439,8 @@ GPUCopyEngine::getMasterPort(const std::string &if_name, PortID idx)
 }
 
 void GPUCopyEngine::regStats() {
+    MemObject::regStats();
+
     numOperations
         .name(name() + ".numOperations")
         .desc("Number of copy/memset operations")

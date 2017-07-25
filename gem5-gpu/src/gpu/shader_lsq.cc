@@ -747,6 +747,8 @@ void ShaderLSQ::finalizeFlush()
 void
 ShaderLSQ::regStats()
 {
+    MemObject::regStats();
+
     activeWarpInstBuffers
         .name(name()+".warpInstBufActive")
         .desc("Histogram of number of active warp inst buffers at a given time")

@@ -344,12 +344,13 @@ class CudaGPU : public ClockedObject
     /// True if the running thread is currently blocked and needs to be activated
     bool unblockNeeded;
 
+
     /// Pointer to ruby system used to clear the Ruby stats
     /// NOTE: I think there is a more right way to do this
-    RubySystem *ruby;
-    
+    //RubySystem *ruby;
+
     /// Holds the system cache line size
-    const int system_cacheline_size;
+    const int gpuCacheLineSize;
 
     /// Holds all of the CUDA cores in this GPU
     std::vector<CudaCore*> cudaCores;
@@ -567,8 +568,7 @@ class CudaGPU : public ClockedObject
     }
 
     const char* getConfigPath() { return gpgpusimConfigPath.c_str(); }
-    RubySystem* getRubySystem() { return ruby; }
-    int getSystemCachelineSize() const {return system_cacheline_size;} 
+    int getSystemCachelineSize() const {return gpuCacheLineSize;}
     gpgpu_sim* getTheGPU() { return theGPU; }
 
     /// Called at the beginning of each kernel launch to start the statistics
@@ -726,10 +726,9 @@ class CudaGPU : public ClockedObject
     
     bool isStreamManagerEmpty(){return streamManager->empty();}
 
-
     // Returns the line of the address, a
     inline Addr addrToLine(Addr a){
-       unsigned int maskBits = getRubySystem()->getBlockSizeBits();
+       unsigned int maskBits = floorLog2(gpuCacheLineSize);
        return a & (((uint64_t)-1) << maskBits);
     }
 };

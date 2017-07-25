@@ -32,6 +32,7 @@ import re
 from m5.objects import *
 from m5.util.convert import *
 from m5.util import fatal
+from common.Caches import *
 
 gpu_core_configs = ['Fermi', 'Maxwell', 'Tegra']
 
@@ -50,20 +51,23 @@ def addGPUOptions(parser):
     parser.add_option("--gpu_warp_size", type="int", default=32, help="Number of threads per warp, also functional units per shader core/SM")
     parser.add_option("--gpu_threads_per_core", type="int", default=1536, help="Maximum number of threads per GPU core (SM)")
     #caches
+    #data
     parser.add_option("--sc_l1_size", default="64kB", help="size of l1 cache hooked up to each sc")
     parser.add_option("--sc_l1_assoc", default=4, help="associativity of l1 cache hooked up to each sc", type="int")
     parser.add_option("--gpu_l1_buf_depth", type="int", default=96, help="Number of buffered L1 requests per shader")
-
+    #inst
+    parser.add_option("--sc_il1_size", default="16kB", help="size of l1 instruction cache hooked up to each sc")
+    parser.add_option("--sc_il1_assoc", default=4, help="associativity of l1 instruction cache hooked up to each sc", type="int")
+    #texture
     parser.add_option("--sc_tl1_size", default="64kB", help="size of l1 texture cache hooked up to each sc")
     parser.add_option("--sc_tl1_assoc", default=4, help="associativity of l1 texture cache hooked up to each sc", type="int")
     parser.add_option("--gpu_tl1_buf_depth", type="int", default=96, help="Number of buffered L1 requests per shader")
-
-    parser.add_option("--gpu_l1_pagewalkers", type="int", default=32, help="Number of GPU L1 pagewalkers")
-
+    #depth
     parser.add_option("--sc_zl1_size", default="32kB", help="size of l1 z cache hooked up to each sc")
     parser.add_option("--sc_zl1_assoc", default=4, help="associativity of l1 z cache", type="int")
     parser.add_option("--gpu_zl1_buf_depth", type="int", default=96, help="Number of buffered Z-cache requests")
 
+    parser.add_option("--gpu_l1_pagewalkers", type="int", default=32, help="Number of GPU L1 pagewalkers")
     parser.add_option("--gpu_tlb_entries", type="int", default=0, help="Number of entries in GPU Data TLB. 0 implies infinite")
     parser.add_option("--gpu_tlb_assoc", type="int", default=0, help="Associativity of the Data L1 TLB. 0 implies infinite")
 
@@ -256,6 +260,9 @@ def parseGpgpusimConfig(options):
         f.write(icnt_config)
         f.close()
 
+
+    print "total sc count ", options.num_sc
+
     if options.pwc_size == "0":
         # Bypass the shared L1 cache
         options.gpu_tlb_bypass_l1 = True
@@ -288,7 +295,7 @@ def createGPU(options, gpu_mem_range):
                   clk_domain = SrcClockDomain(clock = options.gpu_core_clock,
                                               voltage_domain = VoltageDomain()),
                   gpu_memory_range = gpu_mem_range,
-                  system_cacheline_size = options.cacheline_size)
+                  gpu_cacheline_size = options.cacheline_size)
 
     gpu.cores_wrapper = GPGPUSimComponentWrapper(clk_domain = gpu.clk_domain)
 
@@ -364,7 +371,7 @@ def createGPU(options, gpu_mem_range):
 
     return gpu
 
-def connectGPUPorts(system, gpu, ruby, options):
+def connectGPUPorts_ruby(system, gpu, ruby, options):
 
     # for now only VI_fusion has tex and z caches added
     mp = 1
@@ -406,8 +413,8 @@ def connectGPUPorts(system, gpu, ruby, options):
     # unified address space, or the copy engine's host-side sequencer port for
     # split address space architectures.
     gpu.shader_mmu.setUpPagewalkers(options.gpu_l1_pagewalkers,
-                    ruby._cpu_ports[options.num_cpus+options.num_sc*mp].slave,
-                    options.gpu_tlb_bypass_l1)
+                    options.gpu_tlb_bypass_l1,
+                    ruby._cpu_ports[options.num_cpus+options.num_sc*mp].slave)
 
     if options.split:
         # NOTE: In split address space architectures, the MMU only provides the
@@ -435,3 +442,60 @@ def connectGPUPorts(system, gpu, ruby, options):
             ruby._cpu_ports[options.num_cpus+options.num_sc*mp+1].slave
         gpu.ce.device_port = \
             ruby._cpu_ports[options.num_cpus+options.num_sc*mp+1].slave
+
+
+def connectGPUPorts_classic(system, gpu, options):
+    if options.cpu_type == "O3_ARM_v7a_3":
+        try:
+            from O3_ARM_v7a import *
+        except:
+            print "arm_detailed is unavailable. Did you compile the O3 model?"
+            sys.exit(1)
+
+        dcache_class, icache_class, l2_cache_class, walk_cache_class = \
+            O3_ARM_v7a_DCache, O3_ARM_v7a_ICache, O3_ARM_v7aL2, \
+            O3_ARM_v7aWalkCache
+    else:
+        dcache_class, icache_class, l2_cache_class, walk_cache_class = \
+            L1_DCache, L1_ICache, L2Cache, None
+
+    gpu.l2cache = l2_cache_class(clk_domain=system.cpu_clk_domain,
+                                   size=options.sc_l2_size,
+                                   assoc=options.l2_assoc)
+    gpu.l2NetToL2 = IOXBar(clk_domain = system.cpu_clk_domain)
+    gpu.l2NetToL2.master = gpu.l2cache.cpu_side
+    gpu.l2cache.mem_side = system.membus.slave
+
+    gpu.zunit.z_port = gpu.l2NetToL2.slave
+
+    for i,sc in enumerate(gpu.shader_cores):
+        sc.scToL2Net = IOXBar()
+        sc.scToL2Net.master = gpu.l2NetToL2.slave
+
+        sc.icache = icache_class(size=options.sc_il1_size,
+                                assoc=options.sc_il1_assoc)
+        sc.icache.mem_side = sc.scToL2Net.slave
+        sc.inst_port = sc.icache.cpu_side
+
+        sc.dcache = dcache_class(size=options.sc_l1_size,
+                                assoc=options.sc_l1_assoc)
+        sc.dcache.mem_side = sc.scToL2Net.slave
+        sc.lsq.cache_port = sc.dcache.cpu_side
+
+
+        sc.tcache = dcache_class(size=options.sc_tl1_size,
+                                assoc=options.sc_tl1_assoc)
+        sc.tcache.mem_side = sc.scToL2Net.slave
+        sc.tex_lq.cache_port = sc.tcache.cpu_side
+
+        for j in xrange(options.gpu_warp_size):
+            sc.lsq_port[j] = sc.lsq.lane_port[j]
+            sc.tex_lq_port[j] = sc.tex_lq.lane_port[j]
+
+        sc.lsq_ctrl_port = sc.lsq.control_port
+        sc.tex_ctrl_port = sc.tex_lq.control_port
+
+    assert(not options.split);
+    gpu.shader_mmu.setUpPagewalkers(options.gpu_l1_pagewalkers, options.gpu_tlb_bypass_l1, gpu.l2NetToL2.slave)
+    gpu.ce.host_port = gpu.l2NetToL2.slave
+    gpu.ce.device_port = gpu.l2NetToL2.slave
