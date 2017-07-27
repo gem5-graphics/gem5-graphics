@@ -67,7 +67,8 @@ GPUSyscallHelper::readString(Addr addr, uint8_t* p, int size, ThreadContext *tc)
     bool null_not_found = true;
     Addr curr_addr;
     int read_size;
-    unsigned block_size = RubySystem::getBlockSizeBytes();
+    unsigned block_size = tc->getSystemPtr()->cacheLineSize();
+
     int bytes_read = 0;
     for (; bytes_read < size && null_not_found; bytes_read += read_size) {
         curr_addr = addr + bytes_read;
