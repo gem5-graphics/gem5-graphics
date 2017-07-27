@@ -317,7 +317,7 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
                    }
                    MasterID reqMasterId = (inst.space.get_type() == tex_space)? texMasterId : dataMasterId;
                    RequestPtr req = new Request(asid, addr, size, flags,
-                           reqMasterId, inst.pc, id);
+                           reqMasterId, inst.pc, inst.warp_id());
                    pkt = new Packet(req, MemCmd::ReadReq);
                    if (inst.isatomic()) {
                        assert(flags.isSet(Request::MEM_SWAP));
@@ -355,10 +355,11 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
                    }
                    Addr addr = inst.get_addr(lane, reqNum);
                    RequestPtr req = new Request(asid, addr, size, flags,
-                           dataMasterId, inst.pc, id);
+                           dataMasterId, inst.pc, inst.warp_id());
                    pkt = new Packet(req, MemCmd::WriteReq);
                    pkt->allocate();
                    pkt->setData((uint8_t*)inst.get_data(lane));
+
                    DPRINTF(CudaCoreAccess, "Send store from lane %d address 0x%llx: data = %d\n",
                            lane, pkt->req->getVaddr(), *(int*)inst.get_data(lane));
                } else if (inst.op == BARRIER_OP || inst.op == MEMORY_BARRIER_OP) {
@@ -367,7 +368,7 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
                    // TODO: If adding fencing functionality, specify control data
                    // in packet or request
                    RequestPtr req = new Request(asid, 0x0, 0, flags, dataMasterId,
-                           inst.pc, id);
+                           inst.pc, inst.warp_id());
                    pkt = new Packet(req, MemCmd::FenceReq);
                    pkt->senderState = new SenderState(inst);
                } else {
