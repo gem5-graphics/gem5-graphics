@@ -2028,6 +2028,7 @@ namespace Aarch64
           case 0x54: return new M5panic(machInst);
           case 0x5a: return new M5workbegin64(machInst);
           case 0x5b: return new M5workend64(machInst);
+          case 0x5c: return new M5gpu64(machInst);
           default: return new Unknown64(machInst);
         }
     }

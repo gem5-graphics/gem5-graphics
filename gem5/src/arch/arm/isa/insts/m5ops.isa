@@ -584,8 +584,23 @@ let {{
                         join32to64(R1, R0),
                         join32to64(R3, R2)
                     );'''
+
+    m5gpuCode64 = '''PseudoInst::gpu(
+                          xc->tcBase(),
+                          X0,
+                          X1
+                      );'''
+
     m5gpuIop = InstObjParams("m5gpu", "M5gpu", "PredOp",
                      { "code": m5gpuCode,
+                       "predicate_test": predicateTest },
+                       ["IsNonSpeculative", "IsSerializeAfter"])
+    header_output += BasicDeclare.subst(m5gpuIop)
+    decoder_output += BasicConstructor.subst(m5gpuIop)
+    exec_output += PredOpExecute.subst(m5gpuIop)
+
+    m5gpuIop = InstObjParams("m5gpu", "M5gpu64", "PredOp",
+                     { "code": m5gpuCode64,
                        "predicate_test": predicateTest },
                        ["IsNonSpeculative", "IsSerializeAfter"])
     header_output += BasicDeclare.subst(m5gpuIop)
