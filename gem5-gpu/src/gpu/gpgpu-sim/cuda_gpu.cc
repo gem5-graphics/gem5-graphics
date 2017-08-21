@@ -59,6 +59,7 @@ extern unsigned g_active_device;
 extern renderData_t g_renderData;
 vector<CudaGPU*> CudaGPU::gpuArray;
 
+int CudaGPU::gpuCacheLineSize = 0;
 const size_t CudaGPU::GMemory::XLGBLOCK_SIZE;
 const size_t CudaGPU::GMemory::XLGBLOCK_COUNT;
 const size_t CudaGPU::GMemory::LGBLOCK_SIZE;
@@ -76,7 +77,7 @@ CudaGPU::CudaGPU(const Params *p) :
     l2Wrapper(*p->l2_wrapper), dramWrapper(*p->dram_wrapper),
     system(p->sys), warpSize(p->warp_size), 
     gpgpusimConfigPath(p->config_path), unblockNeeded(false), 
-    /*ruby(p->ruby),*/ gpuCacheLineSize(p->gpu_cacheline_size),
+    /*ruby(p->ruby),*/ 
     runningTC(NULL), runningStream(NULL), runningTID(-1), clearTick(0),
     dumpKernelStats(p->dump_kernel_stats),
     dumpGpgpusimStats(p->dump_gpgpusim_stats), pageTable(),
@@ -91,6 +92,8 @@ CudaGPU::CudaGPU(const Params *p) :
         // TODO: Remove this when multiple GPUs can exist in system
         panic("GPGPU-Sim is not currently able to simulate more than 1 CUDA-enabled GPU\n");
     }
+
+    CudaGPU::gpuCacheLineSize = p->gpu_cacheline_size;
 
     streamDelay = 1;
 
@@ -848,8 +851,8 @@ Addr CudaGPU::allocateGPUMemory(size_t size)
     // heavily to actually track allocated and free physical and virtual memory
 
     // Cache block align the allocation size
-    size_t block_part = size %   gpuCacheLineSize;
-    size_t aligned_size = size + (block_part ? (gpuCacheLineSize - block_part) : 0);
+    size_t block_part = size %   CudaGPU::gpuCacheLineSize;
+    size_t aligned_size = size + (block_part ? (CudaGPU::gpuCacheLineSize - block_part) : 0);
 
     Addr base_vaddr = virtualGPUBrkAddr;
     virtualGPUBrkAddr += aligned_size;

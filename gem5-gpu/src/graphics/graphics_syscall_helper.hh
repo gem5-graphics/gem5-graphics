@@ -33,23 +33,25 @@
 #include "cpu/thread_context.hh"
 
 typedef struct graphicscall {
-    int32_t pid;
-    int32_t tid;
-    int32_t  total_bytes;
-    int32_t  num_args;
-    uint32_t arg_lengths;
-    uint32_t  args;
-    uint32_t  ret;
+    uint64_t unique_id;
+    int pid;
+    int tid;
+    uint64_t total_bytes;
+    uint64_t num_args;
+    //pointers stored in unsigned 64
+    uint64_t arg_lengths_ptr;
+    uint64_t args_ptr;
+    uint64_t ret_ptr;
+    typedef uint64_t ARG_LEN_TYPE;
+    typedef int32_t RET_LEN_TYPE;
 } graphicssyscall_t;
 
-    
 class GraphicsSyscallHelper {
     ThreadContext* tc;
     Addr sim_params_ptr;
     graphicssyscall_t sim_params;
-    int* arg_lengths;
+    graphicssyscall_t::ARG_LEN_TYPE* arg_lengths;
     unsigned char* args;
-    int total_bytes;
 
     void decode_package();
     void readBlob(Addr addr, uint8_t* p, int size, ThreadContext *tc);

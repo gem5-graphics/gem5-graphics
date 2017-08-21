@@ -17,9 +17,20 @@ public:
    static int getFrameBufferHeight() { return _frameBufferHeight;}
    void init_gem5_graphics();
    void executeGraphicsCommand(ThreadContext *tc, uint64_t gpusysno, uint64_t call_params);
+
+   void static RemoveFrameDir(){
+      simout.remove(_dirName, true);
+   }
+
+   static OutputDirectory* CreateFrameDir(){
+     RemoveFrameDir();
+     return simout.createSubdirectory(_dirName);
+   }
+
 private:
    static int _frameBufferWidth;
    static int _frameBufferHeight;
+   static std::string _dirName;
 };
 
 #endif

@@ -163,6 +163,7 @@ void checkpointGraphics::serializeGraphicsState (const char* graphicsFile){
 }
 
 void checkpointGraphics::serializeAll(std::ostream &os){
+
     std::string name = "fbWidth";
     int fbWidth = gem5GraphicsCalls_t::getFrameBufferWidth();
     SERIALIZE_SCALAR(fbWidth);
@@ -173,6 +174,9 @@ void checkpointGraphics::serializeAll(std::ostream &os){
 
     name = "cmdCount";
     SERIALIZE_SCALAR(cmdCount);
+
+
+    if(cmdCount == 0) return; //no commands to serialize
 
     //add graphics commands
     if(!tmpGem5PipeOutput){
@@ -205,12 +209,18 @@ void checkpointGraphics::serializeCommand(std::string name, GraphicsCommand_t * 
 }
 
 checkpointGraphics::~checkpointGraphics(){
+  if(tmpGem5PipeOutput){
     simout.close(tmpGem5PipeOutput);
+  }
+
+  if(simout.isFile(tmpGem5PipeFileName)){
     simout.remove(tmpGem5PipeFileName);
+  }
 }
 
 void checkpointGraphics::unserializeGraphicsState(CheckpointIn& cp){
-    //initialize translation library and screen 
+    //clear the frame dumping folder
+    gem5GraphicsCalls_t::RemoveFrameDir();
     unserializeAll(cp);
 }
 

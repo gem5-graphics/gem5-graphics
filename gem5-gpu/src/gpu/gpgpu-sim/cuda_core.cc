@@ -320,6 +320,7 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
                            reqMasterId, inst.pc, inst.warp_id());
                    pkt = new Packet(req, MemCmd::ReadReq);
                    if (inst.isatomic()) {
+                       assert(0); //should be fixed for classic memory
                        assert(flags.isSet(Request::MEM_SWAP));
                        AtomicOpRequest *pkt_data = new AtomicOpRequest();
                        pkt_data->lastAccess = true;

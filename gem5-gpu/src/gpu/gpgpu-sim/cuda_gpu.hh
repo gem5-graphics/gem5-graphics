@@ -350,7 +350,7 @@ class CudaGPU : public ClockedObject
     //RubySystem *ruby;
 
     /// Holds the system cache line size
-    const int gpuCacheLineSize;
+    static int gpuCacheLineSize;
 
     /// Holds all of the CUDA cores in this GPU
     std::vector<CudaCore*> cudaCores;
@@ -422,7 +422,7 @@ class CudaGPU : public ClockedObject
         
     private:
         Addr m_gMemStart;
-        size_t m_gMemSize;
+        Addr m_gMemSize;
         bool * m_xlAllocatedBlocks;
         unsigned int m_xlNumBlocks;
         bool * m_lAllocatedBlocks;
@@ -568,7 +568,7 @@ class CudaGPU : public ClockedObject
     }
 
     const char* getConfigPath() { return gpgpusimConfigPath.c_str(); }
-    int getSystemCachelineSize() const {return gpuCacheLineSize;}
+    static int getSystemCachelineSize() {return CudaGPU::gpuCacheLineSize;}
     gpgpu_sim* getTheGPU() { return theGPU; }
 
     /// Called at the beginning of each kernel launch to start the statistics
@@ -716,7 +716,7 @@ class CudaGPU : public ClockedObject
        assert(graphicsMemory.find(graphicsPid) != graphicsMemory.end()); 
        graphicsMemory[graphicsPid].freeMem(add);
     }
-    void setGraphicsMem(int pid, Addr add, size_t size){
+    void setGraphicsMem(int pid, Addr add, Addr size){
          //every TC should set memory only once
          //assert(graphicsMemory.find(tc) == graphicsMemory.end());
          DPRINTF(GraphicsMemory, "GraphicsMemory: Setting graphics memory pid=%d, addr=0x%llx, size=%d\n", pid, add, size);
@@ -728,7 +728,7 @@ class CudaGPU : public ClockedObject
 
     // Returns the line of the address, a
     inline Addr addrToLine(Addr a){
-       unsigned int maskBits = floorLog2(gpuCacheLineSize);
+       unsigned int maskBits = floorLog2(CudaGPU::gpuCacheLineSize);
        return a & (((uint64_t)-1) << maskBits);
     }
 };

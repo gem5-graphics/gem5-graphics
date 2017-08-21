@@ -29,7 +29,8 @@ enum gem5DebugCall {
    gmem_alloc_fail, // 0
    gmem_lock_fail, // 1
    pipe_mem_alloc_fail, // 2
-   gem5_info // 3
+   gem5_info, // 3
+   pipe_mem_alloc //4
 };
 
 class graphicsStream {

@@ -16,6 +16,7 @@ extern renderData_t g_renderData;
 gem5GraphicsCalls_t gem5GraphicsCalls_t::gem5GraphicsCalls;
 int gem5GraphicsCalls_t::_frameBufferWidth = 0;
 int gem5GraphicsCalls_t::_frameBufferHeight = 0;
+std::string gem5GraphicsCalls_t::_dirName = "frames_gem5pipe";
 
 #define GL_RGBA 0x1908
 #define GL_UNSIGNED_BYTE 0x1401
@@ -35,6 +36,7 @@ static void onNewGpuFrame(void* opaque,
     static OutputDirectory* outputDir = NULL;
     static OutputStream* picOut = simout.create("gem5pipe.framebuffer.bmp", true);
     static uint64_t lastFbHash = 0;
+    static bool firstFrame = true;
     static FrameBuffer fb(width, height);
 
     inform("gem5Pipe: a new frame posted (frame %d)\n", fnum);
@@ -43,17 +45,15 @@ static void onNewGpuFrame(void* opaque,
 
     // skip identical frames
     uint64_t newFbHash = fb.getHash();
-    if(newFbHash == lastFbHash){
-      inform("no frame chanes detected\n");
+    if((newFbHash == lastFbHash) and !firstFrame){
+      inform("identical frame detected\n");
       return;
     }
+    firstFrame = false;
     lastFbHash = newFbHash;
 
     if(!outputDir){
-      std::string dirName = "frames_gem5pipe";
-      simout.remove(dirName, true);
-      outputDir = simout.createSubdirectory(dirName);
-
+      outputDir = gem5GraphicsCalls_t::CreateFrameDir();
     }
 
     std::stringstream ss;
@@ -96,21 +96,16 @@ void gem5GraphicsCalls_t::executeGraphicsCommand(ThreadContext *tc, uint64_t gpu
 
     GraphicsSyscallHelper helper(tc, (graphicssyscall_t*) call_params);
 
-    uint32_t buf_val;
-    uint32_t buf_len;
+    uint64_t buf_val = 0;
+    uint64_t buf_len = 0;
     if(helper.hasParams()){
-      buf_val = *((uint32_t*) helper.getParam(0));
-      buf_len = *((uint32_t*) helper.getParam(1));
-    } else {
-      buf_val = buf_len = 0;
+      buf_val = *(uint64_t*) helper.getParam(0);
+      buf_len = *(uint64_t*) helper.getParam(1);
     }
-
-    uint64_t buf_val64 = buf_val;
-
 
 #define CALL_GSERIALIZE_CMD \
     checkpointGraphics::SerializeObject.serializeGraphicsCommand(\
-    pid, tid, gpusysno, (uint8_t*) buf_val64, buf_len );\
+    pid, tid, gpusysno, (uint8_t*) buf_val, buf_len );\
 
 #define CALL_GSERIALIZE \
     checkpointGraphics::SerializeObject.serializeGraphicsCommand(\
@@ -123,7 +118,8 @@ void gem5GraphicsCalls_t::executeGraphicsCommand(ThreadContext *tc, uint64_t gpu
     int tid = helper.getTid();
     int pid = helper.getPid();
 
-    DPRINTF(GraphicsCalls, "gem5pipe: command %lu with buffer address %x and length of %d from pid= %d and tid= %d\n", gpusysno, buf_val, buf_len, pid, tid);
+    DPRINTF(GraphicsCalls, "gem5pipe: command %lu with buffer address %lx and length of %ld from pid= %d and tid= %d\n", 
+            gpusysno, buf_val, buf_len, pid, tid);
 
     //get gpu model, null returned if gpu not enabled
     CudaGPU *cudaGPU = CudaGPU::getCudaGPU(g_active_device);
@@ -136,7 +132,7 @@ void gem5GraphicsCalls_t::executeGraphicsCommand(ThreadContext *tc, uint64_t gpu
             if (buf_val != 0){
               //check if the gpu model is enabled
               if(cudaGPU!=NULL)
-                cudaGPU->setGraphicsMem(pid, (Addr) buf_val, (unsigned) buf_len);
+                cudaGPU->setGraphicsMem(pid, buf_val, buf_len);
             }
             return;
         }
@@ -147,7 +143,7 @@ void gem5GraphicsCalls_t::executeGraphicsCommand(ThreadContext *tc, uint64_t gpu
             //we cannot issue more graphics calls while other are rendering
             uint32_t blockT = cudaGPU==NULL? 0 : (cudaGPU->isStreamManagerEmpty() ? 0 : 1);
             DPRINTF(GraphicsCalls, "returning a graphics block flag value of %d\n", blockT);
-            helper.setReturn((uint8_t*) & blockT, sizeof (uint32_t));
+            helper.setReturn((uint8_t*) & blockT, sizeof (graphicssyscall_t::RET_LEN_TYPE));
             return;
         }
             break;
@@ -165,16 +161,17 @@ void gem5GraphicsCalls_t::executeGraphicsCommand(ThreadContext *tc, uint64_t gpu
             CALL_GSERIALIZE_CMD;
             uint32_t active = cudaGPU==NULL? 0: GPGPUSimSimulationActive() ? 1 : 0;
             DPRINTF(GraphicsCalls, "returning a sim_active flag value = %d\n", active);
-            helper.setReturn((uint8_t*) & active, sizeof (uint32_t));
+            helper.setReturn((uint8_t*) & active, sizeof (graphicssyscall_t::RET_LEN_TYPE));
             return;
         }
             break;
         case gem5_get_procId:
         {
+            assert(0); //TODO: should be fixed
             CALL_GSERIALIZE_CMD;
             uint64_t lpid = pid;
             DPRINTF(GraphicsCalls, "returning a gem5_get_procId = 0x%lx\n", lpid);
-            helper.setReturn((uint8_t*) &lpid, sizeof (uint64_t));
+            helper.setReturn((uint8_t*) &lpid, sizeof (graphicssyscall_t::RET_LEN_TYPE));
             return;
         }
             break;
@@ -206,20 +203,22 @@ void gem5GraphicsCalls_t::executeGraphicsCommand(ThreadContext *tc, uint64_t gpu
         DPRINTF(GraphicsCalls, "gem5pipe:  gpusysno write\n");
         helper.readBlob(buf_val, iobuffer, buf_len);
         CALL_GSERIALIZE;
-        uint32_t ret = stream->write(iobuffer, buf_len);
+        graphicssyscall_t::RET_LEN_TYPE ret = stream->write(iobuffer, buf_len);
         DPRINTF(GraphicsCalls, "gem5pipe:  write returned %d\n", ret);
-        helper.setReturn((uint8_t*) & ret, sizeof (uint32_t));
+        helper.setReturn((uint8_t*) & ret, sizeof (graphicssyscall_t::RET_LEN_TYPE));
     } else if (gpusysno == gem5_read) {
        DPRINTF(GraphicsCalls, "gem5pipe: gpusysno read\n");
        if(buf_len > 0) {
-          uint32_t ret = stream->read(iobuffer, buf_len);
+         graphicssyscall_t::RET_LEN_TYPE ret = stream->read(iobuffer, buf_len);
           CALL_GSERIALIZE;
 
+          /*if(buf_len != 391) 
+             helper.writeBlob(buf_val, iobuffer, buf_len);*/
           helper.writeBlob(buf_val, iobuffer, buf_len);
-          DPRINTF(GraphicsCalls, "gem5pipe: read buffer value is %p \n",  iobuffer);
-          DPRINTF(GraphicsCalls, "gem5pipe: read returned %lx\n", (uint64_t) ret);
+          DPRINTF(GraphicsCalls, "gem5pipe: read buffer value is %lx \n",  (uint64_t) iobuffer);
+          DPRINTF(GraphicsCalls, "gem5pipe: read returned %d\n", ret);
 
-          helper.setReturn((uint8_t*) & ret, sizeof (uint32_t));
+          helper.setReturn((uint8_t*) & ret, sizeof (graphicssyscall_t::RET_LEN_TYPE));
        }
     } else {
         panic("Unexpected stream command: gpusysno=%d\n", gpusysno);

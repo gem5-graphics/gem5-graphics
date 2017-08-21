@@ -27,23 +27,23 @@
  */
 
 #include "graphics/graphics_syscall_helper.hh"
-#include "mem/ruby/system/RubySystem.hh"
 #include "mem/fs_translating_port_proxy.hh"
 #include "mem/se_translating_port_proxy.hh"
 #include "sim/full_system.hh"
+#include "gpu/gpgpu-sim/cuda_gpu.hh"
 
 GraphicsSyscallHelper::GraphicsSyscallHelper(ThreadContext *_tc, graphicssyscall_t* _call_params)
     : tc(_tc), sim_params_ptr((Addr)_call_params), arg_lengths(NULL),
-      args(NULL), total_bytes(0)
+      args(NULL)
 {
     decode_package();
 }
 
+
 GraphicsSyscallHelper::GraphicsSyscallHelper(ThreadContext *_tc)
     : tc(_tc), sim_params_ptr(0), arg_lengths(NULL),
-      args(NULL), total_bytes(0)
+      args(NULL)
 {
-
 }
 
 void
@@ -67,7 +67,7 @@ GraphicsSyscallHelper::readString(Addr addr, uint8_t* p, int size, ThreadContext
     bool null_not_found = true;
     Addr curr_addr;
     int read_size;
-    unsigned block_size = RubySystem::getBlockSizeBytes();
+    unsigned block_size = CudaGPU::getSystemCachelineSize();
     int bytes_read = 0;
     for (; bytes_read < size && null_not_found; bytes_read += read_size) {
         curr_addr = addr + bytes_read;
@@ -100,20 +100,16 @@ GraphicsSyscallHelper::decode_package()
 
     readBlob(sim_params_ptr, (unsigned char*)&sim_params, sizeof(graphicssyscall_t));
 
-    //inform("GraphicsSyscallHelper::decode_package sizeof(graphicssyscall_t) is %d\n",sizeof(graphicssyscall_t));
-    //inform("sim_params.num_args= %d \n", sim_params.num_args);
-    //inform("sim_params.total_bytes=%d \n",sim_params.total_bytes);
-
     if(sim_params.num_args > 0){
-      arg_lengths = new int[sim_params.num_args];
-      readBlob((Addr)sim_params.arg_lengths, (unsigned char*)arg_lengths, sim_params.num_args * sizeof(int32_t));
+      arg_lengths = new graphicssyscall_t::ARG_LEN_TYPE[sim_params.num_args];
+      readBlob((Addr)sim_params.arg_lengths_ptr, (unsigned char*)arg_lengths, sim_params.num_args * sizeof(graphicssyscall_t::ARG_LEN_TYPE));
     } else{
       arg_lengths = NULL;
     }
 
     if(sim_params.total_bytes > 0){
       args = new unsigned char[sim_params.total_bytes];
-      readBlob((Addr)sim_params.args, args, sim_params.total_bytes);
+      readBlob((Addr)sim_params.args_ptr, args, sim_params.total_bytes);
     } else {
       args = NULL;
     }
@@ -132,7 +128,7 @@ GraphicsSyscallHelper::~GraphicsSyscallHelper()
 void*
 GraphicsSyscallHelper::getParam(int index)
 {
-    int arg_index = 0;
+    uint64_t arg_index = 0;
     for (int i = 0; i < index; i++) {
         arg_index += arg_lengths[i];
     }
@@ -142,5 +138,5 @@ GraphicsSyscallHelper::getParam(int index)
 void
 GraphicsSyscallHelper::setReturn(unsigned char* retValue, size_t size)
 {
-    writeBlob((uint64_t)sim_params.ret, retValue, size);
+    writeBlob(sim_params.ret_ptr, retValue, size);
 }

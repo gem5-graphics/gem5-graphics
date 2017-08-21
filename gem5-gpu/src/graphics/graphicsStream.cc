@@ -24,7 +24,7 @@ graphicsStream* graphicsStream::get(int tid, int pid) {
 }
 
 uint32_t graphicsStream::read(uint8_t* buffData, size_t buffSize){
-    DPRINTF(GraphicsCalls, "%s: reading to guest buffer=%p, size=%d\n", __func__, buffData, buffSize);
+    DPRINTF(GraphicsCalls, "%s: reading to guest buffer=%lx, size=%d\n", __func__, (uint64_t) buffData, buffSize);
 
     int len = 0;
     size_t buffOffset = 0;
@@ -37,7 +37,7 @@ uint32_t graphicsStream::read(uint8_t* buffData, size_t buffSize){
           auto result = m_channel->readFromHost(&m_dataForReading, true);
           if (result == emugl::RenderChannel::IoResult::Ok) {
             m_dataForReadingLeft = m_dataForReading.size();
-            DPRINTF(GraphicsCalls, "%s: read %zu bytes to guest\n", __func__, m_dataForReadingLeft);
+            DPRINTF(GraphicsCalls, "%s: read %lu bytes to guest\n", __func__, m_dataForReadingLeft);
             break;
           }
           /*else {
@@ -62,7 +62,7 @@ uint32_t graphicsStream::read(uint8_t* buffData, size_t buffSize){
 }
 
 uint32_t graphicsStream::write(uint8_t* buffData, size_t len){
-    DPRINTF(GraphicsCalls, "%s: writing to host buffer=%p, size=%d\n", __func__, buffData, len);
+    DPRINTF(GraphicsCalls, "%s: writing to host buffer=%lx, size=%d\n", __func__, (uint64_t) buffData, len);
 
     // the total bytes to send.
     int count = len;
