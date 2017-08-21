@@ -16,7 +16,6 @@ bool isDepthTestEnabled();
 
 bool isBlendingEnabled();
 
-
 void getBlendingMode(unsigned  * src, unsigned  * dst, unsigned* srcAlpha, unsigned * dstAlpha,
         unsigned* eqnRGB, unsigned* eqnAlpha, float * blendColor);
 

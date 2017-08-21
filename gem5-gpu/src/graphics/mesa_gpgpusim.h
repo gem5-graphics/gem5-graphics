@@ -23,7 +23,7 @@ extern "C" {
 
 #define SKIP_API_GEM5
 #include "api/cuda_syscalls.hh"
-#include "graphics/gpgpusim_calls.h"
+#include "graphics/gpgpusim_to_graphics_calls.h"
 
 
 typedef unsigned char byte;

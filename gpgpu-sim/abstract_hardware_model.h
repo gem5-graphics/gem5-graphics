@@ -67,7 +67,7 @@ enum FuncCache
 #include <string.h>
 #include <stdio.h>
 #include <stdint.h>
-#include "graphics/gpgpusim_calls.h"
+#include "graphics/gpgpusim_to_graphics_calls.h"
 
 typedef unsigned long long new_addr_type;
 typedef new_addr_type address_type;
