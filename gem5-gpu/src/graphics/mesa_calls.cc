@@ -1,5 +1,4 @@
 #include "mesa_gpgpusim.h"
-#include "mesa_calls.h"
 
 extern renderData_t g_renderData;
 

@@ -1,5 +1,5 @@
-#ifndef __GPUSIMGRAPHICS_CALLS__
-#define __GPUSIMGRAPHICS_CALLS__
+#ifndef __GPGPUSIM_CALLS__
+#define __GPGPUSIM_CALLS__
 
 extern "C" {
 #include "math/m_xform.h"
@@ -37,5 +37,16 @@ void writeVertexResult(unsigned threadID, unsigned resAttribID, unsigned attribI
 
 //checks if a vertex finishes execution
 void checkGraphicsThreadExit(void* kernelPtr, unsigned tid);
+
+bool isBlendingEnabled(void);
+
+bool isDepthTestEnabled(void);
+
+void checkGraphicsThreadExit(void* kernelPtr, unsigned tid);
+
+unsigned readMESABufferWidth();
+
+void getBlendingMode(unsigned  * src, unsigned  * dst, unsigned* srcAlpha, unsigned * dstAlpha,
+        unsigned* eqnRGB, unsigned* eqnAlpha, float * blendColor);
 
 #endif 
