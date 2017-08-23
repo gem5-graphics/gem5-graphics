@@ -34,8 +34,8 @@
 
 typedef struct graphicscall {
     uint64_t unique_id;
-    int pid;
-    int tid;
+    int32_t pid;
+    int32_t tid;
     uint64_t total_bytes;
     uint64_t num_args;
     //pointers stored in unsigned 64
@@ -45,6 +45,7 @@ typedef struct graphicscall {
     typedef uint64_t ARG_LEN_TYPE;
     typedef int32_t RET_LEN_TYPE;
 } graphicssyscall_t;
+
 
 class GraphicsSyscallHelper {
     ThreadContext* tc;
