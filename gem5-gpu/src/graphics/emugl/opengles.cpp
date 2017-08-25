@@ -81,6 +81,7 @@ static int initOpenglesEmulationFuncs(ADynamicLibrary* rendererLib) {
 }
 
 static bool sRendererUsesSubWindow;
+static bool sEgl2egl;
 static emugl::RenderLibPtr sRenderLib = nullptr;
 static emugl::RendererPtr sRenderer = nullptr;
 
@@ -116,6 +117,13 @@ int android_initOpenglesEmulation() {
     if (const char* env = getenv("ANDROID_GL_SOFTWARE_RENDERER")) {
         if (env[0] != '\0' && env[0] != '0') {
             sRendererUsesSubWindow = false;
+        }
+    }
+
+    sEgl2egl = false;
+    if (const char* env = getenv("ANDROID_EGL_ON_EGL")) {
+        if (env[0] != '\0' && env[0] == '1') {
+            sEgl2egl = true;
         }
     }
 
@@ -167,7 +175,7 @@ android_startOpenglesRenderer(int width, int height, bool guestPhoneApi, int gue
     dma_ops.unlock = android_goldfish_dma_ops.unlock;
     sRenderLib->setDmaOps(dma_ops);*/
 
-    sRenderer = sRenderLib->initRenderer(width, height, sRendererUsesSubWindow);
+    sRenderer = sRenderLib->initRenderer(width, height, sRendererUsesSubWindow, sEgl2egl);
     if (!sRenderer) {
         D("Can't start OpenGLES renderer?");
         return -1;
@@ -179,7 +187,6 @@ android_startOpenglesRenderer(int width, int height, bool guestPhoneApi, int gue
         sRenderLib->getGlesVersion(glesMajorVersion_out, glesMinorVersion_out);
     return 0;
 }
-
 
 void
 android_setPostCallback(OnPostFunc onPost, void* onPostContext)
@@ -252,25 +259,29 @@ android_setPostCallback(OnPostFunc onPost, void* onPostContext)
 //}
 //
 //void
-//android_stopOpenglesRenderer(void)
+//android_stopOpenglesRenderer(bool wait)
 //{
     //if (sRenderer) {
-        //sRenderer->stop();
-        //sRenderer.reset();
-        //android_stop_opengl_logger();
+        //sRenderer->stop(wait);
+        //if (wait) {
+        //    sRenderer.reset();
+        //    android_stop_opengl_logger();
+        //}
     //}
 //}
 
 int
 android_showOpenglesWindow(void* window, int wx, int wy, int ww, int wh,
-                           int fbw, int fbh, float dpr, float rotation)
+                           int fbw, int fbh, float dpr, float rotation,
+                           bool deleteExisting)
 {
     if (!sRenderer) {
         return -1;
     }
     FBNativeWindowType win = (FBNativeWindowType)(uintptr_t)window;
     bool success = sRenderer->showOpenGLSubwindow(
-            win, wx, wy, ww, wh, fbw, fbh, dpr, rotation);
+            win, wx, wy, ww, wh, fbw, fbh, dpr, rotation,
+                       deleteExisting);
     return success ? 0 : -1;
 }
 

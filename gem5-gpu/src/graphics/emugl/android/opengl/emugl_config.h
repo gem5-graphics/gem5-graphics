@@ -87,6 +87,9 @@ typedef enum SelectedRenderer {
     SELECTED_RENDERER_SWIFTSHADER = 5,
     SELECTED_RENDERER_ANGLE = 6, // ANGLE D3D11 with D3D9 fallback
     SELECTED_RENDERER_ANGLE9 = 7, // ANGLE forced to D3D9
+    SELECTED_RENDERER_SWIFTSHADER_INDIRECT = 8,
+    SELECTED_RENDERER_ANGLE_INDIRECT = 9,
+    SELECTED_RENDERER_ANGLE9_INDIRECT = 10,
     SELECTED_RENDERER_ERROR = 255,
 } SelectedRenderer;
 
@@ -97,6 +100,9 @@ SelectedRenderer emuglConfig_get_renderer(const char* gpu_mode);
 
 // Returns the renderer that is active, after config is done.
 SelectedRenderer emuglConfig_get_current_renderer();
+
+// Returns if the current renderer supports snapshot.
+bool emuglConfig_current_renderer_supports_snapshot();
 
 void free_emugl_host_gpu_props(emugl_host_gpu_prop_list props);
 

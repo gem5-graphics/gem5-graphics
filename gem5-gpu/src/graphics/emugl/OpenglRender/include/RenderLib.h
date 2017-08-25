@@ -19,6 +19,7 @@
 #include "graphics/emugl/android/opengl/emugl_config.h"
 #include "graphics/emugl/OpenglRender/include/Renderer.h"
 //#include "graphics/emugl/OpenglRender/include/render_api_types.h"
+
 struct emugl_logger_struct;
 struct emugl_crash_reporter_t;
 struct emugl_feature_is_enabled_t;
@@ -70,7 +71,7 @@ public:
     //
     // There might be only one renderer.
     virtual RendererPtr initRenderer(int width, int height,
-                                     bool useSubWindow) = 0;
+                                     bool useSubWindow, bool egl2egl) = 0;
 };
 
 using RenderLibPtr = std::unique_ptr<RenderLib>;

@@ -61,16 +61,17 @@ void android_setPostCallback(OnPostFunc onPost, void* onPostContext);
                                         char** version);*/
 
 int android_showOpenglesWindow(void* window, int wx, int wy, int ww, int wh,
-                               int fbw, int fbh, float dpr, float rotation);
+                               int fbw, int fbh, float dpr, float rotation,
+                               bool deleteExisting);
 
-//int android_hideOpenglesWindow(void);
+int android_hideOpenglesWindow(void);
 
 //void android_setOpenglesTranslation(float px, float py);
 
 void android_redrawOpenglesWindow(void);
 
 /* Stop the renderer process */
-//void android_stopOpenglesRenderer(void);
+//void android_stopOpenglesRenderer(bool wait);
 
 /* set to TRUE if you want to use fast GLES pipes, 0 if you want to
  * fallback to local TCP ones

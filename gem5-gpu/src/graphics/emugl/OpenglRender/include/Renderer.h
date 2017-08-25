@@ -16,6 +16,14 @@
 #include "graphics/emugl/OpenglRender/include/RenderChannel.h"
 #include "graphics/emugl/OpenglRender/include/render_api_platform_types.h"
 #include "graphics/emugl/android/base/files/Stream.h"
+//#include "android/snapshot/common.h"
+
+namespace android {
+namespace snapshot {
+class TextureLoader;
+using TextureLoaderPtr = std::shared_ptr<TextureLoader>;
+}
+}
 
 #include <functional>
 #include <memory>
@@ -107,7 +115,8 @@ public:
                                      int fbw,
                                      int fbh,
                                      float dpr,
-                                     float zRot) = 0;
+                                     float zRot,
+                                     bool deleteExisting) = 0;
 
     // destroyOpenGLSubwindow -
     //   destroys the created native subwindow. Once destroyed,
@@ -142,7 +151,7 @@ public:
 
     // Stops all channels and render threads. The renderer cannot be used after
     // stopped.
-    virtual void stop() = 0;
+    virtual void stop(bool wait) = 0;
 
     // Pauses all channels to prepare for snapshot saving.
     virtual void pauseAllPreSave() = 0;
@@ -150,8 +159,10 @@ public:
     // Resumes all channels after snapshot saving or loading.
     virtual void resumeAll() = 0;
 
-    virtual void save(android::base::Stream* stream) = 0;
-    virtual bool load(android::base::Stream* stream) = 0;
+    /*virtual void save(android::base::Stream* stream,
+                      const android::snapshot::TextureSaverPtr& textureSaver) = 0;
+    virtual bool load(android::base::Stream* stream,
+                      const android::snapshot::TextureLoaderPtr& textureLoader) = 0;*/
 
 protected:
     ~Renderer() = default;
