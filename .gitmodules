@@ -1,0 +1,3 @@
+[submodule "mesa"]
+	path = mesa
+	url = https://github.com/mesa3d/mesa
