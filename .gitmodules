@@ -1,0 +1,3 @@
+[submodule "mesa"]
+	path = mesa
+	url = https://soc-sim-internal.googlesource.com/gem5/gpusim/mesa
