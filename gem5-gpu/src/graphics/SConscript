@@ -5,18 +5,31 @@ Import('*')
 import os
 mesa_root = os.environ['GPGPUSIM_MESA_ROOT']
 
+mesa_dir = "/mesa"
+libpath = mesa_root+mesa_dir+'/lib'
+print "lib path", mesa_root+mesa_dir+'/lib'
+env.Replace(LIBPATH = [mesa_root+mesa_dir+'/lib', env['LIBPATH']])
+
+#mesa_dir = "/Mesa-7.11.2_GPGPU-Sim"
+#env.Replace(LIBPATH = [mesa_root+mesa_dir+'/lib64', env['LIBPATH']])
+
 env.Append(CXXFLAGS = [
 		     '-I'+mesa_root+'/gem5-gpu/src',
-		     '-I'+mesa_root+'/Mesa-7.11.2_GPGPU-Sim/src/mesa',
-		     '-I'+mesa_root+'/Mesa-7.11.2_GPGPU-Sim/src/mapi',
-		     '-I'+mesa_root+'/Mesa-7.11.2_GPGPU-Sim/src/mesa/swrast',
+		     '-I'+mesa_root+mesa_dir+'/include',
+		     '-I'+mesa_root+mesa_dir+'/src',
+		     '-I'+mesa_root+mesa_dir+'/src/mesa',
+		     '-I'+mesa_root+mesa_dir+'/src/mapi',
+		     '-I'+mesa_root+mesa_dir+'/src/mesa/swrast',
+		     '-I'+mesa_root+mesa_dir+'/src/gallium/auxiliary',
+		     '-I'+mesa_root+mesa_dir+'/src/gallium/include',
+		     '-I'+mesa_root+mesa_dir+'/src/gallium/drivers/softpipe',
  		     '-D_POSIX_SOURCE', '-D_SVID_SOURCE', '-D_BSD_SOURCE',
            	     '-D_GNU_SOURCE', '-DPTHREADS', '-DUSE_XSHM', '-DHAVE_POSIX_MEMALIGN',
-		     '-Wno-invalid-offsetof'
-           ]) 
+           	     '-DHAVE_PTHREAD', '-D__STDC_VERSION__=0',
+		     '-Wno-invalid-offsetof',
+           ])
 
-env.Replace(LIBPATH = [mesa_root+'/Mesa-7.11.2_GPGPU-Sim/lib64', env['LIBPATH']])
-env.Append(LIBS = ['GL'])
+env.Append(LIBS = ['swrast_dri'])
 
 print "GPGPUSIM_MESA_ROOT: " , mesa_root
 

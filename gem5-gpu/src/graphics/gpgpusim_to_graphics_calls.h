@@ -2,13 +2,14 @@
 #define __GPGPUSIM_CALLS__
 
 extern "C" {
-#include "math/m_xform.h"
+//#include "math/m_xform.h"
 #include "main/mtypes.h"
+#include "pipe/p_state.h"
 }
 
 enum shaderAttribs_t{
-   FRAG_ACTIVE = FRAG_ATTRIB_MAX+1,
-   VERT_ACTIVE = VERT_ATTRIB_MAX+1
+     FRAG_ACTIVE = PIPE_MAX_SHADER_INPUTS+1,
+     VERT_ACTIVE = VERT_ATTRIB_MAX+1
 };
 
 //called by gpgpusim

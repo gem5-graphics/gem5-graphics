@@ -2,7 +2,6 @@
 #include "mesa_gpgpusim.h"
 
 extern renderData_t g_renderData;
-extern GLvector4f * vertexResultsForMesa;
 
 
 //called by gpgpusim

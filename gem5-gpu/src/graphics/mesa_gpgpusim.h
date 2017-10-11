@@ -4,21 +4,27 @@
 
 
 #undef NDEBUG
-#include <cassert> 
+#include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <iostream>
 #include <vector>
 #include <mutex>
-#include<map>
+#include <map>
+#include <GL/gl.h>
 
 extern "C" {
-#include "math/m_xform.h"
-#include "main/mtypes.h"
-#include "s_span.h"
-#include "tnl/t_context.h"
+#include "compiler/shader_enums.h"
 #include "program/prog_statevars.h"
+#include "mesa/main/config.h"
+#include "main/mtypes.h"
+#include "math/m_vector.h"
+#include "pipe/p_state.h"
+//#include "sp_context.h"
+//#include "main/mtypes.h"
+//#include "s_span.h"
+//#include "tnl/t_context.h"
 }
 
 #define SKIP_API_GEM5
@@ -42,24 +48,35 @@ extern "C" void gpgpusimLoadShader(int shaderType, std::string arbFile, std::str
 
 //mesa calls we use
 extern "C" {
+  void _mesa_readpixels(struct gl_context *ctx,
+                               GLint x, GLint y, GLsizei width, GLsizei height,
+                               GLenum format, GLenum type,
+                               const struct gl_pixelstore_attrib *packing,
+                               GLvoid *pixels);
    GLboolean GLAPIENTRY _mesa_IsEnabled(GLenum cap);
+
+   boolean generate_tgsi_ptx_code(const struct tgsi_token *tokens, int shaderType);
+
+   /*void _mesa_fetch_state(struct gl_context *ctx, const gl_state_index state[],
+                  gl_constant_value *val);*/
+
+   /*
    void get_uniform_rows_cols(const struct gl_program_parameter *p, GLint *rows, GLint *cols);
-   tnl_render_func* init_run_render(struct gl_context *ctx);
+   //tnl_render_func* init_run_render(struct gl_context *ctx);
    void finalize_run_render(struct gl_context *ctx);
-   void run_render_prim(struct gl_context *ctx, tnl_render_func *tab, struct vertex_buffer *VB, GLuint primId);
-   void _mesa_fetch_state(struct gl_context *ctx, const gl_state_index[], GLfloat *value);
+   //void run_render_prim(struct gl_context *ctx, tnl_render_func *tab, struct vertex_buffer *VB, GLuint primId);
    void copy_vp_results(struct gl_context *ctx, struct vertex_buffer *VB, struct vp_stage_data *store, struct gl_vertex_program *program);
    GLboolean do_ndc_cliptest(struct gl_context *ctx, struct vp_stage_data *store, GLuint primId);
-   void SetSoftProg(int flag);
+   void SetSoftProg(int flag);*/
 }
 /////////
 
-typedef void (*PutRowFunc)(struct gl_context *ctx, struct gl_renderbuffer *rb, GLuint count, GLint x, GLint y, const void *values, const GLubyte *mask);
-typedef void (*GetRowFunc)(struct gl_context *ctx, struct gl_renderbuffer *rb, GLuint count, GLint x, GLint y, void *values);
+//typedef void (*PutRowFunc)(struct gl_context *ctx, struct gl_renderbuffer *rb, GLuint count, GLint x, GLint y, const void *values, const GLubyte *mask);
+//typedef void (*GetRowFunc)(struct gl_context *ctx, struct gl_renderbuffer *rb, GLuint count, GLint x, GLint y, void *values);
 
 struct fragmentData_t {
    fragmentData_t(): passedDepth(false) {}
-   GLfloat attribs[FRAG_ATTRIB_MAX][4];
+   GLfloat attribs[PIPE_MAX_SHADER_INPUTS][4];
    unsigned intPos[3];
    bool passedDepth;
 };
@@ -131,7 +148,7 @@ struct stage_shading_info_t {
     bool doneEarlyZ;
     RasterTiles * earlyZTiles;
     bool render_init;
-    tnl_render_func* renderFunc;
+    //tnl_render_func* renderFunc;
     bool initStageKernelPtr;
     unsigned * primMap;
     unsigned * primCountMap;
@@ -161,7 +178,7 @@ struct stage_shading_info_t {
         completed_threads = 0;
         doneEarlyZ = true;
         render_init = true;
-        renderFunc = NULL;
+        //renderFunc = NULL;
         allocAddr = NULL;
         vertCodeAddr = NULL;
         fragCodeAddr = NULL;
@@ -227,16 +244,15 @@ public:
     bool GPGPUSimSimulationActive();
     bool GPGPUSimSkipCpFrames();
     void endOfFrame();
-    void initializeCurrentDraw (gl_context * ctx);
+    void initializeCurrentDraw (gl_context * ctx, const char* fragPtxCode);
     void finilizeCurrentDraw();
-    //void startPrimitive();
-    GLboolean doVertexShading(GLvector4f ** inputParams, vp_stage_data * stage);
+    //GLboolean doVertexShading(GLvector4f ** inputParams, vp_stage_data * stage);
     bool m_flagEndVertexShader;
     void endVertexShading(CudaGPU * cudaGPU);
     unsigned int doFragmentShading();
     bool m_flagEndFragmentShader;
     void endFragmentShading();
-    void addFragmentsSpan(SWspan* span);
+    //void addFragmentsSpan(SWspan* span);
     
     //gpgpusim calls
     bool isDepthTestEnabled();
@@ -258,6 +274,12 @@ public:
     void doneEarlyZ(); 
     void launchFragmentTile(RasterTile * rasterTile, unsigned tileId);
     void addPrimitive();
+    void setVertShaderUsedRegs(int regs){
+      m_usedVertShaderRegs = regs;
+    }
+    void setFragShaderUsedRegs(int regs){
+    m_usedFragShaderRegs = regs;
+    }
 private:
     //private funcs
     bool useInShaderBlending() const;
@@ -296,9 +318,9 @@ private:
     const char* getCurrentShaderId(int shaderType);
     std::string getCurrentShaderName(int shaderType){
         if(shaderType==VERTEX_PROGRAM)
-            return ("vp" + std::to_string(m_drawcall_num));
+            return ("vp" + std::to_string(m_currentFrame) + std::to_string(m_drawcall_num));
         if(shaderType==FRAGMENT_PROGRAM)
-            return ("fp" + std::to_string(m_drawcall_num));
+            return ("fp" + std::to_string(m_currentFrame) + std::to_string(m_drawcall_num));
         //only two types
         assert(0);
     }
@@ -315,23 +337,24 @@ private:
     struct gl_renderbuffer * getMesaBuffer(){return m_mesaColorBuffer;}
     std::string getIntFolder(){return m_intFolder;}
     std::string getFbFolder(){return m_fbFolder;}
-    bool useDefaultShaders(){return m_useDefaultShaders;}
+    //bool useDefaultShaders(){return m_useDefaultShaders;}
     byte* getDeviceData(){return m_deviceData;}
     byte** getpDeviceData(){return &m_deviceData;}
-    std::string getShaderPTXInfo(std::string arbFileName, std::string functionName);
+    //std::string getShaderPTXInfo(std::string arbFileName, std::string functionName);
+    std::string getShaderPTXInfo(int usedRegs, std::string functionName);
     void* getShaderFatBin(std::string vertexShader, std::string fragmentShader);
     gl_state_index getParamStateIndexes(gl_state_index index);
     
     //private data
 private:
-    std::string vGlslPrfx;
-    std::string vARBPrfx;
+    //std::string vGlslPrfx;
+    //std::string fGlslPrfx;
+    //std::string vARBPrfx;
+    //std::string fARBPrfx;
     std::string vPTXPrfx;
-    std::string fGlslPrfx;
-    std::string fARBPrfx;
     std::string fPTXPrfx;
     std::string fPtxInfoPrfx;
-    vp_stage_data * vertexStageData;
+    //vp_stage_data * vertexStageData;
     byte* m_deviceData;
     std::string m_intFolder;
     std::string m_fbFolder;
@@ -345,7 +368,7 @@ private:
     unsigned int m_currentFrame;
     int m_startDrawcall; 
     unsigned int m_endDrawcall;
-    bool m_useDefaultShaders;
+    //bool m_useDefaultShaders;
     uint64_t m_colorBufferByteSize;
     uint64_t m_depthBufferSize;
     byte* m_depthBuffer;
@@ -358,8 +381,8 @@ private:
     struct gl_context * m_mesaCtx;
     struct gl_renderbuffer * m_mesaColorBuffer;
     struct gl_renderbuffer * m_mesaDepthBuffer;
-    PutRowFunc m_colorBufferPutRow;
-    PutRowFunc m_depthBufferPutRow;
+    //PutRowFunc m_colorBufferPutRow;
+    //PutRowFunc m_depthBufferPutRow;
     unsigned int m_tile_H;
     unsigned int m_tile_W;
     unsigned int m_block_H;
@@ -380,6 +403,8 @@ private:
     int m_tcTid;
     std::string m_outdir;
     std::mutex vertexFragmentLock;
+    int m_usedVertShaderRegs;
+    int m_usedFragShaderRegs;
 };
 
 extern renderData_t g_renderData;

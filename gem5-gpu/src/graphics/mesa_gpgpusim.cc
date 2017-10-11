@@ -14,9 +14,6 @@
 #include <stack>
 #include <sys/stat.h>
 #include <GL/gl.h>
-#include <X11/X.h>
-#include <X11/Xlib.h>
-#include <X11/extensions/XShm.h>
 #include <math.h>
 #include <assert.h>
 #include <functional>
@@ -25,21 +22,26 @@
 
 
 extern "C" {
-#include "drivers/x11/xmesaP.h"
-#include "main/config.h"
-#include "main/glheader.h"
-#include "main/colormac.h"
 #include "main/macros.h"
-#include "main/imports.h"
-#include "program/prog_instruction.h"
-#include "program/prog_statevars.h"
-#include "program/prog_execute.h"
-#include "program/prog_uniform.h"
-#include "program/prog_parameter.h"
-#include "swrast/s_context.h"
-#include "swrast/s_fragprog.h"
-#include "tnl/tnl.h"
-#include "tnl/t_pipeline.h"
+//#include "state_tracker/st_context.h"
+//#include "program/prog_statevars.h"
+//#include "main/enable.h"
+//#include "main/readpix.h"
+//#include "main/mtypes.h"
+//#include "drivers/x11/xmesaP.h"
+//#include "main/config.h"
+//#include "main/glheader.h"
+//#include "main/colormac.h"
+//#include "main/imports.h"
+//#include "program/prog_instruction.h"
+//#include "program/prog_statevars.h"
+//#include "program/prog_execute.h"
+//#include "program/prog_uniform.h"
+//#include "program/prog_parameter.h"
+//#include "swrast/s_context.h"
+//#include "swrast/s_fragprog.h"
+//#include "tnl/tnl.h"
+//#include "tnl/t_pipeline.h"
 }
 
 
@@ -57,7 +59,7 @@ void startEarlyZ(CudaGPU* cudaGPU, uint64_t depthBuffStart, uint64_t depthBuffEn
 
 
 renderData_t g_renderData;
-int sizeOfEachFragmentData = FRAG_ATTRIB_MAX * sizeof (float) * 4;
+int sizeOfEachFragmentData = PIPE_MAX_SHADER_INPUTS * sizeof (float) * 4;
 #define DRAW_NON_SIM_FRAME true
 
 const char* VERT_ATTRIB_NAMES[33] =
@@ -104,7 +106,7 @@ float primitiveFragmentsData_t::getFragmentData(unsigned threadID, unsigned attr
    if(z_unit_disabled){
       assert(threadID < m_fragments.size());
       result =  m_fragments[threadID].attribs[attribID][attribIndex];
-      if(attribID == FRAG_ATTRIB_COL0) return primId;
+      if(attribID == VARYING_SLOT_COL0) return primId;
    } else {
       unsigned tileId = si->cudaStreamTiles[(uint64_t)stream].tileId;
       printf("get data for tile %d, thread %d, attrib %d, idx %d\n", tileId, threadID, attribID, attribIndex);
@@ -270,7 +272,7 @@ void renderData_t::runEarlyZ(CudaGPU * cudaGPU, unsigned tileH, unsigned tileW, 
    RasterTiles * allTiles = new RasterTiles();
    for(int prim=0; prim < drawPrimitives.size(); prim++){
       RasterTiles * primTiles = drawPrimitives[prim].sortFragmentsInTiles(m_bufferHeight, m_bufferWidth, tileH, tileW, blockH, blockW, dir);
-      printf("prim %d tiles = %d\n", prim, primTiles->size());
+      printf("prim %d tiles = %ld\n", prim, primTiles->size());
       for(int tile=0; tile < primTiles->size(); tile++){
          if((*primTiles)[tile]->size() == 0) continue;
          allTiles->push_back((*primTiles)[tile]);
@@ -278,10 +280,10 @@ void renderData_t::runEarlyZ(CudaGPU * cudaGPU, unsigned tileH, unsigned tileW, 
       delete primTiles;
    }
 
-   printf("number of tiles = %d\n", allTiles->size());
+   printf("number of tiles = %ld\n", allTiles->size());
    uint64_t depthBuffEndAddr = (uint64_t)m_deviceData + m_colorBufferByteSize + m_depthBufferSize;
    uint64_t depthBuffStartAddr = (uint64_t)m_deviceData + m_colorBufferByteSize; 
-   printf("depthBuffer start = %x, end =%x\n", depthBuffStartAddr, depthBuffEndAddr);
+   printf("depthBuffer start = %lx, end =%lx\n", depthBuffStartAddr, depthBuffEndAddr);
    m_sShading_info.doneEarlyZ = false;
    m_sShading_info.earlyZTiles = allTiles;
    m_sShading_info.completed_threads = 0;
@@ -384,10 +386,12 @@ renderData_t::renderData_t() {
     
     m_inShaderBlending = false;
     m_inShaderDepth = false;
-    m_useDefaultShaders = false;
+    //m_useDefaultShaders = false;
     for(unsigned i=0; i<MAX_COMBINED_TEXTURE_IMAGE_UNITS; i++)
         textureArray[i]=NULL;
     //get_GPGPUSim_Context(); //a hack to force initializing gpgpusim library
+    m_usedVertShaderRegs = -1;
+    m_usedFragShaderRegs = -1;
 }
 
 renderData_t::~renderData_t() {
@@ -431,7 +435,7 @@ void renderData_t::addPrimitive() {
     if(!GPGPUSimSimulationActive()) return;
     primitiveFragmentsData_t prim(drawPrimitives.size());
     drawPrimitives.push_back(prim);
-    printf("adding primitive, total = %d\n", drawPrimitives.size());
+    printf("adding primitive, total = %ld\n", drawPrimitives.size());
 }
 
 
@@ -524,11 +528,11 @@ void renderData_t::initParams(unsigned int startFrame, unsigned int endFrame, in
     system(std::string("rm -f "+ m_intFolder + "/*").c_str());
     system(std::string("rm -f " + m_fbFolder + "/*").c_str());
 
-    vGlslPrfx = m_intFolder+"/vertex_glsl";
-    vARBPrfx = m_intFolder+"/vertex_arb";
-    vPTXPrfx = m_intFolder+"/vertex_shader";
+    /*vGlslPrfx = m_intFolder+"/vertex_glsl";
     fGlslPrfx = m_intFolder+"/fragment_glsl";
-    fARBPrfx = m_intFolder+"/fragment_arb";
+    vARBPrfx = m_intFolder+"/vertex_arb";
+    fARBPrfx = m_intFolder+"/fragment_arb";*/
+    vPTXPrfx = m_intFolder+"/vertex_shader";
     fPTXPrfx = m_intFolder+"/fragment_shader";
     fPtxInfoPrfx = m_intFolder+"/shader_ptxinfo";
 }
@@ -544,7 +548,7 @@ void renderData_t::checkExitCond(){
 }
 
 void renderData_t::incCurrentFrame(){
-   bool wasActive = GPGPUSimActiveFrame();
+   //bool wasActive = GPGPUSimActiveFrame();
    m_currentFrame++;
 
    /*
@@ -559,7 +563,7 @@ void renderData_t::incCurrentFrame(){
    checkExitCond();
 }
 
-bool renderData_t::GPGPUSimActiveFrame(){
+bool renderData_t::GPGPUSimActiveFrame() {
    bool isFrame = ((m_currentFrame >= m_startFrame)
           and (m_currentFrame <= m_endFrame) 
           and !checkpointGraphics::SerializeObject.isUnserializingCp());
@@ -567,8 +571,9 @@ bool renderData_t::GPGPUSimActiveFrame(){
    return isFrame;
 }
 
-bool renderData_t::GPGPUSimSimulationActive(){    
-   bool isFrame = GPGPUSimActiveFrame(); 
+bool renderData_t::GPGPUSimSimulationActive() {
+  return !checkpointGraphics::SerializeObject.isUnserializingCp();
+   bool isFrame = GPGPUSimActiveFrame();
    bool afterStartDrawcall = ((m_currentFrame== m_startFrame) and (m_drawcall_num >= m_startDrawcall)) or (m_currentFrame > m_startFrame);
    bool beforeEndDrawcall =  ((m_currentFrame== m_endFrame) and (m_drawcall_num <= m_endDrawcall)) or (m_currentFrame < m_endFrame);
 
@@ -620,7 +625,7 @@ void renderData_t::endOfFrame(){
 }
 
 void renderData_t::finilizeCurrentDraw() {
-    printf("gpgpusim: end of drawcall %u, ", getDrawcallNum());
+    printf("gpgpusim: end of drawcall %llu, ", getDrawcallNum());
     if (!GPGPUSimSimulationActive()){
        if(DRAW_NON_SIM_FRAME){ 
 
@@ -641,7 +646,9 @@ const char* renderData_t::getCurrentShaderId(int shaderType) {
 }
 
 void renderData_t::generateVertexCode() {
-    bool programFound = false;
+    //TODO
+    assert(0);
+    /*bool programFound = false;
     
     std::stringstream fileNo;
     fileNo << getDrawcallNum();
@@ -656,10 +663,11 @@ void renderData_t::generateVertexCode() {
         vertex_glsl << g_renderData.getDefaultVertexShader();
         programFound = true;
     } else
-        for (unsigned shadersCoutner = 0; shadersCoutner < getMesaCtx()->Shader.ActiveProgram->NumShaders; shadersCoutner++) {
-            if (getMesaCtx()->Shader.ActiveProgram->Shaders[shadersCoutner]->Type == GL_VERTEX_SHADER
-                    && getMesaCtx()->Shader.ActiveProgram->VertexProgram == getMesaCtx()->VertexProgram._Current) {
-                vertex_glsl << getMesaCtx()->Shader.ActiveProgram->Shaders[shadersCoutner]->Source;
+        for (unsigned shadersCounter = 0; shadersCounter < m_mesaCtx->_Shader->ActiveProgram->NumShaders; shadersCounter++) {
+            if (m_mesaCtx->_Shader->ActiveProgram->Shaders[shadersCounter]->Type == GL_VERTEX_SHADER and
+                m_mesaCtx->_Shader->ActiveProgram->Shaders[shadersCounter]->Stage == MESA_SHADER_VERTEX) {
+                //&& m_mesaCtx->_Shader->ActiveProgram->VertexProgram == m_mesaCtx->VertexProgram._Current)
+                vertex_glsl << m_mesaCtx->_Shader->ActiveProgram->Shaders[shadersCounter]->Source;
                 programFound = true;
                 break;
             }
@@ -680,18 +688,17 @@ void renderData_t::generateVertexCode() {
             + getCurrentShaderName(VERTEX_PROGRAM)
             + " " + depthSize + " " + depthFunc;
     DPRINTF(MesaGpgpusim, "Running command: %s\n", command);
-    system(command.c_str());
+    system(command.c_str());*/
 }
 
-void renderData_t::generateFragmentCode(DepthSize dbSize) {
+void renderData_t::generateFragmentCode(DepthSize dbSize){ //, struct softpipe_context *sp) {
+    assert(0);
+    /*
     bool programFound = false;
-    
     std::stringstream fileNo;
     fileNo << g_renderData.getDrawcallNum();
-
     std::string glslPath = fGlslPrfx + fileNo.str();
     std::string arbPath = fARBPrfx + fileNo.str();
-
     std::ofstream fragment_glsl;
     fragment_glsl.open(glslPath);
 
@@ -700,10 +707,11 @@ void renderData_t::generateFragmentCode(DepthSize dbSize) {
         fragment_glsl << g_renderData.getDefaultFragmentShader();
         programFound = true;
     } else
-        for (unsigned shadersCoutner = 0; shadersCoutner < getMesaCtx()->Shader.ActiveProgram->NumShaders; shadersCoutner++) {
-            if (getMesaCtx()->Shader.ActiveProgram->Shaders[shadersCoutner]->Type == GL_FRAGMENT_SHADER
-                    && getMesaCtx()->Shader.ActiveProgram->FragmentProgram == getMesaCtx()->FragmentProgram._Current) {
-                fragment_glsl << getMesaCtx()->Shader.ActiveProgram->Shaders[shadersCoutner]->Source;
+        for (unsigned shadersCounter = 0; shadersCounter < m_mesaCtx->_Shader->ActiveProgram->NumShaders; shadersCounter++) {
+            if (m_mesaCtx->_Shader->ActiveProgram->Shaders[shadersCounter]->Type == GL_FRAGMENT_SHADER and
+                m_mesaCtx->_Shader->ActiveProgram->Shaders[shadersCounter]->Stage == MESA_SHADER_FRAGMENT) {
+                    // && m_mesaCtx->_Shader->ActiveProgram->FragmentProgram == m_mesaCtx->FragmentProgram._Current)
+                fragment_glsl << m_mesaCtx->_Shader->ActiveProgram->Shaders[shadersCounter]->Source;
                 programFound = true;
                 break;
             }
@@ -743,17 +751,17 @@ void renderData_t::generateFragmentCode(DepthSize dbSize) {
             + " " + depthSize + " " + depthFunc;
 
     DPRINTF(MesaGpgpusim, "Running command: %s\n", command);
-    system(command.c_str());
+    system(command.c_str());*/
 }
 
-void renderData_t::addFragmentsSpan(SWspan* span) {
+/*void renderData_t::addFragmentsSpan(SWspan* span) {
     if (!GPGPUSimSimulationActive()) {
         std::cerr<<"Error: addFragmentsSpan called when simulation is not active "<<std::endl;
         exit(-1);
     }
 
-    //DPRINTF(MesaGpgpusim, "Buffering span fragments of the current primitive, fragments count=%d\n", span->end);
-    
+    DPRINTF(MesaGpgpusim, "Buffering span fragments of the current primitive, fragments count=%d\n", span->end);
+  
     for (int frag = 0; frag < span->end; frag++) {
         fragmentData_t fragment;
         for (int attrib = 0; attrib < FRAG_ATTRIB_MAX; attrib++) {
@@ -767,10 +775,6 @@ void renderData_t::addFragmentsSpan(SWspan* span) {
         fragment.intPos[2] = (unsigned) round(fragment.attribs[FRAG_ATTRIB_WPOS][2]*(pow(2, (int)m_depthSize*8)) - 1);
         addFragment(fragment);
     }
-}
-
-/*void renderData_t::startPrimitive(){
-    addPrimitive();
 }*/
 
 std::string getFile(const char *filename)
@@ -812,7 +816,8 @@ void* renderData_t::getShaderFatBin(std::string vertexShaderFile,
     return fatBin;
 }
 
-std::string renderData_t::getShaderPTXInfo(std::string arbFileName, std::string functionName) {
+std::string renderData_t::getShaderPTXInfo(int usedRegs, std::string functionName) {
+/*std::string renderData_t::getShaderPTXInfo(std::string arbFileName, std::string functionName) {
     //static long long unsigned ptxInfoFileNum =0;
     std::ifstream arbFile(arbFileName);
     assert(arbFile.is_open());
@@ -828,7 +833,7 @@ std::string renderData_t::getShaderPTXInfo(std::string arbFileName, std::string 
             if (usedRegs == 0) usedRegs = 1; //minimum number of used registers
             usedRegs *= 4; //the number given so far is for vector registers so we mul by 4
         }
-    }
+    }*/
     
     std::stringstream ptxInfo;
     
@@ -870,9 +875,15 @@ void renderData_t::writeDrawBuffer(std::string time, byte * buffer, int bufferSi
 
     bufferImage.open(ss.str(), std::ios::binary | std::ios::out);
 
+    if(!bufferImage.is_open()){
+      printf("Error opening file: %s\n", ss.str().c_str());
+      abort();
+    }
+
     for (int i = 0; i < bufferSize; i++) {
         bufferImage << buffer[i];
     }
+
     bufferImage.close();
     std::string convertCommand = "convert -depth " + std::to_string(depth) + " -size " + std::to_string(w) + "x" + std::to_string(h) 
                                  + " " + ss.str() + " " + ss.str() + ".jpg";
@@ -882,9 +893,9 @@ void renderData_t::writeDrawBuffer(std::string time, byte * buffer, int bufferSi
 
 byte* renderData_t::setRenderBuffer(){
     gl_renderbuffer *rb = m_mesaCtx->DrawBuffer->_ColorDrawBuffers[0];
-    
+
     GLenum bufferFormat = rb->InternalFormat;
-    if(bufferFormat!=GL_RGBA){
+    if(bufferFormat!=GL_RGBA and bufferFormat!=GL_RGBA8){
        printf("Error: unsupported buffer format %x \n", bufferFormat);
        abort();
     }
@@ -893,13 +904,16 @@ byte* renderData_t::setRenderBuffer(){
     m_bufferWidthx4 = rb->Width * 4;
     m_bufferWidth = rb->Width;
     m_bufferHeight = rb->Height;
-    //DPRINTF(MesaGpgpusim, "gpgpusim-graphics: fb height=%d width=%d\n",m_bufferHeight, m_bufferWidth);
+    DPRINTF(MesaGpgpusim, "gpgpusim-graphics: fb height=%d width=%d\n",m_bufferHeight, m_bufferWidth);
     m_mesaColorBuffer = rb;
-    m_colorBufferPutRow = rb->PutRow;
-    GetRowFunc GetRow = rb->GetRow;
+
+    //m_colorBufferPutRow = rb->PutRow;
+    //GetRowFunc GetRow = rb->GetRow;
     byte(*tempBuffer)[4] = new byte [m_colorBufferByteSize / VECTOR_SIZE][4]; //RGBA
-    for (int i = 0; i < getBufferHeight(); i++)
-        GetRow(getMesaCtx(), rb, m_bufferWidth, 0, i, tempBuffer + ((m_bufferHeight - i - 1) * m_bufferWidth));
+    /*for (int i = 0; i < getBufferHeight(); i++)
+        GetRow(m_mesaCtx, rb, m_bufferWidth, 0, i, tempBuffer + ((m_bufferHeight - i - 1) * m_bufferWidth));*/
+
+    _mesa_readpixels(m_mesaCtx, 0, 0, rb->Width, rb->Height, GL_RGBA, GL_UNSIGNED_BYTE, &m_mesaCtx->Pack, tempBuffer);
 
     //using BGRA order
     byte * tempBuffer2 = new byte [m_colorBufferByteSize];
@@ -916,7 +930,8 @@ byte* renderData_t::setRenderBuffer(){
 }
 
 byte* renderData_t::setDepthBuffer(DepthSize activeDepthSize, DepthSize actualDepthSize){
-    gl_renderbuffer *rb = getMesaCtx()->DrawBuffer->_DepthBuffer;
+    //gl_renderbuffer *rb = m_mesaCtx->DrawBuffer->_DepthBuffer;
+    gl_renderbuffer *rb = m_mesaCtx->ReadBuffer->Attachment[BUFFER_DEPTH].Renderbuffer;
 
     uint32_t dbSize = (uint32_t) activeDepthSize; 
     uint32_t mesaDbSize = (uint32_t) actualDepthSize; 
@@ -926,18 +941,21 @@ byte* renderData_t::setDepthBuffer(DepthSize activeDepthSize, DepthSize actualDe
     m_depthBufferHeight = rb->Height;
     m_depthSize = activeDepthSize;
     m_mesaDepthSize = actualDepthSize;
-    
-    //DPRINTF(MesaGpgpusim, "gpgpusim-graphics: fb height=%d width=%d\n",m_bufferHeight, m_bufferWidth);
+  
+    DPRINTF(MesaGpgpusim, "gpgpusim-graphics: fb height=%d width=%d\n",m_bufferHeight, m_bufferWidth);
     m_mesaDepthBuffer = rb;
-    m_depthBufferPutRow = rb->PutRow;
-    GetRowFunc GetRow = rb->GetRow;
+    //m_depthBufferPutRow = rb->PutRow;
+    //GetRowFunc GetRow = rb->GetRow;
     uint32_t mesaDepthBufferSize = buffSize * sizeof (byte)* mesaDbSize;
     byte *tempBuffer  = new byte [mesaDepthBufferSize];
     for (int i = 0; i < m_depthBufferHeight; i++){
         unsigned xpos = ((m_depthBufferHeight - i - 1)* m_depthBufferWidth * mesaDbSize);
-        GetRow(getMesaCtx(), rb, m_depthBufferWidth, 0, i, tempBuffer + xpos);
+        assert(0);
+        //_mesa_readpixels(m_mesaCtx, 0, 0, rb->Width, rb->Height, rb->Format, GL_UNSIGNED_BYTE, &m_mesaCtx->Pack, tempBuffer);
+        //read_depth_pixels(m_mesaCtx, 0, 0, rb->Width, rb->Height, rb->Format, tempBuffer, &m_mesaCtx->Pack);
+        //GetRow(m_mesaCtx, rb, m_depthBufferWidth, 0, i, tempBuffer + xpos);
     }
-    
+
     //convertng the buffer format from Z16 to Z32 in case the buffers are of different sizes
     //this case happes when in-shader depth is used with a 16 bit mesa depth buffer
     assert((actualDepthSize == activeDepthSize) or ((actualDepthSize == DepthSize::Z16) and (activeDepthSize == DepthSize::Z32)));
@@ -953,11 +971,13 @@ byte* renderData_t::setDepthBuffer(DepthSize activeDepthSize, DepthSize actualDe
     }
 
     return tempBuffer;
+
+    return NULL;
 }
 
-void renderData_t::initializeCurrentDraw(gl_context * ctx) {
+void renderData_t::initializeCurrentDraw(gl_context * ctx, const char* fragPtxCode) {
 
-    if (ctx->Shader.ActiveProgram == NULL) {
+    if (ctx->_Shader->ActiveProgram == NULL) {
        printf("no active shader \n");
     } else {
        printf("there is an active shader \n");
@@ -967,37 +987,40 @@ void renderData_t::initializeCurrentDraw(gl_context * ctx) {
         exit(-1);
     }
 
-    //remove or fix me
-    if (!ctx->Shader.ActiveProgram) {
+    /*//TODO: remove or fix me
+    if (!ctx->_Shader->ActiveProgram) {
        //no active program skip
        return;
-    }
-   //
+    }*/
+
+    //pipe_context* pcontext = (softpipe_context*) st->cso_context;
 
     DPRINTF(MesaGpgpusim, "initializing a draw call \n");
     m_mesaCtx = ctx;
 
-    byte* currentBuffer = setRenderBuffer(); 
+    byte* currentBuffer = setRenderBuffer();
 
-    m_useDefaultShaders = false;
+    /*m_useDefaultShaders = false;
 
-    if (ctx->Shader.ActiveProgram == NULL) {
+    if (ctx->_Shader->ActiveProgram == NULL) {
+        std::cout << "GPGUSIM Graphics: no shader is provided and cannot use defualt shaders!\n" << std::endl;
+        exit(-1);
         if (ctx->VertexProgram._MaintainTnlProgram and ctx->FragmentProgram._MaintainTexEnvProgram)
             m_useDefaultShaders = true;
         else {
             std::cout << "GPGUSIM Graphics: no shader is provided and cannot use defualt shaders!\n" << std::endl;
             exit(-1);
         }
-    }
-    
+    }*/
+
     DepthSize activeDepthSize;
     DepthSize trueDepthSize;
-    gl_renderbuffer *rb = getMesaCtx()->DrawBuffer->_DepthBuffer;
-    
+
+    gl_renderbuffer *rb = m_mesaCtx->ReadBuffer->Attachment[BUFFER_DEPTH].Renderbuffer;
     if(isDepthTestEnabled()){
-       if(rb->Format==MESA_FORMAT_Z32){
+       if(rb->Format==MESA_FORMAT_Z_UNORM32){
           activeDepthSize = trueDepthSize = DepthSize::Z32;
-       } else if(rb->Format==MESA_FORMAT_Z16){
+       } else if(rb->Format==MESA_FORMAT_Z_UNORM16){
           if(m_inShaderDepth){
              //in-shader depth test uses atomics that only support 32 bit 
              activeDepthSize = DepthSize::Z32;
@@ -1012,30 +1035,43 @@ void renderData_t::initializeCurrentDraw(gl_context * ctx) {
     }
 
     //generate PTX code from ARB
-    generateVertexCode();
-    generateFragmentCode(activeDepthSize);
+
+    //TODO
+    //generateVertexCode();
+
+    //generateFragmentCode(activeDepthSize);
+
+    std::string frame_drawcall = std::to_string(m_currentFrame) + "_" + std::to_string(m_drawcall_num);
+    //std::string drawCallN = std::to_string(getDrawcallNum());
+    //std::string vertexARBFile = vARBPrfx + frame_drawcall;
+    //std::string fragmentARBFile = fARBPrfx + frame_drawcall;
     
-    std::string drawCallN = std::to_string(getDrawcallNum());
-    std::string vertexARBFile = vARBPrfx + drawCallN;
-    std::string vertexPTXFile = vPTXPrfx +drawCallN+".ptx";
-    std::string fragmentARBFile = fARBPrfx + drawCallN;
-    std::string fragmentPTXFile = fPTXPrfx +drawCallN+".ptx"; 
-    
-    //todo: unregister the shader when we are done. 
+    std::string vertexPTXFile = vPTXPrfx +frame_drawcall+".ptx";
+    std::string fragmentPTXFile = fPTXPrfx +frame_drawcall+".ptx"; 
+
+    //TODO: unregister the shader when we are done. 
     //however currently our cuda implementation doesn't implement __cudaUnregisterFatBinary
-    
-    //todo: remove the header from ptx code generation, fix function names and add a header here 
+
+    //TODO: remove the header from ptx code generation, fix function names and add a header here 
     //get the fatbin
-    void* cudaFatBin = getShaderFatBin(vertexPTXFile, fragmentPTXFile);
-    std::string vertexPtxInfo = getShaderPTXInfo(vertexARBFile, getCurrentShaderName(VERTEX_PROGRAM));
-    std::string fragmentPtxInfo = getShaderPTXInfo(fragmentARBFile, getCurrentShaderName(FRAGMENT_PROGRAM));
     
+    void* cudaFatBin = getShaderFatBin(vertexPTXFile, fragmentPTXFile);
+
+    //std::string vertexPtxInfo = getShaderPTXInfo(vertexARBFile, getCurrentShaderName(VERTEX_PROGRAM));
+    //std::string fragmentPtxInfo = getShaderPTXInfo(fragmentARBFile, getCurrentShaderName(FRAGMENT_PROGRAM));
+    std::string vertexPtxInfo = getShaderPTXInfo(m_usedVertShaderRegs, getCurrentShaderName(VERTEX_PROGRAM));
+    std::string fragmentPtxInfo = getShaderPTXInfo(m_usedFragShaderRegs, getCurrentShaderName(FRAGMENT_PROGRAM));
+  
     std::string ptxInfoFileName = fPtxInfoPrfx+std::to_string(getDrawcallNum());
     std::ofstream ptxInfoFile(ptxInfoFileName.c_str());
     assert(ptxInfoFile.is_open());
     ptxInfoFile<< vertexPtxInfo + fragmentPtxInfo;
     ptxInfoFile.close();
     void ** fatCubinHandle = graphicsRegisterFatBinary(cudaFatBin, ptxInfoFileName.c_str(), &m_sShading_info.allocAddr);
+
+    return;
+    assert(0);
+
     assert(m_sShading_info.allocAddr != NULL); //we always have some constants in the shaders
     lastFatCubin = (__cudaFatCudaBinary*)cudaFatBin;
     lastFatCubinHandle = fatCubinHandle;
@@ -1050,8 +1086,8 @@ void renderData_t::initializeCurrentDraw(gl_context * ctx) {
             (char*)getCurrentShaderName(FRAGMENT_PROGRAM).c_str(),
             getCurrentShaderName(FRAGMENT_PROGRAM).c_str(),
             -1, (uint3*)0, (uint3*)0, (dim3*)0, (dim3*)0, (int*)0);
-    
-    
+  
+
     assert(getDeviceData() == NULL);
     m_depthBuffer = NULL;
     if(isDepthTestEnabled()){
@@ -1067,16 +1103,16 @@ void renderData_t::initializeCurrentDraw(gl_context * ctx) {
     } else {
         graphicsMalloc((void**) &m_deviceData, m_colorBufferByteSize);
     }
-    
+
     graphicsMemcpy(m_deviceData, currentBuffer, getColorBufferByteSize(), graphicsMemcpyHostToSim);
 
-    
     writeDrawBuffer("pre", currentBuffer,  m_colorBufferByteSize, m_bufferWidth, m_bufferHeight, "bgra", 8);
     delete [] currentBuffer;
 
     if(m_depthBuffer!=NULL) {
        writeDrawBuffer("pre_depth", m_depthBuffer,  m_depthBufferSize, m_bufferWidth, m_bufferHeight, "a", 8*(int)activeDepthSize);
     }
+
 
     //vertexStageData = stage;
     //setAllTextures(lastFatCubinHandle);
@@ -1085,13 +1121,14 @@ void renderData_t::initializeCurrentDraw(gl_context * ctx) {
 
 void renderData_t::setAllTextures(void ** fatCubinHandle) {
     //initializing data that is used for calling gpgpusim
-    for (int i = 0; i < MAX_COMBINED_TEXTURE_IMAGE_UNITS; i++) {
-        gl_texture_object *texObject = getMesaCtx()->Texture.Unit[i]._Current;
+    assert(0);
+    /*for (int i = 0; i < MAX_COMBINED_TEXTURE_IMAGE_UNITS; i++) {
+        gl_texture_object *texObject = m_mesaCtx->Texture.Unit[i]._Current;
         if (!texObject) continue;
         gl_texture_image* texImage = texObject->Image[0][texObject->BaseLevel];
         setTextureUnit(fatCubinHandle,i, texImage->TexFormat, texImage->Height, texImage->Width, (unsigned char*) texImage->Data,
                 texObject->Sampler.WrapS, texObject->Sampler.WrapT, texObject->Sampler.MinFilter, texObject->Sampler.MagFilter, texObject->Target);
-    }
+    }*/
 }
 
 void renderData_t::setTextureUnit(void** fatCubinHandle, int textureNumber, int textureType, int h, int w, byte * inData,
@@ -1105,16 +1142,16 @@ void renderData_t::setTextureUnit(void** fatCubinHandle, int textureNumber, int 
     bool inTexDataNew = false;
 
     switch (textureType) {
-        case MESA_FORMAT_RGB888:
+        case MESA_FORMAT_RGB_UINT8:
            inTexDataNew = true;
            inTexData = Utils::RGB888_to_RGBA888(inTexData, imgSize);
-           textureType = MESA_FORMAT_RGBA8888;
+           textureType = MESA_FORMAT_RGBA_UINT8;
            bytesPerTexel = 4;
            break;
-        case MESA_FORMAT_RGBA8888:
+        case MESA_FORMAT_RGBA_UINT8:
            bytesPerTexel = 4;
            break;
-        case MESA_FORMAT_A8:
+        case MESA_FORMAT_A_UINT8:
            bytesPerTexel = 1;
            break;
         default:
@@ -1141,7 +1178,7 @@ void renderData_t::setTextureUnit(void** fatCubinHandle, int textureNumber, int 
     cudaChannelFormatDesc channelDesc;
     std::string typeEx;
     switch (textureType) {
-        case MESA_FORMAT_A8:
+        case MESA_FORMAT_A_UINT8:
             channelDesc.x = 0;
             channelDesc.y = 0;
             channelDesc.z = 0;
@@ -1149,7 +1186,7 @@ void renderData_t::setTextureUnit(void** fatCubinHandle, int textureNumber, int 
             channelDesc.f = cudaChannelFormatKindUnsigned;
             typeEx = "a";
             break;
-        case MESA_FORMAT_RGBA8888:
+        case MESA_FORMAT_RGBA_UINT8:
             channelDesc.x = 8;
             channelDesc.y = 8;
             channelDesc.z = 8;
@@ -1165,16 +1202,16 @@ void renderData_t::setTextureUnit(void** fatCubinHandle, int textureNumber, int 
     graphicsMallocArray(&textureArray[textureNumber], &channelDesc, w, h, data, size);
     graphicsMemcpy(textureArray[textureNumber]->devPtr, data, size, graphicsMemcpyHostToSim);
     //textureArray[textureNumber]->devPtr32 = *((int*)(&textureArray[textureNumber]->devPtr));
-    printf("texture %d ptr32=%x\n", textureNumber, textureArray[textureNumber]->devPtr32);
+    printf("texture %d ptr32=%lx\n", textureNumber, (uint64_t)textureArray[textureNumber]->devPtr32);
     printf("texture %d ptr=%x\n", textureNumber, textureArray[textureNumber]->devPtr);
     writeTexture(data, size, textureNumber, h , w, typeEx);
 
     delete [] data;
     data = NULL;
-    
+
     textureReference * textureReferencePtr = new textureReference();
     textureRefs.push_back(textureReferencePtr);
-    
+
     if (wrapS == GL_CLAMP_TO_EDGE) textureReferencePtr->addressMode[0] = cudaAddressModeClamp;
     else if (wrapS == GL_REPEAT) textureReferencePtr->addressMode[0] = cudaAddressModeWrap;
     else {
@@ -1216,6 +1253,7 @@ void renderData_t::setTextureUnit(void** fatCubinHandle, int textureNumber, int 
     graphicsBindTextureToArray(textureReferencePtr, textureArray[textureNumber], &channelDesc);
 }
 
+/*
 GLboolean renderData_t::doVertexShading(GLvector4f ** inputParams, vp_stage_data * stage){
     if (!GPGPUSimSimulationActive()) {
         std::cerr<<"gpgpusim-graphics: Error, doVertexShading called when simulation is not active "<<std::endl;
@@ -1248,34 +1286,34 @@ GLboolean renderData_t::doVertexShading(GLvector4f ** inputParams, vp_stage_data
 
     arb_file.close();
     
-    TNLcontext *tnl = TNL_CONTEXT(getMesaCtx());
+    TNLcontext *tnl = TNL_CONTEXT(m_mesaCtx);
     vertex_buffer *VB = &tnl->vb;
     unsigned vertsCount = VB->Count;
     printf("starting vertex shading: vertices = %d\n", vertsCount);
     const unsigned verticesAttribsFloatsCount = vertsCount * VERT_ATTRIB_MAX * 4;
     float hostVertsAttribs[verticesAttribsFloatsCount];
 
-    /* the vertex array case */
+    // the vertex array case
     for (unsigned i = 0; i < vertsCount; i++) {
         for (unsigned attr = 0; attr < VERT_ATTRIB_MAX; attr++) {
-            if (getMesaCtx()->VertexProgram._Current->Base.InputsRead & (1 << attr)) {
+            if (m_mesaCtx->VertexProgram._Current->Base.InputsRead & (1 << attr)) {
                 const GLubyte *ptr = (const GLubyte*) inputParams[attr]->data;
                 const GLuint size = inputParams[attr]->size;
                 const GLuint stride = inputParams[attr]->stride;
                 const GLfloat *data = (GLfloat *) (ptr + stride * i);
                 float * place;
-                
+              
                 if (attr < VERT_ATTRIB_GENERIC0){
                     //if not generic copy in the corresponding location
                     place = &hostVertsAttribs[(i * VERT_ATTRIB_MAX * 4) + (attr * 4)];
-                } else { 
+                } else {
                     //else if general attrib we should map the locations from mesa to the nvidia arb code
                     int mesaNumber = attr - VERT_ATTRIB_GENERIC0;
                     std::string mesaName;
-                    //if(getMesaCtx()->VertexProgram._Current->Base.NumAttributes == 0) break;
-                    for (int l = 0; l < getMesaCtx()->VertexProgram._Current->Base.Attributes->NumParameters; l++)
-                        if (getMesaCtx()->VertexProgram._Current->Base.Attributes->Parameters[l].StateIndexes[0] == mesaNumber) {
-                            mesaName = getMesaCtx()->VertexProgram._Current->Base.Attributes->Parameters[l].Name;
+                    //if(m_mesaCtx->VertexProgram._Current->Base.NumAttributes == 0) break;
+                    for (int l = 0; l < m_mesaCtx->VertexProgram._Current->Base.Attributes->NumParameters; l++)
+                        if (m_mesaCtx->VertexProgram._Current->Base.Attributes->Parameters[l].StateIndexes[0] == mesaNumber) {
+                            mesaName = m_mesaCtx->VertexProgram._Current->Base.Attributes->Parameters[l].Name;
                             break;
                         }
 
@@ -1287,16 +1325,16 @@ GLboolean renderData_t::doVertexShading(GLvector4f ** inputParams, vp_stage_data
         }
     }
 
-    /*DPRINTF(MesaGpgpusim, "vertex shader input attribs, verticesAttribsFloatsCount = %d \n", verticesAttribsFloatsCount);
-    for (int vert = 0; vert < vertsCount; vert++) {
-        for (int attrib = 0; attrib < VERT_ATTRIB_MAX; attrib++) {
-            for (int i = 0; i < 4; i++) {
-                int index = (vert * VERT_ATTRIB_MAX * 4) + (attrib * 4) + i;
-                DPRINTF(MesaGpgpusim, "hostVertsAttribs[%d][%s][%d] = %f \n", vert, VERT_ATTRIB_NAMES[attrib], i, hostVertsAttribs[index]);
-            }
-        }
-    }*/
-    
+    //DPRINTF(MesaGpgpusim, "vertex shader input attribs, verticesAttribsFloatsCount = %d \n", verticesAttribsFloatsCount);
+    //for (int vert = 0; vert < vertsCount; vert++) {
+        //for (int attrib = 0; attrib < VERT_ATTRIB_MAX; attrib++) {
+         //   for (int i = 0; i < 4; i++) {
+                //int index = (vert * VERT_ATTRIB_MAX * 4) + (attrib * 4) + i;
+                //DPRINTF(MesaGpgpusim, "hostVertsAttribs[%d][%s][%d] = %f \n", vert, VERT_ATTRIB_NAMES[attrib], i, hostVertsAttribs[index]);
+            //}
+        //}
+    //}
+
     assert(m_sShading_info.deviceVertsAttribs == NULL);
     graphicsMalloc((void**) &m_sShading_info.deviceVertsAttribs, verticesAttribsFloatsCount * sizeof (float));
     graphicsMemcpy(m_sShading_info.deviceVertsAttribs, hostVertsAttribs, verticesAttribsFloatsCount * sizeof (float), graphicsMemcpyHostToSim);
@@ -1311,7 +1349,7 @@ GLboolean renderData_t::doVertexShading(GLvector4f ** inputParams, vp_stage_data
     unsigned threadsPerBlock = 256; //TODO: add it to options,
     unsigned numberOfBlocks = (vertsCount + threadsPerBlock -1) / threadsPerBlock;
     assert(graphicsConfigureCall(numberOfBlocks, threadsPerBlock, 0, 0) == cudaSuccess);
-    assert(graphicsSetupArgument((void*)&m_sShading_info.deviceVertsAttribs, sizeof(float*), 0/*offset*/) == cudaSuccess);
+    assert(graphicsSetupArgument((void*)&m_sShading_info.deviceVertsAttribs, sizeof(float*), 0) == cudaSuccess);
     assert(graphicsLaunch(getCurrentShaderId(VERTEX_PROGRAM), &m_sShading_info.vertCodeAddr) == cudaSuccess); 
     
     m_sShading_info.launched_threads = numberOfBlocks * threadsPerBlock;
@@ -1330,12 +1368,13 @@ GLboolean renderData_t::doVertexShading(GLvector4f ** inputParams, vp_stage_data
     vertexFragmentLock.unlock();
     fflush(stdout);
     //int dum = 0;
-    /*while(m_sShading_info.currentPass != stage_shading_info_t::GraphicsPass::NONE){
-       dum++;
-    }*/
+    //while(m_sShading_info.currentPass != stage_shading_info_t::GraphicsPass::NONE){
+       //dum++;
+    //}
     endDrawCall();
     return GL_TRUE;
 }
+*/
 
 unsigned int renderData_t::doFragmentShading() {
     if(!GPGPUSimSimulationActive()){
@@ -1405,9 +1444,10 @@ void renderData_t::putDataOnColorBuffer() {
     }
 
     writeDrawBuffer("post", (byte*)tempBuffer2, getColorBufferByteSize(), m_bufferWidth, m_bufferHeight, "rgba", 8);
-    
-    for (int i = 0; i < getBufferHeight(); i++)
-        m_colorBufferPutRow(getMesaCtx(), getMesaBuffer(), getBufferWidth(), 0, getBufferHeight() - i - 1, tempBuffer2 + (i * getBufferWidth()), NULL);
+   
+    assert(0);
+    /*for (int i = 0; i < getBufferHeight(); i++)
+        m_colorBufferPutRow(m_mesaCtx, getMesaBuffer(), getBufferWidth(), 0, getBufferHeight() - i - 1, tempBuffer2 + (i * getBufferWidth()), NULL);*/
 
     delete [] tempBuffer;
     delete [] tempBuffer2;
@@ -1433,25 +1473,27 @@ void renderData_t::putDataOnDepthBuffer(){
        } 
        delete [] tempBuffer;
     }
-    
-    gl_renderbuffer *rb = getMesaCtx()->DrawBuffer->_DepthBuffer;
+
+    assert(0);
+    /*gl_renderbuffer *rb = m_mesaCtx->DrawBuffer->_DepthBuffer;
     for (int i = 0; i < m_depthBufferHeight; i++){
         unsigned xpos = ((m_depthBufferHeight - i - 1)* m_depthBufferWidth * ((int)m_mesaDepthSize));
-        m_depthBufferPutRow(getMesaCtx(), rb, m_depthBufferWidth, 0, i, readDepth + xpos, NULL);
+        m_depthBufferPutRow(m_mesaCtx, rb, m_depthBufferWidth, 0, i, readDepth + xpos, NULL);
     }
 
-    delete [] readDepth;
+    delete [] readDepth;*/
 }
 
 gl_state_index renderData_t::getParamStateIndexes(gl_state_index index) {
-    gl_program_parameter_list * paramList = getMesaCtx()->VertexProgram._Current->Base.Parameters;
+    assert(0);
+    /*gl_program_parameter_list * paramList = m_mesaCtx->VertexProgram._Current->Base.Parameters;
     for (int i = 0; i < paramList->NumParameters; i++) {
         if (paramList->Parameters[i].Type == PROGRAM_STATE_VAR) {
             //DPRINTF(MesaGpgpusim, "state index %d = %d and the requested index is %d\n",i,paramList->Parameters[i].StateIndexes[0], index);
             if(paramList->Parameters[i].StateIndexes[0]==index)
                 return paramList->Parameters[i].StateIndexes[0];
         }
-    }
+    }*/
     
     return gl_state_index(NULL);
 }
@@ -1462,6 +1504,7 @@ void renderData_t::copyStateData(void** fatCubinHandle) {
         const unsigned float_4vectorSize = VECTOR_SIZE* CUDA_FLOAT_SIZE;
     const unsigned float_4x4matrixSize = VECTOR_SIZE * VECTOR_SIZE * CUDA_FLOAT_SIZE;
     std::hash<std::string> strHash;
+
 
     //STATE_MVP_MATRIX
     {
@@ -1477,8 +1520,11 @@ void renderData_t::copyStateData(void** fatCubinHandle) {
             state[3] = (gl_state_index) 3;
             state[4] = STATE_MATRIX_TRANSPOSE;
             
-            GLfloat mvpMatrix [VECTOR_SIZE * VECTOR_SIZE];
-            _mesa_fetch_state(getMesaCtx(), state, mvpMatrix);
+            //GLfloat mvpMatrix [VECTOR_SIZE * VECTOR_SIZE];
+            
+            gl_constant_value mvpMatrix [VECTOR_SIZE * VECTOR_SIZE];
+
+            _mesa_fetch_state(m_mesaCtx, state, mvpMatrix);
             graphicsMemcpyToSymbol((char*) strHash(varName),
                     mvpMatrix,
                     sizeof (GLfloat) * VECTOR_SIZE* VECTOR_SIZE,
@@ -1500,8 +1546,9 @@ void renderData_t::copyStateData(void** fatCubinHandle) {
             state[2] = (gl_state_index) 0;
             state[3] = (gl_state_index) 3;
             state[4] = STATE_MATRIX_TRANSPOSE;
-            GLfloat modelViewMatrix [VECTOR_SIZE * VECTOR_SIZE];
-            _mesa_fetch_state(getMesaCtx(), state, modelViewMatrix);
+            //GLfloat modelViewMatrix [VECTOR_SIZE * VECTOR_SIZE];
+            gl_constant_value modelViewMatrix [VECTOR_SIZE * VECTOR_SIZE];
+            _mesa_fetch_state(m_mesaCtx, state, modelViewMatrix);
             graphicsMemcpyToSymbol((char*) strHash(varName),
                     modelViewMatrix,
                     sizeof (GLfloat) * VECTOR_SIZE* VECTOR_SIZE,
@@ -1524,8 +1571,9 @@ void renderData_t::copyStateData(void** fatCubinHandle) {
             state[2] = (gl_state_index) 0;
             state[3] = (gl_state_index) 3;
             state[4] = STATE_MATRIX_TRANSPOSE;
-            GLfloat projectionMatrix [VECTOR_SIZE * VECTOR_SIZE];
-            _mesa_fetch_state(getMesaCtx(), state, projectionMatrix);
+            //GLfloat projectionMatrix [VECTOR_SIZE * VECTOR_SIZE];
+            gl_constant_value projectionMatrix [VECTOR_SIZE * VECTOR_SIZE];
+            _mesa_fetch_state(m_mesaCtx, state, projectionMatrix);
             graphicsMemcpyToSymbol((char*) strHash(varName),
                     projectionMatrix,
                     sizeof (GLfloat) * VECTOR_SIZE* VECTOR_SIZE,
@@ -1542,7 +1590,7 @@ void renderData_t::copyStateData(void** fatCubinHandle) {
             varName.c_str(), 0, MAX_LIGHTS * float_4vectorSize, 1, 0);
         GLfloat vectorValue[VECTOR_SIZE];
         for (int light = 0; light < MAX_LIGHTS; light++) {
-            COPY_4V(vectorValue, getMesaCtx()->Light.Light[light].EyePosition);
+            COPY_4V(vectorValue, m_mesaCtx->Light.Light[light].EyePosition);
             graphicsMemcpyToSymbol((char*)strHash(varName),
                     vectorValue,
                     sizeof (GLfloat)*VECTOR_SIZE,
@@ -1552,33 +1600,34 @@ void renderData_t::copyStateData(void** fatCubinHandle) {
     }
 
     //UNIFORM VARIABLES
-    if (getMesaCtx()->Shader.ActiveProgram) {
-        {
+    assert(0);
+    /*
+    if (m_mesaCtx->_Shader->ActiveProgram) {
             std::string varName = "vertex_program_locals";
             graphicsRegisterVar(fatCubinHandle, (char*)strHash(varName), (char*) varName.c_str(),
             varName.c_str(), 0, MAX_UNIFORMS* float_4vectorSize, 1, 0);
             
             int fillIndex = 0;
             //we do this as parameters contains state parameters which we copy above in isolation
-            for (int i = getMesaCtx()->Shader.ActiveProgram->Uniforms->NumUniforms - 1; i >= 0; i--) {
-            //for (int i = 0; i< getMesaCtx()->Shader.ActiveProgram->Uniforms->NumUniforms; i++) {
-                if (getMesaCtx()->Shader.ActiveProgram->Uniforms->Uniforms[i].VertPos >= 0) {
-                    struct gl_program *prog = &getMesaCtx()->Shader.ActiveProgram->VertexProgram->Base;
-                    int paramPos = getMesaCtx()->Shader.ActiveProgram->Uniforms->Uniforms[i].VertPos;
+            for (int i = m_mesaCtx->_Shader->ActiveProgram->Uniforms->NumUniforms - 1; i >= 0; i--) {
+            //for (int i = 0; i< m_mesaCtx->_Shader->ActiveProgram->Uniforms->NumUniforms; i++) {
+                if (m_mesaCtx->_Shader->ActiveProgram->Uniforms->Uniforms[i].VertPos >= 0) {
+                    struct gl_program *prog = &m_mesaCtx->_Shader->ActiveProgram->VertexProgram->Base;
+                    int paramPos = m_mesaCtx->_Shader->ActiveProgram->Uniforms->Uniforms[i].VertPos;
 
                     const struct gl_program_parameter *param = &prog->Parameters->Parameters[paramPos];
                     if (param->Type != PROGRAM_UNIFORM) continue; //we deal with different types in a different way (as texture of type "PROGRAM_SAMPLER")
                     int numberOfElements = param->Size / VECTOR_SIZE;
                     if (numberOfElements == 0) numberOfElements = 1; //at least 1 vector should be copied for smaller uniforms
                     
-                    /*DPRINTF(MesaGpgpusim, "placing uniform:%d, size:%d at location:%d with values:\n", i, param->Size, fillIndex);
-                    for (int r = 0; r < numberOfElements; r++){
-                        DPRINTF(MesaGpgpusim, "%s: ", prog->Parameters->Parameters[paramPos + r].Name);
-                        for(int e = 0; e < VECTOR_SIZE; e++){
-                            DPRINTF(MesaGpgpusim, "%f ", prog->Parameters->ParameterValues[paramPos + r][e]);
-                        }
-                        DPRINTF(MesaGpgpusim, "\n");
-                    }*/
+                    //DPRINTF(MesaGpgpusim, "placing uniform:%d, size:%d at location:%d with values:\n", i, param->Size, fillIndex);
+                    //for (int r = 0; r < numberOfElements; r++){
+                    //    DPRINTF(MesaGpgpusim, "%s: ", prog->Parameters->Parameters[paramPos + r].Name);
+                    //    for(int e = 0; e < VECTOR_SIZE; e++){
+                    //        DPRINTF(MesaGpgpusim, "%f ", prog->Parameters->ParameterValues[paramPos + r][e]);
+                    //    }
+                    //    DPRINTF(MesaGpgpusim, "\n");
+                    //}
                     
                     for (int r = 0; r < numberOfElements; r++) {
                         graphicsMemcpyToSymbol((char*)strHash(varName), //name
@@ -1599,10 +1648,10 @@ void renderData_t::copyStateData(void** fatCubinHandle) {
             varName.c_str(), 0, MAX_UNIFORMS* float_4vectorSize, 1, 0);
             int fillIndex = 0;
             //we do this as parameters contains state parameters which we copy above in isolation
-            for (int i = getMesaCtx()->Shader.ActiveProgram->Uniforms->NumUniforms - 1; i >= 0; i--) {
-                if (getMesaCtx()->Shader.ActiveProgram->Uniforms->Uniforms[i].FragPos >= 0) {
-                    struct gl_program *prog = &getMesaCtx()->Shader.ActiveProgram->FragmentProgram->Base;
-                    int paramPos = getMesaCtx()->Shader.ActiveProgram->Uniforms->Uniforms[i].FragPos;
+            for (int i = m_mesaCtx->_Shader->ActiveProgram->Uniforms->NumUniforms - 1; i >= 0; i--) {
+                if (m_mesaCtx->_Shader->ActiveProgram->Uniforms->Uniforms[i].FragPos >= 0) {
+                    struct gl_program *prog = &m_mesaCtx->_Shader->ActiveProgram->FragmentProgram->Base;
+                    int paramPos = m_mesaCtx->_Shader->ActiveProgram->Uniforms->Uniforms[i].FragPos;
 
                     const struct gl_program_parameter *param = &prog->Parameters->Parameters[paramPos];
                     if (param->Type != PROGRAM_UNIFORM) continue; //we deal with different types in a different way (as texture of type "PROGRAM_SAMPLER")
@@ -1621,10 +1670,11 @@ void renderData_t::copyStateData(void** fatCubinHandle) {
             }
         }
     }
+    */
 }
 
 bool renderData_t::isDepthTestEnabled(){
-    if (g_renderData.getMesaCtx()->Depth.Test != 0)
+    if (g_renderData.m_mesaCtx->Depth.Test != 0)
         return true;
     return false;
 }
@@ -1636,30 +1686,34 @@ bool renderData_t::isBlendingEnabled() {
     }
     lastState = (int) _mesa_IsEnabled(GL_BLEND);
     
-    if (g_renderData.getMesaCtx()->Color.BlendEnabled & 1) {
+    if (g_renderData.m_mesaCtx->Color.BlendEnabled & 1) {
             return true;
     }
     return false;
 }
 
 void renderData_t::getBlendingMode(GLenum * src, GLenum * dst, GLenum* srcAlpha, GLenum * dstAlpha, GLenum* eqnRGB, GLenum* eqnAlpha, GLfloat * blendColor){
-    *src = getMesaCtx()->Color.Blend[0].SrcRGB;
-    *dst = getMesaCtx()->Color.Blend[0].DstRGB;
-    *srcAlpha = getMesaCtx()->Color.Blend[0].SrcA;
-    *dstAlpha = getMesaCtx()->Color.Blend[0].DstA;
-    *eqnRGB = getMesaCtx()->Color.Blend[0].EquationRGB;
-    *eqnAlpha = getMesaCtx()->Color.Blend[0].EquationA;
-    memcpy(blendColor,&getMesaCtx()->Color.BlendColor,sizeof(GLfloat)*VECTOR_SIZE);
+    *src = m_mesaCtx->Color.Blend[0].SrcRGB;
+    *dst = m_mesaCtx->Color.Blend[0].DstRGB;
+    *srcAlpha = m_mesaCtx->Color.Blend[0].SrcA;
+    *dstAlpha = m_mesaCtx->Color.Blend[0].DstA;
+    *eqnRGB = m_mesaCtx->Color.Blend[0].EquationRGB;
+    *eqnAlpha = m_mesaCtx->Color.Blend[0].EquationA;
+    memcpy(blendColor,&m_mesaCtx->Color.BlendColor,sizeof(GLfloat)*VECTOR_SIZE);
 }
 
 void renderData_t::writeVertexResult(unsigned threadID, unsigned resAttribID, unsigned attribIndex, float data){
     //DPRINTF(MesaGpgpusim, "writing vs result at thread=%d attrib=[%d][%d]=%f\n", threadID, resAttribID, attribIndex, data);
-    vertexStageData->results[resAttribID].data[threadID][attribIndex] = data;
+    
+    assert(0);
+   //vertexStageData->results[resAttribID].data[threadID][attribIndex] = data;
 }
 
 void renderData_t::endVertexShading(CudaGPU * cudaGPU){
+    assert(0);
+    /*
     //DPRINTF(MesaGpgpusim, "gpgpusim-graphics: starting prim %d\n", 0);
-    TNLcontext *tnl = TNL_CONTEXT(getMesaCtx());
+    TNLcontext *tnl = TNL_CONTEXT(m_mesaCtx);
     vertex_buffer *VB = &tnl->vb;
     copy_vp_results(m_mesaCtx, VB, vertexStageData, m_mesaCtx->VertexProgram._Current);
 
@@ -1668,7 +1722,7 @@ void renderData_t::endVertexShading(CudaGPU * cudaGPU){
    
     m_sShading_info.renderFunc = init_run_render(m_mesaCtx);
 
-    //get fragments of the current batch of vertices 
+    //get fragments of the current batch of vertices
     for (GLuint primId = 0; primId < VB->PrimitiveCount; primId++)
        run_render_prim(m_mesaCtx, m_sShading_info.renderFunc, VB, primId);
    
@@ -1686,6 +1740,7 @@ void renderData_t::endVertexShading(CudaGPU * cudaGPU){
     } else {
        runEarlyZ(cudaGPU, getTileH(), getTileW(),getBlockH(), getBlockW(), HorizontalRaster); // BlockedHorizontal);
     }
+   */
 }
 
 void renderData_t::endFragmentShading() {
@@ -1785,7 +1840,7 @@ void renderData_t::launchFragmentTile(RasterTile * rasterTile, unsigned tileId){
    m_sShading_info.cudaStreamTiles[(uint64_t)(m_sShading_info.cudaStreams.back())] = map;
 
    uint64_t streamId = (uint64_t)m_sShading_info.cudaStreams.back();
-   printf("running %d threads for  tile %d with %d fragments on stream %d\n", numberOfBlocks*threadsPerBlock, tileId, rasterTile->size(), streamId );
+   printf("running %d threads for  tile %d with %d fragments on stream %ld\n", numberOfBlocks*threadsPerBlock, tileId, rasterTile->size(), streamId );
    //printf("running tile %d with %d fragments on stream %d\n", tileId, tcount, 0);
    assert( graphicsConfigureCall(numberOfBlocks, threadsPerBlock, 0, m_sShading_info.cudaStreams.back())  
    //assert( graphicsConfigureCall(numberOfBlocks, threadsPerBlock, 0, 0)  //0) cudaStream) 

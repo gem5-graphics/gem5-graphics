@@ -10,7 +10,7 @@
 #include "base/bitmap.hh"
 
 extern unsigned g_active_device;
-extern "C" bool GPGPUSimSimulationActive();
+extern "C" bool gpgpusimSimulationActive();
 extern renderData_t g_renderData;
 
 gem5GraphicsCalls_t gem5GraphicsCalls_t::gem5GraphicsCalls;
@@ -20,6 +20,8 @@ std::string gem5GraphicsCalls_t::_dirName = "frames_gem5pipe";
 
 #define GL_RGBA 0x1908
 #define GL_UNSIGNED_BYTE 0x1401
+
+extern "C" void gpgpusimEndOfFrame();
 
 static void onNewGpuFrame(void* opaque,
                           int width,
@@ -38,6 +40,9 @@ static void onNewGpuFrame(void* opaque,
     static uint64_t lastFbHash = 0;
     static bool firstFrame = true;
     static FrameBuffer fb(width, height);
+
+    //TODO: move to mesa swap buffer? 
+    gpgpusimEndOfFrame();
 
     inform("gem5Pipe: a new frame posted (frame %d)\n", fnum);
     fnum++;
@@ -159,7 +164,7 @@ void gem5GraphicsCalls_t::executeGraphicsCommand(ThreadContext *tc, uint64_t gpu
         case gem5_sim_active:
         {
             CALL_GSERIALIZE_CMD;
-            uint32_t active = cudaGPU==NULL? 0: GPGPUSimSimulationActive() ? 1 : 0;
+            uint32_t active = cudaGPU==NULL? 0: gpgpusimSimulationActive() ? 1 : 0;
             DPRINTF(GraphicsCalls, "returning a sim_active flag value = %d\n", active);
             helper.setReturn((uint8_t*) & active, sizeof (graphicssyscall_t::RET_LEN_TYPE));
             return;
@@ -199,6 +204,9 @@ void gem5GraphicsCalls_t::executeGraphicsCommand(ThreadContext *tc, uint64_t gpu
     uint8_t * iobuffer = new uint8_t[buf_len];
 
     DPRINTF(GraphicsCalls, "gem5pipe: iobuffer value = %lx\n", (uint64_t) iobuffer);
+
+    printf("tick=%lu gem5pipe: iobuffer value = %lx, len = %ld\n", curTick(), (uint64_t) buf_val, buf_len);
+
     if (gpusysno == gem5_write) {
         DPRINTF(GraphicsCalls, "gem5pipe:  gpusysno write\n");
         helper.readBlob(buf_val, iobuffer, buf_len);
@@ -212,7 +220,7 @@ void gem5GraphicsCalls_t::executeGraphicsCommand(ThreadContext *tc, uint64_t gpu
          graphicssyscall_t::RET_LEN_TYPE ret = stream->read(iobuffer, buf_len);
           CALL_GSERIALIZE;
 
-          /*if(buf_len != 391) 
+          /*if(buf_len != 391)
              helper.writeBlob(buf_val, iobuffer, buf_len);*/
           helper.writeBlob(buf_val, iobuffer, buf_len);
           DPRINTF(GraphicsCalls, "gem5pipe: read buffer value is %lx \n",  (uint64_t) iobuffer);
