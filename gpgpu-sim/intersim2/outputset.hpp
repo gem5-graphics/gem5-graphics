@@ -47,13 +47,13 @@ public:
 
   bool OutputEmpty( int output_port ) const;
   int NumVCs( int output_port ) const;
-  
-  const set<sSetElement> & GetSet() const;
+
+  const std::set<sSetElement> & GetSet() const;
 
   int  GetVC( int output_port,  int vc_index, int *pri = 0 ) const;
   bool GetPortVC( int *out_port, int *out_vc ) const;
 private:
-  set<sSetElement> _outputs;
+  std::set<sSetElement> _outputs;
 };
 
 inline bool operator<(const OutputSet::sSetElement & se1, 

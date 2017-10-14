@@ -233,8 +233,8 @@ protected:
   int _cur_pid;
   int _time;
 
-  set<int> _flits_to_watch;
-  set<int> _packets_to_watch;
+  std::set<int> _flits_to_watch;
+  std::set<int> _packets_to_watch;
 
   bool _print_csv_results;
 

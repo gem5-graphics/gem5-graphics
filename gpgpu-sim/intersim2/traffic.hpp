@@ -124,7 +124,7 @@ public:
 
 class UniformBackgroundTrafficPattern : public RandomTrafficPattern {
 private:
-  set<int> _excluded;
+ std::set<int> _excluded;
 public:
   UniformBackgroundTrafficPattern(int nodes, vector<int> excluded_nodes);
   virtual int dest(int source);

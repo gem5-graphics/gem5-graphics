@@ -35,7 +35,7 @@ class Credit {
 
 public:
 
-  set<int> vc;
+ std::set<int> vc;
 
   // these are only used by the event router
   bool head, tail;
