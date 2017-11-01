@@ -59,6 +59,7 @@ enum special_regs {
    WARPSZ_REG,
    //////// START OF SPECIAL REGISTERS USED IN GRAPHICS ////////
    UTID_REG,
+
    //PART1: Vertex Result Registers: Used to write the vertex shading stage results
    VERTEX_POSITION,
    VERTEX_COLOR0,
@@ -74,15 +75,9 @@ enum special_regs {
    VERTEX_ACTIVE,
            
    //PART2: Fragment Input Registers: Used to read the fragment input attribs
-   FRAGMENT_POSITION,
-   FRAGMENT_TEXCOORD0,
-   FRAGMENT_TEXCOORD1,
-   FRAGMENT_TEXCOORD2,
-   FRAGMENT_TEXCOORD3,
-   FRAGMENT_TEXCOORD4,
-   FRAGMENT_TEXCOORD5,
-   FRAGMENT_TEXCOORD6,
-   FRAGMENT_TEXCOORD7,
+   SHADER_IN0,
+   SHADER_COLOR0,
+   SHADER_CONST00,
    FRAGMENT_ACTIVE,
    
    //PART3: other

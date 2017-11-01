@@ -363,7 +363,20 @@ public:
    void set_ntid( dim3 tid ) { m_ntid = tid; }
    void set_nctaid( dim3 cta_size ) { m_nctaid = cta_size; }
 
-   unsigned get_builtin( int builtin_id, unsigned dim_mod, bool &isfloat, float &value ); 
+   unsigned get_builtin( int builtin_id, unsigned dim_mod); 
+   void set_builtin_storage(int builtin_id, int builtin_idx, ptx_reg_t value){
+     m_builtin_storage[builtin_id][builtin_idx] = value;
+   }
+
+   void set_builtin_dst(ptx_reg_t reg, int size){
+     m_builtin_dst.reg = reg;
+     m_builtin_dst.valid = true;
+     m_builtin_dst.size = size;
+   }
+
+   ptx_reg_t get_builtin_storage(int builtin_id, unsigned builtin_idx){
+     return m_builtin_storage[builtin_id][builtin_idx];
+   }
 
    void set_done();
    bool is_done() { return m_thread_done;}
@@ -513,8 +526,21 @@ private:
    std::list<reg_map_t> m_debug_trace_regs_modified;
    std::list<reg_map_t> m_debug_trace_regs_read;
    bool m_enable_debug_trace;
-
    std::stack<class operand_info> m_breakaddrs;
+   struct ptx_reg_vector_t {
+     ptx_reg_t regs[4];
+     ptx_reg_t& operator[](unsigned i){
+       assert(i < 4);
+       return regs[i];
+     }
+   };
+   std::map<int, ptx_reg_vector_t> m_builtin_storage;
+   struct builtin_dst_t {
+     ptx_reg_t reg;
+     int size;
+     bool valid;
+   };
+   builtin_dst_t m_builtin_dst;
 };
 
 addr_t generic_to_local( unsigned smid, unsigned hwtid, addr_t addr );
@@ -529,7 +555,6 @@ bool isspace_global( addr_t addr );
 memory_space_t whichspace( addr_t addr );
 
 extern unsigned g_ptx_thread_info_uid_next;
-float readFragmentInputData(ptx_thread_info *thread,int builtin_id, unsigned dim_mod);
-int readFragmentInputDataInt(ptx_thread_info *thread,int builtin_id, unsigned dim_mod);
-int readVertexInputDataInt(ptx_thread_info *thread,int builtin_id, unsigned dim_mod);
+shaderAttrib_t readFragmentInputData(ptx_thread_info *thread,int builtin_id, unsigned dim_mod);
+uint32_t readVertexInputData(ptx_thread_info *thread,int builtin_id, unsigned dim_mod);
 #endif

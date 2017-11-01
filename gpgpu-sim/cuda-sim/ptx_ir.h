@@ -1012,7 +1012,7 @@ public:
       return false;
    }
    bool has_memory_write() const {
-      if( m_opcode == ST_OP || m_opcode == ATOM_OP ) return true;
+      if( m_opcode == ST_OP || m_opcode == STP_OP || m_opcode == ATOM_OP ) return true;
       // Check PTXPlus operand type below
       // Destination operand is a memory operand
       ptx_instruction::const_iterator op=op_iter_begin();

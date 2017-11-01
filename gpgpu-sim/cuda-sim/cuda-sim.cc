@@ -601,6 +601,7 @@ void ptx_instruction::set_opcode_and_latency()
    case LD_OP: op = LOAD_OP; break;
    case LDU_OP: op = LOAD_OP; break;
    case ST_OP: op = STORE_OP; break;
+   case STP_OP: op = STORE_OP; break;
    case BRA_OP: op = BRANCH_OP; break;
    case BREAKADDR_OP: op = BRANCH_OP; break;
    case TEX_OP: op = LOAD_OP; mem_op=TEX; break;
@@ -858,6 +859,8 @@ void ptx_instruction::pre_decode()
          cache_op = CACHE_WRITE_BACK;
       else if( m_opcode == ATOM_OP ) 
          cache_op = CACHE_GLOBAL;
+      else if (m_opcode == STP_OP)
+         cache_op = CACHE_WRITE_BACK;
       break;
    }
 
@@ -1184,20 +1187,41 @@ void init_inst_classification_stat()
 
 static unsigned get_tex_datasize( const ptx_instruction *pI, ptx_thread_info *thread )
 {
-   const operand_info &src1 = pI->src1(); //the name of the texture
-   std::string texname = src1.name();
+  const operand_info &src1 = pI->src1(); //the name of the texture
+  std::string texname = src1.name();
 
-   gpgpu_t *gpu = thread->get_gpu();
-   const struct textureReference* texref = gpu->get_texref(texname);
-   const struct textureInfo* texInfo = gpu->get_texinfo(texref);
+  if(texname.find("TGSI_SAMP") == std::string::npos){
+    gpgpu_t *gpu = thread->get_gpu();
+    const struct textureReference* texref = gpu->get_texref(texname);
+    const struct textureInfo* texInfo = gpu->get_texinfo(texref);
 
-   unsigned data_size = texInfo->texel_size;
-   return data_size; 
+    unsigned data_size = texInfo->texel_size;
+    return data_size;
+  } else {
+     std::string unitNum = texname.substr(texname.find('_') + 1);
+     unitNum = unitNum.substr(unitNum.find('_') + 1);
+     int samplingUnit = std::stoi(unitNum, nullptr);
+     return getMesaTexelSize(samplingUnit);
+  }
 }
 
 int ptx_thread_info::readRegister(const warp_inst_t &inst, unsigned lane_id, char *data, unsigned reg_id)
 {
    const ptx_instruction *pI = m_func_info->get_instruction(inst.pc);
+   int offset = 0;
+   int bytes = -1;
+
+   //special handling for instructions using builtin storage
+   //e.g., store pixel (stp)
+   if(pI->get_num_operands() == 0){
+     assert(m_builtin_dst.valid);
+     m_builtin_dst.valid = false;
+     ptx_reg_t ptx_reg = m_builtin_dst.reg;
+     bytes = m_builtin_dst.size;
+     memcpy(data+offset, &ptx_reg, bytes);
+     offset += bytes;
+     return 1;
+   }
 
    const operand_info &dst = pI->dst();
    const operand_info &src = pI->operand_lookup(reg_id);
@@ -1212,8 +1236,7 @@ int ptx_thread_info::readRegister(const warp_inst_t &inst, unsigned lane_id, cha
    // NOTE: converting the register values like below (casting to ull) may not 
    // work. It might keep some upper bits that are stale. see ptx_sim.h line 56
 
-   int offset = 0;
-   int bytes = size/8;
+   bytes = size/8;
 
    if (vector_spec) {
       if (vector_spec == V2_TYPE) {
@@ -1442,11 +1465,12 @@ void ptx_thread_info::ptx_exec_inst( warp_inst_t &inst, unsigned lane_id)
 
    if (pI->get_opcode() == TEX_OP) {
       assert( inst.space == last_space() );
-      insn_data_size = get_tex_datasize(pI, this); // texture obtain its data granularity from the texture info 
+      // texture obtain its data granularity from the texture info
+      insn_data_size = get_tex_datasize(pI, this);
    }
 
    // Output register information to file and stdout
-   if( config.get_ptx_inst_debug_to_file()!=0 && 
+   if( config.get_ptx_inst_debug_to_file()!=0 &&
        (config.get_ptx_inst_debug_thread_uid()==0||config.get_ptx_inst_debug_thread_uid()==get_uid()) ) {
       dump_modifiedregs(m_gpu->get_ptx_inst_debug_file());
       dump_regs(m_gpu->get_ptx_inst_debug_file());

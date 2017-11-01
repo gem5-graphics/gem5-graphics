@@ -123,6 +123,7 @@ slct	TC; ptx_lval.int_value = SLCT_OP; return OPCODE;
 sqrt	TC; ptx_lval.int_value = SQRT_OP; return OPCODE;
 ssy     TC; ptx_lval.int_value = SSY_OP; return OPCODE;
 st      TC; ptx_lval.int_value = ST_OP; return OPCODE;
+stp     TC; ptx_lval.int_value = STP_OP; return OPCODE;
 st.volatile TC; ptx_lval.int_value = ST_OP; return OPCODE;
 sub	TC; ptx_lval.int_value = SUB_OP; return OPCODE;
 subc	TC; ptx_lval.int_value = SUBC_OP; return OPCODE;
@@ -131,6 +132,7 @@ sured	TC; ptx_lval.int_value = SURED_OP; return OPCODE;
 surst	TC; ptx_lval.int_value = SUST_OP; return OPCODE;
 suq	TC; ptx_lval.int_value = SUQ_OP; return OPCODE;
 tex	TC; BEGIN(NOT_OPCODE); ptx_lval.int_value = TEX_OP; return OPCODE;
+txf	TC; BEGIN(NOT_OPCODE); ptx_lval.int_value = TEX_OP; return OPCODE;
 txq	TC; ptx_lval.int_value = TEX_OP; return OPCODE;
 trap	TC; ptx_lval.int_value = TRAP_OP; return OPCODE;
 vabsdiff TC; ptx_lval.int_value = VABSDIFF_OP; return OPCODE;
@@ -225,15 +227,9 @@ printf     TC; ptx_lval.int_value = PRINTF_OP; return OPCODE;
 "%vertex_texcoord7"  TC; ptx_lval.int_value = VERTEX_TEXCOORD7; return SPECIAL_REGISTER;
 "%vertex_active"     TC; ptx_lval.int_value = VERTEX_ACTIVE;    return SPECIAL_REGISTER;
 
-"%fragment_position"  TC; ptx_lval.int_value = FRAGMENT_POSITION; return SPECIAL_REGISTER;
-"%fragment_texcoord0"  TC; ptx_lval.int_value = FRAGMENT_TEXCOORD0; return SPECIAL_REGISTER;
-"%fragment_texcoord1"  TC; ptx_lval.int_value = FRAGMENT_TEXCOORD1; return SPECIAL_REGISTER;
-"%fragment_texcoord2"  TC; ptx_lval.int_value = FRAGMENT_TEXCOORD2; return SPECIAL_REGISTER;
-"%fragment_texcoord3"  TC; ptx_lval.int_value = FRAGMENT_TEXCOORD3; return SPECIAL_REGISTER;
-"%fragment_texcoord4"  TC; ptx_lval.int_value = FRAGMENT_TEXCOORD4; return SPECIAL_REGISTER;
-"%fragment_texcoord5"  TC; ptx_lval.int_value = FRAGMENT_TEXCOORD5; return SPECIAL_REGISTER;
-"%fragment_texcoord6"  TC; ptx_lval.int_value = FRAGMENT_TEXCOORD6; return SPECIAL_REGISTER;
-"%fragment_texcoord7"  TC; ptx_lval.int_value = FRAGMENT_TEXCOORD7; return SPECIAL_REGISTER;
+"IN0"  TC; ptx_lval.int_value = SHADER_IN0; return SPECIAL_REGISTER;
+"CONST00"  TC; ptx_lval.int_value = SHADER_CONST00; return SPECIAL_REGISTER;
+"COLOR0"     TC; ptx_lval.int_value = SHADER_COLOR0; return SPECIAL_REGISTER;
 "%fragment_active"  TC; ptx_lval.int_value = FRAGMENT_ACTIVE; return SPECIAL_REGISTER;
 
 "%rb_width"  TC; ptx_lval.int_value = RB_WIDTH; return SPECIAL_REGISTER;
@@ -243,7 +239,6 @@ printf     TC; ptx_lval.int_value = PRINTF_OP; return OPCODE;
 [$%][a-zA-Z0-9_$]+  TC; ptx_lval.string_value = strdup(yytext); return IDENTIFIER;
 
 [0-9]+\.[0-9]+ 	 TC; sscanf(yytext,"%lf", &ptx_lval.double_value); return DOUBLE_OPERAND;
-	
 0[xX][0-9a-fA-F]+U? TC; CHECK_UNSIGNED; sscanf(yytext,"%x", &ptx_lval.int_value); return INT_OPERAND;
 0[0-7]+U?   	TC; printf("GPGPU-Sim: ERROR ** parsing octal not (yet) implemented\n"); abort(); return INT_OPERAND;
 0[bB][01]+U?  	TC; printf("GPGPU-Sim: ERROR ** parsing binary not (yet) implemented\n"); abort(); return INT_OPERAND;

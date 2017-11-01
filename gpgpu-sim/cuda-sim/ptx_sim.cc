@@ -172,6 +172,7 @@ ptx_thread_info::ptx_thread_info( kernel_info_t &kernel )
    m_local_mem_stack_pointer = 0;
    m_gpu = NULL;
    m_last_set_operand_value=ptx_reg_t();
+   m_builtin_dst.valid = false;
 }
 
 const ptx_version &ptx_thread_info::get_ptx_version() const 
@@ -186,9 +187,8 @@ void ptx_thread_info::set_done()
    m_cycle_done = gpu_sim_cycle; 
 }
 
-unsigned ptx_thread_info::get_builtin( int builtin_id, unsigned dim_mod, bool &isFloat, float &floatValue ) 
+unsigned ptx_thread_info::get_builtin( int builtin_id, unsigned dim_mod)
 {
-   isFloat= false;
    assert( m_valid );
    switch ((builtin_id&0xFFFF)) {
    case CLOCK_REG:
@@ -275,10 +275,9 @@ unsigned ptx_thread_info::get_builtin( int builtin_id, unsigned dim_mod, bool &i
    case UTID_REG: return get_uid_in_kernel();
    case RB_WIDTH: return readMESABufferWidth();
    case RB_SIZE: return readMESABufferSize();
-   case FRAGMENT_ACTIVE: return readFragmentInputDataInt(this,builtin_id, dim_mod);
-   case VERTEX_ACTIVE: return readVertexInputDataInt(this,builtin_id, dim_mod);
-   default: floatValue= readFragmentInputData(this,builtin_id, dim_mod);
-   isFloat = true;
+   case FRAGMENT_ACTIVE: return readFragmentInputData(this,builtin_id, dim_mod).u32;
+   case VERTEX_ACTIVE: return readVertexInputData(this,builtin_id, dim_mod);
+   default: return readFragmentInputData(this,builtin_id, dim_mod).u32;
    }
    return 0;
 }
