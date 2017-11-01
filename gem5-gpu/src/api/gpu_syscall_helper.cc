@@ -27,7 +27,7 @@
  */
 
 #include "gpu_syscall_helper.hh"
-#include "mem/ruby/system/RubySystem.hh"
+//#include "mem/ruby/system/RubySystem.hh"
 #include "mem/fs_translating_port_proxy.hh"
 #include "mem/se_translating_port_proxy.hh"
 #include "sim/full_system.hh"
@@ -43,19 +43,23 @@ GPUSyscallHelper::GPUSyscallHelper(ThreadContext *_tc, gpusyscall_t* _call_param
 }
 
 void
-GPUSyscallHelper::readBlob(Addr addr, uint8_t* p, int size, ThreadContext *tc)
+GPUSyscallHelper::readBlob(Addr addr, uint8_t* p, int size, ThreadContext *tc, bool use_phys)
 {
     assert(addr == (addr & __POINTER_MASK__));
 
     if (FullSystem) {
-        tc->getVirtProxy().readBlob(addr, p, size);
+        if(use_phys){
+          tc->getPhysProxy().readBlob(addr, p, size);
+        } else {
+          tc->getVirtProxy().readBlob(addr, p, size);
+        }
     } else {
         tc->getMemProxy().readBlob(addr, p, size);
     }
 }
 
 void
-GPUSyscallHelper::readString(Addr addr, uint8_t* p, int size, ThreadContext *tc)
+GPUSyscallHelper::readString(Addr addr, uint8_t* p, int size, ThreadContext *tc, bool use_phys)
 {
     assert(addr == (addr & __POINTER_MASK__));
 
@@ -75,7 +79,7 @@ GPUSyscallHelper::readString(Addr addr, uint8_t* p, int size, ThreadContext *tc)
         read_size = block_size;
         if (bytes_read == 0) read_size -= curr_addr % block_size;
         if (bytes_read + read_size >= size) read_size = size - bytes_read;
-        readBlob(curr_addr, &p[bytes_read], read_size, tc);
+        readBlob(curr_addr, &p[bytes_read], read_size, tc, use_phys);
         for (int index = 0; index < read_size; ++index) {
             if (p[bytes_read + index] == 0) null_not_found = false;
         }
@@ -85,14 +89,18 @@ GPUSyscallHelper::readString(Addr addr, uint8_t* p, int size, ThreadContext *tc)
 }
 
 void
-GPUSyscallHelper::writeBlob(Addr addr, uint8_t* p, int size, ThreadContext *tc, bool is_ptr)
+GPUSyscallHelper::writeBlob(Addr addr, uint8_t* p, int size, ThreadContext *tc, bool is_ptr, bool use_phys)
 {
     assert(addr == (addr & __POINTER_MASK__));
 
     if (is_ptr)
         size = __POINTER_SIZE__;
     if (FullSystem) {
-        tc->getVirtProxy().writeBlob(addr, p, size);
+        if(use_phys){
+          tc->getPhysProxy().writeBlob(addr, p, size);
+        } else {
+          tc->getVirtProxy().writeBlob(addr, p, size);
+        }
     } else {
         tc->getMemProxy().writeBlob(addr, p, size);
     }
@@ -176,7 +184,7 @@ GPUSyscallHelper::getParam(int index, bool is_ptr)
 }
 
 void
-GPUSyscallHelper::setReturn(unsigned char* retValue, size_t size, bool is_ptr)
+GPUSyscallHelper::setReturn(unsigned char* retValue, size_t size, bool is_ptr, bool use_phys)
 {
-    writeBlob((uint64_t)sim_params.ret, retValue, size, is_ptr);
+    writeBlob((uint64_t)sim_params.ret, retValue, size, is_ptr, use_phys);
 }

@@ -55,9 +55,9 @@ class GraphicsSyscallHelper {
     unsigned char* args;
 
     void decode_package();
-    void readBlob(Addr addr, uint8_t* p, int size, ThreadContext *tc);
-    void readString(Addr addr, uint8_t* p, int size, ThreadContext *tc);
-    void writeBlob(Addr addr, uint8_t* p, int size, ThreadContext *tc);
+    void readBlob(Addr addr, uint8_t* p, int size, ThreadContext *tc, bool use_phys);
+    //void readString(Addr addr, uint8_t* p, int size, ThreadContext *tc);
+    void writeBlob(Addr addr, uint8_t* p, int size, ThreadContext *tc, bool use_phys);
   public:
     GraphicsSyscallHelper(ThreadContext* _tc, graphicssyscall_t* _call_params);
     GraphicsSyscallHelper(ThreadContext* _tc);
@@ -65,9 +65,9 @@ class GraphicsSyscallHelper {
     void* getParam(int index);
     void setReturn(unsigned char* retValue, size_t size);
     ThreadContext* getThreadContext() { return tc; }
-    void readBlob(Addr addr, uint8_t* p, int size) { readBlob(addr, p, size, tc); }
-    void readString(Addr addr, uint8_t* p, int size) { readString(addr, p, size, tc); }
-    void writeBlob(Addr addr, uint8_t* p, int size) { writeBlob(addr, p, size, tc); }
+    void readBlob(Addr addr, uint8_t* p, int size, bool use_phys = false) { readBlob(addr, p, size, tc, use_phys); }
+    //void readString(Addr addr, uint8_t* p, int size) { readString(addr, p, size, tc); }
+    void writeBlob(Addr addr, uint8_t* p, int size, bool use_phys = false) { writeBlob(addr, p, size, tc, use_phys); }
     int getPid(){return sim_params.pid;}
     int getTid(){return sim_params.tid;}
     bool hasParams() { return arg_lengths!=NULL; }

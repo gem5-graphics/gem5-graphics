@@ -47,16 +47,20 @@ GraphicsSyscallHelper::GraphicsSyscallHelper(ThreadContext *_tc)
 }
 
 void
-GraphicsSyscallHelper::readBlob(Addr addr, uint8_t* p, int size, ThreadContext *tc)
+GraphicsSyscallHelper::readBlob(Addr addr, uint8_t* p, int size, ThreadContext *tc, bool use_phys)
 {
     if (FullSystem) {
+      if(use_phys) {
+        tc->getPhysProxy().readBlob(addr, p, size);
+      } else {
         tc->getVirtProxy().readBlob(addr, p, size);
+      }
     } else {
         tc->getMemProxy().readBlob(addr, p, size);
     }
 }
 
-void
+/*void
 GraphicsSyscallHelper::readString(Addr addr, uint8_t* p, int size, ThreadContext *tc)
 {
     // Ensure that the memory buffer is cleared
@@ -81,13 +85,17 @@ GraphicsSyscallHelper::readString(Addr addr, uint8_t* p, int size, ThreadContext
     }
 
     if (null_not_found) panic("Didn't find end of string at address %x (%s)!", addr, (char*)p);
-}
+}*/
 
 void
-GraphicsSyscallHelper::writeBlob(Addr addr, uint8_t* p, int size, ThreadContext *tc)
+GraphicsSyscallHelper::writeBlob(Addr addr, uint8_t* p, int size, ThreadContext *tc, bool use_phys)
 {
     if (FullSystem) {
+      if(use_phys) {
+        tc->getPhysProxy().writeBlob(addr, p, size);
+      } else {
         tc->getVirtProxy().writeBlob(addr, p, size);
+      }
     } else {
         tc->getMemProxy().writeBlob(addr, p, size);
     }
@@ -102,7 +110,8 @@ GraphicsSyscallHelper::decode_package()
 
     if(sim_params.num_args > 0){
       arg_lengths = new graphicssyscall_t::ARG_LEN_TYPE[sim_params.num_args];
-      readBlob((Addr)sim_params.arg_lengths_ptr, (unsigned char*)arg_lengths, sim_params.num_args * sizeof(graphicssyscall_t::ARG_LEN_TYPE));
+      readBlob((Addr)sim_params.arg_lengths_ptr, (unsigned char*)arg_lengths,
+               sim_params.num_args * sizeof(graphicssyscall_t::ARG_LEN_TYPE));
     } else{
       arg_lengths = NULL;
     }
