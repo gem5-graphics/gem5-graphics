@@ -646,9 +646,9 @@ graphicsMemcpy(void *cpy_dst, const void *cpy_src, size_t buff_size, enum cudaMe
     }
     
     if(cpy_type==graphicsMemcpyHostToSim) {
-        helper.writeBlob((Addr)cpy_dst,(uint8_t*)cpy_src,buff_size);
+        helper.writeBlob((Addr)cpy_dst,(uint8_t*)cpy_src,buff_size, false, true);
     } else if(cpy_type==graphicsMemcpySimToHost){ 
-        helper.readBlob((Addr)cpy_src,(uint8_t*)cpy_dst,buff_size);
+        helper.readBlob((Addr)cpy_src,(uint8_t*)cpy_dst,buff_size, true);
     } else {
         panic("GPGPU-Sim PTX: graphicsMemcpy - ERROR : unsupported cudaMemcpyKind\n");
     } 
@@ -740,7 +740,7 @@ graphicsMemcpyToSymbol(const char *hostVar, const void *src, size_t count, size_
     DPRINTF(GPUSyscalls, "gem5 GPU Syscall: graphicsMemcpyToSymbol(symbol = %llx, dst = %llx, src = %llx, count = %d, offset = %d, kind = %s)\n",
             (uint64_t)hostVar, cpy_dst, (uint64_t)src, count, offset, cudaMemcpyKindStrings[cpykind]);
 
-    helper.writeBlob((Addr)cpy_dst,(uint8_t*)src, count);
+    helper.writeBlob((Addr)cpy_dst,(uint8_t*)src, count, false, true);
     
     g_last_cudaError = cudaSuccess;
     return g_last_cudaError;
