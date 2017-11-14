@@ -42,7 +42,9 @@ def addGPUOptions(parser):
     parser.add_option("--split", default=False, action="store_true", help="Use split CPU and GPU cache hierarchies instead of fusion")
     parser.add_option("--kernel_stats", default=False, action="store_true", help="Dump statistics on GPU kernel boundaries")
     parser.add_option("--gpgpusim_stats", default=False, action="store_true", help="Dump statistics of GPGPU-Sim on GPU kernel boundaries")
-    
+    parser.add_option("--gpgpusim_config", default="gpu_soc.config", help="gpgpusim config file")
+    parser.add_option("--icnt_config", default="gpu_soc.config", help="gpgpusim icnt config file")
+  
    #gpu cores, note: these 3 configs will be loaded from the gpgpusim config file when specified
     parser.add_option("--clusters", default=16, help="Number of shader core clusters in the gpu that GPGPU-sim is simulating", type="int")
     parser.add_option("--cores_per_cluster", default=1, help="Number of shader cores per cluster in the gpu that GPGPU-sim is simulating", type="int")
@@ -331,8 +333,8 @@ def createGPU(options, gpu_mem_range):
 
         sc.lsq.cache_line_size = options.cacheline_size
         sc.tex_lq.cache_line_size = options.cacheline_size
-#sc.lsq.request_buffer_depth = options.gpu_l1_buf_depth
-#sc.tex_lq.request_buffer_depth = options.gpu_tl1_buf_depth
+        #sc.lsq.request_buffer_depth = options.gpu_l1_buf_depth
+        #sc.tex_lq.request_buffer_depth = options.gpu_tl1_buf_depth
         if options.gpu_threads_per_core % options.gpu_warp_size:
             fatal("gpu_warp_size must divide gpu_threads_per_core evenly.")
         sc.lsq.warp_contexts = warps_per_core
@@ -459,7 +461,7 @@ def connectGPUPorts_classic(system, gpu, options):
         dcache_class, icache_class, l2_cache_class, walk_cache_class = \
             L1_DCache, L1_ICache, L2Cache, None
 
-    gpu.l2cache = l2_cache_class(clk_domain=system.cpu_clk_domain,
+    gpu.l2cache =  L2Cache(clk_domain=system.cpu_clk_domain,
                                    size=options.sc_l2_size,
                                    assoc=options.l2_assoc)
     gpu.l2NetToL2 = IOXBar(clk_domain = system.cpu_clk_domain)
@@ -469,23 +471,17 @@ def connectGPUPorts_classic(system, gpu, options):
     gpu.zunit.z_port = gpu.l2NetToL2.slave
 
     for i,sc in enumerate(gpu.shader_cores):
-        sc.scToL2Net = IOXBar()
-        sc.scToL2Net.master = gpu.l2NetToL2.slave
-
-        sc.icache = icache_class(size=options.sc_il1_size,
+        #readonly cache
+        sc.icache = L1_ICache(size=options.sc_il1_size,
                                 assoc=options.sc_il1_assoc)
-        sc.icache.mem_side = sc.scToL2Net.slave
+        sc.icache.mem_side = gpu.l2NetToL2.slave
         sc.inst_port = sc.icache.cpu_side
+        sc.lsq.cache_port = gpu.l2NetToL2.slave
 
-        sc.dcache = dcache_class(size=options.sc_l1_size,
-                                assoc=options.sc_l1_assoc)
-        sc.dcache.mem_side = sc.scToL2Net.slave
-        sc.lsq.cache_port = sc.dcache.cpu_side
-
-
-        sc.tcache = dcache_class(size=options.sc_tl1_size,
+        #readonly cache
+        sc.tcache = L1_ICache(size=options.sc_tl1_size,
                                 assoc=options.sc_tl1_assoc)
-        sc.tcache.mem_side = sc.scToL2Net.slave
+        sc.tcache.mem_side = gpu.l2NetToL2.slave
         sc.tex_lq.cache_port = sc.tcache.cpu_side
 
         for j in xrange(options.gpu_warp_size):
