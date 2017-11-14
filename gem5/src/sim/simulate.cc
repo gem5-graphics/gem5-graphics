@@ -171,6 +171,7 @@ testAndClearAsyncEvent()
     return was_set;
 }
 
+std::mutex g_gpuMutex;
 /**
  * The main per-thread simulation loop. This loop is executed by all
  * simulation threads (the main thread and the subordinate threads) in
@@ -182,8 +183,10 @@ doSimLoop(EventQueue *eventq)
     // set the per thread current eventq pointer
     curEventQueue(eventq);
     eventq->handleAsyncInsertions();
+    g_gpuMutex.unlock();
 
     while (1) {
+        g_gpuMutex.lock();
         // there should always be at least one event (the SimLoopExitEvent
         // we just scheduled) in the queue
         assert(!eventq->empty());
@@ -220,6 +223,7 @@ doSimLoop(EventQueue *eventq)
         if (exit_event != NULL) {
             return exit_event;
         }
+        g_gpuMutex.unlock();
     }
 
     // not reached... only exit is return on SimLoopExitEvent
