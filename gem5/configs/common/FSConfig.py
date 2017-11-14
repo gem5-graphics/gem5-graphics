@@ -358,12 +358,15 @@ def makeArmSystem(mem_mode, machine_type, num_cpus=1, mdesc=None,
                 cmdline += " androidboot.hardware=gem5 qemu=1 qemu.gles=0 " + \
                            "android.bootanim=0 "
             elif 'nougat' in mdesc.os_type():
-                cmdline += " androidboot.hardware=gem5 qemu=1 qemu.gles=0 " + \
-                           "android.bootanim=0 " + \
+                cmdline += " androidboot.hardware=gem5 qemu=1 qemu.gles=1 " + \
+                           "qemu.opengles.version=196608 " + \
+                           "cma=128M " + \
                            "vmalloc=640MB " + \
                            "android.early.fstab=/fstab.gem5 " + \
                            "androidboot.selinux=permissive " + \
-                           "video=Virtual-1:1920x1080-16"
+                           "audit=0 " + \
+                           "android.bootanim=0 "
+
 
         self.boot_osflags = fillInCmdline(mdesc, cmdline)
 
@@ -402,7 +405,7 @@ def makeArmSystem(mem_mode, machine_type, num_cpus=1, mdesc=None,
         self.realview.attachOnChipIO(self.iobus, None, self._dma_ports)
     else:
         self.realview.attachOnChipIO(self.membus, self.bridge)
-#        self.realview.attachIO(self.iobus)
+        #self.realview.attachIO(self.iobus)
 
     for dev_id, dev in enumerate(pci_devices):
         dev.pci_bus, dev.pci_dev, dev.pci_func = (0, dev_id + 1, 0)
