@@ -47,7 +47,7 @@ using namespace TheISA;
 
 ShaderTLB::ShaderTLB(const Params *p) :
     BaseTLB(p), numEntries(p->entries), hitLatency(p->hit_latency),
-    cudaGPU(p->gpu), accessHostPageTable(p->access_host_pagetable)
+    cudaGPU(p->gpu), perfectTlb(p->perfect_tlb)
 {
     if (numEntries > 0) {
         tlbMemory = new TLBMemory(p->entries, p->associativity);
@@ -70,9 +70,7 @@ ShaderTLB::beginTranslateTiming(RequestPtr req,
                                 BaseTLB::Translation *translation,
                                 BaseTLB::Mode mode, ThreadContext * tc)
 {
-    if (accessHostPageTable) {
-        translateTiming(req, tc==NULL? cudaGPU->getThreadContext(): tc, translation, mode);
-    } else {
+    if (perfectTlb) {
         // The below code implements a perfect TLB with instant access to the
         // device page table.
         // TODO: We can shift this around, maybe to memory, maybe hierarchical TLBs
@@ -87,9 +85,16 @@ ShaderTLB::beginTranslateTiming(RequestPtr req,
             req->setPaddr(page_paddr + offset);
             translation->finish(NoFault, req, NULL, mode);
         } else {
-            panic("ShaderTLB missing translation for vaddr: %p! @pc: %p",
+            if(useVaddr){
+              req->setPaddr(req->getVaddr());
+              translation->finish(NoFault, req, NULL, mode);
+            } else {
+              panic("ShaderTLB missing translation for vaddr: %p! @pc: %p",
                     vaddr, req->getPC());
+            }
         }
+    } else {
+      translateTiming(req, tc==NULL? cudaGPU->getThreadContext(): tc, translation, mode);
     }
 }
 

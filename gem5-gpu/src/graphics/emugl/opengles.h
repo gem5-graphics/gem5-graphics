@@ -80,6 +80,9 @@ extern int  android_gles_fast_pipes;
 
 //void android_cleanupProcGLObjects(uint64_t puid);
 
+typedef void (*OnPostCommandBufferFunc)(void* tInfo, void* stream, void* checksumCalc, void* readBuf, bool* waitFlag);
+void android_setCommandBufferCallbackFunc(OnPostCommandBufferFunc func);
+
 #ifdef __cplusplus
 const emugl::RendererPtr& android_getOpenglesRenderer();
 #endif

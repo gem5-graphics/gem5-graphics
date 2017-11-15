@@ -124,7 +124,8 @@ private:
 
     // Pointer to the SPA to access the page table
     CudaGPU* cudaGPU;
-    bool accessHostPageTable;
+    bool perfectTlb;
+    bool useVaddr;
 
     BaseTLBMemory *tlbMemory;
 

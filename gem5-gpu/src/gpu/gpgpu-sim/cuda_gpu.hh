@@ -414,12 +414,12 @@ class CudaGPU : public ClockedObject
 
     //TODO: redo with proper memory management
     class GMemory {
-        static const size_t XLGBLOCK_SIZE  = 5*1024*1024; //was 6
-        static const size_t XLGBLOCK_COUNT = 1;
+        static const size_t XLGBLOCK_SIZE  = 9*1024*1024; //was 6
+        static const size_t XLGBLOCK_COUNT = 40;
         static const size_t LGBLOCK_SIZE  = 4*1024*1024;
-        static const size_t LGBLOCK_COUNT = 2;
+        static const size_t LGBLOCK_COUNT = 100;
         static const size_t SGBLOCK_SIZE = 128*1024;
-        
+
     private:
         Addr m_gMemStart;
         Addr m_gMemSize;
@@ -530,7 +530,7 @@ class CudaGPU : public ClockedObject
     };
     GPUPageTable pageTable;
     bool manageGPUMemory;
-    bool accessHostPageTable;
+    bool perfectTlb;
     AddrRange gpuMemoryRange;
     Addr physicalGPUBrkAddr;
     Addr virtualGPUBrkAddr;
@@ -687,7 +687,6 @@ class CudaGPU : public ClockedObject
     void registerDeviceMemory(ThreadContext *tc, Addr vaddr, size_t size);
     void registerDeviceInstText(ThreadContext *tc, Addr vaddr, size_t size);
     bool isManagingGPUMemory() { return manageGPUMemory; }
-    bool isAccessingHostPagetable() { return accessHostPageTable; }
     Addr allocateGPUMemory(size_t size);
 
     /// Statistics for this GPU
@@ -706,24 +705,24 @@ class CudaGPU : public ClockedObject
     ThreadContext* getGraphicsTC(){return graphicsTC;}
     const int getCurrGraphicsPid(){return graphicsPid;}
     Addr mallocGraphicsMem(size_t size){
-        assert(graphicsMemory.find(graphicsPid) != graphicsMemory.end()); 
-        Addr mAddr = graphicsMemory[graphicsPid].mallocMem(size);
-        DPRINTF(GraphicsMemory, "GraphicsMemory: Mallocing %d bytes, @0x%llx pid=%d\n", size, mAddr, graphicsPid);
-        return mAddr; 
+      //ignore graphicsPid in use
+      Addr mAddr = graphicsMemory[0].mallocMem(size);
+      DPRINTF(GraphicsMemory, "GraphicsMemory: Mallocing %d bytes, @0x%llx pid=%d\n", size, mAddr, graphicsPid);
+      return mAddr; 
     }
     void freeGraphicsMem(Addr add){
-       DPRINTF(GraphicsMemory, "GraphicsMemory: Freeing addr=0x%llx, pid=%d\n", add, graphicsPid);
-       assert(graphicsMemory.find(graphicsPid) != graphicsMemory.end()); 
-       graphicsMemory[graphicsPid].freeMem(add);
+      //ignore graphicsPid in use
+      DPRINTF(GraphicsMemory, "GraphicsMemory: Freeing addr=0x%llx, pid=%d\n", add, graphicsPid);
+      assert(graphicsMemory.find(0) != graphicsMemory.end()); 
+      graphicsMemory[0].freeMem(add);
     }
     void setGraphicsMem(int pid, Addr add, Addr size){
-         //every TC should set memory only once
-         //assert(graphicsMemory.find(tc) == graphicsMemory.end());
-         DPRINTF(GraphicsMemory, "GraphicsMemory: Setting graphics memory pid=%d, addr=0x%llx, size=%d\n", pid, add, size);
-         graphicsMemory[pid] = GMemory(); 
-         graphicsMemory[pid].setMem(add, size);
+      //ignore pid, all use the same addr range
+      DPRINTF(GraphicsMemory, "GraphicsMemory: Setting graphics memory pid=%d, addr=0x%llx, size=%d\n", pid, add, size);
+      graphicsMemory[0] = GMemory();
+      graphicsMemory[0].setMem(gpuMemoryRange.start(), gpuMemoryRange.size());
     }
-    
+
     bool isStreamManagerEmpty(){return streamManager->empty();}
 
     // Returns the line of the address, a

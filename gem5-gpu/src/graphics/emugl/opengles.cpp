@@ -316,6 +316,13 @@ const emugl::RendererPtr& android_getOpenglesRenderer()
   return sRenderer;
 }
 
+void android_setCommandBufferCallbackFunc(OnPostCommandBufferFunc func){
+  if (sRenderer) {
+    sRenderer->setPostCommandBufferCallback(func);
+  }
+}
+
+
 //void android_cleanupProcGLObjects(uint64_t puid) {
     //if (sRenderer) {
         //sRenderer->cleanupProcGLObjects(puid);

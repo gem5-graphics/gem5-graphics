@@ -34,6 +34,12 @@ namespace emugl {
 // Renderer - an object that manages a single OpenGL window used for drawing
 // and is able to create individual render channels for that window.
 //
+using OnPostCommandBufferCallback = void (*)(void* tInfo,
+                                            void* stream,
+                                            void* checksumCalc,
+                                            void* readBuf,
+                                            bool* waitFlag);
+
 class Renderer {
 public:
     // createRenderChannel - create a separate channel for the rendering data.
@@ -91,6 +97,8 @@ public:
                                     int type,
                                     unsigned char* pixels);
     virtual void setPostCallback(OnPostCallback onPost, void* context) = 0;
+
+    virtual void setPostCommandBufferCallback(OnPostCommandBufferCallback onPost) = 0;
 
     // showOpenGLSubwindow -
     //     Create or modify a native subwindow which is a child of 'window'
@@ -158,6 +166,11 @@ public:
 
     // Resumes all channels after snapshot saving or loading.
     virtual void resumeAll() = 0;
+
+
+    virtual void consumeRenderThreadBuffers(void* tInfo, void* stream,
+                                            void* checksumCalc, void* readBuf,
+                                            bool* waitFlag) = 0;
 
     /*virtual void save(android::base::Stream* stream,
                       const android::snapshot::TextureSaverPtr& textureSaver) = 0;

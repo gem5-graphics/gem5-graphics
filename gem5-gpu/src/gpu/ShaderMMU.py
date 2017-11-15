@@ -55,6 +55,9 @@ class ShaderMMU(ClockedObject):
 
     prefetch_buffer_size = Param.Int(0, "Size of the prefetch buffer")
 
+    pagewalk_delay = Param.Latency('50ns', "Page walk latency when access_host_pagetable is set to false")
+    access_host_pagetable = Param.Bool(False, "Whether we can use the host page table, if false misses will take pagewalk_delay")
+
     def setUpPagewalkers(self, num, bypass_l1, port):
         if buildEnv['TARGET_ISA'] == 'arm':
             from ArmTLB import ArmTLB, ArmStage2DMMU

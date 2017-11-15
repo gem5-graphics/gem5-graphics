@@ -565,7 +565,7 @@ ShaderLSQ::recvResponsePkt(PacketPtr pkt)
             blockedAccesses.erase(line_addr);
         }
         // Assert that the unblocked access has been tried for inject previously
-        assert(curCycle() > next_access->getInjectCycle());
+        assert(curCycle() >= next_access->getInjectCycle());
         injectBuffer.push_front(next_access);
         if (!mshrsFull) {
             if (injectAccessesEvent.scheduled()) {

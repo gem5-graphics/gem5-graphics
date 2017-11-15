@@ -196,6 +196,9 @@ private:
     int prefetchBufferSize;
     int prefetchAheadDistance;
 
+    const Tick pagewalkDelay;
+    const bool accessHostPagetable;
+
     void finalizeTranslation(TranslationRequest *translation);
 
     /// Handle a page fault from a shader TLB
@@ -210,7 +213,11 @@ private:
         assert(activeWalkers[pw_id]);
         StartPagewalkEvent *spe = pagewalkEvents[pw_id];
         spe->setTranslation(translation);
-        schedule(spe, nextCycle());
+        if(accessHostPagetable) {
+          schedule(spe, nextCycle());
+        } else {
+          schedule(spe, curTick() + pagewalkDelay);
+        }
     }
 
     // Log the vp base address of the access. If we detect a pattern issue the
@@ -241,8 +248,14 @@ public:
         translation->beginWalk = curCycle();
         translation->pageWalker = walker;
         numPagewalks++;
-        walker->translateTiming(translation->req, translation->tc, translation,
-                                translation->mode);
+
+        if(accessHostPagetable){
+          walker->translateTiming(translation->req, translation->tc, translation,
+                                  translation->mode);
+        } else {
+          translation->req->setPaddr(translation->req->getVaddr());
+          finishWalk(translation, NoFault);
+        }
     }
 
     // Called after the pagetable walk from TranslationRequest

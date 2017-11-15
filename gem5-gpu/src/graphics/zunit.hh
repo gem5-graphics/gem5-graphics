@@ -118,8 +118,8 @@ class ZUnit : public MemObject
                   void unsetPassed(){ rasterFrag->passedDepth = false;}
                   bool passed() { return rasterFrag->passedDepth;}
                   unsigned getId() { return id; }
-                  unsigned getX() { return rasterFrag->intPos[0];}
-                  unsigned getY() { return rasterFrag->intPos[1];}
+                  unsigned getX() { return rasterFrag->uintPos[0];}
+                  unsigned getY() { return rasterFrag->uintPos[1];}
 
                private:
                   unsigned id;

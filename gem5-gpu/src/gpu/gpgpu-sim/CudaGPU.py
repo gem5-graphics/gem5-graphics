@@ -48,9 +48,6 @@ class CudaGPU(ClockedObject):
 
     warp_size = Param.Int(32, "Number of threads in each warp. Same as cores/SM")
 
-    #TODO AYUB: re-enable the optoin for ruby
-    #ruby = Param.RubySystem(Parent.any, "ruby system")
-
     stats_filename = Param.String("gpu_stats.txt",
           "file to which gpgpu-sim dumps its stats")
     config_path = Param.String('gpgpusim.config', "File from which to configure GPGPU-Sim")
@@ -59,9 +56,9 @@ class CudaGPU(ClockedObject):
 
     # When using a segmented physical address space, the SPA can manage memory
     manage_gpu_memory = Param.Bool(False, "Handle all GPU memory allocations in this SPA")
-    access_host_pagetable = Param.Bool(False, \
-                "Whether to allow accesses to host page table")
-    gpu_memory_range = Param.AddrRange(AddrRange('1kB'), "The address range for the GPU memory space")
+    perfect_tlb = Param.Bool(False, \
+                "Assume a perfect TLB")
+    gpu_memory_range = Param.AddrRange(AddrRange('10GB', size= '1GB'), "The address range for the GPU memory space")
 
     shader_mmu = Param.ShaderMMU(ShaderMMU(), "Memory managment unit for this GPU")
 

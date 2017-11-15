@@ -897,7 +897,7 @@ cudaMemset(ThreadContext *tc, gpusyscall_t *call_params)
 
     CudaGPU *cudaGPU = CudaGPU::getCudaGPU(g_active_device);
 
-    if (!cudaGPU->isManagingGPUMemory() && !cudaGPU->isAccessingHostPagetable()) {
+    if (!cudaGPU->isManagingGPUMemory()){ // && !cudaGPU->isAccessingHostPagetable()) {
         // Signal to libcuda that it should handle the memset. This is required
         // if the copy engine may be unable to access the CPU's pagetable to get
         // address translations (unified memory without access host pagetable)

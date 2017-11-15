@@ -439,7 +439,7 @@ CudaCore::recvLSQDataResp(PacketPtr pkt, int lane_id)
                 assert(writebackBlocked[LSQCntrlPortType::LSQ] < 0);
                 writebackBlocked[LSQCntrlPortType::LSQ] = lane_id;
             }
-                
+
             return false;
         }
 
@@ -973,7 +973,7 @@ CudaCore::xCacheFetch(Addr addr, mem_fetch *mf, const char * type,
 }
 
 
-bool 
+bool
 CudaCore::texCacheResAvailabe(Addr a){
     return isCacheResourceAvailable(a,&texBusyCacheLineAddrs);
 }

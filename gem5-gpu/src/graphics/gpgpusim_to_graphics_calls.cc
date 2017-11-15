@@ -34,17 +34,16 @@ unsigned readMESABufferSize(){
 }
 
 //reading fragment attributes, used by the fragment shading stage
-float readFragmentAttribs(unsigned threadID, unsigned attribID, unsigned attribIndex, void* stream) {
-    return g_renderData.getFragmentData(threadID, attribID, attribIndex, stream);
+shaderAttrib_t readFragmentAttribs(unsigned threadID, unsigned attribID,
+                                   unsigned attribIndex, unsigned fileIdx, unsigned idx2D,
+                                   void* stream) {
+    return g_renderData.getFragmentData(threadID, attribID, attribIndex, fileIdx, idx2D, stream);
 }
 
-int readFragmentAttribsInt(unsigned threadID, unsigned attribID, unsigned attribIndex, void* stream) {
-    return g_renderData.getFragmentDataInt(threadID, attribID, attribIndex, stream);
+uint32_t readVertexAttribs(unsigned threadID, unsigned attribID, unsigned attribIndex, void* stream) {
+    return g_renderData.getVertexData(threadID, attribID, attribIndex, stream);
 }
 
-int readVertexAttribsInt(unsigned threadID, unsigned attribID, unsigned attribIndex, void* stream) {
-    return g_renderData.getVertexDataInt(threadID, attribID, attribIndex, stream);
-}
 //copy the result data to the store object, this store object will be used by the rest of the pipeline in MESA (rasterization and fragment shading)
 void writeVertexResult(unsigned threadID, unsigned resAttribID, unsigned attribIndex, float data) {
     g_renderData.writeVertexResult(threadID, resAttribID, attribIndex, data);
@@ -53,4 +52,24 @@ void writeVertexResult(unsigned threadID, unsigned resAttribID, unsigned attribI
 //checks if a vertex finishes execution
 void checkGraphicsThreadExit(void* kernelPtr, unsigned tid){
     g_renderData.checkGraphicsThreadExit(kernelPtr, tid);
+}
+
+//read texels
+std::vector<uint64_t> fetchMesaTexels(int modifier, int unit, int dim,
+                                      float* coords, int num_coords,
+                                      float* dst, int num_dst, unsigned tid, bool isTxq, bool isTxb){
+  return g_renderData.fetchTexels(modifier, unit, dim, coords, num_coords, dst, num_dst, tid, isTxq, isTxb);
+}
+
+//get texel size
+unsigned getMesaTexelSize(int samplingUnit){
+  return g_renderData.getTexelSize(samplingUnit);
+}
+
+unsigned getMesaFramebufferFormat(){
+  return g_renderData.getFramebufferFormat();
+}
+
+uint64_t getFramebufferFragmentAddr(uint64_t x, uint64_t y, uint64_t size){
+  return g_renderData.getFramebufferFragmentAddr(x, y, size);
 }

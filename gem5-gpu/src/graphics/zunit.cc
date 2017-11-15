@@ -381,11 +381,11 @@ void ZUnit::startEarlyZ(uint64_t depthBuffStart, uint64_t depthBuffEnd, unsigned
    for(int i=0; i< tiles->size(); i++){
       depthTiles[i].setId(i);
       depthTiles[i].setRasterTile((*tiles)[i]);
-      depthTiles[i].hizDepth = (*(*tiles)[i])[0].intPos[2];
+      depthTiles[i].hizDepth = (*(*tiles)[i])[0].uintPos[2];
       for(int j=0; j< (*tiles)[i]->size();  j++){
-         unsigned xPos = (*(*tiles)[i])[j].intPos[0];
-         unsigned yPos = (*(*tiles)[i])[j].intPos[1];
-         unsigned zPos = (*(*tiles)[i])[j].intPos[2];
+         unsigned xPos = (*(*tiles)[i])[j].uintPos[0];
+         unsigned yPos = (*(*tiles)[i])[j].uintPos[1];
+         unsigned zPos = (*(*tiles)[i])[j].uintPos[2];
          Addr addr = depthAddrEnd - ((yPos+1) * bufWidth * (unsigned)depthSize) + (xPos * (unsigned)depthSize);
          assert((addr >= depthAddrStart) and (addr < depthAddrEnd));
          fragmentData_t * rasterFrag =  &((*(*tiles)[i])[j]);

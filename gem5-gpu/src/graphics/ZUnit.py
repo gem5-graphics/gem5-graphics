@@ -39,7 +39,7 @@ class ZUnit(MemObject):
     sys = Param.System(Parent.any, "system will run on")
     gpu = Param.CudaGPU(Parent.any, "The GPU")
     z_port = MasterPort("The z-cache port")
-    ztb = Param.ShaderTLB(ShaderTLB(access_host_pagetable = True), "Zcache TLB");
+    ztb = Param.ShaderTLB(ShaderTLB(), "Zcache TLB");
     max_pending_reqs = Param.Int(1024, "Maximum pending cache requests") 
     depth_response_queue_size = Param.Int(1024, "Size of the depth response queue") 
     zrop_width = Param.Int(64, "ZROP throughput in samples/cycle");

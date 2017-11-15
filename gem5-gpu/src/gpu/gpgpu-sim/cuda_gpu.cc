@@ -52,6 +52,7 @@
 #include "sim/full_system.hh"
 #include "gpgpusim_entrypoint.h"
 #include "graphics/mesa_gpgpusim.h"
+#include "base/output.hh"
 
 using namespace std;
 
@@ -82,7 +83,7 @@ CudaGPU::CudaGPU(const Params *p) :
     dumpKernelStats(p->dump_kernel_stats),
     dumpGpgpusimStats(p->dump_gpgpusim_stats), pageTable(),
     manageGPUMemory(p->manage_gpu_memory),
-    accessHostPageTable(p->access_host_pagetable),
+    perfectTlb(p->perfect_tlb),
     gpuMemoryRange(p->gpu_memory_range), shaderMMU(p->shader_mmu),
     _currentBlockedStream(NULL)
 {
@@ -341,6 +342,8 @@ void CudaGPU::registerCopyEngine(GPUCopyEngine *ce)
     copyEngine = ce;
 }
 
+extern std::mutex g_gpuMutex;
+
 void CudaGPU::streamTick() {
     DPRINTF(CudaGPUTick, "Stream Tick\n");
 
@@ -351,7 +354,8 @@ void CudaGPU::streamTick() {
     //op.print(stdout);
 
     if (op.is_done() and streamManager->ready()) {
-        schedule(streamTickEvent, curTick() + streamDelay);
+        if(!streamTickEvent.scheduled())
+          schedule(streamTickEvent, curTick() + streamDelay);
     }
 }
 
@@ -388,7 +392,7 @@ void CudaGPU::beginRunning(Tick stream_queued_time, struct CUstream_st *_stream)
        theGPU->update_stats();
     }
     numKernelsStarted++;
-        
+
     Tick delay = clockPeriod();
     if ((stream_queued_time + launchDelay) > curTick()) {
         // Delay launch to the end of the launch delay
@@ -813,7 +817,7 @@ void CudaGPU::GPUPageTable::unserialize(CheckpointIn &cp)
 
 void CudaGPU::registerDeviceMemory(ThreadContext *tc, Addr vaddr, size_t size)
 {
-    if (manageGPUMemory || accessHostPageTable) return;
+    if (manageGPUMemory || !perfectTlb) return;
     DPRINTF(CudaGPUPageTable, "Registering device memory vaddr: %x, size: %d\n", vaddr, size);
     // Get the physical address of full memory allocation (i.e. all pages)
     Addr page_vaddr, page_paddr;
@@ -947,7 +951,7 @@ Addr CudaGPU::GMemory::mallocMem(unsigned size){
     if (size == 0) return (Addr) NULL;
     if (size > XLGBLOCK_SIZE)
         panic("Graphics memory allocation > %d are not supported", XLGBLOCK_SIZE);
-    
+
     if(size<=SGBLOCK_SIZE){
         for (int i = 0; i < m_sNumBlocks; i++){
            int idx = (i+m_lastsBlock)%m_sNumBlocks;
@@ -960,7 +964,7 @@ Addr CudaGPU::GMemory::mallocMem(unsigned size){
                return addr;
            }
         }
-    }    
+    }
 
     if(size<=LGBLOCK_SIZE){
        for (int i = 0; i < m_lNumBlocks; i++){
@@ -1007,7 +1011,7 @@ void CudaGPU::GMemory::freeMem(Addr addr) {
         m_sAllocatedBlocks[blockAddr] = false;
         return;
     }
-    
+
     if(blockAddr>= XLGBLOCK_SIZE*m_xlNumBlocks){
         blockAddr-= XLGBLOCK_SIZE*m_xlNumBlocks;
         unsigned blockBit = blockAddr / LGBLOCK_SIZE;

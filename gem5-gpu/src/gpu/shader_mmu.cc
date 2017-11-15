@@ -57,7 +57,8 @@ ShaderMMU::ShaderMMU(const Params *p) :
 #endif
     latency(p->latency), startMissEvent(this), faultTimeoutEvent(this),
     faultTimeoutCycles(1000000), outstandingFaultStatus(FaultStatus::NoFault),
-    curOutstandingWalks(0), prefetchBufferSize(p->prefetch_buffer_size)
+    curOutstandingWalks(0), prefetchBufferSize(p->prefetch_buffer_size),
+    pagewalkDelay(p->pagewalk_delay), accessHostPagetable(p->access_host_pagetable)
 {
     activeWalkers.resize(pagewalkers.size());
     if (p->l2_tlb_entries > 0) {

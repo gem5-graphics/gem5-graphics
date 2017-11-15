@@ -42,7 +42,6 @@
 #include "gpu/atomic_operations.hh"
 #include "gpu/shader_tlb.hh"
 #include "mem/mem_object.hh"
-#include "mem/ruby/system/RubySystem.hh"
 #include "params/CudaCore.hh"
 
 class CudaGPU;
