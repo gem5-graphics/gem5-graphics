@@ -87,7 +87,8 @@ def addGPUOptions(parser):
     parser.add_option("--flush_kernel_end", default=False, action="store_true", help="Flush the L1s at the end of each kernel. (Only VI_hammer)")
     #gpu memory
     parser.add_option("--gpu_core_config", type="choice", choices=gpu_core_configs, default='Fermi', help="configure the GPU cores like %s" % gpu_core_configs)
-    parser.add_option("--gpu-mem-size", default='1GB', help="In split hierarchies, amount of GPU memory")
+    parser.add_option("--gpu-mem-start", default='10GB', help="start of GPU memory range")
+    parser.add_option("--gpu-mem-size", default='1GB', help="GPU memory size")
     parser.add_option("--gpu_mem_ctl_latency", type="int", default=-1, help="GPU memory controller latency in cycles")
     parser.add_option("--gpu_mem_freq", type="string", default=None, help="GPU memory controller frequency")
     parser.add_option("--gpu_membus_busy_cycles", type="int", default=-1, help="GPU memory bus busy cycles per data transfer")
@@ -354,18 +355,6 @@ def createGPU(options, gpu_mem_range):
             #FIXME
             sc.lsq.l1_tag_cycles = 1
             sc.lsq.latency = 6
-
-    # This is a stop-gap solution until we implement a better way to register device memory
-    if options.access_host_pagetable:
-        gpu.access_host_pagetable = True
-        for sc in gpu.shader_cores:
-            sc.itb.access_host_pagetable = True
-            sc.ttb.access_host_pagetable = True
-            sc.lsq.data_tlb.access_host_pagetable = True
-            sc.tex_lq.data_tlb.access_host_pagetable = True
-        gpu.ce.device_dtb.access_host_pagetable = True
-        gpu.ce.host_dtb.access_host_pagetable = True
-        gpu.zunit.ztb.access_host_pagetable = True
 
     gpu.config_path = gpgpusimOptions
     gpu.dump_kernel_stats = options.kernel_stats
