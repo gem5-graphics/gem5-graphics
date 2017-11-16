@@ -5,6 +5,7 @@
 #include "graphics/graphicsStream.hh"
 #include "cpu/thread_context.hh"
 #include "debug/GraphicsCalls.hh"
+#include "base/output.hh"
 
 class gem5GraphicsCalls_t {
 public:
@@ -32,5 +33,17 @@ private:
    static int _frameBufferHeight;
    static std::string _dirName;
 };
+
+struct commandBufferCallback_t{
+  commandBufferCallback_t():
+    valid(false){}
+  bool valid;
+  void* tInfo;
+  void* stream;
+  void* checksumCalc;
+  void* readBuf;
+  bool* waitFlag;
+};
+
 
 #endif
