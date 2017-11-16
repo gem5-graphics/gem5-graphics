@@ -1,3 +1,4 @@
+#include <iomanip>
 #include "sim/simulate.hh"
 #include "gpu/gpgpu-sim/cuda_gpu.hh"
 #include "graphics/graphics_syscall_helper.hh"
