@@ -3,15 +3,13 @@
 Import('*')
 
 import os
+
 mesa_root = os.environ['GPGPUSIM_MESA_ROOT']
-
 mesa_dir = "/mesa"
-libpath = mesa_root+mesa_dir+'/lib'
-print "lib path", mesa_root+mesa_dir+'/lib'
-env.Replace(LIBPATH = [mesa_root+mesa_dir+'/lib', env['LIBPATH']])
-
-#mesa_dir = "/Mesa-7.11.2_GPGPU-Sim"
-#env.Replace(LIBPATH = [mesa_root+mesa_dir+'/lib64', env['LIBPATH']])
+#libpath = mesa_root+mesa_dir+'/lib'
+#env.Replace(LIBPATH = [libpath, env['LIBPATH']])
+libpath = mesa_root+mesa_dir+'/lib/gallium'
+env.Replace(LIBPATH = [libpath, env['LIBPATH']])
 
 env.Append(CXXFLAGS = [
 		     '-I'+mesa_root+'/gem5-gpu/src',
@@ -20,6 +18,7 @@ env.Append(CXXFLAGS = [
 		     '-I'+mesa_root+mesa_dir+'/src/mesa',
 		     '-I'+mesa_root+mesa_dir+'/src/mapi',
 		     '-I'+mesa_root+mesa_dir+'/src/mesa/swrast',
+		     '-I'+mesa_root+mesa_dir+'/src/mesa/drivers/dri/common/',
 		     '-I'+mesa_root+mesa_dir+'/src/gallium/auxiliary',
 		     '-I'+mesa_root+mesa_dir+'/src/gallium/include',
 		     '-I'+mesa_root+mesa_dir+'/src/gallium/drivers/softpipe',
