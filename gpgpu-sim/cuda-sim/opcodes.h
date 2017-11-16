@@ -76,8 +76,13 @@ enum special_regs {
            
    //PART2: Fragment Input Registers: Used to read the fragment input attribs
    SHADER_IN0,
+   SHADER_IN1,
+   SHADER_IN2,
    SHADER_COLOR0,
    SHADER_CONST00,
+   SHADER_CONST01,
+   SHADER_CONST02,
+   SHADER_CONST03,
    FRAGMENT_ACTIVE,
    
    //PART3: other

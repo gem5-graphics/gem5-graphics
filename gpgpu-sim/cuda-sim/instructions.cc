@@ -26,31 +26,33 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include <stdarg.h>
-#include <iostream>
+#include <fenv.h>
 #include <GL/gl.h>
+#include <iostream>
+#include <math.h>
+#include <stdarg.h>
+#include <stdlib.h>
 #include <vector>
 
+#include "api/cuda_syscalls.hh"
+#include "gpu/gpgpu-sim/cuda_gpu.hh"
+#include "graphics/mesa_gpgpusim.h"
+#include "cuda_device_printf.h"
+#include "cuda-math.h"
 #include "instructions.h"
 #include "instructions_extra.h"
 #include "ptx_ir.h"
 #include "opcodes.h"
 #include "ptx_sim.h"
 #include "ptx.tab.h"
-#include <stdlib.h>
-#include <math.h>
-#include <fenv.h>
-#include "cuda-math.h"
-#include "../stream_manager.h"
-#include "../abstract_hardware_model.h"
 #include "ptx_loader.h"
-#include "cuda_device_printf.h"
+#include "../abstract_hardware_model.h"
 #include "../gpgpu-sim/gpu-sim.h"
 #include "../gpgpu-sim/shader.h"
-#include "gpu/gpgpu-sim/cuda_gpu.hh"
+#include "../stream_manager.h"
 
+extern renderData_t g_renderData;
 unsigned ptx_instruction::g_num_ptx_inst_uid=0;
-
 const char *g_opcode_string[NUM_OPCODES] = {
 #define OP_DEF(OP,FUNC,STR,DST,CLASSIFICATION) STR,
 #include "opcodes.def"
@@ -98,12 +100,41 @@ shaderAttrib_t readFragmentInputData(ptx_thread_info *thread,int builtin_id, uns
         attribID=TGSI_FILE_INPUT;
         break;
       }
+      case SHADER_IN1: {
+        fileIdx = 1;
+        attribID=TGSI_FILE_INPUT;
+        break;
+      }
+      case SHADER_IN2: {
+        fileIdx = 2;
+        attribID=TGSI_FILE_INPUT;
+        break;
+      }
       case SHADER_CONST00: {
         fileIdx = 0;
         idx2D = 0;
         attribID=TGSI_FILE_CONSTANT;
         break;
       }
+      case SHADER_CONST01: {
+        fileIdx = 0;
+        idx2D = 1;
+        attribID=TGSI_FILE_CONSTANT;
+        break;
+      }
+      case SHADER_CONST02: {
+        fileIdx = 0;
+        idx2D = 2;
+        attribID=TGSI_FILE_CONSTANT;
+        break;
+      }
+      case SHADER_CONST03: {
+        fileIdx = 0;
+        idx2D = 3;
+        attribID=TGSI_FILE_CONSTANT;
+        break;
+      }
+
       /*case SHADER_COLOR0: {
         fileIdx = 0;
         attribID=TGSI_FILE_OUTPUT;
@@ -958,7 +989,7 @@ void atom_callback( const inst_t* inst, ptx_thread_info* thread)
       } else {
          abort();
       }
-   } 
+   }
    assert( space == global_space || space == shared_space );
 
    memory_space *mem = NULL;
@@ -973,7 +1004,7 @@ void atom_callback( const inst_t* inst, ptx_thread_info* thread)
    // (i.e. copy src1_data to dst)
    mem->read(effective_address,size/8,&data.s64);
    if (dst.get_symbol()->type()){
-	   thread->set_operand_value(dst, data, to_type, thread, pI);                         // Write value into register 'd'
+     thread->set_operand_value(dst, data, to_type, thread, pI);                         // Write value into register 'd'
    }
 
    // Get the atomic operation to be performed
@@ -2375,6 +2406,46 @@ void mad24_impl( const ptx_instruction *pI, ptx_thread_info *thread )
       break;
    }
 
+   thread->set_operand_value(dst, d, i_type, thread, pI);
+}
+
+
+void lrp_impl( const ptx_instruction *pI, ptx_thread_info *thread ){
+   const operand_info &dst  = pI->dst();
+   const operand_info &src1 = pI->src1();
+   const operand_info &src2 = pI->src2();
+   const operand_info &src3 = pI->src3();
+   ptx_reg_t d, t;
+
+   unsigned i_type = pI->get_type();
+   ptx_reg_t a = thread->get_operand_value(src1, dst, i_type, thread, 1);
+   ptx_reg_t b = thread->get_operand_value(src2, dst, i_type, thread, 1);
+   ptx_reg_t c = thread->get_operand_value(src3, dst, i_type, thread, 1);
+
+   unsigned rounding_mode = pI->rounding_mode();
+
+   switch ( i_type ) {
+   case F32_TYPE: {
+         int orig_rm = fegetround();
+         switch ( rounding_mode ) {
+         case RN_OPTION: break;
+         case RZ_OPTION: fesetround( FE_TOWARDZERO ); break;
+         default: assert(0); break;
+         }
+         //d.f32 = a.f32 * b.f32 + c.f32;
+         d.f32 = (a.f32 * b.f32) + ( (1.0 - a.f32) * c.f32);
+
+         if ( pI->saturation_mode() ) {
+            if ( d.f32 < 0 ) d.f32 = 0;
+            else if ( d.f32 > 1.0f ) d.f32 = 1.0f;
+         }
+         fesetround( orig_rm );
+         break;
+      }  
+   default: 
+      assert(0);
+      break;
+   }
    thread->set_operand_value(dst, d, i_type, thread, pI);
 }
 
@@ -3933,6 +4004,7 @@ void getTexelData(ptx_thread_info *thread, addr_t offset, ptx_reg_t * data, floa
 
 void tex_impl( const ptx_instruction *pI, ptx_thread_info *thread){
    bool isTxf = (pI->to_string().find("txf") != std::string::npos);
+   bool isTxb = (pI->to_string().find("txb") != std::string::npos);
    unsigned dimension = pI->dimension();
    const operand_info &dst = pI->dst(); //the registers to which fetched texel will be placed
    const operand_info &src1 = pI->src1(); //the name of the texture
@@ -4087,13 +4159,15 @@ void tex_impl( const ptx_instruction *pI, ptx_thread_info *thread){
      unsigned elems = dst.get_vect_nelem();
      float* fdst = new float[4]; //should only use elems
 
-     /*unsigned uniqueThreadId = thread->get_uid_in_kernel();
+     unsigned uniqueThreadId = thread->get_uid_in_kernel();
      void* stream = thread->get_kernel_info()->get_stream();
-     unsigned posX = readFragmentAttribs(uniqueThreadId, FRAG_UINT_POS, 0, -1, stream).u32;
-     unsigned posY = readFragmentAttribs(uniqueThreadId, FRAG_UINT_POS, 1, -1, stream).u32;
-     printf("reading texture for %d, %d\n", posX, posY);*/
-     std::vector<uint64_t> texelAddrs =
-         fetchMesaTexels(0, samplingUnit, dim, fcoords, dim, fdst, elems, thread->get_uid_in_kernel(), isTxf);
+     unsigned posX = readFragmentAttribs(uniqueThreadId, FRAG_UINT_POS, 0, -1, -1, stream).u32;
+     unsigned posY = readFragmentAttribs(uniqueThreadId, FRAG_UINT_POS, 1, -1, -1, stream).u32;
+
+     std::vector<uint64_t> texelAddrs;
+     //texelAddrs = fetchMesaTexels(0, samplingUnit, dim, fcoords, dim, fdst, elems, thread->get_uid_in_kernel(), isTxf, isTxb);
+     texelAddrs = fetchMesaTexels(0, samplingUnit, dim, fcoords, 4, fdst, elems, thread->get_uid_in_kernel(), isTxf, isTxb);
+
      dataX.f32 = fdst[0];
      dataY.f32 = fdst[1];
      dataZ.f32 = fdst[2];
@@ -4326,13 +4400,13 @@ C_DATA_TYPE blend(float as, float rs, float bs, float gs, float ad, float rd, fl
     float blendColor[4]; 
     float ar,rr,gr,br;
     getBlendingMode(&blend_src_rgb,&blend_dst_rgb,&blend_src_alpha,&blend_dst_alpha,&eqnRGB, &eqnAlpha, blendColor);
-    
+
     float rsFactor = getBlendFactor(blend_src_rgb,rs, rd, blendColor[RCOMP], as, ad, blendColor[ACOMP]);
     float rdFactor = getBlendFactor(blend_dst_rgb,rs, rd, blendColor[RCOMP], as, ad, blendColor[ACOMP]);
-    
+  
     float gsFactor = getBlendFactor(blend_src_rgb,gs, gd, blendColor[GCOMP], as, ad, blendColor[ACOMP]);
     float gdFactor = getBlendFactor(blend_dst_rgb,gs, gd, blendColor[GCOMP], as, ad, blendColor[ACOMP]);
-    
+
     float bsFactor = getBlendFactor(blend_src_rgb,bs, bd, blendColor[BCOMP], as, ad, blendColor[ACOMP]);
     float bdFactor = getBlendFactor(blend_dst_rgb,bs, bd, blendColor[BCOMP], as, ad, blendColor[ACOMP]);
     
@@ -4538,23 +4612,40 @@ void st_impl( const ptx_instruction *pI, ptx_thread_info *thread )
    thread->m_last_memory_space = space; 
 }
 
+
 void stp_impl( const ptx_instruction *pI, ptx_thread_info *thread ) 
 {
    unsigned fbFormat = getMesaFramebufferFormat();
-   assert(fbFormat==GL_RGBA or fbFormat==GL_RGBA8);
+   assert(fbFormat==GL_RGBA
+          or fbFormat==GL_RGBA8
+          or fbFormat==GL_RGB8
+          );
    unsigned size = -1;
 
-   if(fbFormat==GL_RGBA or fbFormat==GL_RGBA8 or fbFormat==GL_RGB8){
+   if(fbFormat==GL_RGBA or fbFormat==GL_RGBA8){
      size = 4;
-     //convert 0.0-1.0 colors to RGBA8
-     uint32_t r = round(CLAMP(thread->get_builtin_storage(SHADER_COLOR0, 0).f32, 0.0, 1.0) * 255);
-     uint32_t g = round(CLAMP(thread->get_builtin_storage(SHADER_COLOR0, 1).f32, 0.0, 1.0) * 255);
-     uint32_t b = round(CLAMP(thread->get_builtin_storage(SHADER_COLOR0, 2).f32, 0.0, 1.0) * 255);
-     uint32_t a = round(CLAMP(thread->get_builtin_storage(SHADER_COLOR0, 3).f32, 0.0, 1.0) * 255);
-     ptx_reg_t dst;
-     dst.u32 = (a << 24) + (b << 16) + (g << 8) + r;
-     thread->set_builtin_dst(dst, size);
+   } else if(fbFormat==GL_RGB8){
+     //size = 3;
+     size = 4;
    } else assert(0);
+
+   //convert 0.0-1.0 colors to RGBA8
+   uint32_t r = round(CLAMP(thread->get_builtin_storage(SHADER_COLOR0, 0).f32, 0.0, 1.0) * 255);
+   uint32_t g = round(CLAMP(thread->get_builtin_storage(SHADER_COLOR0, 1).f32, 0.0, 1.0) * 255);
+   uint32_t b = round(CLAMP(thread->get_builtin_storage(SHADER_COLOR0, 2).f32, 0.0, 1.0) * 255);
+   uint32_t a = round(CLAMP(thread->get_builtin_storage(SHADER_COLOR0, 3).f32, 0.0, 1.0) * 255);
+   ptx_reg_t dst;
+
+   if(size == 4){
+     a = round(CLAMP(thread->get_builtin_storage(SHADER_COLOR0, 3).f32, 0.0, 1.0) * 255);
+   } else if(size ==3) {
+     a = 255;
+     size = 4;
+   }
+
+   //dst.u32 = (a << 24) + (b << 16) + (g << 8) + r;
+   dst.u32 = (a << 24) + (r << 16) + (g << 8) + b;
+   //dst.u32 = (b << 24) + (g << 16) + (r << 8) + a;
 
    //const operand_info &src1 = pI->src1(); //may be scalar or vector of regs
    memory_space_t space = pI->get_space();
@@ -4565,16 +4656,21 @@ void stp_impl( const ptx_instruction *pI, ptx_thread_info *thread )
    unsigned posX = readFragmentAttribs(uniqueThreadId, FRAG_UINT_POS, 0, -1, -1, stream).u32;
    unsigned posY = readFragmentAttribs(uniqueThreadId, FRAG_UINT_POS, 1, -1, -1, stream).u32;
    addr_t addr = getFramebufferFragmentAddr(posX, posY, size);
-//   //calling the z_st if the address is in the z buffer, should be done as separate instruction later
-//   if(globalZBuffer.isInZBuffers(addr)){
-//       z_st(pI,thread);
-//       return;
-//   }
-   //decode_space(space,thread,dst,mem,addr);
-   thread->get_gpu()->gem5CudaGPU->getCudaCore(thread->get_hw_sid())->record_st(space);
 
+   //FIXME
+   if(isBlendingEnabled())
+   {
+     uint32_t oldPixel;
+     graphicsMemcpy(&oldPixel, (void*)addr, 4, graphicsMemcpySimToHost);
+     dst.u32 = blendU32(dst.u32, oldPixel);
+   }//END FIXME
+
+
+
+   thread->set_builtin_dst(dst, size);
+   thread->get_gpu()->gem5CudaGPU->getCudaCore(thread->get_hw_sid())->record_st(space);
    thread->m_last_effective_address.set(addr);
-   thread->m_last_memory_space = space; 
+   thread->m_last_memory_space = space;
 }
 
 void frc_impl( const ptx_instruction *pI, ptx_thread_info *thread ) 
