@@ -300,7 +300,8 @@ class CudaCore : public MemObject
     // Instruction and texture memory access functions:
     void xCacheFetch(Addr addr, mem_fetch *mf, const char * type,
         MasterID masterId, std::map<Addr,mem_fetch *> * busyCacheLineAddrs,
-        ShaderTLB * tlb, Request::FlagsType flagType);
+        ShaderTLB * tlb, Request::FlagsType flagType,
+        Request::FlagsType gpuFlagType);
     
     // Initializes an instruction fetch from gem5-side memory
     void icacheFetch(Addr a, mem_fetch *mf);

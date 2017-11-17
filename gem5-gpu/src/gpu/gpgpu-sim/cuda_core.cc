@@ -148,7 +148,7 @@ void
 CudaCore::icacheFetch(Addr addr, mem_fetch *mf)
 {
     xCacheFetch(addr, mf, "instruction", instMasterId, &instBusyCacheLineAddrs,
-            itb, Request::INST_FETCH);
+            itb, Request::INST_FETCH, 0);
 }
 
 void
@@ -250,6 +250,7 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
     }
     const int asid = 0;
     Request::Flags flags;
+    Request::Flags gpuFlags;
     if (inst.isatomic()) {
         assert(inst.memory_op == memory_store);
         // Assert that gem5-gpu knows how to handle the requested atomic type.
@@ -274,7 +275,7 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
     }
 
     if(inst.space.get_type() == tex_space){
-       flags.set(Request::TEX_FETCH);
+       gpuFlags.set(Request::TEX_FETCH);
     }
 
     if (inst.space.get_type() == const_space) {
@@ -429,8 +430,8 @@ CudaCore::recvLSQDataResp(PacketPtr pkt, int lane_id)
     if (pkt->isRead()) {
         if (!shaderImpl->ldst_unit_wb_inst(inst)) {
             // Writeback register is occupied, stall
-            Request::Flags reqFlags = pkt->req->getFlags();
-            if(reqFlags.isSet(Request::TEX_FETCH)){
+            Request::Flags gpuFlags = pkt->req->getGpuFlags();
+            if(gpuFlags.isSet(Request::TEX_FETCH)){
                 DPRINTF(CudaCoreAccess, "Setting tex port blocked at lane %d\n", lane_id);
                 assert(writebackBlocked[LSQCntrlPortType::TEX] < 0);
                 writebackBlocked[LSQCntrlPortType::TEX] = lane_id;
@@ -909,7 +910,7 @@ void
 CudaCore::texCacheFetch(Addr addr, mem_fetch *mf)
 {
     xCacheFetch(addr, mf, "tex", texMasterId, &texBusyCacheLineAddrs,
-            ttb, Request::TEX_FETCH | Request::BYPASS_L1);
+            ttb, Request::BYPASS_L1, Request::TEX_FETCH);
 }
 
 void CudaCore::finishTranslation(WholeTranslationState *state)
@@ -945,7 +946,7 @@ void CudaCore::finishTranslation(WholeTranslationState *state)
 void
 CudaCore::xCacheFetch(Addr addr, mem_fetch *mf, const char * type,
         MasterID masterId, std::map<Addr,mem_fetch *> * busyCacheLinesMap
-        , ShaderTLB * tlb, Request::FlagsType flagType)
+        , ShaderTLB * tlb, Request::FlagsType flagType, Request::FlagsType gpuFlagType)
 {
     assert(isCacheResourceAvailable(addr, busyCacheLinesMap));
 

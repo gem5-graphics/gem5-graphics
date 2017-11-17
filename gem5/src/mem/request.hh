@@ -184,10 +184,6 @@ class Request
         SECURE                      = 0x10000000,
         /** The request is a page table walk */
         PT_WALK                     = 0x20000000,
-     	/** The request is a texture fetch request */
-    	TEX_FETCH                  = 0x40000000,
-    	/** The request is a z-unit depth fetch request */
-    	Z_FETCH                  = 0x80000000,
 
         /**
          * These flags are *not* cleared when a Request object is
@@ -195,6 +191,14 @@ class Request
          */
         STICKY_FLAGS = INST_FETCH
     };
+
+
+    enum : FlagsType {
+        /** The request is a texture fetch request */
+        TEX_FETCH                  = 0x00000001,
+        /** The request is a z-unit depth fetch request */
+        Z_FETCH                  = 0x00000002
+       };
 
     /** Master Ids that are statically allocated
      * @{*/
@@ -288,6 +292,7 @@ class Request
         _masterId = mid;
         _flags.clear(~STICKY_FLAGS);
         _flags.set(flags);
+        _gpuFlags.clear();
         privateFlags.clear(~STICKY_PRIVATE_FLAGS);
         privateFlags.set(VALID_PADDR|VALID_SIZE);
         depth = 0;
@@ -315,6 +320,7 @@ class Request
 
     /** Flag structure for the request. */
     Flags _flags;
+    Flags _gpuFlags;
 
     /** Memory space configuraiton flag structure for the request. */
     MemSpaceConfigFlags _memSpaceConfigFlags;
@@ -476,6 +482,7 @@ class Request
 
         _flags.clear(~STICKY_FLAGS);
         _flags.set(flags);
+        _gpuFlags.clear();
         privateFlags.clear(~STICKY_PRIVATE_FLAGS);
         privateFlags.set(VALID_VADDR|VALID_SIZE|VALID_PC);
         depth = 0;
@@ -603,6 +610,20 @@ class Request
     {
         assert(privateFlags.isSet(VALID_PADDR|VALID_VADDR));
         _flags.set(flags);
+    }
+
+    Flags
+    getGpuFlags()
+    {
+       assert(privateFlags.isSet(VALID_PADDR|VALID_VADDR));
+       return _gpuFlags;
+    }
+
+    void
+    setGpuFlags(Flags flags)
+    {
+        assert(privateFlags.isSet(VALID_PADDR|VALID_VADDR));
+        _gpuFlags.set(flags);
     }
 
     void
@@ -789,8 +810,8 @@ class Request
     bool isAtomicReturn() const { return _flags.isSet(ATOMIC_RETURN_OP); }
     bool isAtomicNoReturn() const { return _flags.isSet(ATOMIC_NO_RETURN_OP); }
     bool isBypassL1() const { return _flags.isSet(BYPASS_L1); }
-    bool isTexFetch() const {return _flags.isSet(TEX_FETCH); }
-    bool isZFetch() const {return _flags.isSet(Z_FETCH); }
+    bool isTexFetch() const {return _gpuFlags.isSet(TEX_FETCH); }
+    bool isZFetch() const {return _gpuFlags.isSet(Z_FETCH); }
 
     bool
     isAtomic() const
