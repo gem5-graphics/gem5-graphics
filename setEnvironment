@@ -2,14 +2,15 @@
 
 echo Using MESA+GPGPUSIM!
 #PLEASE CONFIG
-export CUDAHOME=$HOME/nvcuda/3.2/cuda
-export M5_PATH=$PWD/android_images
-export NVIDIA_CUDA_SDK_LOCATION=$HOME/NVIDIA_GPU_Computing_SDK/3.2/C
+export CUDAHOME= #FIXME
+export M5_PATH=  #FIXME
+export NVIDIA_CUDA_SDK_LOCATION= #FIXME
 
 export LD_LIBRARY_PATH=$PWD/mesa/lib/gallium
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$PWD/android_libs
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$CUDAHOME/lib
 export GPGPUSIM_MESA_ROOT=$PWD
+
 #export MESA_GPGPUSIM_DEBUG="$1"
 export PATH=$PATH:$CUDAHOME/bin
 export PATH=$PATH:$PWD/gem5/util/term
@@ -17,12 +18,17 @@ export CUDA_INSTALL_PATH=$CUDAHOME
 
 #emulator & mesa flags
 export ANDROID_GL_SOFTWARE_RENDERER=1
-export LIBGL_DRIVERS_PATH=$PWD/mesa/lib/gallium
-export ANDROID_EGL_LIB=$PWD/mesa/lib/libEGL.so
-#export ANDROID_GLESv1_LIB=""
-export ANDROID_GLESv2_LIB=$PWD/mesa/lib/libGLESv2.so
+if [ $ANDROID_GL_SOFTWARE_RENDERER -eq 1 ]
+then
+  echo "Running in OGLES mode"
+  export LIBGL_DRIVERS_PATH=$PWD/mesa/lib/gallium
+  export ANDROID_EGL_LIB=$PWD/mesa/lib/libEGL.so
+  #export ANDROID_GLESv1_LIB=""
+  export ANDROID_GLESv2_LIB=$PWD/mesa/lib/libGLESv2.so
+else
+  echo "Running in OGL mode"
+  export LIBGL_DRIVERS_PATH=
+  export ANDROID_EGL_LIB=
+  export ANDROID_GLESv2_LIB=
+fi
 
-#mesa flags
-#export MESA_TNL_PROG=1
-#export MESA_TEX_PROG=1
-#export MESA_GLX_FORCE_ALPHA=1
