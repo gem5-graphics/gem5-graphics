@@ -1,3 +1,4 @@
 [submodule "mesa"]
 	path = mesa
 	url = https://github.com/gem5-graphics/mesa
+   branch = gem5-graphics
