@@ -33,6 +33,7 @@ env.Append(LIBS = ['swrast_dri'])
 print "GPGPUSIM_MESA_ROOT: " , mesa_root
 
 SimObject('ZUnit.py')
+SimObject('GraphicsStandalone.py')
 
 Source('fixed_pipeline.cc', Werror=False)
 Source('gem5_graphics_calls.cc')
@@ -43,6 +44,7 @@ Source('gpgpusim_to_graphics_calls.cc')
 Source('mesa_calls.cc', Werror=False)
 Source('mesa_gpgpusim.cc', Werror=False)
 Source('zunit.cc')
+Source('graphics_standalone.cc')
 
 Source('emugl/opengles.cpp')
 Source('emugl/android/utils/dll.c')
@@ -50,3 +52,4 @@ Source('emugl/android/utils/dll.c')
 DebugFlag("GraphicsCalls")
 DebugFlag('MesaGpgpusim')
 DebugFlag('ZUnit')
+DebugFlag('GraphicsStandalone')

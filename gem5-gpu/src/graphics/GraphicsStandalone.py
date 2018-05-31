@@ -31,8 +31,8 @@ from m5.params import *
 from m5.proxy import *
 from m5.SimObject import SimObject
 
-class GPUStandalone(ClockedObject):
-    type = 'GPUStandalone'
-    cxx_class = 'GPUStandalone'
-    cxx_header = "graphics/gpu_standalone.hh"
+class GraphicsStandalone(ClockedObject):
+    type = 'GraphicsStandalone'
+    cxx_class = 'GraphicsStandalone'
+    cxx_header = "graphics/graphics_standalone.hh"
     sys = Param.System(Parent.any, "System")

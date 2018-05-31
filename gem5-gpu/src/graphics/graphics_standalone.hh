@@ -28,51 +28,53 @@
  * Authors: Ayub A. Gubran
  */
 
-#include "graphics/gpu_standalone.hh"
+#ifndef __GPU_STANDALONE_HH__
+#define __GPU_STANDALONE_HH__
 
-#include "base/misc.hh"
+
 #include "base/statistics.hh"
-#include "debug/GPUStandalone.hh"
-#include "sim/sim_events.hh"
+#include "base/types.hh"
+#include "params/GraphicsStandalone.hh"
+#include "sim/clocked_object.hh"
+#include "sim/eventq.hh"
+#include "sim/sim_exit.hh"
+#include "sim/process.hh"
+#include "sim/sim_object.hh"
 #include "sim/stats.hh"
-#include "sim/system.hh"
 
-
-GPUStandalone::GPUStandalone(const Params *p) :
-      ClockedObject(p),
-      tickEvent(this),
-      traceStarted(false),
-      traceDone(false)
+class GraphicsStandalone : public ClockedObject
 {
-   schedule(tickEvent, 0);
-}
+  public:
+    typedef GraphicsStandaloneParams Params;
+    GraphicsStandalone(const Params *p);
+    virtual void init();
+    // main simulation loop
+    void tick();
 
-void
-GPUStandalone::init()
-{
-}
+  protected:
+    class TickEvent : public Event
+   {
+      private:
+         GraphicsStandalone* gpu;
 
-void
-GPUStandalone::tick()
-{
-   if(not traceStarted){
-      //start api trace
-      printf("starting trace\n");
-      traceStarted = true;
-      return;
-   }
+      public:
+         TickEvent(GraphicsStandalone* _gpu) : Event(CPU_Tick_Pri), gpu(_gpu) {}
+         void process() { gpu->tick(); }
 
-   if(traceDone){
-      panic("need to check gpu has no work left");
-      exitSimLoop("Done with trace\n");
-   } else {
-      //check later
-      schedule(tickEvent, 10000);
-   }
-}
+         virtual const char *description() const
+         {
+            return "GraphicsStandalone tick";
+         }
+         friend GraphicsStandalone;
+   };
+
+    TickEvent tickEvent;
+    bool traceStarted;
+    bool traceDone;
+    Tick simCycles;
+};
+
+#endif // __Graphics_STANDALONE_HH__
 
 
-GPUStandalone *GPUStandaloneParams::create() {
-   return new GPUStandalone(this);
-}
 
