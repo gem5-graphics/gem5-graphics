@@ -69,6 +69,8 @@ class GPUStandalone : public ClockedObject
    };
 
     TickEvent tickEvent;
+    bool traceStarted;
+    bool traceDone;
     Tick simCycles;
 };
 

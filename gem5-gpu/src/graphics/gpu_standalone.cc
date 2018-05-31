@@ -40,8 +40,11 @@
 
 GPUStandalone::GPUStandalone(const Params *p) :
       ClockedObject(p),
-      tickEvent(this)
+      tickEvent(this),
+      traceStarted(false),
+      traceDone(false)
 {
+   schedule(tickEvent, 0);
 }
 
 void
@@ -52,6 +55,20 @@ GPUStandalone::init()
 void
 GPUStandalone::tick()
 {
+   if(not traceStarted){
+      //start api trace
+      printf("starting trace\n");
+      traceStarted = true;
+      return;
+   }
+
+   if(traceDone){
+      panic("need to check gpu has no work left");
+      exitSimLoop("Done with trace\n");
+   } else {
+      //check later
+      schedule(tickEvent, 10000);
+   }
 }
 
 
