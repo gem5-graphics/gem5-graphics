@@ -27,7 +27,6 @@
  *
  * Authors: Ayub A. Gubran
  */
-
 #include "graphics/graphics_standalone.hh"
 
 #include "base/misc.hh"
@@ -42,9 +41,19 @@ GraphicsStandalone::GraphicsStandalone(const Params *p) :
       ClockedObject(p),
       tickEvent(this),
       traceStarted(false),
-      traceDone(false)
+      traceDone(false),
+      tracePath(p->trace_path),
+      traceThread(NULL)
 {
+   if(tracePath.size() == 0)
+      panic("No graphics trace is specified");
+
    schedule(tickEvent, 0);
+}
+
+GraphicsStandalone::~GraphicsStandalone(){
+   if(traceThread != NULL)
+      delete traceThread;
 }
 
 void
@@ -55,20 +64,29 @@ GraphicsStandalone::init()
 void
 GraphicsStandalone::tick()
 {
-   if(not traceStarted){
-      //start api trace
-      printf("starting trace\n");
-      traceStarted = true;
-      return;
-   }
-
    if(traceDone){
       panic("need to check gpu has no work left");
       exitSimLoop("Done with trace\n");
-   } else {
-      //check later
-      schedule(tickEvent, 10000);
+      return;
+   } 
+
+   if(not traceStarted){
+      //start api trace
+      DPRINTF(GraphicsStandalone, "starting trace %s\n", tracePath.c_str());
+      traceThread = new std::thread(&GraphicsStandalone::runTrace, this, std::ref(tracePath));
+      traceStarted = true;
    }
+
+   schedule(tickEvent, clockEdge(Cycles(1)));
+}
+
+
+void GraphicsStandalone::runTrace(const std::string& pTracePath){
+   int ret = std::system(std::string("apitrace replay " + pTracePath).c_str());
+   if(ret != 0){
+      panic("apitrace: error playing trace\n");
+   }
+   traceDone = true;
 }
 
 

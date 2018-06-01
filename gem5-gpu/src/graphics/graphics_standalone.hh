@@ -31,7 +31,7 @@
 #ifndef __GPU_STANDALONE_HH__
 #define __GPU_STANDALONE_HH__
 
-
+#include <thread>
 #include "base/statistics.hh"
 #include "base/types.hh"
 #include "params/GraphicsStandalone.hh"
@@ -47,6 +47,7 @@ class GraphicsStandalone : public ClockedObject
   public:
     typedef GraphicsStandaloneParams Params;
     GraphicsStandalone(const Params *p);
+    ~GraphicsStandalone();
     virtual void init();
     // main simulation loop
     void tick();
@@ -72,6 +73,10 @@ class GraphicsStandalone : public ClockedObject
     bool traceStarted;
     bool traceDone;
     Tick simCycles;
+    std::string tracePath;
+
+    std::thread* traceThread;
+    void runTrace(const std::string& pTracePath);
 };
 
 #endif // __Graphics_STANDALONE_HH__
