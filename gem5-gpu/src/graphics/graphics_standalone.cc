@@ -29,6 +29,8 @@
  */
 #include "graphics/graphics_standalone.hh"
 
+#include <dlfcn.h>
+
 #include "base/misc.hh"
 #include "base/statistics.hh"
 #include "debug/GraphicsStandalone.hh"
@@ -81,12 +83,33 @@ GraphicsStandalone::tick()
 }
 
 
+//extern int run_retrace(int argc, char** argv);
+
 void GraphicsStandalone::runTrace(const std::string& pTracePath){
-   int ret = std::system(std::string("apitrace replay " + pTracePath).c_str());
-   if(ret != 0){
-      panic("apitrace: error playing trace\n");
+   const char* libpath = std::getenv("APITRACE_LIB_PATH");
+   if(libpath == NULL){
+      panic("APITRACE_LIB_PATH is not set!\n");
    }
+   int (*run_retrace)(int argc, char** argv);
+   void* handle = dlopen(libpath, RTLD_LAZY | RTLD_GLOBAL );
+   if(!handle){
+      panic("Couldn't open retrace library at %s\n", libpath);
+   }
+   *(void**)(&run_retrace) = dlsym(handle, "run_retrace");
+   if(!run_retrace){
+      dlclose(handle);
+      panic("Couldn't find function run_retrace at %s\n", libpath);
+   }
+   char* argv [2];
+   argv[0] = new char[100];
+   argv[1] = new char[2048];
+   strcpy(argv[0], "glretrace");
+   strcpy(argv[1], pTracePath.c_str());
+   run_retrace(2, argv);
+   dlclose(handle);
    traceDone = true;
+   delete argv[0];
+   delete argv[1];
 }
 
 
