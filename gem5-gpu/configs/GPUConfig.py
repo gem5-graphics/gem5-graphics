@@ -43,7 +43,7 @@ def addGPUOptions(parser):
     parser.add_option("--kernel_stats", default=False, action="store_true", help="Dump statistics on GPU kernel boundaries")
     parser.add_option("--gpgpusim_stats", default=False, action="store_true", help="Dump statistics of GPGPU-Sim on GPU kernel boundaries")
     parser.add_option("--gpgpusim_config", default="gpu_soc.config", help="gpgpusim config file")
-    parser.add_option("--icnt_config", default="gpu_soc.config", help="gpgpusim icnt config file")
+    parser.add_option("--icnt_config", default="config_soc.icnt", help="gpgpusim icnt config file")
   
    #gpu cores, note: these 3 configs will be loaded from the gpgpusim config file when specified
     parser.add_option("--clusters", default=16, help="Number of shader core clusters in the gpu that GPGPU-sim is simulating", type="int")
