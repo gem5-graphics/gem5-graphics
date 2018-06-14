@@ -450,10 +450,10 @@ def connectGPUPorts_classic(system, gpu, options):
         dcache_class, icache_class, l2_cache_class, walk_cache_class = \
             L1_DCache, L1_ICache, L2Cache, None
 
-    gpu.l2cache =  L2Cache(clk_domain=system.cpu_clk_domain,
+    gpu.l2cache =  L2Cache(clk_domain=system.clk_domain,
                                    size=options.sc_l2_size,
                                    assoc=options.l2_assoc)
-    gpu.l2NetToL2 = IOXBar(clk_domain = system.cpu_clk_domain)
+    gpu.l2NetToL2 = IOXBar(clk_domain = system.clk_domain)
     gpu.l2NetToL2.master = gpu.l2cache.cpu_side
     gpu.l2cache.mem_side = system.membus.slave
 
