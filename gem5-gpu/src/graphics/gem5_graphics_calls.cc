@@ -156,7 +156,7 @@ void gem5GraphicsCalls_t::executeGraphicsCommand(ThreadContext *tc, uint64_t gpu
       //now we need to manage commands
       //android_setCommandBufferCallbackFunc(recvCommandBuffer);
       doOnce = 0;
-      cudaGPU->setGraphicsMem(0, 0, 0);
+      cudaGPU->setGraphicsMem();
     }
 
     switch (gpusysno) {

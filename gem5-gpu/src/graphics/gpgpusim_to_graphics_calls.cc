@@ -18,10 +18,10 @@ void getBlendingMode(unsigned  * src, unsigned  * dst, unsigned* srcAlpha, unsig
     g_renderData.getBlendingMode(src,  dst,  srcAlpha,  dstAlpha,  eqnRGB, eqnAlpha, blendColor);
 }
 
-void graphics_gpgpusim_init_options(unsigned int startFrame, unsigned int endFrame, int startDrawcall, unsigned int endDrawcall,
+void graphics_gpgpusim_init_options(bool standaloneMode, unsigned int startFrame, unsigned int endFrame, int startDrawcall, unsigned int endDrawcall,
         unsigned int tile_H, unsigned int tile_W, unsigned int block_H, unsigned int block_W,
         unsigned blendMode, unsigned depthMode, unsigned cptStartFrame, unsigned cptEndFrame, unsigned cptPeriod, bool skipCpFrames, char* outdir) {
-    g_renderData.initParams(startFrame, endFrame, startDrawcall, endDrawcall, tile_H, tile_W,
+    g_renderData.initParams(standaloneMode, startFrame, endFrame, startDrawcall, endDrawcall, tile_H, tile_W,
           block_H, block_W, blendMode, depthMode, cptStartFrame, cptEndFrame, cptPeriod, skipCpFrames, outdir);
 }
 

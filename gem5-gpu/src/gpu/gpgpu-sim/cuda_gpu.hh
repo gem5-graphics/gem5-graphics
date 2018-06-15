@@ -696,6 +696,8 @@ class CudaGPU : public ClockedObject
 
     // Current stream we're blocking on
     CUstream_st* _currentBlockedStream;
+
+    const bool standaloneMode;
     
     void setGraphicsTC(ThreadContext* tc, int pid){
         DPRINTF(GraphicsMemory, "GraphicsMemory: Setting graphicsTC, TC=%llx, pid=%d\n", tc, pid);
@@ -717,8 +719,14 @@ class CudaGPU : public ClockedObject
       graphicsMemory[0].freeMem(add);
     }
     void setGraphicsMem(int pid, Addr add, Addr size){
-      //ignore pid, all use the same addr range
+      panic("Shouldn't call setGraphicsMem with addr param, this is an obsolete call\n");
       DPRINTF(GraphicsMemory, "GraphicsMemory: Setting graphics memory pid=%d, addr=0x%llx, size=%d\n", pid, add, size);
+      graphicsMemory[pid] = GMemory(); 
+      graphicsMemory[pid].setMem(add, size);
+    }
+
+    void setGraphicsMem(){
+      //using a fixed range
       graphicsMemory[0] = GMemory();
       graphicsMemory[0].setMem(gpuMemoryRange.start(), gpuMemoryRange.size());
     }

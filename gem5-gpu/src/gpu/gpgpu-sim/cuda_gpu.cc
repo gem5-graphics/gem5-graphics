@@ -81,11 +81,14 @@ CudaGPU::CudaGPU(const Params *p) :
     /*ruby(p->ruby),*/ 
     runningTC(NULL), runningStream(NULL), runningTID(-1), clearTick(0),
     dumpKernelStats(p->dump_kernel_stats),
-    dumpGpgpusimStats(p->dump_gpgpusim_stats), pageTable(),
+    dumpGpgpusimStats(p->dump_gpgpusim_stats), 
+    pageTable(),
     manageGPUMemory(p->manage_gpu_memory),
     perfectTlb(p->perfect_tlb),
-    gpuMemoryRange(p->gpu_memory_range), shaderMMU(p->shader_mmu),
-    _currentBlockedStream(NULL)
+    gpuMemoryRange(p->gpu_memory_range), 
+    shaderMMU(p->shader_mmu),
+    _currentBlockedStream(NULL),
+    standaloneMode(p->standalone_mode)
 {
     // Register this device as a CUDA-enabled GPU
     cudaDeviceID = registerCudaDevice(this);

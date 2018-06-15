@@ -75,3 +75,4 @@ class CudaGPU(ClockedObject):
     l2_wrapper = Param.GPGPUSimComponentWrapper("Must define a wrapper to clock the GPGPU-Sim L2 cache")
     dram_wrapper = Param.GPGPUSimComponentWrapper("Must define a wrapper to clock the GPGPU-Sim DRAM")
     gpu_cacheline_size = Param.Int(128, "System cache block size")
+    standalone_mode = Param.Bool(False, "Run in standalone mode")

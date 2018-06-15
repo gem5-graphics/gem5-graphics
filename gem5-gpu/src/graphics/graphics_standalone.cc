@@ -34,10 +34,12 @@
 #include "base/misc.hh"
 #include "base/statistics.hh"
 #include "debug/GraphicsStandalone.hh"
+#include "gpu/gpgpu-sim/cuda_gpu.hh"
 #include "sim/sim_events.hh"
 #include "sim/stats.hh"
 #include "sim/system.hh"
 
+extern unsigned g_active_device;
 
 GraphicsStandalone::GraphicsStandalone(const Params *p) :
       ClockedObject(p),
@@ -73,6 +75,9 @@ GraphicsStandalone::tick()
    } 
 
    if(not traceStarted){
+      //init gpu memory
+      CudaGPU *cudaGPU = CudaGPU::getCudaGPU(g_active_device);
+      cudaGPU->setGraphicsMem();
       //start api trace
       DPRINTF(GraphicsStandalone, "starting trace %s\n", tracePath.c_str());
       traceThread = new std::thread(&GraphicsStandalone::runTrace, this, std::ref(tracePath));

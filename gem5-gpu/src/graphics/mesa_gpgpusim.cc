@@ -522,9 +522,10 @@ void renderData_t::endDrawCall() {
     printf("endDrawCall: done\n");
 }
 
-void renderData_t::initParams(unsigned int startFrame, unsigned int endFrame, int startDrawcall, unsigned int endDrawcall,
+void renderData_t::initParams(bool standaloneMode, unsigned int startFrame, unsigned int endFrame, int startDrawcall, unsigned int endDrawcall,
         unsigned int tile_H, unsigned int tile_W, unsigned int block_H, unsigned int block_W,
         unsigned blendingMode, unsigned depthMode, unsigned cptStartFrame, unsigned cptEndFrame, unsigned cptPeroid, bool skipCpFrames, char* outdir) {
+    m_standaloneMode = standaloneMode;
     m_startFrame = startFrame;
     m_endFrame = endFrame;
     m_startDrawcall = startDrawcall;
@@ -882,14 +883,16 @@ byte* renderData_t::setRenderBuffer(){
     m_mesaColorBuffer = rb;
     m_bufferWidth = rb->Width;
     m_bufferHeight = rb->Height;
-    m_colorBufferByteSize = rb->Height * rb->Width * 4;
+    m_bufferWidth = m_mesaCtx->DrawBuffer->Width;
+    m_bufferHeight = m_mesaCtx->DrawBuffer->Height;
+
+    m_colorBufferByteSize = m_bufferHeight * m_bufferWidth * 4;
 
     unsigned justFormat = rb->Format;
     unsigned baseFormat = rb->_BaseFormat;
     unsigned internalFormat = rb->InternalFormat;
 
     unsigned bufferFormat = rb->_BaseFormat;
-    //unsigned format = rb->Format;
 
 
     m_fbPixelSize = -1;
@@ -914,7 +917,6 @@ byte* renderData_t::setRenderBuffer(){
     assert(m_fbPixelSize != -1);
 
     DPRINTF(MesaGpgpusim, "gpgpusim-graphics: fb height=%d width=%d\n", m_bufferHeight, m_bufferWidth);
-
 
     byte * tempBuffer2 = new byte [m_colorBufferByteSize];
 
@@ -1030,12 +1032,6 @@ void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, voi
     m_sp = sp;
     m_mapped_indices = mapped_indices;
     gl_context * ctx = m_mesaCtx;
-    if (ctx->_Shader->ActiveProgram == NULL) {
-       printf("no active shader!\n");
-       abort();
-    } else {
-       printf("there is an active shader\n");
-    }
     if (!GPGPUSimSimulationActive()) {
         std::cerr << "gpgpusim-graphics: Error, initializeCurrentDraw called when simulation is not active " << std::endl;
         exit(-1);

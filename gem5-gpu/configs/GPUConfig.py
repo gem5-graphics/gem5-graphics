@@ -98,6 +98,7 @@ def addGPUOptions(parser):
     parser.add_option("--dev-numa-high-bit", type="int", default=0, help="High order address bit to use for device NUMA mapping.")
     parser.add_option("--num-dev-dirs", default=1, help="In split hierarchies, number of device directories", type="int")
     #graphics options
+    parser.add_option("--g_standalone_mode", action="store_true", default=False)
     parser.add_option("--g_depth_shader", type = "int", default=0, help="depth test in shader")
     parser.add_option("--g_blend_shader", type = "int", default=1, help="Blend in shader")
     parser.add_option("--g_start_frame", type = "int", default=-1, help="Simulation start frame")
@@ -298,7 +299,8 @@ def createGPU(options, gpu_mem_range):
                   clk_domain = SrcClockDomain(clock = options.gpu_core_clock,
                                               voltage_domain = VoltageDomain()),
                   gpu_memory_range = gpu_mem_range,
-                  gpu_cacheline_size = options.cacheline_size)
+                  gpu_cacheline_size = options.cacheline_size, 
+                  standalone_mode=options.g_standalone_mode)
 
     gpu.cores_wrapper = GPGPUSimComponentWrapper(clk_domain = gpu.clk_domain)
 

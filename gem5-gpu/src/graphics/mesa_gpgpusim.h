@@ -257,7 +257,7 @@ public:
     bool isDepthTestEnabled();
     bool isBlendingEnabled();
     void getBlendingMode(GLenum * src, GLenum * dst, GLenum* srcAlpha, GLenum * dstAlpha, GLenum* eqnRGB, GLenum* eqnAlpha, GLfloat * blendColor);
-    void initParams(unsigned int startFrame, unsigned int endFrame, int startDrawcall, unsigned int endDrawcall, unsigned int tile_H, unsigned int tile_W,
+    void initParams(bool standalone_mode, unsigned int startFrame, unsigned int endFrame, int startDrawcall, unsigned int endDrawcall, unsigned int tile_H, unsigned int tile_W,
           unsigned int block_H, unsigned int block_W, unsigned blendingMode, unsigned depthMode, unsigned cptStartFrame, unsigned cptEndFrame, unsigned cptPeroid, bool skipCpFrames, char* outdir);
     GLuint getScreenWidth(){return m_bufferWidth;}
     GLuint getRBSize(){return m_bufferWidth*m_bufferHeight;}
@@ -372,6 +372,7 @@ private:
     byte* m_deviceData;
     std::string m_intFolder;
     std::string m_fbFolder;
+    bool m_standaloneMode;
     unsigned int m_startFrame;
     unsigned int m_endFrame;
     unsigned int m_cptStartFrame;

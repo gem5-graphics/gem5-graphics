@@ -28,7 +28,7 @@ bool isBlendingEnabled();
 void getBlendingMode(unsigned  * src, unsigned  * dst, unsigned* srcAlpha, unsigned * dstAlpha,
         unsigned* eqnRGB, unsigned* eqnAlpha, float * blendColor);
 
-void graphics_gpgpusim_init_options(unsigned int startFrame, unsigned int endFrame, int start_frame, unsigned int end_frame,
+void graphics_gpgpusim_init_options(bool standalone_mode, unsigned int startFrame, unsigned int endFrame, int start_frame, unsigned int end_frame,
         unsigned int tile_H, unsigned int tile_W, unsigned int block_H, unsigned int block_W,
         unsigned blendMode, unsigned depthMode, unsigned cptStartFrame, unsigned cptEndFrame, unsigned cptPeriod, bool skipCpFrames, char* outdir);
 
