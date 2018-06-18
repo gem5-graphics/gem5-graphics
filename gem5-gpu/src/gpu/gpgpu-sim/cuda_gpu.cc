@@ -79,7 +79,11 @@ CudaGPU::CudaGPU(const Params *p) :
     system(p->sys), warpSize(p->warp_size), 
     gpgpusimConfigPath(p->config_path), unblockNeeded(false), 
     /*ruby(p->ruby),*/ 
-    runningTC(NULL), runningStream(NULL), runningTID(-1), clearTick(0),
+    runningTC(NULL),
+    runningStream(NULL),
+    runningTID(-1),
+    graphicsTC(NULL),
+    clearTick(0),
     dumpKernelStats(p->dump_kernel_stats),
     dumpGpgpusimStats(p->dump_gpgpusim_stats), 
     pageTable(),
