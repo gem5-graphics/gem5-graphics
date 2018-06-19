@@ -51,6 +51,8 @@ class GraphicsStandalone : public ClockedObject
     virtual void init();
     // main simulation loop
     void tick();
+    //Port to physical memory
+    const PortProxy physProxy;
 
   protected:
     class TickEvent : public Event

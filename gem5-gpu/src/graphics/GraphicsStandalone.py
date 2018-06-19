@@ -35,5 +35,5 @@ class GraphicsStandalone(ClockedObject):
     type = 'GraphicsStandalone'
     cxx_class = 'GraphicsStandalone'
     cxx_header = "graphics/graphics_standalone.hh"
-    sys = Param.System(Parent.any, "System")
+    system = Param.System(Parent.any, "System")
     trace_path = Param.String("", "Path to trace file")

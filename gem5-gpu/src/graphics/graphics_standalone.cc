@@ -43,6 +43,7 @@ extern unsigned g_active_device;
 
 GraphicsStandalone::GraphicsStandalone(const Params *p) :
       ClockedObject(p),
+      physProxy(p->system->physProxy),
       tickEvent(this),
       traceStarted(false),
       traceDone(false),
@@ -78,6 +79,7 @@ GraphicsStandalone::tick()
       //init gpu memory
       CudaGPU *cudaGPU = CudaGPU::getCudaGPU(g_active_device);
       cudaGPU->setGraphicsMem();
+      cudaGPU->registerGraphicsStandalone(this);
       //start api trace
       DPRINTF(GraphicsStandalone, "starting trace %s\n", tracePath.c_str());
       traceThread = new std::thread(&GraphicsStandalone::runTrace, this, std::ref(tracePath));
