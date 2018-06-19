@@ -167,9 +167,10 @@ def parseGpgpusimConfig(options):
 #       os.makedirs.isdir(fShadersPath)
 
     config = config.replace("%outdir%", m5.options.outdir)
-    config = config.replace("%gDepthShader%",   str(options.g_depth_shader) +"\n")
-    config = config.replace("%gBlendShader%",   str(options.g_blend_shader) +"\n")
-    config = config.replace("%mem_ctrls%",     str(options.mem_channels) +"\n")
+    config = config.replace("%gDepthShader%",    str(options.g_depth_shader) +"\n")
+    config = config.replace("%gBlendShader%",    str(options.g_blend_shader) +"\n")
+    config = config.replace("%mem_ctrls%",       str(options.mem_channels) +"\n")
+    config = config.replace("%gStandaloneMode%", ("1" if options.g_standalone_mode else "0") +"\n")
     config = config.replace("%gStartFrame%",   str(options.g_start_frame) +"\n")
     config = config.replace("%gEndFrame%",     str(options.g_end_frame) +"\n")
     config = config.replace("%gStartCall%",    str(options.g_start_call) +"\n")
