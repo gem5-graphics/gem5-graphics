@@ -381,7 +381,7 @@ void shader_core_config::reg_options(class OptionParser * opp)
 
 void gpu_graphics_config::reg_options(OptionParser* opp)
 {
-    option_parser_register(opp, "-standalone_mode", OPT_BOOL, &graphics_standalone_mode, 
+    option_parser_register(opp, "-graphics_standalone_mode", OPT_BOOL, &graphics_standalone_mode, 
                "graphics: running in standalone mode (default=False)",
                "0");
     option_parser_register(opp, "-output_dir", OPT_CSTR, &output_dir, 
