@@ -42,6 +42,7 @@
 #include "gpu/gpgpu-sim/cuda_core.hh"
 #include "gpu/copy_engine.hh"
 #include "gpu/shader_mmu.hh"
+#include "graphics/graphics_standalone.hh"
 #include "params/CudaGPU.hh"
 #include "params/GPGPUSimComponentWrapper.hh"
 #include "sim/clock_domain.hh"
@@ -323,6 +324,9 @@ class CudaGPU : public ClockedObject
     ///Pointer to the Z-Unit
     ZUnit * zunit;
 
+    //Pointer to standalone graphics object
+    GraphicsStandalone* graphicsStandalone;
+
     /// Used to register this SPA with the system
     System *system;
 
@@ -555,6 +559,8 @@ class CudaGPU : public ClockedObject
     void registerCudaCore(CudaCore *sc);
     void registerCopyEngine(GPUCopyEngine *ce);
     void registerZUnit(ZUnit * zu);
+    void registerGraphicsStandalone(GraphicsStandalone* gs);
+
 
     /// Getter for whether we are using Ruby or GPGPU-Sim memory modeling
     CudaDeviceProperties *getDeviceProperties() { return &deviceProperties; }
@@ -602,6 +608,10 @@ class CudaGPU : public ClockedObject
     ZUnit * getZUnit(){ 
        //printf("zunit ptr in gpu =%x\n", zunit);
        return zunit;
+    }
+
+    GraphicsStandalone* getGraphicsStandalone(){
+       return graphicsStandalone;
     }
 
     /// Returns size of warp (same for all CUDA cores)

@@ -76,6 +76,7 @@ CudaGPU::CudaGPU(const Params *p) :
     clkDomain((SrcClockDomain*)p->clk_domain),
     coresWrapper(*p->cores_wrapper), icntWrapper(*p->icnt_wrapper),
     l2Wrapper(*p->l2_wrapper), dramWrapper(*p->dram_wrapper),
+    zunit(NULL), graphicsStandalone(NULL),
     system(p->sys), warpSize(p->warp_size), 
     gpgpusimConfigPath(p->config_path), unblockNeeded(false), 
     /*ruby(p->ruby),*/ 
@@ -342,6 +343,10 @@ void CudaGPU::registerCudaCore(CudaCore *sc)
 
 void CudaGPU::registerZUnit(ZUnit * zu){
    zunit = zu;
+}
+
+void CudaGPU::registerGraphicsStandalone(GraphicsStandalone* gs){
+   graphicsStandalone = gs;
 }
 
 void CudaGPU::registerCopyEngine(GPUCopyEngine *ce)
