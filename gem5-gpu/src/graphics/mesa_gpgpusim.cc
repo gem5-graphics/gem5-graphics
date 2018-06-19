@@ -28,14 +28,18 @@ extern "C" {
 }
 
 
-#include "graphics/mesa_gpgpusim.h"
-#include "sim/simulate.hh"
-#include "graphics/serialize_graphics.hh"
-#include "debug/MesaGpgpusim.hh"
-#include "sim/sim_exit.hh"
 #include "base/statistics.hh"
 #include "base/trace.hh"
+#include "debug/MesaGpgpusim.hh"
+#include "graphics/graphics_standalone.hh"
+#include "graphics/mesa_gpgpusim.h"
+#include "graphics/serialize_graphics.hh"
+#include "sim/simulate.hh"
+#include "sim/sim_exit.hh"
+#include "gpu/gpgpu-sim/cuda_gpu.hh"
 
+extern std::mutex g_gpuMutex;
+extern unsigned g_active_device;
 
 uint64_t g_startTick;
 uint64_t g_totalTicks = 0;
@@ -45,7 +49,6 @@ void startEarlyZ(CudaGPU* cudaGPU, uint64_t depthBuffStart, uint64_t depthBuffEn
       uint8_t* depthBuf, unsigned frameWidth, unsigned frameHeight, unsigned tileH, unsigned tileW, unsigned blockH, unsigned blockW, RasterDirection dir);
 
 
-extern std::mutex g_gpuMutex;
 
 renderData_t g_renderData;
 int sizeOfEachFragmentData = PIPE_MAX_SHADER_INPUTS * sizeof (float) * 4;
@@ -881,6 +884,8 @@ byte* renderData_t::setRenderBuffer(){
     //gl_renderbuffer *rb = m_mesaCtx->DrawBuffer->_ColorDrawBuffers[0];
     gl_renderbuffer *rb = m_mesaCtx->DrawBuffer->_ColorReadBuffer;
     m_mesaColorBuffer = rb;
+    //m_bufferWidth = 300;
+    //m_bufferHeight = 300;
     m_bufferWidth = rb->Width;
     m_bufferHeight = rb->Height;
     m_bufferWidth = m_mesaCtx->DrawBuffer->Width;
@@ -892,8 +897,9 @@ byte* renderData_t::setRenderBuffer(){
     unsigned baseFormat = rb->_BaseFormat;
     unsigned internalFormat = rb->InternalFormat;
 
+    //unsigned bufferFormat = GL_RGBA; 
     unsigned bufferFormat = rb->_BaseFormat;
-
+    
 
     m_fbPixelSize = -1;
     unsigned bf = 0;
@@ -1142,7 +1148,15 @@ void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, voi
         graphicsMalloc((void**) &m_deviceData, m_colorBufferByteSize);
     }
 
-    graphicsMemcpy(m_deviceData, currentBuffer, getColorBufferByteSize(), graphicsMemcpyHostToSim);
+    if(m_standaloneMode){
+       CudaGPU* cg = CudaGPU::getCudaGPU(g_active_device);
+       assert(cg->standaloneMode);
+       GraphicsStandalone* gs = cg->getGraphicsStandalone();
+       assert(gs != NULL);
+       gs->physProxy.writeBlob((Addr)m_deviceData, currentBuffer, getColorBufferByteSize());
+    } else {
+       graphicsMemcpy(m_deviceData, currentBuffer, getColorBufferByteSize(), graphicsMemcpyHostToSim);
+    }
 
     std::string bufferFormat = m_fbPixelSize == 4? "bgra" : "rgb";
     writeDrawBuffer("pre", currentBuffer,  m_colorBufferByteSize, m_bufferWidth, m_bufferHeight, bufferFormat.c_str(), 8);
