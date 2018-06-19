@@ -50,16 +50,20 @@ import MemConfig
 
 parser = optparse.OptionParser()
 Options.addCommonOptions(parser)
-#Options.addNoISAOptions(parser)
 Options.addSEOptions(parser)
+GPUConfig.addGPUOptions(parser)
+GPUMemConfig.addMemCtrlOptions(parser)
+#Options.addNoISAOptions(parser)
 
 parser.add_option("--sim-cycles", type="int", default=1000,
-                   help="Number of simulation cycles")
+                  help="Number of simulation cycles")
 parser.add_option("--gtrace", type="string", default="",
                    help="apitrace trace file")
 
-
 (options, args) = parser.parse_args()
+
+options.g_standalone_mode = True
+options.mem_size = "1GB"
 
 if args:
      print "Error: script doesn't take any positional arguments"
@@ -98,6 +102,12 @@ system.membus = SystemXBar()
 system.system_port = system.membus.slave
 #CacheConfig.config_cache(options, system)
 MemConfig.config_mem(options, system)
+
+ 
+options.access_host_pagetable = True
+gpu_mem_range = AddrRange(options.mem_size)
+system.gpu = GPUConfig.createGPU(options, gpu_mem_range)
+GPUConfig.connectGPUPorts_classic(system, system.gpu, options)
 
 
 # -----------------------
