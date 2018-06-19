@@ -392,11 +392,17 @@ class CudaGPU : public ClockedObject
                 stream);
         }
         runningStreams.push_back(stream);
+        const int saTid = 0xDEADBEEF;
         if( runningTC ) assert( runningTC == stream->getThreadContext() ); // FIXME: Only support a single thread context
-        if( runningTID != -1 ) assert( runningTID == stream->getThreadContext()->threadId() );
+        if( runningTID != -1 and !standaloneMode) assert( runningTID == stream->getThreadContext()->threadId() );
+        if( runningTID != -1 and standaloneMode) assert(runningTID == saTid);
 
         runningTC = stream->getThreadContext();
-        runningTID = runningTC->threadId();
+        if(standaloneMode){
+           runningTID = saTid;
+        } else {
+           runningTID = runningTC->threadId();
+        }
     }
     
     void endStreamOperation(struct CUstream_st* stream) {
