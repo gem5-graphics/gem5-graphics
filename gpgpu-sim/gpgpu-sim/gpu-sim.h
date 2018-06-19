@@ -289,11 +289,12 @@ class gpu_graphics_config{
 public:
     void reg_options(OptionParser * opp);
     void init() const {
-        graphics_gpgpusim_init_options(start_frame, end_frame, start_call, end_call, raster_tile_H, raster_tile_W, raster_block_H, raster_block_W,
+        graphics_gpgpusim_init_options(graphics_standalone_mode, start_frame, end_frame, start_call, end_call, raster_tile_H, raster_tile_W, raster_block_H, raster_block_W,
               use_shader_blending, use_shader_depth_test, cpt_start_frame, cpt_end_frame, cpt_period, skip_cpt_frames, output_dir);
     }
 private:
     //the start and the end frames for simulation
+    bool graphics_standalone_mode;
     unsigned int start_frame;
     unsigned int end_frame;
     int start_call;
