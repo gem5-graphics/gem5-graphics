@@ -64,6 +64,7 @@ parser.add_option("--gtrace", type="string", default="",
 
 options.g_standalone_mode = True
 options.mem_size = "1GB"
+options.cacheline_size = 128
 
 if args:
      print "Error: script doesn't take any positional arguments"
@@ -74,6 +75,7 @@ gpu_tracers = [ GraphicsStandalone(trace_path=options.gtrace) \
 
 # create the desired simulated system
 system = System(cpu = gpu_tracers, mem_ranges = [AddrRange(options.mem_size)])
+system.cache_line_size = options.cacheline_size
 
 
 # Create a top-level voltage domain and clock domain
