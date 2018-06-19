@@ -64,7 +64,35 @@ parser.add_option("--gtrace", type="string", default="",
 
 options.g_standalone_mode = True
 options.mem_size = "1GB"
+options.g_raster_th = 16;
+options.g_raster_tw = 16;
+options.g_raster_bh = 16;
+options.g_raster_bw = 16;
+
+#should be set by the gpgpusim config file anyway
+options.clusters = 2
+options.cores_per_cluster = 2
+options.gpu_core_clock = "1GHz"
+options.ctas_per_shader = 8
+options.gpu_warp_size = 32
+options.gpu_threads_per_core = 2048
+options.sc_l1_assoc = 4
+options.sc_l1_buf_depth = 24
+options.sc_tl1_assoc = 4
+options.sc_tl1_buf_depth = 24
+options.gpu_l1_pagewalkers = 1
+options.gpu_tlb_entries = 8
+options.gpu_tlb_assoc = 8
+options.gpu_ttlb_entries = 8
+options.gpu_ttlb_assoc = 8
+options.sc_l2_assoc = 8
+options.pwc_size = "1kB"
+options.pwc_assoc = 4
+options.flush_kernel_end = True
+options.shMemDelay = 1
 options.cacheline_size = 128
+
+
 
 if args:
      print "Error: script doesn't take any positional arguments"
