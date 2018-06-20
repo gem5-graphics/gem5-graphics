@@ -884,8 +884,6 @@ byte* renderData_t::setRenderBuffer(){
     //gl_renderbuffer *rb = m_mesaCtx->DrawBuffer->_ColorDrawBuffers[0];
     gl_renderbuffer *rb = m_mesaCtx->DrawBuffer->_ColorReadBuffer;
     m_mesaColorBuffer = rb;
-    //m_bufferWidth = 300;
-    //m_bufferHeight = 300;
     m_bufferWidth = rb->Width;
     m_bufferHeight = rb->Height;
     m_bufferWidth = m_mesaCtx->DrawBuffer->Width;
@@ -1471,7 +1469,16 @@ unsigned int renderData_t::doFragmentShading() {
 void renderData_t::putDataOnColorBuffer() {
     //copying the result render buffer to mesa
     byte * tempBuffer = new byte [getColorBufferByteSize()];
-    graphicsMemcpy(tempBuffer, m_deviceData, getColorBufferByteSize(), graphicsMemcpySimToHost);
+
+    if(m_standaloneMode){
+       CudaGPU* cg = CudaGPU::getCudaGPU(g_active_device);
+       assert(cg->standaloneMode);
+       GraphicsStandalone* gs = cg->getGraphicsStandalone();
+       assert(gs != NULL);
+       gs->physProxy.readBlob((Addr)m_deviceData, tempBuffer, getColorBufferByteSize());
+    } else {
+       graphicsMemcpy(tempBuffer, m_deviceData, getColorBufferByteSize(), graphicsMemcpySimToHost);
+    }
 
     writeDrawBuffer("post", (byte*)tempBuffer, getColorBufferByteSize(), m_bufferWidth, m_bufferHeight, "bgra", 8);
 
@@ -1479,7 +1486,7 @@ void renderData_t::putDataOnColorBuffer() {
     int rbStride;
     m_mesaCtx->Driver.MapRenderbuffer(m_mesaCtx, m_mesaColorBuffer,
                                       0, 0, m_bufferWidth, m_bufferHeight,
-                                      GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT,
+                                      GL_MAP_WRITE_BIT /*| GL_MAP_INVALIDATE_BUFFER_BIT*/,
                                       &renderBuf, &rbStride);
 
       byte* tempBufferEnd = tempBuffer + m_colorBufferByteSize;
