@@ -12,21 +12,32 @@ libpath = mesa_root+mesa_dir+'/lib/gallium'
 env.Replace(LIBPATH = [libpath, env['LIBPATH']])
 
 env.Append(CXXFLAGS = [
-		     '-I'+mesa_root+'/gem5-gpu/src',
-		     '-I'+mesa_root+mesa_dir+'/include',
-		     '-I'+mesa_root+mesa_dir+'/src',
-		     '-I'+mesa_root+mesa_dir+'/src/mesa',
-		     '-I'+mesa_root+mesa_dir+'/src/mapi',
-		     '-I'+mesa_root+mesa_dir+'/src/mesa/swrast',
-		     '-I'+mesa_root+mesa_dir+'/src/mesa/drivers/dri/common/',
-		     '-I'+mesa_root+mesa_dir+'/src/gallium/auxiliary',
-		     '-I'+mesa_root+mesa_dir+'/src/gallium/include',
-		     '-I'+mesa_root+mesa_dir+'/src/gallium/drivers/softpipe',
-           '-D_POSIX_SOURCE', '-D_SVID_SOURCE', '-D_BSD_SOURCE',
-           '-D_GNU_SOURCE', '-DPTHREADS', '-DUSE_XSHM', '-DHAVE_POSIX_MEMALIGN',
-           '-DHAVE_PTHREAD', '-D__STDC_VERSION__=0', '-DHAVE_TIMESPEC_GET',
-		     '-Wno-invalid-offsetof',
-           ])
+      '-I'+mesa_root+'/gem5-gpu/src',
+      '-I'+mesa_root+mesa_dir+'/include',
+      '-I'+mesa_root+mesa_dir+'/include/drm-uapi/',
+      '-I'+mesa_root+mesa_dir+'/src',
+      '-I'+mesa_root+mesa_dir+'/src/mesa',
+      '-I'+mesa_root+mesa_dir+'/src/mapi',
+      '-I'+mesa_root+mesa_dir+'/src/mesa/swrast',
+      '-I'+mesa_root+mesa_dir+'/src/mesa/drivers/dri/common/',
+      '-I'+mesa_root+mesa_dir+'/src/gallium/auxiliary',
+      '-I'+mesa_root+mesa_dir+'/src/gallium/include',
+      '-I'+mesa_root+mesa_dir+'/src/gallium/drivers/softpipe',
+      '-D__STDC_CONSTANT_MACROS', '-D__STDC_FORMAT_MACROS', '-D__STDC_LIMIT_MACROS','-D_GNU_SOURCE', '-DUSE_SSE41',
+      '-DUSE_GCC_ATOMIC_BUILTINS', '-DDEBUG',
+      '-DUSE_X86_64_ASM', '-DHAVE_XLOCALE_H', '-DHAVE_SYS_SYSCTL_H' ,'-DHAVE_STRTOF', 
+      '-DHAVE_MKOSTEMP', '-DHAVE_TIMESPEC_GET', '-DHAVE_STRTOD_L', '-DHAVE_DL_ITERATE_PHDR', '-DHAVE_POSIX_MEMALIGN', '-DHAVE_ZLIB', 
+      '-DHAVE_LINUX_FUTEX_H', '-DHAVE_LIBDRM', '-DUSE_XSHM', '-DGLX_USE_TLS', '-DHAVE_X11_PLATFORM', '-DHAVE_SURFACELESS_PLATFORM', '-DENABLE_SHADER_CACHE',
+      '-DSTDC_HEADERS=1','-DHAVE_SYS_TYPES_H=1',
+      '-DHAVE_SYS_STAT_H=1','-DHAVE_STDLIB_H=1','-DHAVE_STRING_H=1',
+      '-DHAVE_MEMORY_H=1','-DHAVE_STRINGS_H=1','-DHAVE_INTTYPES_H=1','-DHAVE_STDINT_H=1',
+      '-DHAVE_UNISTD_H=1','-DHAVE_DLFCN_H=1','-DYYTEXT_POINTER=1',
+      '-DHAVE___BUILTIN_BSWAP32=1','-DHAVE___BUILTIN_BSWAP64=1','-DHAVE___BUILTIN_CLZ=1','-DHAVE___BUILTIN_CLZLL=1', '-DHAVE___BUILTIN_CTZ=1','-DHAVE___BUILTIN_EXPECT=1','-DHAVE___BUILTIN_FFS=1','-DHAVE___BUILTIN_FFSLL=1','-DHAVE___BUILTIN_POPCOUNT=1','-DHAVE___BUILTIN_POPCOUNTLL=1','-DHAVE___BUILTIN_UNREACHABLE=1','-DHAVE_FUNC_ATTRIBUTE_CONST=1','-DHAVE_FUNC_ATTRIBUTE_FLATTEN=1','-DHAVE_FUNC_ATTRIBUTE_FORMAT=1','-DHAVE_FUNC_ATTRIBUTE_MALLOC=1','-DHAVE_FUNC_ATTRIBUTE_PACKED=1','-DHAVE_FUNC_ATTRIBUTE_PURE=1','-DHAVE_FUNC_ATTRIBUTE_RETURNS_NONNULL=1','-DHAVE_FUNC_ATTRIBUTE_UNUSED=1','-DHAVE_FUNC_ATTRIBUTE_VISIBILITY=1','-DHAVE_FUNC_ATTRIBUTE_WARN_UNUSED_RESULT=1','-DHAVE_FUNC_ATTRIBUTE_WEAK=1','-DHAVE_FUNC_ATTRIBUTE_ALIAS=1','-DHAVE_FUNC_ATTRIBUTE_NORETURN=1','-DMAJOR_IN_SYSMACROS=1','-DHAVE_DLADDR=1','-DHAVE_CLOCK_GETTIME=1','-DHAVE_PTHREAD=1','-DHAVE_LIBUNWIND=1','-DHAVE_VALGRIND=1','-D__STDC_VERSION__=0',
+      '-Wno-invalid-offsetof',
+      ])
+#           '-D_POSIX_SOURCE', '-D_SVID_SOURCE', '-D_BSD_SOURCE',
+#           '-D_GNU_SOURCE', '-DPTHREADS', '-DUSE_XSHM', '-DHAVE_POSIX_MEMALIGN',
+#           '-DHAVE_PTHREAD', , '-DHAVE_TIMESPEC_GET',
 
 env.Append(LIBS = ['swrast_dri'])
 
