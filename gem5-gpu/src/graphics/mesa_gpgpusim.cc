@@ -466,8 +466,8 @@ void renderData_t::endDrawCall() {
    uint64_t ticks = curTick() - g_startTick;
    g_totalTicks+= ticks;
    printf("totalTicks = %ld, frags = %ld\n", g_totalTicks, g_totalFrags);
-    putDataOnColorBuffer();
-    if(isDepthTestEnabled())
+   putDataOnColorBuffer();
+   if(isDepthTestEnabled())
        putDataOnDepthBuffer();
     delete [] lastFatCubin->ident;
     delete [] lastFatCubin->ptx[0].gpuProfileName;
@@ -928,7 +928,7 @@ byte* renderData_t::setRenderBuffer(){
     m_fbPixelSize = 4;
     byte* renderBuf;
     int rbStride;
-    m_mesaCtx->Driver.MapRenderbuffer(m_mesaCtx, m_mesaColorBuffer,
+    m_mesaCtx->Driver.MapRenderbuffer_base(m_mesaCtx, m_mesaColorBuffer,
                                       0, 0, m_bufferWidth, m_bufferHeight,
                                       GL_MAP_READ_BIT,
                                       &renderBuf, &rbStride);
@@ -948,7 +948,7 @@ byte* renderData_t::setRenderBuffer(){
           tempBufferEnd[dstPixel + 3] = renderBuf[srcPixel + 3];
         }
 
-      m_mesaCtx->Driver.UnmapRenderbuffer(m_mesaCtx, m_mesaColorBuffer);
+      m_mesaCtx->Driver.UnmapRenderbuffer_base(m_mesaCtx, m_mesaColorBuffer);
      // delete [] tempBuffer;
       return tempBuffer2;
       ///
@@ -1484,9 +1484,11 @@ void renderData_t::putDataOnColorBuffer() {
 
     byte* renderBuf;
     int rbStride;
-    m_mesaCtx->Driver.MapRenderbuffer(m_mesaCtx, m_mesaColorBuffer,
+    m_mesaCtx->Driver.MapRenderbuffer_base(m_mesaCtx, m_mesaColorBuffer,
                                       0, 0, m_bufferWidth, m_bufferHeight,
-                                      GL_MAP_WRITE_BIT /*| GL_MAP_INVALIDATE_BUFFER_BIT*/,
+                                      GL_MAP_WRITE_BIT
+                                      | GL_MAP_INVALIDATE_RANGE_BIT,
+                                      //| GL_MAP_INVALIDATE_BUFFER_BIT
                                       &renderBuf, &rbStride);
 
       byte* tempBufferEnd = tempBuffer + m_colorBufferByteSize;
@@ -1501,9 +1503,9 @@ void renderData_t::putDataOnColorBuffer() {
           renderBuf[srcPixel + 3] = tempBufferEnd[dstPixel + 3];
         }
 
-      m_mesaCtx->Driver.UnmapRenderbuffer(m_mesaCtx, m_mesaColorBuffer);
-      m_mesaCtx->Driver.UpdateState(m_mesaCtx);
-      m_mesaCtx->Driver.Flush(m_mesaCtx);
+      m_mesaCtx->Driver.UnmapRenderbuffer_base(m_mesaCtx, m_mesaColorBuffer);
+      m_mesaCtx->Driver.UpdateState_base(m_mesaCtx);
+      m_mesaCtx->Driver.Flush_base(m_mesaCtx);
 
     delete [] tempBuffer;
 }
