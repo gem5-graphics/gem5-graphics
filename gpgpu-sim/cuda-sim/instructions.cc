@@ -4619,10 +4619,12 @@ void stp_impl( const ptx_instruction *pI, ptx_thread_info *thread )
    assert(fbFormat==GL_RGBA
           or fbFormat==GL_RGBA8
           or fbFormat==GL_RGB8
+          or fbFormat==GL_SRGB8_ALPHA8
           );
    unsigned size = -1;
 
-   if(fbFormat==GL_RGBA or fbFormat==GL_RGBA8){
+   if(fbFormat==GL_RGBA or fbFormat==GL_RGBA8 
+         or fbFormat==GL_SRGB8_ALPHA8){
      size = 4;
    } else if(fbFormat==GL_RGB8){
      //size = 3;
