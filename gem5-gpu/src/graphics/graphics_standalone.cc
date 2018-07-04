@@ -93,6 +93,10 @@ GraphicsStandalone::tick()
 //extern int run_retrace(int argc, char** argv);
 
 void GraphicsStandalone::runTrace(const std::string& pTracePath){
+   if(not std::ifstream(pTracePath)){
+      panic("Trace file %s does not exist\n", pTracePath);
+   }
+
    const char* libpath = std::getenv("APITRACE_LIB_PATH");
    if(libpath == NULL){
       panic("APITRACE_LIB_PATH is not set!\n");
