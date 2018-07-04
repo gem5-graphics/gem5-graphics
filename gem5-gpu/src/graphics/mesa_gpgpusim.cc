@@ -20,9 +20,8 @@
 #include <thread>
 #include <unistd.h>
 
-
-extern "C" {
 #include "main/macros.h"
+extern "C" {
 #include "drivers/dri/swrast/swrast_priv.h"
 #include "gallium/drivers/softpipe/sp_context.h"
 }
