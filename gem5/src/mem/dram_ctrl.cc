@@ -2398,7 +2398,7 @@ DRAMCtrl::regStats()
     perBankRdBursts
         .init(banksPerRank * ranksPerChannel)
         .name(name() + ".perBankRdBursts")
-        .desc("Per bank write bursts");
+        .desc("Per bank read bursts");
 
     perBankWrBursts
         .init(banksPerRank * ranksPerChannel)
