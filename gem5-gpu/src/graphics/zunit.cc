@@ -48,18 +48,17 @@ ZUnit::ZUnit(const Params *p) :
    zropWidth(p->zrop_width),
    hizWidth(p->hiz_width),
    zcacheRetryEvent(this),
-   depthResponseEvent(this),
+   hizBuff(this),
+   depthResponseEvent(this), 
    tickEvent(this)
 {
    DPRINTF(ZUnit, "Created a ZUnit Interface\n");
    cudaGPU->registerZUnit(this);
-   zPendingOnCache = false;
    doneFrags = 0;
    doneTiles = 0;
    //blockedCount = 0;
    pendingTranslations = 0;
    totalFragments = 0;
-   doneEarlyZPending = false;
 }
 
 BaseMasterPort&
@@ -161,16 +160,14 @@ ZUnit::processDepthResponse(){
    if(pkt->isWrite()){
       DPRINTF(ZUnit, "Finished updating z access on paddr 0x%x\n",
            pkt->req->getPaddr());
+      doneEarlyZ();
       return;
    }
 
    DPRINTF(ZUnit, "Fetched z access on vaddr 0x%x\n",
         pkt->req->getVaddr());
 
-   //DepthFragmentTile::DepthFragment * df = (DepthFragmentTile::DepthFragment*) pkt->req->getExtraData();
    DepthFragmentTile::DepthFragment * df = ztable[pkt->req->getVaddr()];
-
-   //remove from ztable
    ztable.erase(df->getDepthVaddr());
 
    doneFrags++;
@@ -206,14 +203,10 @@ ZUnit::processDepthResponse(){
          schedule(tickEvent, nextCycle());
    }
 
-   /*else {
-      unblockZAccesses(pkt->req->getPaddr());
-   }*/
-
    if(df->getTile()->isDone()){
       doneTiles++;
       assert(doneTiles <= depthTiles.size());
-      DPRINTF(ZUnit, "Done tile %d\n", df->getTile()->getId());
+      DPRINTF(ZUnit, "Done tile %d, total done tiles %d\n", df->getTile()->getId(), doneTiles);
       g_renderData.launchFragmentTile(df->getTile()->getRasterTile(), df->getTile()->getId());
    }
 
@@ -232,12 +225,11 @@ ZUnit::handleZcacheRetry(){
    DPRINTF(ZUnit, "Received z-cache retry, pkt is write=%d, paddr: 0x%x\n",
          retry_pkt->cmd==MemCmd::WriteReq, retry_pkt->req->getPaddr());
 
-
    DPRINTF(ZUnit, "sendTimingReq to the z-cache, type write=%d @ cycle %d\n", retry_pkt->cmd == MemCmd::WriteReq, curCycle());
    if (zcachePort.sendTimingReq(retry_pkt)) {
       retryZPkts.pop();
       checkAndReleaseTickEvent();
-      if (retryZPkts.size() > 0) {
+      if (retryZPkts.size() > 0 and !zcacheRetryEvent.scheduled()) {
          //schedule the rest of waiting requests in the following cycle
          schedule(zcacheRetryEvent, nextCycle());
       } else {
@@ -284,20 +276,38 @@ void ZUnit::finishTranslation(WholeTranslationState *state) {
    pendingTranslations--;
    checkAndReleaseTickEvent();
 
+   DepthFragmentTile::DepthFragment* dfr = (DepthFragmentTile::DepthFragment *) state->mainReq->getExtraData();
 #if TRACING_ON
-   DepthFragmentTile::DepthFragment* df = (DepthFragmentTile::DepthFragment *) state->mainReq->getExtraData();
-   DPRINTF(ZUnit, "Finished translation for fragment(%d,%d), vaddr=%llx ==> paddr=%llx\n", df->getX(), df->getY(), 
+   DPRINTF(ZUnit, "Finished translation for fragment(%d,%d), vaddr=%llx ==> paddr=%llx\n", dfr->getX(), dfr->getY(), 
          state->mainReq->getVaddr(), state->mainReq->getPaddr());
 #endif
    assert(state->mode == BaseTLB::Read);
-   PacketPtr pkt = new Packet(state->mainReq, MemCmd::ReadReq);
-   pkt->allocate();
-   pushRequest(pkt);
-   delete state;
-}
 
-void ZUnit::pushRequest(PacketPtr pkt){
+   DepthFragmentTile::DepthFragment * df = ztable[state->mainReq->getVaddr()];
+   if(df->passed()){
+      //this fragment is coming from a tile that passed the hi-Z test or another fragment that subsequently replaced it
+      ztable.erase(df->getDepthVaddr());
+      doneFrags++;
+      df->getTile()->incDoneFragments();
+      printStats();
+
+      df->setDepthPaddr(state->mainReq->getPaddr());
+      depthUpdateQ.push(df);
+      if(!tickEvent.scheduled())
+         schedule(tickEvent, nextCycle());
+
+      if(df->getTile()->isDone()){
+         doneTiles++;
+         assert(doneTiles <= depthTiles.size());
+         DPRINTF(ZUnit, "Done tile %d, total done tiles %d\n", df->getTile()->getId(), doneTiles);
+         g_renderData.launchFragmentTile(df->getTile()->getRasterTile(), df->getTile()->getId());
+      }
+   } else {
+      PacketPtr pkt = new Packet(state->mainReq, MemCmd::ReadReq);
+      pkt->allocate();
       sendZcacheAccess(pkt);
+   }
+   delete state;
 }
 
 void ZUnit::sendZcacheAccess(PacketPtr pkt){
@@ -311,8 +321,9 @@ void ZUnit::sendZcacheAccess(PacketPtr pkt){
       }
       DPRINTF(ZUnit, "Send failed paddr: 0x%x. Waiting: %d\n",
             pkt->req->getPaddr(), retryZPkts.size());
+   } else {
+      numZCacheRequests++;
    }
-   numZCacheRequests++;
 }
 
 void ZUnit::sendZWrite(DepthFragmentTile::DepthFragment * df){
@@ -337,13 +348,10 @@ void ZUnit::sendZWrite(DepthFragmentTile::DepthFragment * df){
    }
 
    DPRINTF(ZUnit, "Writing to location (%d,%d), depth value= %llx\n", df->getX(), df->getY(), val);
-
-   pushRequest(pkt);
+   sendZcacheAccess(pkt);
 }
 
 void ZUnit::regStats(){
-   MemObject::regStats();
-
    numZCacheRequests
       .name(name() + ".z_cache_requests")
       .desc("Number of z-cache requests sent")
@@ -354,45 +362,60 @@ void ZUnit::regStats(){
       ;
 }
 
-void ZUnit::startEarlyZ(uint64_t depthBuffStart, uint64_t depthBuffEnd, unsigned bufWidth, RasterTiles* tiles, DepthSize dSize, GLenum _depthFunc,
-      uint8_t* depthBuffer, unsigned frameWidth, unsigned frameHeight, unsigned tileH, unsigned tileW, unsigned blockH, unsigned blockW, RasterDirection rasterDir){
+void
+ZUnit::setDepthFunc(GLenum _depthFunc){
+   depthFunc = _depthFunc;
+}
+
+void ZUnit::startEarlyZ(uint64_t depthBuffStart, uint64_t depthBuffEnd, uint32_t bufWidth, RasterTiles& tiles, DepthSize dSize, GLenum _depthFunc,
+      uint8_t* depthBuffer, uint32_t frameWidth, uint32_t frameHeight, uint32_t tileH, uint32_t tileW, uint32_t blockH, uint32_t blockW, RasterDirection rasterDir){
    depthSize = dSize;
    depthAddrStart = depthBuffStart;
    depthAddrEnd = depthBuffEnd;
    depthFunc = _depthFunc;
+   tileWidth = tileW;
+   tileHeight = tileH;
 
    //if this case we kill all the fragments; TODO: check that the shader doesn't modify the depth
    if(depthFunc == GL_NEVER){
       return;
    }
 
-
-   printf("number of tiles %zu\n", tiles->size());
    // this case needs a special handling
    assert(depthFunc != GL_ALWAYS);
    
    initHizBuffer(depthBuffer, frameWidth, frameHeight, dSize, tileW, tileH, blockH, blockW, rasterDir);
-   fragTiles = tiles;
-   depthTiles.resize(tiles->size());
+
+   depthTiles.resize(tiles.size(), NULL);
    currTile = 0;
    currFragment = 0;
    doneFlag = false;
 
-   for(int i=0; i< tiles->size(); i++){
-      depthTiles[i].setId(i);
-      depthTiles[i].setRasterTile((*tiles)[i]);
-      depthTiles[i].hizDepth = (*(*tiles)[i])[0].uintPos[2];
-      for(int j=0; j< (*tiles)[i]->size();  j++){
-         unsigned xPos = (*(*tiles)[i])[j].uintPos[0];
-         unsigned yPos = (*(*tiles)[i])[j].uintPos[1];
-         unsigned zPos = (*(*tiles)[i])[j].uintPos[2];
+   for(int i=0; i< tiles.size(); i++){
+      depthTiles[i] = new DepthFragmentTile();
+      depthTiles[i]->setId(i);
+      depthTiles[i]->setRasterTile(tiles[i]);
+      //empty tile
+      if(tiles[i]->size() == 0)
+         continue;
+
+      depthTiles[i]->hizDepthFront = (*(tiles[i]))[0].uintPos[2];
+      depthTiles[i]->hizDepthBack = (*(tiles[i]))[0].uintPos[2];
+      for(int j=0; j< tiles[i]->size();  j++){
+         unsigned xPos = (*(tiles[i]))[j].uintPos[0];
+         unsigned yPos = (*(tiles[i]))[j].uintPos[1];
+         unsigned zPos = (*(tiles[i]))[j].uintPos[2];
          Addr addr = depthAddrEnd - ((yPos+1) * bufWidth * (unsigned)depthSize) + (xPos * (unsigned)depthSize);
          assert((addr >= depthAddrStart) and (addr < depthAddrEnd));
-         fragmentData_t * rasterFrag =  &((*(*tiles)[i])[j]);
-         DepthFragmentTile::DepthFragment df(j, addr, zPos, &depthTiles[i], rasterFrag);
-         depthTiles[i].addFragment(df);
-         if(depthTest(depthTiles[i].hizDepth, zPos)){
-            depthTiles[i].hizDepth = zPos;
+         fragmentData_t& rasterFrag =  (*tiles[i])[j];
+         DepthFragmentTile::DepthFragment df(j, addr, zPos, depthTiles[i], &rasterFrag);
+         df.unsetPassed();
+         depthTiles[i]->addFragment(df);
+         if(depthTest(depthTiles[i]->hizDepthFront, zPos)){
+            depthTiles[i]->hizDepthFront = zPos;
+         }
+         if(depthTest(zPos, depthTiles[i]->hizDepthBack)){
+            depthTiles[i]->hizDepthBack = zPos;
          }
          totalFragments++;
       }
@@ -404,31 +427,24 @@ void ZUnit::startEarlyZ(uint64_t depthBuffStart, uint64_t depthBuffEnd, unsigned
 }
 
 void ZUnit::checkAndReleaseTickEvent(){
-   if(zPendingOnCache){
-      zPendingOnCache = false;
-      if(!tickEvent.scheduled())
-         schedule(tickEvent, nextCycle());
-   }
+   if(!tickEvent.scheduled())
+      schedule(tickEvent, nextCycle());
 }
 
 void ZUnit::tick(){
+   bool active = false;
    //prioritize pending udpates
    if(depthUpdateQ.size() > 0) { 
+      active = true;
       sendZWrite(depthUpdateQ.front());
       //unblockZAccesses(depthUpdateQ.front()->getDepthPaddr());
       depthUpdateQ.pop();
-      if(depthUpdateQ.empty()){
-         doneEarlyZ();
-      } else {
-         schedule(tickEvent, nextCycle());
-      }
    }
 
 
-   bool bflag = false;
    for(int zw=0; zw < zropWidth; zw++){
-      if(bflag) break; 
       if(hizQ.size() > 0){
+         active = true;
          //only proceed if we have enough space in the ztable
          DepthFragmentTile * dt = hizQ.front();
          uint64_t hizThresh = dt->hizThresh();
@@ -437,19 +453,26 @@ void ZUnit::tick(){
          //first check if this fragment can even pass the hiZ value 
          uint64_t fragDepthVal = df->getDepthVal();
          if(!depthTest(hizThresh, fragDepthVal)){
-            //fragment fail
+            //fragment fail hiz
             currFragment++;
+            doneFrags++;
+            df->getTile()->incDoneFragments();
             if(currFragment == dt->size()){
                currFragment = 0;
                hizQ.pop();
-               bflag = true;
+            }
+
+            if(df->getTile()->isDone()){
+               doneTiles++;
+               assert(doneTiles <= depthTiles.size());
+               DPRINTF(ZUnit, "Done tile %d\n", df->getTile()->getId());
+               g_renderData.launchFragmentTile(df->getTile()->getRasterTile(), df->getTile()->getId());
             }
          } else if((ztable.size() < maxPendingReqs) or (ztable.count(df->getDepthVaddr()) > 0)){
             currFragment++;
             if(currFragment == dt->size()){
                currFragment = 0;
                hizQ.pop();
-               bflag = true;
             }
 
             //check if there is pending depth test to the same fragment position
@@ -462,8 +485,12 @@ void ZUnit::tick(){
                if(depthTest(oldDepthVal, newDepthVal)){
                   DepthFragmentTile::DepthFragment* old_df = ztable[dfVaddr];
                   old_df->getTile()->incDoneFragments();
-                  old_df->unsetPassed();
                   ztable[dfVaddr] = df;
+                  //if the old df is coming from a tile that passed the hi-Z test then this one should pass too
+                  if(old_df->passed()){
+                     df->setPassed();
+                  }
+                  old_df->unsetPassed();
                   done_df = old_df;
                } else{
                   df->getTile()->incDoneFragments();
@@ -481,23 +508,30 @@ void ZUnit::tick(){
             } else {
                ztable[df->getDepthVaddr()] = df;
                sendZTransReq(df);
+
+               /*doneFrags++;
+               df->getTile()->incDoneFragments();
+
+               df->setPassed();
+               if(df->getTile()->isDone()){
+                  doneTiles++;
+                  assert(doneTiles <= depthTiles.size());
+                  DPRINTF(ZUnit, "Done tile %d\n", df->getTile()->getId());
+                  g_renderData.launchFragmentTile(df->getTile()->getRasterTile(), df->getTile()->getId());
+               }*/
+
             }
-            if(!tickEvent.scheduled())
-               schedule(tickEvent, nextCycle());
-         } else {
-            zPendingOnCache = true;
          }
-      } else {
-         doneEarlyZ();
-      }
+      } 
    }
 
 
    //for now we actually handle one tile per cycle
    for(int hw=0; hw < hizWidth; hw++){
       if(!doneFlag){
+         active = true;
          //skipping empty tiles
-         while(depthTiles[currTile].isEmpty() and (currTile < depthTiles.size())){
+         while((currTile < depthTiles.size()) and depthTiles[currTile]->isEmpty()){
             currTile++;
             doneTiles++;
          }
@@ -507,19 +541,43 @@ void ZUnit::tick(){
             doneEarlyZ();
             return;
          }
-         DepthFragmentTile * dt = &depthTiles[currTile];
+
+         DepthFragmentTile* dt = depthTiles[currTile];
          unsigned posId = dt->getRasterTile()->getTilePos();
-         assert(posId < hizBuffer.size());
+         assert(posId < hizBuff.size());
          if(depthFunc == GL_NOTEQUAL or depthFunc==GL_EQUAL){ 
             warn_once("Unsupported depth test (GL_NOTEQUAL or GL_EQUAL), skipping HiZ\n");
             //skip hiZ
             hizQ.push(dt);
-         } else if(depthTest(hizBuffer[posId], dt->hizDepth)){
-            dt->setHizThresh(hizBuffer[posId]);
-            hizBuffer[posId] = dt->hizDepth;
+         } else if(depthTest(hizBuff.depthFront[posId], dt->hizDepthBack)){
+            //the whole tile passes in this case
+            hizBuff.depthFront[posId] = dt->hizDepthFront;
+            //only update hi-z buffer if tile fully covered
+            if(dt->size() == tileWidth*tileHeight){
+               hizBuff.depthBack[posId] = dt->hizDepthBack;
+            }
+            //doneTiles++;
+            //doneFrags+= dt->size();
+            //assert(doneTiles <= depthTiles.size());
+            for(unsigned dfi = 0; dfi < dt->size(); dfi++){
+               dt->getFragment(dfi)->setPassed();
+            }
             hizQ.push(dt);
+            //DPRINTF(ZUnit, "Tile %d done at HiZ\n", dt->getId());
+            //g_renderData.launchFragmentTile(dt->getRasterTile(), dt->getId());
+         } else if(depthTest(hizBuff.depthBack[posId], dt->hizDepthFront)){
+            //some fragments passes the depth test
+            dt->setHizThresh(hizBuff.depthBack[posId]);
+            //only update hi-z buffer if tile fully covered
+            if(dt->size() == tileWidth*tileHeight){
+               hizBuff.depthBack[posId] = dt->hizDepthBack;
+            }
+            hizQ.push(dt);
+            DPRINTF(ZUnit, "Tile %d passed HiZ\n", dt->getId());
          } else {
             //failed tile
+            DPRINTF(ZUnit, "Tile %d failed HiZ\n", dt->getId());
+            doneTiles++;
             doneFrags+= dt->size();
          }
          currTile++;
@@ -528,31 +586,47 @@ void ZUnit::tick(){
             doneEarlyZ();
             return;
          }
-         if(!tickEvent.scheduled())
-            schedule(tickEvent, nextCycle());
       }
+   }
+
+   if(active){
+      if(!tickEvent.scheduled())
+         schedule(tickEvent, nextCycle());
    }
 }
 
 void ZUnit::doneEarlyZ(){
+   //already done
+   if(totalFragments == 0)
+      return;
+
    if(!retryZPkts.empty() or !depthUpdateQ.empty() or !hizQ.empty()
-         or (currTile != depthTiles.size())){
+         or (currTile != depthTiles.size()) or (doneTiles != depthTiles.size())
+         or (ztable.size()>0)){
       //some requests are pending
-      doneEarlyZPending = true;
+      DPRINTF(ZUnit, "early-Z not done yet retryZPkts = %d, depthUpdateQ = %d, hizQ = %d,\
+            currTile = %d of %d tiles, doneTiles=%d, ztable.size()=%d\n", 
+            retryZPkts.size(), depthUpdateQ.size(), hizQ.size(), currTile,
+            depthTiles.size(), doneTiles, ztable.size());
+     if(!tickEvent.scheduled())
+         schedule(tickEvent, nextCycle());
       return;
    }
 
-   DPRINTF(ZUnit, "Received early-Z done\n");
+
+   DPRINTF(ZUnit, "early-Z done retryZPkts = %d, depthUpdateQ = %d, hizQ = %d, currTile = %d of %d tiles, doneTiles=%d\n", 
+         retryZPkts.size(), depthUpdateQ.size(), hizQ.size(), currTile, depthTiles.size(), doneTiles);
+
    printStats();
-   doneEarlyZPending = false;
    assert(pendingTranslations == 0);
    assert(totalFragments == doneFrags);
    totalFragments = 0;
-   zPendingOnCache = false;
    doneTiles = 0;
    doneFrags = 0;
    depthAddrStart = 0;
    depthAddrEnd = 0;
+   for(int t=0; t < depthTiles.size(); t++)
+      delete depthTiles[t];
    depthTiles.clear();
    g_renderData.doneEarlyZ();
 }
@@ -566,26 +640,25 @@ void ZUnit::initHizBuffer(uint8_t* depthBuffer, unsigned frameWidth, unsigned fr
     assert((blockW%tileW)==0);
    
     DPRINTF(ZUnit, "tileW = %d, and tileH = %d\n", tileW, tileH);
- 
-    //adding padding for rounded pixel locations
-    frameHeight+= blockH;
-    frameWidth += blockW;
-    
-    if ( (frameWidth % blockW) != 0) {
-        frameWidth -= frameWidth % blockW;
-        frameWidth += blockW;
-        //DPRINTF(MesaGpgpusim, "Display size width padded to %d\n", frameWidth);
-    }
-
-    if ((frameHeight % blockH) != 0) {
-        frameHeight -= frameHeight % blockH;
-        frameHeight += blockH;
-    }
 
     const unsigned frameDim = frameHeight * frameWidth;
+    //adding padding for rounded pixel locations
+    unsigned tiledFrameHeight = frameHeight + blockH;
+    unsigned tiledFrameWidth = frameWidth + blockW;
+    
+    if ( (tiledFrameWidth % blockW) != 0) {
+        tiledFrameWidth -= tiledFrameWidth % blockW;
+        tiledFrameWidth += blockW;
+        //DPRINTF(MesaGpgpusim, "Display size width padded to %d\n", tiledFrameWidth);
+    }
+
+    if ((tiledFrameHeight % blockH) != 0) {
+        tiledFrameHeight -= tiledFrameHeight % blockH;
+        tiledFrameHeight += blockH;
+    }
+
 
     std::vector<uint64_t> depthValues(frameDim);
-    std::vector<bool> touchedTiles(frameDim, false);
 
     if(dSize == DepthSize::Z16) {
        uint16_t* p = (uint16_t*) depthBuffer;
@@ -601,15 +674,14 @@ void ZUnit::initHizBuffer(uint8_t* depthBuffer, unsigned frameWidth, unsigned fr
     assert(0 == ((frameHeight* frameWidth) % fragmentsPerTile));
     unsigned tilesCount = frameDim / fragmentsPerTile;
 
-    hizBuffer.resize(tilesCount);
+    std::vector<bool> touchedTiles(tilesCount, false);
+    hizBuff.setSize(tilesCount);
 
+    
     assert((frameWidth%tileW) == 0);
     assert((frameHeight%tileH) == 0);
             
     const unsigned tileRow = frameWidth / tileW;
-    //const unsigned blockRow = frameWidth/blockW;
-    //const unsigned hTilesPerBlock = blockW/tileW;
-    //const unsigned vTilesPerBlock = blockH/tileH;
 
     for(unsigned i=0; i < depthValues.size(); i++){
        unsigned tileIdx = -1;
@@ -623,15 +695,7 @@ void ZUnit::initHizBuffer(uint8_t* depthBuffer, unsigned frameWidth, unsigned fr
           assert(0); //TODO
        } else assert(0);
 
-       assert(tileIdx < hizBuffer.size());
-       if(touchedTiles[tileIdx]){
-          if(depthTest(hizBuffer[tileIdx], depthValues[i])){
-             hizBuffer[tileIdx] = depthValues[i];
-          }
-       } else {
-          touchedTiles[tileIdx] = true;
-          hizBuffer[tileIdx] = depthValues[i];
-       }
+       hizBuff.setDepth(tileIdx, depthValues[i]);
     }
 }
 
@@ -641,6 +705,7 @@ void ZUnit::printStats(){
    //DPRINTF(ZUnit, "blockedCount=%d\n", blockedCount);
    DPRINTF(ZUnit, "pendingTranslations=%d\n", pendingTranslations);
    DPRINTF(ZUnit, "depthUpdateQ.size()=%d\n", depthUpdateQ.size());
+   DPRINTF(ZUnit, "doneTiles=%d\n", doneTiles);
    DPRINTF(ZUnit, "-------------------------------------------------\n");
 }
 

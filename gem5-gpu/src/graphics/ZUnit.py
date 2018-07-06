@@ -1,4 +1,4 @@
-# Copyright (c) 2016 University of British Columbia
+# Copyright (c) 2016 Ayub A. Gubran and Tor M. Aamodt
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -24,8 +24,6 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
-#
-#Authors: Ayub A. Gubran
 
 from MemObject import MemObject
 from ShaderTLB import ShaderTLB
@@ -38,7 +36,7 @@ class ZUnit(MemObject):
     cxx_class = 'ZUnit'
     cxx_header = "graphics/zunit.hh"
 
-    sys = Param.System(Parent.any, "System")
+    sys = Param.System(Parent.any, "system that we will run on")
     gpu = Param.CudaGPU(Parent.any, "The GPU")
     z_port = MasterPort("The z-cache port")
     ztb = Param.ShaderTLB(ShaderTLB(), "Zcache TLB");

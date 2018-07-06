@@ -29,18 +29,20 @@
 #ifndef __GPGPU_ZUNIT_HH__
 #define __GPGPU_ZUNIT_HH__
 
+#include <queue>
 #include <unordered_map>
-#include <GL/gl.h>
+//#include <GL/gl.h>
+#include "graphics/mesa_gpgpusim.h"
 #include "base/callback.hh"
 #include "mem/mem_object.hh"
 #include "params/ZUnit.hh"
 #include "stream_manager.h"
 #include "gpu/gpgpu-sim/cuda_gpu.hh"
-#include "graphics/mesa_gpgpusim.h"
 //#include "graphics/graphics_structs.h"
       
 extern renderData_t g_renderData;
 class RasterTile;
+class WholeTranslationState;
 typedef std::vector<RasterTile* > RasterTiles;
 
 class ZUnit : public MemObject
@@ -95,15 +97,16 @@ class ZUnit : public MemObject
       Addr depthAddrStart;
       Addr depthAddrEnd;
       DepthSize depthSize;
-      RasterTiles* fragTiles;
       GLenum depthFunc;
 
       class DepthFragmentTile {
          public:
-            DepthFragmentTile(): hizPassThresh((uint64_t)-1), doneFragments(0) {}
+            DepthFragmentTile(): 
+               doneFragments(0), hizPassThresh((uint64_t)-1) {}
 
             class DepthFragment {
                public:
+                  DepthFragment(){}
                   DepthFragment(unsigned _id, Addr _dAddr, uint32_t _dVal, DepthFragmentTile * _tile, fragmentData_t * _rasterFrag):
                      id(_id), depthVaddr(_dAddr), depthVal(_dVal), tile(_tile), rasterFrag(_rasterFrag){}
                   inline DepthFragmentTile* getTile() { return tile; }
@@ -131,7 +134,6 @@ class ZUnit : public MemObject
                   fragmentData_t * rasterFrag;
             }; 
 
-            typedef std::vector<DepthFragment> DepthFragments;
             void incDoneFragments() {
                doneFragments++;
                assert(doneFragments <= depthFragments.size());
@@ -154,33 +156,66 @@ class ZUnit : public MemObject
             void setRasterTile(RasterTile * _tile) { rasterTile = _tile; }
             RasterTile* getRasterTile(){ return rasterTile; }
 
-            void setHizDepth(uint64_t depth){ hizDepth = depth; }
-            uint64_t hizDepth; 
+            //void setHizDepth(uint64_t depth){ hizDepth = depth; }
+            uint64_t hizDepthFront; 
+            uint64_t hizDepthBack; 
 
             void setHizThresh(uint64_t thresh) { hizPassThresh = thresh;}
             uint64_t hizThresh() { return hizPassThresh;}
 
          private:
-            uint64_t hizPassThresh;
-            DepthFragments depthFragments;
+            std::vector<DepthFragment> depthFragments;
             unsigned doneFragments;
+            uint64_t hizPassThresh;
             unsigned tileId;
             RasterTile * rasterTile;
       };
 
-      typedef std::vector<DepthFragmentTile> DepthTiles;
-
-      DepthTiles depthTiles;
+      std::vector<DepthFragmentTile*> depthTiles;
       
       //std::map<Addr, bool> blockedLineAddrs;
       //std::map<Addr, std::queue<PacketPtr> > blockedAccesses;
       //unsigned blockedCount;
       std::unordered_map<Addr, DepthFragmentTile::DepthFragment* > ztable;
 
-      std::vector<uint64_t> hizBuffer;
-      void initHizBuffer(uint8_t* depthBuffer, unsigned frameWidth, unsigned frameHeight, 
-               DepthSize dSize, const unsigned tileW, const unsigned tileH,
-               const unsigned blockH, const unsigned blockW, const RasterDirection rasterDir);
+      struct hizBuffer_t {
+         hizBuffer_t(ZUnit* zunit){
+            m_size = 0;
+            m_zunit = zunit;
+         }
+         void setSize(unsigned psize){
+            m_size = psize;
+            depthFront.resize(psize);
+            depthBack.resize(psize);
+            depthValid.resize(psize, false);
+         }
+
+         void setDepth(unsigned tileIdx, uint64_t depth){
+            assert(tileIdx < depthFront.size() and tileIdx < depthBack.size());
+            if(!depthValid[tileIdx]){
+               depthValid[tileIdx] = true;
+               depthFront[tileIdx] = depth;
+               depthBack [tileIdx] = depth;
+            } else {
+               if(m_zunit->depthTest(depthFront[tileIdx], depth)){
+                  depthFront[tileIdx] = depth;
+               } else if(m_zunit->depthTest(depth, depthBack[tileIdx])){
+                  depthBack[tileIdx] = depth;
+               }
+               depthValid[tileIdx] = true;
+            }
+         }
+
+         unsigned size() { return m_size;}
+         std::vector<uint64_t> depthFront;
+         std::vector<uint64_t> depthBack;
+         std::vector<bool> depthValid;
+         private:
+         unsigned m_size;
+         ZUnit* m_zunit;
+      };
+     
+      hizBuffer_t hizBuff;
 
       std::queue<DepthFragmentTile*> hizQ;
       
@@ -217,17 +252,22 @@ class ZUnit : public MemObject
       unsigned doneTiles;
       bool doneFlag;
       void doneEarlyZ();
-      bool doneEarlyZPending;
+
+      unsigned tileWidth;
+      unsigned tileHeight;
 
       //Initializes a z-cache fetch from gem5
       void sendZTransReq(DepthFragmentTile::DepthFragment * df);
       void sendZWrite(DepthFragmentTile::DepthFragment * df);
-      void pushRequest(PacketPtr pkt);
       //void unblockZAccesses(Addr addr);
       unsigned pendingTranslations;
-      bool depthTest(uint64_t oldDepthVal, uint64_t newDepthVal);
+      void endOfDepthProcess();
 
       void printStats();
+
+      void initHizBuffer(uint8_t* depthBuffer, unsigned frameWidth, unsigned frameHeight, 
+               DepthSize dSize, const unsigned tileW, const unsigned tileH,
+               const unsigned blockH, const unsigned blockW, const RasterDirection rasterDir);
 
    public:
       ZUnit(const Params *p);
@@ -245,8 +285,12 @@ class ZUnit : public MemObject
       Stats::Scalar numZCacheRequests;
       Stats::Scalar numZCacheRetry;
 
-      void startEarlyZ(uint64_t depthBuffStart, uint64_t depthBuffEnd, unsigned bufWidth, RasterTiles* tiles, DepthSize dSize, GLenum _depthFunc,
-          uint8_t* depthBuf, unsigned frameWidth, unsigned frameHeight, unsigned tileH, unsigned tileW, unsigned blockH, unsigned blockW, RasterDirection dir);
+      void setDepthFunc(GLenum depthFunc);
+
+      void startEarlyZ(uint64_t depthBuffStart, uint64_t depthBuffEnd, uint32_t bufWidth, RasterTiles& tiles, DepthSize dSize, GLenum _depthFunc,
+          uint8_t* depthBuf, uint32_t frameWidth, uint32_t frameHeight, uint32_t tileH, uint32_t tileW, uint32_t blockH, uint32_t blockW, RasterDirection dir);
+
+      bool depthTest(uint64_t oldDepthVal, uint64_t newDepthVal);
 };
 
 #endif
