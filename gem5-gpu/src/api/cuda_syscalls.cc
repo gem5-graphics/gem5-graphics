@@ -1238,6 +1238,7 @@ graphicsLaunch(const char *hostFun, void** pCodeAddr) {
         codeAddr = (Addr) (*pCodeAddr);
     }
     grid->set_inst_base_vaddr(cudaGPU->getInstBaseVaddr());
+    grid->setGraphicsKernel();
     
     std::string kname = grid->name();
     dim3 gridDim = config.grid_dim();

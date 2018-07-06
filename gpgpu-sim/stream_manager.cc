@@ -136,7 +136,7 @@ void stream_operation::do_operation( gpgpu_sim *gpu )
         ret = gpu->gem5CudaGPU->memcpy_from_symbol(m_host_address_dst, m_symbol, m_cnt, m_offset, m_stream);
         break;
     case stream_kernel_launch:
-        if( gpu->can_start_kernel() ) {
+        if( gpu->can_start_kernel() or m_kernel->isGraphicsKernel()) {
         	gpu->set_cache_config(m_kernel->name());
         	printf("kernel \'%s\' transfer to GPU hardware scheduler\n", m_kernel->name().c_str() );
             if( m_sim_mode )

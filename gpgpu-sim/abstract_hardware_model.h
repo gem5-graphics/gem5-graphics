@@ -253,12 +253,14 @@ private:
    
    //Thread context of the current 
    ThreadContext *m_tc;
-   
    address_type m_inst_text_base_vaddr;
+   bool m_isGraphicsKernel;
 
 public:
    address_type get_inst_base_vaddr() { return m_inst_text_base_vaddr; };
    void set_inst_base_vaddr(address_type addr) { m_inst_text_base_vaddr = addr; };
+   bool isGraphicsKernel() { return m_isGraphicsKernel;}
+   void setGraphicsKernel() { m_isGraphicsKernel = true;}
 };
 
 struct core_config {

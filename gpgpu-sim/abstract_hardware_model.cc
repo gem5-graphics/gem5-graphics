@@ -598,6 +598,7 @@ kernel_info_t::kernel_info_t( dim3 gridDim, dim3 blockDim, class function_info *
     m_param_mem = new memory_space_impl<8192>("param",64*1024);
     m_stream = stream;
     m_tc = tc;
+    m_isGraphicsKernel = false;
 }
 
 kernel_info_t::~kernel_info_t()
