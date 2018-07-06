@@ -352,6 +352,8 @@ void ZUnit::sendZWrite(DepthFragmentTile::DepthFragment * df){
 }
 
 void ZUnit::regStats(){
+   MemObject::regStats();
+
    numZCacheRequests
       .name(name() + ".z_cache_requests")
       .desc("Number of z-cache requests sent")
