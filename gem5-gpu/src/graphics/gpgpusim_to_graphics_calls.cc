@@ -34,10 +34,10 @@ unsigned readMESABufferSize(){
 }
 
 //reading fragment attributes, used by the fragment shading stage
-shaderAttrib_t readFragmentAttribs(unsigned threadID, unsigned attribID,
+shaderAttrib_t readFragmentAttribs(unsigned uniqueThreadID, unsigned tid, unsigned attribID,
                                    unsigned attribIndex, unsigned fileIdx, unsigned idx2D,
                                    void* stream) {
-    return g_renderData.getFragmentData(threadID, attribID, attribIndex, fileIdx, idx2D, stream);
+    return g_renderData.getFragmentData(uniqueThreadID, tid, attribID, attribIndex, fileIdx, idx2D, stream);
 }
 
 uint32_t readVertexAttribs(unsigned threadID, unsigned attribID, unsigned attribIndex, void* stream) {
@@ -50,8 +50,8 @@ void writeVertexResult(unsigned threadID, unsigned resAttribID, unsigned attribI
 }
 
 //checks if a vertex finishes execution
-void checkGraphicsThreadExit(void* kernelPtr, unsigned tid){
-    g_renderData.checkGraphicsThreadExit(kernelPtr, tid);
+void checkGraphicsThreadExit(void* kernelPtr, unsigned tid, void* stream){
+    g_renderData.checkGraphicsThreadExit(kernelPtr, tid, stream);
 }
 
 //read texels

@@ -307,6 +307,14 @@ public:
    dim3 get_ctaid() const { return m_ctaid; }
    dim3 get_tid() const { return m_tid; }
    dim3 get_ntid() const { return m_ntid;}
+   unsigned get_flat_tid() const {
+      dim3 threadIdx = get_tid();
+      dim3 blockDim = get_kernel_info()->get_cta_dim();
+      unsigned ftid = ((threadIdx.z * (blockDim.x * blockDim.y))
+         + (threadIdx.y * blockDim.x)
+         + threadIdx.x);
+      return ftid;
+   }
    class gpgpu_sim *get_gpu() { return (gpgpu_sim*)m_gpu;}
    unsigned get_hw_tid() const { return m_hw_tid;}
    unsigned get_hw_ctaid() const { return m_hw_ctaid;}

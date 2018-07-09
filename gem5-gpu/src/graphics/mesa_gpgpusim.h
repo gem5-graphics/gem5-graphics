@@ -105,7 +105,7 @@ class RasterTile {
          m_fragmentIndices.clear();
          unsigned activeCount = 0;
          for(int i=0; i<m_fragments.size(); i++){
-            if(m_fragments[i].passedDepth){
+            if(m_fragments[i].isLive and m_fragments[i].passedDepth){
                m_fragmentIndices.push_back(i);
                activeCount++;
             }
@@ -152,6 +152,7 @@ struct stage_shading_info_t {
     unsigned launched_threads;
     unsigned completed_threads;
     bool doneEarlyZ;
+    unsigned doneZTiles;
     RasterTiles * earlyZTiles;
     bool render_init;
     bool initStageKernelPtr;
@@ -174,6 +175,7 @@ struct stage_shading_info_t {
         primMap = NULL;
         primCountMap = NULL;
         earlyZTiles = NULL;
+        doneZTiles = 0;
         clear();
     }
 
@@ -182,6 +184,7 @@ struct stage_shading_info_t {
         launched_threads = 0;
         completed_threads = 0;
         doneEarlyZ = true;
+        doneZTiles = 0;
         render_init = true;
         allocAddr = NULL;
         vertCodeAddr = NULL;
@@ -205,8 +208,8 @@ public:
        maxDepth = (uint64_t) -1;
        minDepth = 0;
     }
-    shaderAttrib_t getFragmentData(unsigned threadID, unsigned attribID, unsigned attribIndex, unsigned fileIdx, unsigned idx2D,
-                          void * stream, stage_shading_info_t* shadingData, bool z_unit_disabled);
+    shaderAttrib_t getFragmentData(unsigned utid, unsigned tid, unsigned attribID, unsigned attribIndex, 
+          unsigned fileIdx, unsigned idx2D, void * stream, stage_shading_info_t* shadingData, bool z_unit_disabled);
 
     void addFragment(fragmentData_t fd);
     inline unsigned size() {
@@ -249,6 +252,7 @@ public:
     bool m_flagEndVertexShader;
     void endVertexShading(CudaGPU * cudaGPU);
     unsigned int doFragmentShading();
+    unsigned int noDepthFragmentShading();
     bool m_flagEndFragmentShader;
     void endFragmentShading();
     void addFragmentsQuad(std::vector<fragmentData_t>& quad);
@@ -261,10 +265,11 @@ public:
           unsigned int block_H, unsigned int block_W, unsigned blendingMode, unsigned depthMode, unsigned cptStartFrame, unsigned cptEndFrame, unsigned cptPeroid, bool skipCpFrames, char* outdir);
     GLuint getScreenWidth(){return m_bufferWidth;}
     GLuint getRBSize(){return m_bufferWidth*m_bufferHeight;}
-    shaderAttrib_t getFragmentData(unsigned threadID, unsigned attribID, unsigned attribIndex, unsigned fileIdx, unsigned idx2D, void * stream);
+    shaderAttrib_t getFragmentData(unsigned utid, unsigned tid, unsigned attribID, 
+          unsigned attribIndex, unsigned fileIdx, unsigned idx2D, void * stream);
     uint32_t getVertexData(unsigned threadID, unsigned attribID, unsigned attribIndex, void * stream);
     void writeVertexResult(unsigned threadID, unsigned resAttribID, unsigned attribIndex, float data);
-    void checkGraphicsThreadExit(void * kernelPtr, unsigned tid);
+    void checkGraphicsThreadExit(void * kernelPtr, unsigned tid, void* stream);
     void setTcInfo(int pid, int tid){m_tcPid = pid; m_tcTid=tid;}
 
     //gem5 calls

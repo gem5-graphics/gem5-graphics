@@ -6,6 +6,6 @@ void startEarlyZ(CudaGPU* cudaGPU, uint64_t depthBuffStart, uint64_t depthBuffEn
       uint8_t* depthBuf, unsigned frameWidth, unsigned frameHeight, unsigned tileH, unsigned tileW, unsigned blockH, unsigned blockW, RasterDirection dir){
    ZUnit* zunit = cudaGPU->getZUnit();
    //printf("zunit ptr =%x \n", zunit);
-   zunit->startEarlyZ(depthBuffStart, depthBuffEnd, bufWidth, tiles, dSize, depthFunc, 
+   zunit->startEarlyZ(depthBuffStart, depthBuffEnd, bufWidth, *tiles, dSize, depthFunc, 
          depthBuf,frameWidth, frameHeight, tileH, tileW, blockH, blockW, dir);
 }

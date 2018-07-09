@@ -540,10 +540,13 @@ void gpgpu_sim::launch( kernel_info_t *kinfo )
    for(n=0; n < m_running_kernels.size(); n++ ) {
        if( (NULL==m_running_kernels[n]) || m_running_kernels[n]->done() ) {
            m_running_kernels[n] = kinfo;
-           break;
+           return;
        }
    }
-   assert(n < m_running_kernels.size());
+   //special case, graphics shaders are redundant
+   if(kinfo->isGraphicsKernel()){
+      m_running_kernels.push_back(kinfo);
+   }
 }
 
 bool gpgpu_sim::can_start_kernel()
@@ -571,7 +574,7 @@ bool gpgpu_sim::get_more_cta_left() const
 kernel_info_t *gpgpu_sim::select_kernel()
 {
     for(unsigned n=0; n < m_running_kernels.size(); n++ ) {
-        unsigned idx = (n+m_last_issued_kernel+1)%m_config.max_concurrent_kernel;
+        unsigned idx = (n+m_last_issued_kernel+1)%m_running_kernels.size();
         if( m_running_kernels[idx] && !m_running_kernels[idx]->no_more_ctas_to_run() ) {
             m_last_issued_kernel=idx;
             // record this kernel for stat print if it is the first time this kernel is selected for execution  

@@ -36,7 +36,7 @@ unsigned readMESABufferWidth();
 unsigned readMESABufferSize();
 
 //reading fragment attributes, used by the fragment shading stage
-shaderAttrib_t readFragmentAttribs(unsigned threadID, unsigned attribID,
+shaderAttrib_t readFragmentAttribs(unsigned uniqueThreadID, unsigned tid, unsigned attribID,
                                    unsigned attribIndex, unsigned fileIdx, unsigned idx2D, void* stream);
 
 uint32_t readVertexAttribs(unsigned threadID, unsigned attribID, unsigned attribIndex, void* stream);
@@ -45,7 +45,7 @@ uint32_t readVertexAttribs(unsigned threadID, unsigned attribID, unsigned attrib
 void writeVertexResult(unsigned threadID, unsigned resAttribID, unsigned attribIndex, float data);
 
 //checks if a vertex finishes execution
-void checkGraphicsThreadExit(void* kernelPtr, unsigned tid);
+void checkGraphicsThreadExit(void* kernelPtr, unsigned tid, void* stream);
 
 bool isBlendingEnabled(void);
 

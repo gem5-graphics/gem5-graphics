@@ -89,48 +89,52 @@ const char* VERT_ATTRIB_NAMES[33] =
    "VERT_ATTRIB_MAX"
 };
 
-shaderAttrib_t primitiveFragmentsData_t::getFragmentData(unsigned threadID, unsigned attribID,
+shaderAttrib_t primitiveFragmentsData_t::getFragmentData(unsigned utid, unsigned tid, unsigned attribID,
                                                    unsigned attribIndex, unsigned fileIdx, 
                                                    unsigned idx2D, void * stream,
                                                    stage_shading_info_t* si, bool z_unit_disabled) {
   shaderAttrib_t retVal;
   bool isRetVal = false;
+  fragmentData_t* frag = NULL;
+  if(z_unit_disabled){
+     if(utid < m_fragments.size()){
+        frag = &m_fragments[utid];
+     }
+  } else {
+     unsigned tileId = si->cudaStreamTiles[(uint64_t)stream].tileId;
+     DPRINTF(MesaGpgpusim, "querying utid=%d, tileId=%d, tid=%d\n", tileId, utid, tid);
+     RasterTile& rt = (*(*(si->earlyZTiles))[tileId]);
+     if(tid < rt.size()){
+        frag = &rt[tid];
+     }
+  }
+
   switch(attribID){
     case FRAG_ACTIVE: {
-        if(z_unit_disabled){
-          if(threadID >= m_fragments.size()) 
-          {
-            retVal.u32 = 0; //no fragment, padding lane
-          } else {
-            retVal.u32  = m_fragments[threadID].isLive == true? 1 : 0;
-          }
-        } else {
-          unsigned tileId = si->cudaStreamTiles[(uint64_t)stream].tileId;
-          printf("querying tileId=%d, threadID=%d\n", tileId, threadID);
-          if(threadID >= (*(*(si->earlyZTiles))[tileId]).size()) {
-            printf("tile %d, thread %d inactive\n", tileId, threadID);
-            retVal.u32 = 0;
-          } else {
-            //TODO
-            printf("FIX ME: active depth fragment query tile %d, thread %d active\n", tileId, threadID);
-            retVal.u32 =  (*(*(si->earlyZTiles))[tileId])[threadID].passedDepth == true? 1 : 0;
-          }
-        }
+      if(frag == NULL){
+         retVal.u32 = 0;
+      } else {
+         if(z_unit_disabled){
+            retVal.u32  = frag->isLive? 1 : 0;
+         } else {
+            retVal.u32 =  frag->isLive? (frag->passedDepth? 1 : 0) : 0;
+         }
+      }
         isRetVal = true;
         break;
       }
     case QUAD_INDEX: {
-      retVal.u32 =  m_fragments[threadID].quadIdx;
+      retVal.u32 =  frag->quadIdx;
       isRetVal = true;
       break;
       }
     case FRAG_UINT_POS: {
-      retVal.u32 =  m_fragments[threadID].uintPos[attribIndex];
+      retVal.u32 =  frag->uintPos[attribIndex];
       isRetVal = true;
       break;
     }
     case TGSI_FILE_INPUT: {
-      retVal.f32 = m_fragments[threadID].inputs[fileIdx][attribIndex];
+      retVal.f32 = frag->inputs[fileIdx][attribIndex];
       isRetVal = true;
       break;
     }
@@ -139,22 +143,7 @@ shaderAttrib_t primitiveFragmentsData_t::getFragmentData(unsigned threadID, unsi
   if(isRetVal)
     return retVal;
 
-  float result = 0.0;
-  if(z_unit_disabled){
-    assert(threadID < m_fragments.size());
-    result =  m_fragments[threadID].attribs[attribID][attribIndex];
-    if(attribID == VARYING_SLOT_COL0) {
-      retVal.u32 = primId;
-      return retVal;
-    }
-  } else {
-    unsigned tileId = si->cudaStreamTiles[(uint64_t)stream].tileId;
-    printf("get data for tile %d, thread %d, attrib %d, idx %d\n", tileId, threadID, attribID, attribIndex);
-    assert(threadID < (*(*(si->earlyZTiles))[tileId]).size());
-    result =  (*(*(si->earlyZTiles))[tileId])[threadID].attribs[attribID][attribIndex];
-    printf("data = %f\n", result);
-  }
-  retVal.f32 = result;
+  retVal.f32 = frag->attribs[attribID][attribIndex];
   return retVal;
 }
 
@@ -177,7 +166,7 @@ void primitiveFragmentsData_t::sortFragmentsInRasterOrder(unsigned frameHeight, 
     assert((blockW%tileW)==0);
 
     //DPRINTF(MesaGpgpusim, "tileW = %d, and tileH = %d\n", tileW, tileH);
-    printf("Current frame size WxH=%dx%d\n", frameWidth, frameHeight);
+    DPRINTF(MesaGpgpusim, "Current frame size WxH=%dx%d\n", frameWidth, frameHeight);
 
     //adding padding for rounded pixel locations
     frameHeight+= blockH;
@@ -287,7 +276,10 @@ void renderData_t::runEarlyZ(CudaGPU * cudaGPU, unsigned tileH, unsigned tileW, 
    RasterTiles * allTiles = new RasterTiles();
    for(int prim=0; prim < drawPrimitives.size(); prim++){
       RasterTiles * primTiles = drawPrimitives[prim].sortFragmentsInTiles(m_bufferHeight, m_bufferWidth, tileH, tileW, blockH, blockW, dir);
+      DPRINTF(MesaGpgpusim, "prim %d tiles = %ld\n", prim, primTiles->size());
+
       printf("prim %d tiles = %ld\n", prim, primTiles->size());
+
       for(int tile=0; tile < primTiles->size(); tile++){
          if((*primTiles)[tile]->size() == 0) continue;
          allTiles->push_back((*primTiles)[tile]);
@@ -295,18 +287,17 @@ void renderData_t::runEarlyZ(CudaGPU * cudaGPU, unsigned tileH, unsigned tileW, 
       delete primTiles;
    }
 
-   printf("number of tiles = %ld\n", allTiles->size());
+   DPRINTF(MesaGpgpusim, "number of tiles = %ld\n", allTiles->size());
    uint64_t depthBuffEndAddr = (uint64_t)m_deviceData + m_colorBufferByteSize + m_depthBufferSize;
    uint64_t depthBuffStartAddr = (uint64_t)m_deviceData + m_colorBufferByteSize; 
-   printf("depthBuffer start = %lx, end =%lx\n", depthBuffStartAddr, depthBuffEndAddr);
+   DPRINTF(MesaGpgpusim, "depthBuffer start = %lx, end =%lx\n", depthBuffStartAddr, depthBuffEndAddr);
+
    m_sShading_info.doneEarlyZ = false;
    m_sShading_info.earlyZTiles = allTiles;
    m_sShading_info.completed_threads = 0;
    m_sShading_info.launched_threads = 0;
    assert(m_sShading_info.fragCodeAddr == NULL);
-   //ZUnit* zunit = cudaGPU->getZUnit();
-   //printf("zunit ptr =%x \n", zunit);
-   //zunit->startEarlyZ(depthBuffStart, depthBuffEnd, bufWidth, allTiles, dSize, depthFunc);
+
    startEarlyZ(cudaGPU, depthBuffStartAddr, depthBuffEndAddr, m_bufferWidth, allTiles, m_depthSize, m_mesaCtx->Depth.Func, 
          m_depthBuffer, m_bufferWidth, m_bufferHeight, tileH, tileW, blockH, blockW, dir);
 }
@@ -407,7 +398,7 @@ renderData_t::renderData_t() {
 renderData_t::~renderData_t() {
 }
 
-shaderAttrib_t renderData_t::getFragmentData(unsigned threadID, unsigned attribID, unsigned attribIndex,
+shaderAttrib_t renderData_t::getFragmentData(unsigned utid, unsigned tid, unsigned attribID, unsigned attribIndex,
                                     unsigned fileIdx, unsigned idx2D, void * stream) {
     bool z_unit_disabled = m_inShaderDepth or !isDepthTestEnabled(); 
 
@@ -423,13 +414,14 @@ shaderAttrib_t renderData_t::getFragmentData(unsigned threadID, unsigned attribI
     }
     unsigned primId = m_sShading_info.cudaStreamTiles[(uint64_t)stream].primId;
     assert(primId < drawPrimitives.size());
-    return drawPrimitives[primId].getFragmentData(threadID, attribID, attribIndex, fileIdx, idx2D, stream, &m_sShading_info, z_unit_disabled);
+    return drawPrimitives[primId].getFragmentData(utid, tid, attribID, attribIndex, 
+          fileIdx, idx2D, stream, &m_sShading_info, z_unit_disabled);
 }
 
-uint32_t renderData_t::getVertexData(unsigned threadID, unsigned attribID, unsigned attribIndex, void * stream) {
+uint32_t renderData_t::getVertexData(unsigned utid, unsigned attribID, unsigned attribIndex, void * stream) {
    switch(attribID){
       case VERT_ACTIVE: 
-         if(threadID >= m_sShading_info.launched_threads)  return 0;
+         if(utid >= m_sShading_info.launched_threads)  return 0;
          return 1;
          break;
       default: printf("Invalid attribID: %d \n", attribID);
@@ -446,9 +438,6 @@ void renderData_t::addFragment(fragmentData_t fragmentData) {
 void renderData_t::addPrimitive() {
     if(!GPGPUSimSimulationActive()) return;
     primitiveFragmentsData_t prim(drawPrimitives.size());
-    if(drawPrimitives.size() > 0){
-      return; //TODO: remove me
-    }
     DPRINTF(MesaGpgpusim, "adding new primitive, total = %ld\n", drawPrimitives.size()+1);
     drawPrimitives.push_back(prim);
 }
@@ -852,7 +841,7 @@ void renderData_t::writeDrawBuffer(std::string time, byte * buffer, int bufferSi
     }
 
     bufferImage.close();
-    std::string convertCommand = "convert -depth " + std::to_string(depth) + " -size " + std::to_string(w) + "x" + std::to_string(h) 
+    std::string convertCommand = "convert -flip -depth " + std::to_string(depth) + " -size " + std::to_string(w) + "x" + std::to_string(h) 
                                  + " " + ss.str() + " " + ss.str() + ".jpg";
     system(convertCommand.c_str());
     system(std::string("rm " + ss.str()).c_str());
@@ -1000,13 +989,14 @@ byte* renderData_t::setDepthBuffer(DepthSize activeDepthSize, DepthSize actualDe
     //GetRowFunc GetRow = rb->GetRow;
     uint32_t mesaDepthBufferSize = buffSize * sizeof (byte)* mesaDbSize;
     byte *tempBuffer  = new byte [mesaDepthBufferSize];
-    for (int i = 0; i < m_depthBufferHeight; i++){
+    std::memset(tempBuffer, 0, mesaDepthBufferSize);
+    /*for (int i = 0; i < m_depthBufferHeight; i++){
         unsigned xpos = ((m_depthBufferHeight - i - 1)* m_depthBufferWidth * mesaDbSize);
         assert(0);
         //_mesa_readpixels(m_mesaCtx, 0, 0, rb->Width, rb->Height, rb->Format, GL_UNSIGNED_BYTE, &m_mesaCtx->Pack, tempBuffer);
         //read_depth_pixels(m_mesaCtx, 0, 0, rb->Width, rb->Height, rb->Format, tempBuffer, &m_mesaCtx->Pack);
         //GetRow(m_mesaCtx, rb, m_depthBufferWidth, 0, i, tempBuffer + xpos);
-    }
+    }*/
 
     //convertng the buffer format from Z16 to Z32 in case the buffers are of different sizes
     //this case happes when in-shader depth is used with a 16 bit mesa depth buffer
@@ -1056,7 +1046,7 @@ void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, voi
 
     gl_renderbuffer *rb = m_mesaCtx->ReadBuffer->Attachment[BUFFER_DEPTH].Renderbuffer;
     if(isDepthTestEnabled()){
-       if(rb->Format==MESA_FORMAT_Z_UNORM32){
+       if(rb->Format==MESA_FORMAT_Z_UNORM32 or rb->Format==MESA_FORMAT_Z24_UNORM_S8_UINT){
           activeDepthSize = trueDepthSize = DepthSize::Z32;
        } else if(rb->Format==MESA_FORMAT_Z_UNORM16){
           if(m_inShaderDepth){
@@ -1132,15 +1122,23 @@ void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, voi
 
     m_depthBuffer = NULL;
     if(isDepthTestEnabled()){
-        assert(0);
         m_depthBuffer = setDepthBuffer(activeDepthSize, trueDepthSize);
         graphicsMalloc((void**) &m_deviceData, m_colorBufferByteSize + m_depthBufferSize); //for color and depth
         /*printf("color buffer start=%llx,  end=%llx, depthBuffer start=%llx, end=%llx\n",
               m_deviceData, m_deviceData + m_colorBufferByteSize-1,
               m_deviceData + m_colorBufferByteSize, m_deviceData + m_colorBufferByteSize + m_depthBufferSize-1);*/
 
-        graphicsMemcpy(m_deviceData + m_colorBufferByteSize,
-                m_depthBuffer, m_depthBufferSize, graphicsMemcpyHostToSim);
+        if(m_standaloneMode){
+           CudaGPU* cg = CudaGPU::getCudaGPU(g_active_device);
+           assert(cg->standaloneMode);
+           GraphicsStandalone* gs = cg->getGraphicsStandalone();
+           assert(gs != NULL);
+           gs->physProxy.writeBlob((Addr)m_deviceData + m_colorBufferByteSize,
+                 m_depthBuffer,  m_depthBufferSize);
+        } else {
+           graphicsMemcpy(m_deviceData + m_colorBufferByteSize,
+                 m_depthBuffer, m_depthBufferSize, graphicsMemcpyHostToSim);
+        }
     } else {
         graphicsMalloc((void**) &m_deviceData, m_colorBufferByteSize);
     }
@@ -1165,9 +1163,9 @@ void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, voi
     }
 
     if(isBlendingEnabled()){
-      printf("blending enabled\n");
+      DPRINTF(MesaGpgpusim, "blending enabled\n");
     } else {
-      printf("blending disabled\n");
+      DPRINTF(MesaGpgpusim, "blending disabled\n");
     }
 }
 
@@ -1180,12 +1178,12 @@ void renderData_t::addTexelFetch(int x, int y, int level){
 }
 
 std::vector<uint64_t> renderData_t::fetchTexels(int modifier, int unit, int dim, float* coords,
-                                                int num_coords, float* dst, int num_dst, unsigned tid,
+                                                int num_coords, float* dst, int num_dst, unsigned utid,
                                                 bool isTxf, bool isTxb){
   m_currSamplingUnit = unit;
   texelInfo_t* ti = &m_textureInfo[m_currSamplingUnit];
 
-  unsigned  quadIdx = getFragmentData(tid, QUAD_INDEX, -1, -1, -1, NULL).u32;
+  unsigned  quadIdx = getFragmentData(utid, -1, QUAD_INDEX, -1, -1, -1, NULL).u32;
   if(isTxf) {
     //FIXME: use txf
     //mesaFetchTxf(m_tmachine, modifier, unit, dim, coords, num_coords , dst, num_dst, quadIdx);
@@ -1411,8 +1409,20 @@ GLboolean renderData_t::doVertexShading(GLvector4f ** inputParams, vp_stage_data
 */
 
 unsigned int renderData_t::doFragmentShading() {
+   CudaGPU* cudaGPU = CudaGPU::getCudaGPU(g_active_device);
+   if(m_inShaderDepth or not(isDepthTestEnabled())){
+      //now sorting them in raster order
+      sortFragmentsInRasterOrder(getTileH(), getTileW(),getBlockH(), getBlockW(), HorizontalRaster); //BlockedHorizontal);
+      noDepthFragmentShading();
+   } else {
+      runEarlyZ(cudaGPU, getTileH(), getTileW(),getBlockH(), getBlockW(), HorizontalRaster); // BlockedHorizontal);
+   }
+   g_gpuMutex.unlock();
+}
+
+unsigned int renderData_t::noDepthFragmentShading() {
     if(!GPGPUSimSimulationActive()){
-        std::cerr<<"Error: doFragmentShading called when simulation is not active "<<std::endl;
+        std::cerr<<"Error: noDepthFragmentShading called when simulation is not active "<<std::endl;
         exit(-1);
     }
    
@@ -1424,7 +1434,6 @@ unsigned int renderData_t::doFragmentShading() {
     if (totalFragsCount == 0){
       endFragmentShading();
       m_flagEndFragmentShader = false;
-      g_gpuMutex.unlock();
       return 0;
     }
 
@@ -1442,7 +1451,7 @@ unsigned int renderData_t::doFragmentShading() {
        m_sShading_info.cudaStreams.push_back(cudaStream_t());
        graphicsStreamCreate(&m_sShading_info.cudaStreams.back());
 
-       DPRINTF(MesaGpgpusim, "starting fragment shader, fragments = %d on stream %x\n", fragmentsCount,  m_sShading_info.cudaStreams.back());
+       DPRINTF(MesaGpgpusim, "starting fragment shader, fragments = %d on stream 0x%lx\n", fragmentsCount,  m_sShading_info.cudaStreams.back());
        printf("starting fragment shader, fragments = %d, total=%d\n", fragmentsCount, m_sShading_info.launched_threads);
 
        mapTileStream_t map;
@@ -1461,7 +1470,6 @@ unsigned int renderData_t::doFragmentShading() {
     assert(m_sShading_info.fragCodeAddr != NULL);
 
     m_sShading_info.currentPass = stage_shading_info_t::GraphicsPass::Fragment;
-    g_gpuMutex.unlock();
     return m_sShading_info.launched_threads;
 }
 
@@ -1494,7 +1502,8 @@ void renderData_t::putDataOnColorBuffer() {
       for(int h=0; h < m_bufferHeight; h++)
         for(int w=0; w< m_bufferWidth; w++){
           int srcPixel = ((m_bufferHeight - h - 1) * rbStride) + (w * m_fbPixelSize);
-          int dstPixel = ((m_bufferHeight - h) * m_bufferWidth * m_fbPixelSize*-1)
+          //int dstPixel = ((m_bufferHeight - h) * m_bufferWidth * m_fbPixelSize*-1)
+          int dstPixel = (h * m_bufferWidth * m_fbPixelSize*-1)
               + (w * m_fbPixelSize);
           renderBuf[srcPixel + 0] = tempBufferEnd[dstPixel + 0];
           renderBuf[srcPixel + 1] = tempBufferEnd[dstPixel + 1];
@@ -1512,8 +1521,16 @@ void renderData_t::putDataOnColorBuffer() {
 //copying the result depth buffer to mesa
 void renderData_t::putDataOnDepthBuffer(){
     byte * tempBuffer = new byte [m_depthBufferSize];
-    graphicsMemcpy(tempBuffer, m_deviceData + m_colorBufferByteSize,
-          m_depthBufferSize, graphicsMemcpySimToHost);
+    if(m_standaloneMode){
+       CudaGPU* cg = CudaGPU::getCudaGPU(g_active_device);
+       assert(cg->standaloneMode);
+       GraphicsStandalone* gs = cg->getGraphicsStandalone();
+       assert(gs != NULL);
+       gs->physProxy.readBlob((Addr)m_deviceData + m_colorBufferByteSize, tempBuffer, m_depthBufferSize);
+    } else {
+       graphicsMemcpy(tempBuffer, m_deviceData + m_colorBufferByteSize,
+             m_depthBufferSize, graphicsMemcpySimToHost);
+    }
 
     writeDrawBuffer("post_depth", tempBuffer,  m_depthBufferSize, m_bufferWidth, m_bufferHeight, "a", 8*(int)m_depthSize);
 
@@ -1530,14 +1547,7 @@ void renderData_t::putDataOnDepthBuffer(){
        delete [] tempBuffer;
     }
 
-    assert(0);
-    /*gl_renderbuffer *rb = m_mesaCtx->DrawBuffer->_DepthBuffer;
-    for (int i = 0; i < m_depthBufferHeight; i++){
-        unsigned xpos = ((m_depthBufferHeight - i - 1)* m_depthBufferWidth * ((int)m_mesaDepthSize));
-        m_depthBufferPutRow(m_mesaCtx, rb, m_depthBufferWidth, 0, i, readDepth + xpos, NULL);
-    }
-
-    delete [] readDepth;*/
+    delete [] readDepth;
 }
 
 
@@ -1782,7 +1792,7 @@ void renderData_t::endVertexShading(CudaGPU * cudaGPU){
        //now sorting them in raster order
        sortFragmentsInRasterOrder(getTileH(), getTileW(),getBlockH(), getBlockW(), HorizontalRaster); //BlockedHorizontal);
 
-       if(0 == doFragmentShading()){
+       if(0 == noDepthFragmentShading()){
           //no fragment shader
           endFragmentShading();
        }
@@ -1799,7 +1809,7 @@ void renderData_t::endFragmentShading() {
     endDrawCall(); 
 }
 
-void renderData_t::checkGraphicsThreadExit(void * kernelPtr, unsigned tid){
+void renderData_t::checkGraphicsThreadExit(void * kernelPtr, unsigned tid, void* stream){
    if(m_sShading_info.currentPass == stage_shading_info_t::GraphicsPass::NONE){
       //nothing to do
       return;
@@ -1836,10 +1846,15 @@ void renderData_t::checkEndOfShader(CudaGPU * cudaGPU){
       endVertexShading(cudaGPU);
       m_flagEndVertexShader = false;
    }
-
+   if(m_sShading_info.earlyZTiles!=NULL) 
+      m_sShading_info.doneZTiles++;
    if(m_flagEndFragmentShader){
-      endFragmentShading();
-      m_flagEndFragmentShader = false;
+      printf("doneZTils = %d\n", m_sShading_info.doneZTiles);
+      if(m_sShading_info.earlyZTiles==NULL or
+            m_sShading_info.earlyZTiles->size()==m_sShading_info.doneZTiles){
+         endFragmentShading();
+         m_flagEndFragmentShader = false;
+      }
    }
 
 }
@@ -1858,14 +1873,15 @@ void renderData_t::doneEarlyZ(){
 void renderData_t::launchFragmentTile(RasterTile * rasterTile, unsigned tileId){
    unsigned fragsCount = rasterTile->setActiveFragmentsIndices();
 
-   printf( "Launching tile %d of fragments, active count=%d of of %d\n", tileId, fragsCount, rasterTile->size());
+   DPRINTF(MesaGpgpusim, "Launching tile %d of fragments, active count=%d of of %d\n", tileId, fragsCount, rasterTile->size());
 
+   //no active fragments
    if(fragsCount == 0){
-      //not active fragments
       return;
    }
 
    DPRINTF(MesaGpgpusim, "Launching a tile of fragments, active count=%d of of %d\n", fragsCount, rasterTile->size());
+   printf("Launching a tile of fragments, active count=%d of of %d\n", fragsCount, rasterTile->size());
 
 
    unsigned threadsPerBlock = 256; //TODO: add it to options, chunks used to distribute work
@@ -1883,16 +1899,15 @@ void renderData_t::launchFragmentTile(RasterTile * rasterTile, unsigned tileId){
    m_sShading_info.cudaStreamTiles[(uint64_t)(m_sShading_info.cudaStreams.back())] = map;
 
    uint64_t streamId = (uint64_t)m_sShading_info.cudaStreams.back();
-   printf("running %d threads for  tile %d with %d fragments on stream %ld\n", numberOfBlocks*threadsPerBlock, tileId, rasterTile->size(), streamId );
-   assert( graphicsConfigureCall(numberOfBlocks, threadsPerBlock, 0, m_sShading_info.cudaStreams.back())  
-   //assert( graphicsConfigureCall(numberOfBlocks, threadsPerBlock, 0, 0)  //0) cudaStream) 
-      == cudaSuccess);
+   DPRINTF(MesaGpgpusim, "running %d threads for  tile %d with %d fragments on stream %ld\n", rasterTile->size() , tileId, rasterTile->size(), streamId );
+   assert( graphicsConfigureCall(numberOfBlocks, threadsPerBlock, 0, m_sShading_info.cudaStreams.back()) == cudaSuccess);
    assert(graphicsSetupArgument((void*) &arg, sizeof (byte*), 0/*offset*/) == cudaSuccess);
    assert(graphicsLaunch(getCurrentShaderId(FRAGMENT_PROGRAM), &m_sShading_info.fragCodeAddr) == cudaSuccess);
    assert(m_sShading_info.fragCodeAddr != NULL);
 
    m_sShading_info.launched_threads+= numberOfBlocks*threadsPerBlock;
-   printf( "total launched threads = %d\n", m_sShading_info.launched_threads);
+   DPRINTF(MesaGpgpusim, "total launched threads = %d\n", m_sShading_info.launched_threads);
+
    m_sShading_info.earlyZTilesCounts.push_back(m_sShading_info.launched_threads);
    m_sShading_info.earlyZTilesIds.push_back(tileId);
 

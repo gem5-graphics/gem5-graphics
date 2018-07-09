@@ -146,7 +146,7 @@ shaderAttrib_t readFragmentInputData(ptx_thread_info *thread,int builtin_id, uns
       }
       default: printf("Undefined fragment input register \n"); abort();
     }
-    return readFragmentAttribs(uniqueThreadId, attribID, attribIndex, fileIdx, idx2D, stream);
+    return readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), attribID, attribIndex, fileIdx, idx2D, stream);
 }
 
 uint32_t readVertexInputData(ptx_thread_info *thread,int builtin_id, unsigned dim_mod){
@@ -2175,7 +2175,8 @@ void exit_impl( const ptx_instruction *pI, ptx_thread_info *thread )
    thread->set_done();
    thread->exitCore();
    thread->registerExit();
-   checkGraphicsThreadExit((void*) thread->get_kernel_info(),thread->get_uid_in_kernel());
+   checkGraphicsThreadExit((void*) thread->get_kernel_info(),thread->get_uid_in_kernel(),
+         (void*) thread->get_kernel_info()->get_stream());
 }
 
 void mad_def( const ptx_instruction *pI, ptx_thread_info *thread, bool use_carry = false );
@@ -4161,8 +4162,8 @@ void tex_impl( const ptx_instruction *pI, ptx_thread_info *thread){
 
      unsigned uniqueThreadId = thread->get_uid_in_kernel();
      void* stream = thread->get_kernel_info()->get_stream();
-     unsigned posX = readFragmentAttribs(uniqueThreadId, FRAG_UINT_POS, 0, -1, -1, stream).u32;
-     unsigned posY = readFragmentAttribs(uniqueThreadId, FRAG_UINT_POS, 1, -1, -1, stream).u32;
+     unsigned posX = readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), FRAG_UINT_POS, 0, -1, -1, stream).u32;
+     unsigned posY = readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), FRAG_UINT_POS, 1, -1, -1, stream).u32;
 
      std::vector<uint64_t> texelAddrs;
      //texelAddrs = fetchMesaTexels(0, samplingUnit, dim, fcoords, dim, fdst, elems, thread->get_uid_in_kernel(), isTxf, isTxb);
@@ -4655,8 +4656,8 @@ void stp_impl( const ptx_instruction *pI, ptx_thread_info *thread )
 
    unsigned uniqueThreadId = thread->get_uid_in_kernel();
    void* stream = thread->get_kernel_info()->get_stream();
-   unsigned posX = readFragmentAttribs(uniqueThreadId, FRAG_UINT_POS, 0, -1, -1, stream).u32;
-   unsigned posY = readFragmentAttribs(uniqueThreadId, FRAG_UINT_POS, 1, -1, -1, stream).u32;
+   unsigned posX = readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), FRAG_UINT_POS, 0, -1, -1, stream).u32;
+   unsigned posY = readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), FRAG_UINT_POS, 1, -1, -1, stream).u32;
    addr_t addr = getFramebufferFragmentAddr(posX, posY, size);
 
    //FIXME
