@@ -217,7 +217,8 @@ ZUnit::processDepthResponse(){
 
 void
 ZUnit::handleZcacheRetry(){
-   assert(retryZPkts.size());
+   if(retryZPkts.size() == 0)
+      return;
 
    numZCacheRetry++;
 
