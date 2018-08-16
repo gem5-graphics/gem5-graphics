@@ -53,7 +53,7 @@
 #include "stats.h"
 #include "gpu-cache.h"
 #include "traffic_breakdown.h"
-#include "graphics_pipeline.h"
+#include "graphics_models.h"
 
 
 
