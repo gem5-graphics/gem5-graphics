@@ -53,6 +53,7 @@
 #include "stats.h"
 #include "gpu-cache.h"
 #include "traffic_breakdown.h"
+#include "graphics_pipeline.h"
 
 
 
@@ -1877,6 +1878,9 @@ public:
                        const struct memory_config *mem_config,
                        shader_core_stats *stats,
                        memory_stats_t *mstats );
+    ~simt_core_cluster(){
+       delete m_graphics_pipe;
+    }
 
     void core_cycle();
     void icnt_cycle();
@@ -1928,6 +1932,9 @@ private:
     unsigned m_cta_issue_next_core;
     std::list<unsigned> m_core_sim_order;
     std::list<mem_fetch*> m_response_fifo;
+
+    //graphics components
+    graphics_simt_pipeline* m_graphics_pipe;
 };
 
 class shader_memory_interface : public mem_fetch_interface {
