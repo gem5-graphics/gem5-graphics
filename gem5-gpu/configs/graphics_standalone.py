@@ -62,6 +62,10 @@ parser.add_option("--gtrace", type="string", default="",
 
 (options, args) = parser.parse_args()
 
+if options.gtrace == "":
+   print "Error: no trace (--gtrace) specified"
+   exit(1)
+
 options.g_standalone_mode = True
 options.mem_size = "1GB"
 options.g_raster_th = 16;
