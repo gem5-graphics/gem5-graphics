@@ -582,6 +582,7 @@ class CudaGPU : public ClockedObject
     const char* getConfigPath() { return gpgpusimConfigPath.c_str(); }
     static int getSystemCachelineSize() {return CudaGPU::gpuCacheLineSize;}
     gpgpu_sim* getTheGPU() { return theGPU; }
+    void activateGPU();
 
     /// Called at the beginning of each kernel launch to start the statistics
     void beginRunning(Tick stream_queued_time, struct CUstream_st *_stream);

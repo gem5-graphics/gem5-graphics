@@ -380,6 +380,15 @@ void CudaGPU::scheduleStreamEvent() {
     schedule(streamTickEvent, nextCycle());
 }
 
+//activate gpu clocking
+void CudaGPU::activateGPU(){
+   Tick delay = clockPeriod();
+   if(!coresWrapper.isScheduled()) coresWrapper.scheduleEvent(delay);
+   if(!icntWrapper.isScheduled()) icntWrapper.scheduleEvent(delay);
+   if(!l2Wrapper.isScheduled()) l2Wrapper.scheduleEvent(delay);
+   if(!dramWrapper.isScheduled()) dramWrapper.scheduleEvent(delay);
+}
+
 // FIXME: So, this code doesn't allow another kernel to be scheduled once a previous
 // one already has been scheduled. If already scheduled, each wrapper will be scheduled on its
 // own. So, if we just don't schedule anything, the kernel should run anyway. However, we lose
