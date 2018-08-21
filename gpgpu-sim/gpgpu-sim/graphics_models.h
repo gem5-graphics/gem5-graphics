@@ -48,11 +48,9 @@ class graphics_simt_pipeline {
    private:
       struct primitive_data_t{
          primitive_data_t(primitiveFragmentsData_t* _prim):
-            prim(_prim), c_start_tile(-1), c_end_tile(-1)
+            prim(_prim)
          {}
          primitiveFragmentsData_t* const prim;
-         int c_start_tile;
-         int c_end_tile;
       };
    public:
       graphics_simt_pipeline(unsigned simt_cluster_id,
@@ -66,9 +64,9 @@ class graphics_simt_pipeline {
    { 
       m_setup_pipe = new fifo_pipeline<primitive_data_t>("setup-stage", setup_delay, setup_q_len);
       m_c_raster_pipe = new fifo_pipeline<primitive_data_t>("coarse-raster-stage", 0, 2);
-      m_hiz_pipe = new fifo_pipeline<primitive_data_t>("hiz-stage", 0, 5);
-      m_f_raster_pipe = new fifo_pipeline<primitive_data_t>("fine-raster-stage", 0, 5);
-      m_ta_pipe = new fifo_pipeline<primitive_data_t>("tile-assembly-stage", 0, 5);
+      m_hiz_pipe = new fifo_pipeline<RasterTile>("hiz-stage", 0, 5);
+      m_f_raster_pipe = new fifo_pipeline<RasterTile>("fine-raster-stage", 0, 5);
+      m_ta_pipe = new fifo_pipeline<RasterTile>("tile-assembly-stage", 0, 5);
       m_current_c_tile = 0;
       m_current_f_tile = 0;
    }
@@ -102,21 +100,20 @@ class graphics_simt_pipeline {
       void run_c_raster(){
          primitive_data_t* prim = m_c_raster_pipe->top();
          if(prim){
-            if(m_hiz_pipe->full()) return;
-            if((m_current_c_tile+m_c_tiles_per_cycle) >= 
-                  prim->prim->getSimtTiles(m_cluster_id).size()){
                //last batch of c tiles
-               prim->c_start_tile = m_current_c_tile;
-               prim->c_end_tile = prim->prim->getSimtTiles(m_cluster_id).size() -1;
-               m_hiz_pipe->push(prim);
+            unsigned processed_tiles = 0;    
+            unsigned t=m_current_c_tile;
+            for(;t< prim->prim->getSimtTiles(m_cluster_id).size(); t++){
+               if(m_hiz_pipe->full()) return;
+               m_hiz_pipe->push(prim->prim->getSimtTiles(m_cluster_id)[t]);
+               m_current_c_tile++;
+               processed_tiles++;
+               if(processed_tiles == m_c_tiles_per_cycle)
+                  break;
+            }
+            if(m_current_c_tile == prim->prim->getSimtTiles(m_cluster_id).size()){
                m_c_raster_pipe->pop();
                m_current_c_tile = 0;
-            } else {
-               primitive_data_t* new_prim = new primitive_data_t(*prim);
-               new_prim->c_start_tile =  m_current_c_tile;
-               new_prim->c_start_tile = m_current_c_tile + m_c_tiles_per_cycle -1;
-               m_hiz_pipe->push(new_prim);
-               m_current_c_tile+= m_c_tiles_per_cycle;
             }
          } else {
             m_c_raster_pipe->pop();
@@ -124,23 +121,25 @@ class graphics_simt_pipeline {
       }
 
       void run_hiz(){
-         primitive_data_t* prim = m_hiz_pipe->top();
-         if(prim){
+         RasterTile* tile = m_hiz_pipe->top();
+         if(tile){
             if(m_f_raster_pipe->full()) return;
-            m_f_raster_pipe->push(prim);
+            m_f_raster_pipe->push(tile);
             m_hiz_pipe->pop();
          } else {
             m_c_raster_pipe->pop();
          }
       }
+
       void run_f_raster(){
-         primitive_data_t* prim = m_f_raster_pipe->top();
-         if(prim){
+         RasterTile* tile = m_f_raster_pipe->top();
+         if(tile){
             if(m_ta_pipe->full()) return;
          } else {
             m_f_raster_pipe->pop();
          }
       }
+
       void run_tile_assembly(){
 
       }
@@ -170,9 +169,9 @@ class graphics_simt_pipeline {
       const unsigned m_cluster_id;
       fifo_pipeline<primitive_data_t>* m_setup_pipe;
       fifo_pipeline<primitive_data_t>* m_c_raster_pipe;
-      fifo_pipeline<primitive_data_t>* m_hiz_pipe;
-      fifo_pipeline<primitive_data_t>* m_f_raster_pipe;
-      fifo_pipeline<primitive_data_t>* m_ta_pipe;
+      fifo_pipeline<RasterTile>* m_hiz_pipe;
+      fifo_pipeline<RasterTile>* m_f_raster_pipe;
+      fifo_pipeline<RasterTile>* m_ta_pipe;
       unsigned m_current_c_tile;
       unsigned m_current_f_tile;
 
