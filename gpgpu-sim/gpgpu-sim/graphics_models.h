@@ -68,7 +68,6 @@ class graphics_simt_pipeline {
       m_f_raster_pipe = new fifo_pipeline<RasterTile>("fine-raster-stage", 0, 5);
       m_ta_pipe = new fifo_pipeline<RasterTile>("tile-assembly-stage", 0, 5);
       m_current_c_tile = 0;
-      m_current_f_tile = 0;
    }
 
       ~graphics_simt_pipeline(){
@@ -98,44 +97,46 @@ class graphics_simt_pipeline {
       }
 
       void run_c_raster(){
+         if(m_c_raster_pipe->empty()) return;
+         unsigned processed_tiles = 0;    
          primitive_data_t* prim = m_c_raster_pipe->top();
-         if(prim){
-               //last batch of c tiles
-            unsigned processed_tiles = 0;    
-            unsigned t=m_current_c_tile;
-            for(;t< prim->prim->getSimtTiles(m_cluster_id).size(); t++){
-               if(m_hiz_pipe->full()) return;
-               m_hiz_pipe->push(prim->prim->getSimtTiles(m_cluster_id)[t]);
-               m_current_c_tile++;
-               processed_tiles++;
-               if(processed_tiles == m_c_tiles_per_cycle)
-                  break;
-            }
-            if(m_current_c_tile == prim->prim->getSimtTiles(m_cluster_id).size()){
-               m_c_raster_pipe->pop();
-               m_current_c_tile = 0;
-            }
-         } else {
+         assert(prim);
+         for(unsigned t=m_current_c_tile;
+               t< prim->prim->getSimtTiles(m_cluster_id).size(); t++){
+            if(m_hiz_pipe->full()) return;
+            RasterTile* tile = prim->prim->getSimtTiles(m_cluster_id)[t];
+            if(tile->size() > 0)
+               m_hiz_pipe->push(tile);
+            m_current_c_tile++;
+            processed_tiles++;
+            if(processed_tiles == m_c_tiles_per_cycle)
+               break;
+         }
+         if(m_current_c_tile == prim->prim->getSimtTiles(m_cluster_id).size()){
             m_c_raster_pipe->pop();
+            m_current_c_tile = 0;
          }
       }
 
       void run_hiz(){
+         if(m_hiz_pipe->empty()) return;
+         if(m_f_raster_pipe->full()) return;
          RasterTile* tile = m_hiz_pipe->top();
-         if(tile){
-            if(m_f_raster_pipe->full()) return;
-            m_f_raster_pipe->push(tile);
-            m_hiz_pipe->pop();
-         } else {
-            m_c_raster_pipe->pop();
-         }
+         assert(tile);
+         assert(tile->size() > 0);
+         m_f_raster_pipe->push(tile);
+         m_hiz_pipe->pop();
       }
 
       void run_f_raster(){
-         RasterTile* tile = m_f_raster_pipe->top();
-         if(tile){
+         for(unsigned processed_tiles=0; processed_tiles < m_f_tiles_per_cycle;
+               processed_tiles++){
             if(m_ta_pipe->full()) return;
-         } else {
+            if(m_f_raster_pipe->empty()) return;
+            RasterTile* tile = m_f_raster_pipe->top();
+            assert(tile);
+            assert(tile->size() > 0);
+            m_ta_pipe->push(tile);
             m_f_raster_pipe->pop();
          }
       }
@@ -143,7 +144,8 @@ class graphics_simt_pipeline {
       void run_tile_assembly(){
 
       }
-      void run_z_unit(){}
+      void run_z_unit(){
+      }
 
       bool add_primitive(primitiveFragmentsData_t* prim, unsigned ctilesId){
          //this primitive doesn't touch this simt core
@@ -173,7 +175,6 @@ class graphics_simt_pipeline {
       fifo_pipeline<RasterTile>* m_f_raster_pipe;
       fifo_pipeline<RasterTile>* m_ta_pipe;
       unsigned m_current_c_tile;
-      unsigned m_current_f_tile;
 
       //performance configs
       const unsigned m_c_tiles_per_cycle;
