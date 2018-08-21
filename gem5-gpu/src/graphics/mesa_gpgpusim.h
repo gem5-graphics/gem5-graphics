@@ -90,7 +90,10 @@ struct fragmentData_t {
 
 class RasterTile {
    public:
-      RasterTile(int _primId, int _tilePos): primId(_primId), m_tilePos(_tilePos) {}
+      RasterTile(int _primId, int _tilePos, 
+            unsigned _xCoord, unsigned _yCoord): 
+         primId(_primId), xCoord(_xCoord), yCoord(_yCoord), m_tilePos(_tilePos)
+      {}
 
       void push_back(fragmentData_t frag){ m_fragments.push_back(frag); }
 
@@ -121,6 +124,8 @@ class RasterTile {
          return m_tilePos;
       }
       const int primId;
+      unsigned xCoord;
+      unsigned yCoord;
    private:
       std::vector<fragmentData_t> m_fragments;
       std::vector<unsigned> m_fragmentIndices;
@@ -201,12 +206,14 @@ struct stage_shading_info_t {
     }
 };
 
-
 class primitiveFragmentsData_t {
 public:
     primitiveFragmentsData_t(int _primId): primId(_primId){
        maxDepth = (uint64_t) -1;
        minDepth = 0;
+       m_validTiles = false;
+    }
+    ~primitiveFragmentsData_t(){
     }
     shaderAttrib_t getFragmentData(unsigned utid, unsigned tid, unsigned attribID, unsigned attribIndex, 
           unsigned fileIdx, unsigned idx2D, void * stream, stage_shading_info_t* shadingData, bool z_unit_disabled);
@@ -218,9 +225,10 @@ public:
     void sortFragmentsInRasterOrder (unsigned frameHeight, unsigned frameWidth,
         const unsigned tileH, const unsigned tileW,
         const unsigned blockH, const unsigned blockW, const RasterDirection rasterDir);
-    RasterTiles* sortFragmentsInTiles(unsigned frameHeight, unsigned frameWidth,
+    void sortFragmentsInTiles(unsigned frameHeight, unsigned frameWidth,
         const unsigned tileH, const unsigned tileW,
-        const unsigned blockH, const unsigned blockW, const RasterDirection rasterDir);
+        const unsigned blockH, const unsigned blockW, const RasterDirection rasterDir,
+        unsigned simtCount);
     void clear();
 
     //primitive max and min depth values, used for z-culling
@@ -232,8 +240,21 @@ public:
     {
        return m_fragments[index];
     }
+    RasterTiles& getRasterTiles(){
+       assert(m_validTiles);
+       return m_rasterTiles;
+    }
+
+    RasterTiles& getSimtTiles(unsigned clusterId){
+       assert(m_validTiles);
+       return m_simtRasterTiles[clusterId];
+    }
+
 private:
     std::vector<fragmentData_t> m_fragments; //the fragment shading data of this primitive
+    RasterTiles m_rasterTiles;
+    std::vector<RasterTiles> m_simtRasterTiles;
+    bool m_validTiles;
 };
 
 
@@ -314,7 +335,7 @@ public:
 private:
     bool useInShaderBlending() const;
     void sortFragmentsInRasterOrder(unsigned tileH, unsigned tileW, unsigned blockH, unsigned blockW, RasterDirection dir);
-    void runEarlyZ(CudaGPU * cudaGPU, unsigned tileH, unsigned tileW, unsigned blockH, unsigned blockW, RasterDirection dir);
+    void runEarlyZ(CudaGPU * cudaGPU, unsigned tileH, unsigned tileW, unsigned blockH, unsigned blockW, RasterDirection dir, unsigned clusterCount);
     void generateVertexCode();
     void generateFragmentCode(DepthSize);
     void addFragment(fragmentData_t fragmentData);

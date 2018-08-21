@@ -186,7 +186,6 @@ void primitiveFragmentsData_t::sortFragmentsInRasterOrder(unsigned frameHeight, 
     
      //DPRINTF(MesaGpgpusim, "Adjusted display size is WxH=%dx%d\n", frameWidth, frameHeight);
 
-    std::vector<std::vector<fragmentData_t> > fragmentTiles;
 
     //we add empty sets and then we will fill them
     const unsigned fragmentsPerTile = tileH * tileW;
@@ -194,10 +193,11 @@ void primitiveFragmentsData_t::sortFragmentsInRasterOrder(unsigned frameHeight, 
     unsigned tilesCount = (frameHeight * frameWidth) / fragmentsPerTile;
 
 
-    for (unsigned tile = 0; tile < tilesCount; tile++) {
+    std::vector<std::vector<fragmentData_t> > fragmentTiles(tilesCount);
+    /*for (unsigned tile = 0; tile < tilesCount; tile++) {
         std::vector<fragmentData_t> aSet;
         fragmentTiles.push_back(aSet);
-    }
+    }*/
 
     assert(fragmentTiles.size() == tilesCount);
     assert((frameWidth%tileW) == 0);
@@ -272,19 +272,16 @@ void primitiveFragmentsData_t::sortFragmentsInRasterOrder(unsigned frameHeight, 
 }
 
 
-void renderData_t::runEarlyZ(CudaGPU * cudaGPU, unsigned tileH, unsigned tileW, unsigned blockH, unsigned blockW, RasterDirection dir) {
+void renderData_t::runEarlyZ(CudaGPU * cudaGPU, unsigned tileH, unsigned tileW, unsigned blockH, unsigned blockW, RasterDirection dir, unsigned clusterCount) {
+
    RasterTiles * allTiles = new RasterTiles();
    for(int prim=0; prim < drawPrimitives.size(); prim++){
-      RasterTiles * primTiles = drawPrimitives[prim].sortFragmentsInTiles(m_bufferHeight, m_bufferWidth, tileH, tileW, blockH, blockW, dir);
-      DPRINTF(MesaGpgpusim, "prim %d tiles = %ld\n", prim, primTiles->size());
-
-      printf("prim %d tiles = %ld\n", prim, primTiles->size());
-
-      for(int tile=0; tile < primTiles->size(); tile++){
-         if((*primTiles)[tile]->size() == 0) continue;
-         allTiles->push_back((*primTiles)[tile]);
+      drawPrimitives[prim].sortFragmentsInTiles(m_bufferHeight, m_bufferWidth, tileH, tileW, blockH, blockW, dir, clusterCount);
+      RasterTiles& primTiles = drawPrimitives[prim].getRasterTiles();
+      DPRINTF(MesaGpgpusim, "prim %d tiles = %ld\n", prim, primTiles.size());
+      for(int tile=0; tile < primTiles.size(); tile++){
+         allTiles->push_back(primTiles[tile]);
       }
-      delete primTiles;
    }
 
    DPRINTF(MesaGpgpusim, "number of tiles = %ld\n", allTiles->size());
@@ -302,11 +299,12 @@ void renderData_t::runEarlyZ(CudaGPU * cudaGPU, unsigned tileH, unsigned tileW, 
          m_depthBuffer, m_bufferWidth, m_bufferHeight, tileH, tileW, blockH, blockW, dir);
 }
 
-RasterTiles* primitiveFragmentsData_t::sortFragmentsInTiles(unsigned frameHeight, unsigned frameWidth,
+void primitiveFragmentsData_t::sortFragmentsInTiles(unsigned frameHeight, unsigned frameWidth,
         const unsigned tileH, const unsigned tileW,
-        const unsigned blockH, const unsigned blockW, const RasterDirection rasterDir) {
+        const unsigned blockH, const unsigned blockW, const RasterDirection rasterDir,
+        unsigned simtCount) {
    
-
+    assert(m_rasterTiles.size() == 0);
     assert(rasterDir==HorizontalRaster or rasterDir==BlockedHorizontal);
     printf("Current frame size WxH=%dx%d\n", frameWidth, frameHeight);
 
@@ -329,21 +327,28 @@ RasterTiles* primitiveFragmentsData_t::sortFragmentsInTiles(unsigned frameHeight
         frameHeight += blockH;
     }
     
-    std::vector<RasterTile* > * fragmentTiles = new std::vector<RasterTile* >();
 
     const unsigned fragmentsPerTile = tileH * tileW;
+    const unsigned wTiles = (frameWidth + tileW -1)/ tileW;
+    const unsigned hTiles = (frameHeight + tileH -1)/ tileH;
     assert(0 == ((frameHeight* frameWidth) % fragmentsPerTile));
-    unsigned tilesCount = (frameHeight * frameWidth) / fragmentsPerTile;
+    const unsigned tilesCount = wTiles * hTiles;
 
     DPRINTF(MesaGpgpusim, "Sorting %d framgents in %d tiles \n", m_fragments.size(), tilesCount);
 
+    int minX, maxX, minY, maxY;
+    minX = minY = -1;
+    maxX = maxY = -1;
+    std::vector<RasterTile* > fragmentTiles;
     for (unsigned tile = 0; tile < tilesCount; tile++) {
         //std::vector<fragmentData_t>* aSet = new std::vector<fragmentData_t>();
-        RasterTile * rtile = new RasterTile(primId, tile);
-        fragmentTiles->push_back(rtile);
+        unsigned xCoord = tile/wTiles;
+        unsigned yCoord = tile%wTiles;
+        RasterTile * rtile = new RasterTile(primId, tile, xCoord, yCoord);
+        fragmentTiles.push_back(rtile);
     }
 
-    assert(fragmentTiles->size() == tilesCount);
+    assert(fragmentTiles.size() == tilesCount);
     assert((frameWidth%tileW) == 0);
     assert((frameHeight%tileH) == 0);
             
@@ -355,24 +360,41 @@ RasterTiles* primitiveFragmentsData_t::sortFragmentsInTiles(unsigned frameHeight
         unsigned yPosition = m_fragments[frag].uintPos[1];
         unsigned tileXCoord = xPosition / tileW;
         unsigned tileYCoord = yPosition / tileH; //normalize this guy
+        minX = (minX == -1)? tileXCoord: std::min(minX, (int)tileXCoord);
+        maxX = (maxX == -1)? tileXCoord: std::max(maxX, (int)tileXCoord);
+        minY = (minY == -1)? tileYCoord: std::min(minY, (int)tileYCoord);
+        maxY = (maxY == -1)? tileYCoord: std::max(maxY, (int)tileYCoord);
         assert(tileXCoord<numberOfHorizontalTiles);
         unsigned tileIndex = tileYCoord * numberOfHorizontalTiles + tileXCoord;
-        assert(tileIndex < fragmentTiles->size());
-        (*fragmentTiles)[tileIndex]->push_back(m_fragments[frag]);
+        assert(tileIndex < fragmentTiles.size());
+        fragmentTiles[tileIndex]->push_back(m_fragments[frag]);
                 
         //make sure that we do not add more fragments in each tile than we should have
-        assert((*fragmentTiles)[tileIndex]->size() <= (tileH * tileW));
+        assert(fragmentTiles[tileIndex]->size() <= (tileH * tileW));
     }
 
     unsigned fragCount = 0;
 
-    for(int i=0; i< fragmentTiles->size(); i++){
-       fragCount += (*fragmentTiles)[i]->size();
+    for(int i=0; i< fragmentTiles.size(); i++){
+       fragCount += fragmentTiles[i]->size();
     }
 
     assert(fragCount == m_fragments.size());
 
-    return fragmentTiles;
+    m_simtRasterTiles.resize(simtCount);
+    for(int tile=0; tile < fragmentTiles.size(); tile++){
+       //if(fragmentTiles[tile]->size() == 0){
+       if(fragmentTiles[tile]->xCoord >= minX and 
+          fragmentTiles[tile]->xCoord <= maxX and 
+          fragmentTiles[tile]->yCoord >= minY and 
+          fragmentTiles[tile]->yCoord <= maxY){
+          m_simtRasterTiles[tile%simtCount].push_back(fragmentTiles[tile]);
+          m_rasterTiles.push_back(fragmentTiles[tile]);
+       } else {
+          delete fragmentTiles[tile];
+       }
+    }
+    m_validTiles = true;
 }
 
 void primitiveFragmentsData_t::clear() {
@@ -1410,13 +1432,24 @@ GLboolean renderData_t::doVertexShading(GLvector4f ** inputParams, vp_stage_data
 
 unsigned int renderData_t::doFragmentShading() {
    CudaGPU* cudaGPU = CudaGPU::getCudaGPU(g_active_device);
-   if(m_inShaderDepth or not(isDepthTestEnabled())){
+   gpgpu_sim* gpu =  cudaGPU->getTheGPU();
+   unsigned numClusters = gpu->get_config().num_cluster();
+   simt_core_cluster* simt_clusters = gpu->getSIMTCluster();
+   for(unsigned prim=0; prim < drawPrimitives.size(); prim++){
+      drawPrimitives[prim].sortFragmentsInTiles(m_bufferHeight, m_bufferWidth, m_tile_H, m_tile_W, m_block_H, m_block_W, HorizontalRaster, numClusters);
+      for(unsigned clusterId=0; clusterId < numClusters; clusterId++){
+         bool res = simt_clusters[clusterId].getGraphicsPipeline()->add_primitive(&drawPrimitives[prim], 0);
+         assert(res);
+      }
+   }
+   cudaGPU->activateGPU();
+   /*if(m_inShaderDepth or not(isDepthTestEnabled())){
       //now sorting them in raster order
       sortFragmentsInRasterOrder(getTileH(), getTileW(),getBlockH(), getBlockW(), HorizontalRaster); //BlockedHorizontal);
       noDepthFragmentShading();
    } else {
-      runEarlyZ(cudaGPU, getTileH(), getTileW(),getBlockH(), getBlockW(), HorizontalRaster); // BlockedHorizontal);
-   }
+      runEarlyZ(cudaGPU, getTileH(), getTileW(),getBlockH(), getBlockW(), HorizontalRaster, num_clusters); // BlockedHorizontal);
+   }*/
    g_gpuMutex.unlock();
 }
 

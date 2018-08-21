@@ -3217,7 +3217,8 @@ simt_core_cluster::simt_core_cluster( class gpgpu_sim *gpu,
     m_stats = stats;
     m_memory_stats = mstats;
     m_core = new shader_core_ctx*[ config->n_simt_cores_per_cluster ];
-    for( unsigned i=0; i < config->n_simt_cores_per_cluster; i++ ) {
+    m_graphics_pipe = new graphics_simt_pipeline(cluster_id, 1, 2, 2, 2);
+    for( unsigned i=0; i < config->n_simt_cores_per_cluster; i++) {
         unsigned sid = m_config->cid_to_sid(i,m_cluster_id);
         m_core[i] = new shader_core_ctx(gpu,this,sid,m_cluster_id,config,mem_config,stats);
         m_core_sim_order.push_back(i); 
@@ -3226,6 +3227,8 @@ simt_core_cluster::simt_core_cluster( class gpgpu_sim *gpu,
 
 void simt_core_cluster::core_cycle()
 {
+    m_graphics_pipe->cycle();
+
     for( std::list<unsigned>::iterator it = m_core_sim_order.begin(); it != m_core_sim_order.end(); ++it ) {
         m_core[*it]->cycle();
     }
@@ -3251,6 +3254,7 @@ unsigned simt_core_cluster::get_not_completed() const
     unsigned not_completed=0;
     for( unsigned i=0; i < m_config->n_simt_cores_per_cluster; i++ ) 
         not_completed += m_core[i]->get_not_completed();
+    not_completed += m_graphics_pipe->get_not_completed();
     return not_completed;
 }
 
