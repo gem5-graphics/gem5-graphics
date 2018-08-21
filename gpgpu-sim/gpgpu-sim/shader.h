@@ -1878,6 +1878,7 @@ public:
                        const struct memory_config *mem_config,
                        shader_core_stats *stats,
                        memory_stats_t *mstats );
+
     ~simt_core_cluster(){
        delete m_graphics_pipe;
     }
@@ -1920,6 +1921,9 @@ public:
     shader_core_ctx *get_core(int id_in_cluster) { return m_core[id_in_cluster]; }
     void print_cache_stats( FILE *fp, unsigned& dl1_accesses, unsigned& dl1_misses, unsigned& l1c_accesses, unsigned& l1c_misses, unsigned& l1t_accesses, unsigned& l1t_misses ) const;
     unsigned get_cluster_id(){return m_cluster_id;};
+    graphics_simt_pipeline* getGraphicsPipeline() {
+       return m_graphics_pipe;
+    }
     
 private:
     unsigned m_cluster_id;
