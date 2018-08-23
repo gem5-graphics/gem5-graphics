@@ -90,10 +90,13 @@ struct fragmentData_t {
 class primitiveFragmentsData_t;
 
 class RasterTile {
+   public:
    struct rasterFragment_t {
-      rasterFragment_t(): alive(false), frag(NULL){}
+      rasterFragment_t(): alive(false), frag(NULL),
+      tile(NULL){}
       bool alive;
       fragmentData_t* frag;
+      RasterTile* tile;
    };
    public:
       RasterTile(primitiveFragmentsData_t* const _prim,
@@ -114,6 +117,7 @@ class RasterTile {
          assert(fidx < m_fragments.size());
          m_fragments[fidx].frag = frag;
          m_fragments[fidx].alive = true;
+         m_fragments[fidx].tile = this;
       }
 
       unsigned size() const { return m_fragments.size();} 
