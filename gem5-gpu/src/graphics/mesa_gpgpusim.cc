@@ -105,7 +105,7 @@ shaderAttrib_t primitiveFragmentsData_t::getFragmentData(unsigned utid, unsigned
      DPRINTF(MesaGpgpusim, "querying utid=%d, tileId=%d, tid=%d\n", tileId, utid, tid);
      RasterTile& rt = (*(*(si->earlyZTiles))[tileId]);
      if(tid < rt.size()){
-        frag = &rt[tid];
+        frag = &rt.getFragment(tid);
      }
   }
 
@@ -344,7 +344,8 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(unsigned frameHeight, unsign
         //std::vector<fragmentData_t>* aSet = new std::vector<fragmentData_t>();
         unsigned xCoord = tile/wTiles;
         unsigned yCoord = tile%wTiles;
-        RasterTile * rtile = new RasterTile(primId, tile, xCoord, yCoord);
+        RasterTile * rtile = new RasterTile(this, primId, tile,
+              tileH, tileW, xCoord, yCoord);
         fragmentTiles.push_back(rtile);
     }
 
@@ -367,7 +368,7 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(unsigned frameHeight, unsign
         assert(tileXCoord<numberOfHorizontalTiles);
         unsigned tileIndex = tileYCoord * numberOfHorizontalTiles + tileXCoord;
         assert(tileIndex < fragmentTiles.size());
-        fragmentTiles[tileIndex]->push_back(m_fragments[frag]);
+        fragmentTiles[tileIndex]->add_fragment(&m_fragments[frag]);
                 
         //make sure that we do not add more fragments in each tile than we should have
         assert(fragmentTiles[tileIndex]->size() <= (tileH * tileW));
@@ -395,10 +396,6 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(unsigned frameHeight, unsign
        }
     }
     m_validTiles = true;
-}
-
-void primitiveFragmentsData_t::clear() {
-    m_fragments.clear();
 }
 
 renderData_t::renderData_t() {
@@ -496,9 +493,6 @@ void renderData_t::endDrawCall() {
       graphicsFree((void*)ti->baseAddr);
     }
 
-    for (int i = 0; i < drawPrimitives.size(); i++) {
-        drawPrimitives[i].clear();
-    }
     lastFatCubin = NULL;
     RasterTiles * tiles = m_sShading_info.earlyZTiles;
     m_sShading_info.earlyZTiles = NULL;

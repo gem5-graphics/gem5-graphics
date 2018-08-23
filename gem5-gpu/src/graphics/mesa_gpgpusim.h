@@ -87,28 +87,54 @@ struct fragmentData_t {
    bool isLive;
 };
 
+class primitiveFragmentsData_t;
 
 class RasterTile {
+   struct rasterFragment_t {
+      rasterFragment_t(): alive(false), frag(NULL){}
+      bool alive;
+      fragmentData_t* frag;
+   };
    public:
-      RasterTile(int _primId, int _tilePos, 
-            unsigned _xCoord, unsigned _yCoord): 
-         primId(_primId), xCoord(_xCoord), yCoord(_yCoord), m_tilePos(_tilePos)
+      RasterTile(primitiveFragmentsData_t* const _prim,
+            int _primId, int _tilePos, 
+            unsigned _tileH, unsigned _tileW,
+            unsigned _xCoord, unsigned _yCoord):
+         primId(_primId), 
+         tileH(_tileH), tileW(_tileW),
+         xCoord(_xCoord), yCoord(_yCoord),
+         m_fragments(_tileH*_tileW),
+         m_tilePos(_tilePos), m_prim(_prim)
       {}
 
-      void push_back(fragmentData_t frag){ m_fragments.push_back(frag); }
+      void add_fragment(fragmentData_t* frag){ 
+         unsigned fragX = frag->uintPos[0]%tileW;
+         unsigned fragY = frag->uintPos[1]%tileH;
+         unsigned fidx = fragY*tileW + fragX;
+         assert(fidx < m_fragments.size());
+         m_fragments[fidx].frag = frag;
+         m_fragments[fidx].alive = true;
+      }
 
       unsigned size() const { return m_fragments.size();} 
 
-      fragmentData_t& operator[] (const int index)
+      /*fragmentData_t& operator[] (const int index)
       {
-         return m_fragments[index];
+         return *(m_fragments[index].frag);
+      }*/
+
+
+      fragmentData_t& getFragment (const int index)
+      {
+         //assert(m_fragments[index].alive);
+         return *(m_fragments[index].frag);
       }
 
       unsigned setActiveFragmentsIndices() {
          m_fragmentIndices.clear();
          unsigned activeCount = 0;
          for(int i=0; i<m_fragments.size(); i++){
-            if(m_fragments[i].isLive and m_fragments[i].passedDepth){
+            if(m_fragments[i].frag->isLive and m_fragments[i].frag->passedDepth){
                m_fragmentIndices.push_back(i);
                activeCount++;
             }
@@ -124,12 +150,16 @@ class RasterTile {
          return m_tilePos;
       }
       const int primId;
-      unsigned xCoord;
-      unsigned yCoord;
+      const unsigned tileH;
+      const unsigned tileW;
+      const unsigned xCoord;
+      const unsigned yCoord;
    private:
-      std::vector<fragmentData_t> m_fragments;
+      std::vector<rasterFragment_t> m_fragments;
+      std::vector<bool> m_validFragments;
       std::vector<unsigned> m_fragmentIndices;
       const unsigned m_tilePos;
+      primitiveFragmentsData_t* const m_prim;
 };
 
 
@@ -149,7 +179,6 @@ struct mapTileStream_t{
    unsigned primId;
 };
 
-class primitiveFragmentsData_t;
 
 struct stage_shading_info_t {
     enum class GraphicsPass { NONE , Vertex, Fragment};
@@ -214,6 +243,9 @@ public:
        m_validTiles = false;
     }
     ~primitiveFragmentsData_t(){
+       for(unsigned t=0; t<m_rasterTiles.size(); t++){
+          delete m_rasterTiles[t];
+       }
     }
     shaderAttrib_t getFragmentData(unsigned utid, unsigned tid, unsigned attribID, unsigned attribIndex, 
           unsigned fileIdx, unsigned idx2D, void * stream, stage_shading_info_t* shadingData, bool z_unit_disabled);
@@ -229,7 +261,6 @@ public:
         const unsigned tileH, const unsigned tileW,
         const unsigned blockH, const unsigned blockW, const RasterDirection rasterDir,
         unsigned simtCount);
-    void clear();
 
     //primitive max and min depth values, used for z-culling
     const int primId; //unique prim id for draw call
