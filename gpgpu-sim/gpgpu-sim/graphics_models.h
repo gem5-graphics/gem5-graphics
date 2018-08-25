@@ -44,6 +44,79 @@
 
 extern renderData_t g_renderData;
 
+class tc_engine_t {
+   struct tc_fragment_t {
+      tc_fragment_t(): covered(false), fragment(NULL)
+      {}
+      bool covered;
+      RasterTile::rasterFragment_t* fragment;
+   };
+
+   public:
+   tc_engine_t(unsigned tc_tile_h, unsigned tc_tile_w,
+         unsigned r_tile_h, unsigned r_tile_w): 
+      m_tc_tile_h(tc_tile_h), m_tc_tile_w(tc_tile_w),
+      m_r_tile_h(r_tile_h), m_r_tile_w(r_tile_w)
+   {
+      //raster tiles should be made out of quads
+      assert(m_r_tile_h%2 == 0 and m_r_tile_w%2 == 0);
+      unsigned rtiles_count = m_tc_tile_h * m_tc_tile_w;
+      unsigned per_tile = m_r_tile_h * m_r_tile_w;
+      m_fragments.resize(rtiles_count*per_tile);
+      m_covered_quads.resize(m_fragments.size()/4);
+   }
+
+   void set_curr_coord(unsigned x, unsigned y){
+      //only possible to (re)assign empty tiles
+      assert(m_tiles_bin.size() == 0);
+      m_rtile_xstart = x;
+      m_rtile_xend = x + m_tc_tile_w - 1;
+      m_rtile_ystart = y;
+      m_rtile_yend = y + m_tc_tile_h - 1;
+   }
+
+   //check if raster tile is mapped to this bin
+   bool has_tile(unsigned x, unsigned y){
+      if(x >= m_rtile_xstart 
+            and x <= m_rtile_xend
+            and y >= m_rtile_ystart
+            and y <= m_rtile_yend)
+         return true;
+      return false;
+   }
+
+   private:
+   //for x and y directions
+   std::vector<tc_fragment_t> m_fragments;
+   std::vector<bool> m_covered_quads;
+   std::vector<RasterTile*> m_tiles_bin;
+   //tc tile size in raster tiles
+   const unsigned m_tc_tile_h;
+   const unsigned m_tc_tile_w;
+   //raster tile size in fragments
+   const unsigned m_r_tile_h;
+   const unsigned m_r_tile_w;
+   //the current tile coord will range 
+   //from (rx_coord, ry_coord) to (rx_coord + m_tc_tile_w, ry_coord + m_tc_tile_h)
+   unsigned m_rtile_xstart; 
+   unsigned m_rtile_xend;
+   unsigned m_rtile_ystart;
+   unsigned m_rtile_yend;
+};
+
+class tile_assembly_stage_t {
+   public:
+   tile_assembly_stage_t(unsigned _tc_bins, 
+         unsigned tc_tile_h, unsigned tc_tile_w,
+         unsigned r_tile_h, unsigned r_tile_w): 
+      tc_engines(_tc_bins, tc_engine_t(tc_tile_h, tc_tile_w, r_tile_h, r_tile_w)), 
+      tc_bins(_tc_bins)
+   {}
+   private:
+   std::vector<tc_engine_t> tc_engines;
+   const unsigned tc_bins;
+};
+
 class graphics_simt_pipeline {
    private:
       struct primitive_data_t{
@@ -154,7 +227,6 @@ class graphics_simt_pipeline {
 
       void run_tile_assembly(){
          if(m_ta_pipe->empty()) return;
-
       }
 
 
