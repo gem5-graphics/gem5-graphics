@@ -31,6 +31,7 @@ extern "C" {
 
 typedef unsigned char byte;
 const int VECTOR_SIZE = 4;
+const int QUAD_SIZE = 4;
 const int CUDA_FLOAT_SIZE = 4;
 class CudaGPU;
 
@@ -106,21 +107,23 @@ class RasterTile {
          primId(_primId), 
          tileH(_tileH), tileW(_tileW),
          xCoord(_xCoord), yCoord(_yCoord),
-         m_fragments(_tileH*_tileW),
+         m_fragmentsQuads(_tileH*_tileW/QUAD_SIZE, 
+               std::vector<rasterFragment_t>(QUAD_SIZE)),
          m_tilePos(_tilePos), m_prim(_prim)
       {}
 
-      void add_fragment(fragmentData_t* frag){ 
+      void addFragment(fragmentData_t* frag){ 
          unsigned fragX = frag->uintPos[0]%tileW;
          unsigned fragY = frag->uintPos[1]%tileH;
          unsigned fidx = fragY*tileW + fragX;
-         assert(fidx < m_fragments.size());
-         m_fragments[fidx].frag = frag;
-         m_fragments[fidx].alive = true;
-         m_fragments[fidx].tile = this;
+         assert(fidx < tileH*tileW);
+         m_fragmentsQuads[fidx/QUAD_SIZE][fidx%QUAD_SIZE].frag = frag;
+         m_fragmentsQuads[fidx/QUAD_SIZE][fidx%QUAD_SIZE].alive = true;
+         m_fragmentsQuads[fidx/QUAD_SIZE][fidx%QUAD_SIZE].tile = this;
       }
 
-      unsigned size() const { return m_fragments.size();} 
+      unsigned size() const { return m_fragmentsQuads.size()*QUAD_SIZE;} 
+
 
       /*fragmentData_t& operator[] (const int index)
       {
@@ -131,16 +134,24 @@ class RasterTile {
       fragmentData_t& getFragment (const int index)
       {
          //assert(m_fragments[index].alive);
-         return *(m_fragments[index].frag);
+         return *(m_fragmentsQuads[index/QUAD_SIZE][index%QUAD_SIZE].frag);
+      }
+
+
+      rasterFragment_t& getRasterFragment (const int quadId, unsigned fragId){
+         return m_fragmentsQuads[quadId][fragId];
       }
 
       unsigned setActiveFragmentsIndices() {
          m_fragmentIndices.clear();
          unsigned activeCount = 0;
-         for(int i=0; i<m_fragments.size(); i++){
-            if(m_fragments[i].frag->isLive and m_fragments[i].frag->passedDepth){
-               m_fragmentIndices.push_back(i);
-               activeCount++;
+         for(unsigned i=0; i<m_fragmentsQuads.size(); i++){
+            for(unsigned f=0; f<QUAD_SIZE; f++){
+               if(m_fragmentsQuads[i][f].frag->isLive 
+                     and m_fragmentsQuads[i][f].frag->passedDepth){
+                  m_fragmentIndices.push_back(i*QUAD_SIZE+f);
+                  activeCount++;
+               }
             }
          }
          assert(m_fragmentIndices.size() == activeCount);
@@ -159,9 +170,9 @@ class RasterTile {
       const unsigned xCoord;
       const unsigned yCoord;
    private:
-      std::vector<rasterFragment_t> m_fragments;
-      std::vector<bool> m_validFragments;
+      std::vector <std::vector <rasterFragment_t> > m_fragmentsQuads;
       std::vector<unsigned> m_fragmentIndices;
+      std::vector<bool> m_validFragments;
       const unsigned m_tilePos;
       primitiveFragmentsData_t* const m_prim;
 };
@@ -286,7 +297,8 @@ public:
     }
 
 private:
-    std::vector<fragmentData_t> m_fragments; //the fragment shading data of this primitive
+    //the fragment shading data of this primitive
+    std::vector<fragmentData_t> m_fragments; 
     RasterTiles m_rasterTiles;
     std::vector<RasterTiles> m_simtRasterTiles;
     bool m_validTiles;

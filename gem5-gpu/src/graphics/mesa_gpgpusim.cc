@@ -368,7 +368,7 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(unsigned frameHeight, unsign
         assert(tileXCoord<numberOfHorizontalTiles);
         unsigned tileIndex = tileYCoord * numberOfHorizontalTiles + tileXCoord;
         assert(tileIndex < fragmentTiles.size());
-        fragmentTiles[tileIndex]->add_fragment(&m_fragments[frag]);
+        fragmentTiles[tileIndex]->addFragment(&m_fragments[frag]);
                 
         //make sure that we do not add more fragments in each tile than we should have
         assert(fragmentTiles[tileIndex]->size() <= (tileH * tileW));

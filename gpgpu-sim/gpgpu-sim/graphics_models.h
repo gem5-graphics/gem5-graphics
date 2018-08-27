@@ -46,29 +46,39 @@ extern renderData_t g_renderData;
 
 class tc_engine_t {
    struct tc_fragment_t {
-      tc_fragment_t(): covered(false), fragment(NULL)
+      tc_fragment_t(): fragment(NULL)
       {}
-      bool covered;
       RasterTile::rasterFragment_t* fragment;
+   };
+
+   struct tc_fragment_quad_t {
+      tc_fragment_quad_t(): covered(false)
+      {}
+      tc_fragment_t fragments[4];
+      bool covered;
    };
 
    public:
    tc_engine_t(unsigned tc_tile_h, unsigned tc_tile_w,
          unsigned r_tile_h, unsigned r_tile_w): 
       m_tc_tile_h(tc_tile_h), m_tc_tile_w(tc_tile_w),
-      m_r_tile_h(r_tile_h), m_r_tile_w(r_tile_w)
+      m_tc_tiles_count(tc_tile_h*tc_tile_w),
+      m_r_tile_h(r_tile_h), m_r_tile_w(r_tile_w),
+      m_r_tile_size(r_tile_h*r_tile_w)
    {
       //raster tiles should be made out of quads
       assert(m_r_tile_h%2 == 0 and m_r_tile_w%2 == 0);
       unsigned rtiles_count = m_tc_tile_h * m_tc_tile_w;
-      unsigned per_tile = m_r_tile_h * m_r_tile_w;
-      m_fragments.resize(rtiles_count*per_tile);
-      m_covered_quads.resize(m_fragments.size()/4);
+      m_afragments.resize(rtiles_count, 
+            std::vector <tc_fragment_quad_t>(m_r_tile_size/QUAD_SIZE));
+      m_pending_flush = false;
    }
 
-   void set_curr_coord(unsigned x, unsigned y){
+   void set_current_coords(unsigned x, unsigned y){
       //only possible to (re)assign empty tiles
-      assert(m_tiles_bin.size() == 0);
+      assert(m_input_tiles_bin.size() == 0);
+      x = x - x%m_tc_tile_w;
+      y = y - y%m_tc_tile_h;
       m_rtile_xstart = x;
       m_rtile_xend = x + m_tc_tile_w - 1;
       m_rtile_ystart = y;
@@ -77,7 +87,7 @@ class tc_engine_t {
 
    //check if raster tile is mapped to this bin
    bool has_tile(unsigned x, unsigned y){
-      if(x >= m_rtile_xstart 
+      if(       x >= m_rtile_xstart 
             and x <= m_rtile_xend
             and y >= m_rtile_ystart
             and y <= m_rtile_yend)
@@ -85,23 +95,68 @@ class tc_engine_t {
       return false;
    }
 
+   bool append_tile(RasterTile* tile){
+      assert(has_tile(tile->xCoord, tile->yCoord));
+      if(m_input_tiles_bin.size() < m_tc_tiles_count){
+         m_input_tiles_bin.push_back(tile);
+         return true;
+      }
+      m_pending_flush = true;
+      return false;
+   }
+
+   bool insert_first_tile(RasterTile* tile){
+      if(m_input_tiles_bin.size() == 0){
+         set_current_coords(tile->xCoord, tile->yCoord);
+         m_input_tiles_bin.push_back(tile);
+         return true;
+      }
+      return false;
+   }
+
+   void cycle(){
+      //check 1 tile per cycle, may make it configurable later
+      for(unsigned tileIdx=0; tileIdx<m_input_tiles_bin.size(); tileIdx++){
+         RasterTile* rtile = m_input_tiles_bin[tileIdx];
+         unsigned tc_x = rtile->xCoord%m_tc_tile_w;
+         unsigned tc_y = rtile->yCoord%m_tc_tile_h;
+         unsigned dstTileId = tc_x*m_tc_tile_w + tc_y;
+         for(unsigned quadId=0; quadId<m_afragments[dstTileId].size(); quadId++){
+            //check if this quad is already covered
+            if(!m_afragments[dstTileId][quadId].covered){
+               for(unsigned fragId=0; fragId<QUAD_SIZE; fragId++){
+                  RasterTile::rasterFragment_t* frag = 
+                     &(rtile->getRasterFragment(quadId, fragId));
+                  if(frag->alive){
+                     m_afragments[dstTileId][quadId].covered = true;
+                     //unsigned dstTileId = tc_x*m_tc_tile_w + tc_y;
+                     //unsigned dstFragId = dstTileId*m_r_tile_size
+                  }
+               }
+            }
+         }
+      }
+   }
+
    private:
-   //for x and y directions
-   std::vector<tc_fragment_t> m_fragments;
-   std::vector<bool> m_covered_quads;
-   std::vector<RasterTile*> m_tiles_bin;
+   //3d vector tiles, quads, fragments
+   std::vector< std::vector <tc_fragment_quad_t>> m_afragments;
+   std::vector<RasterTile*> m_input_tiles_bin;
    //tc tile size in raster tiles
    const unsigned m_tc_tile_h;
    const unsigned m_tc_tile_w;
+   const unsigned m_tc_tiles_count;
    //raster tile size in fragments
    const unsigned m_r_tile_h;
    const unsigned m_r_tile_w;
+   const unsigned m_r_tile_size;
    //the current tile coord will range 
    //from (rx_coord, ry_coord) to (rx_coord + m_tc_tile_w, ry_coord + m_tc_tile_h)
    unsigned m_rtile_xstart; 
    unsigned m_rtile_xend;
    unsigned m_rtile_ystart;
    unsigned m_rtile_yend;
+   bool m_pending_flush;
 };
 
 class tile_assembly_stage_t {
@@ -112,6 +167,28 @@ class tile_assembly_stage_t {
       tc_engines(_tc_bins, tc_engine_t(tc_tile_h, tc_tile_w, r_tile_h, r_tile_w)), 
       tc_bins(_tc_bins)
    {}
+
+   bool insert(RasterTile* tile){
+      for(unsigned i=0; i<tc_engines.size(); i++){
+         if(tc_engines[i].has_tile(tile->xCoord, tile->yCoord)){
+            if(tc_engines[i].append_tile(tile)){
+               return true;
+            }
+         }
+      }
+      for(unsigned i=0; i<tc_engines.size(); i++){
+         if(tc_engines[i].insert_first_tile(tile)){
+            return true;
+         }
+      }
+      return false;
+   }
+
+   void cycle(){
+      for(unsigned te=0; te<tc_engines.size(); te++){
+         tc_engines[te].cycle();
+      }
+   }
    private:
    std::vector<tc_engine_t> tc_engines;
    const unsigned tc_bins;
@@ -151,8 +228,8 @@ class graphics_simt_pipeline {
 
       void cycle(){
          printf("cycle gpipe\n");
+         run_ta_stage();
          run_z_unit();
-         run_tile_assembly();
          run_f_raster();
          run_hiz();
          run_c_raster();
@@ -225,10 +302,16 @@ class graphics_simt_pipeline {
          m_f_raster_pipe->pop();
       }
 
-      void run_tile_assembly(){
+      void run_ta_stage(){
+         ta_stage->cycle();
          if(m_ta_pipe->empty()) return;
+         RasterTile* tile = m_f_raster_pipe->top();
+         assert(tile);
+         assert(tile->size() > 0);
+         if(ta_stage->insert(tile)){
+            m_ta_pipe->pop();
+         }
       }
-
 
       bool add_primitive(primitiveFragmentsData_t* prim, unsigned ctilesId){
          //this primitive doesn't touch this simt core
@@ -259,6 +342,7 @@ class graphics_simt_pipeline {
       fifo_pipeline<RasterTile>* m_zunit_pipe;
       fifo_pipeline<RasterTile>* m_ta_pipe;
       unsigned m_current_c_tile;
+      tile_assembly_stage_t* ta_stage;
 
       //performance configs
       const unsigned m_c_tiles_per_cycle;
