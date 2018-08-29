@@ -165,13 +165,14 @@ class RasterTile {
          return m_tilePos;
       }
 
-      void resetActiveCount(){
+      unsigned resetActiveCount(){
          m_activeCount = 0;
          for(unsigned quadId=0; quadId < m_fragmentsQuads.size(); quadId++)
-            for(unsigned fragId=0; fragId < m_fragmentsQuads[quadId].size(); quadId++){
+            for(unsigned fragId=0; fragId < m_fragmentsQuads[quadId].size(); fragId++){
                if(m_fragmentsQuads[quadId][fragId].alive)
                   m_activeCount++;
             }
+         return m_activeCount;
       }
 
       unsigned getActiveCount(){
