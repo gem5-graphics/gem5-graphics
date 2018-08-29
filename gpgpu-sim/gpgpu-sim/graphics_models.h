@@ -250,9 +250,15 @@ class graphics_simt_pipeline {
       graphics_simt_pipeline(unsigned simt_cluster_id,
             unsigned setup_delay, unsigned setup_q_len,
             unsigned c_tiles_per_cycle,
-            unsigned f_tiles_per_cycle
+            unsigned f_tiles_per_cycle,
+            unsigned tc_bins,
+            unsigned tc_tile_h, unsigned tc_tile_w,
+            unsigned r_tile_h, unsigned r_tile_w,
+            unsigned tc_wait_threshold
             ): 
          m_cluster_id(simt_cluster_id),
+         m_ta_stage(tc_bins, tc_tile_h, tc_tile_w, 
+               r_tile_h, r_tile_w, tc_wait_threshold),
          m_c_tiles_per_cycle(c_tiles_per_cycle),
          m_f_tiles_per_cycle(f_tiles_per_cycle)
    { 
@@ -347,12 +353,12 @@ class graphics_simt_pipeline {
       }
 
       void run_ta_stage(){
-         ta_stage->cycle();
+         m_ta_stage.cycle();
          if(m_ta_pipe->empty()) return;
          RasterTile* tile = m_f_raster_pipe->top();
          assert(tile);
          assert(tile->size() > 0);
-         if(ta_stage->insert(tile)){
+         if(m_ta_stage.insert(tile)){
             m_ta_pipe->pop();
          }
       }
@@ -386,7 +392,7 @@ class graphics_simt_pipeline {
       fifo_pipeline<RasterTile>* m_zunit_pipe;
       fifo_pipeline<RasterTile>* m_ta_pipe;
       unsigned m_current_c_tile;
-      tile_assembly_stage_t* ta_stage;
+      tile_assembly_stage_t m_ta_stage;
 
       //performance configs
       const unsigned m_c_tiles_per_cycle;
