@@ -28,11 +28,8 @@
 #ifndef FIXED_GRAPHICS_PIPELINE_H
 #define FIXED_GRAPHICS_PIPELINE_H
 
-#include <map>
-#include <set>
 #include <vector>
 #include <list>
-#include <bitset>
 #include <utility>
 #include <algorithm>
 #include <deque>
@@ -54,24 +51,26 @@ class tc_engine_t {
    struct tc_fragment_quad_t {
       tc_fragment_quad_t(): covered(false)
       {}
-      tc_fragment_t fragments[4];
+      tc_fragment_t fragments[QUAD_SIZE];
       bool covered;
    };
 
    public:
    tc_engine_t(unsigned tc_tile_h, unsigned tc_tile_w,
-         unsigned r_tile_h, unsigned r_tile_w): 
+         unsigned r_tile_h, unsigned r_tile_w, 
+         unsigned wait_threshold): 
       m_tc_tile_h(tc_tile_h), m_tc_tile_w(tc_tile_w),
       m_tc_tiles_count(tc_tile_h*tc_tile_w),
       m_r_tile_h(r_tile_h), m_r_tile_w(r_tile_w),
-      m_r_tile_size(r_tile_h*r_tile_w)
+      m_r_tile_size(r_tile_h*r_tile_w),
+      m_wait_threshold(wait_threshold)
    {
       //raster tiles should be made out of quads
       assert(m_r_tile_h%2 == 0 and m_r_tile_w%2 == 0);
       unsigned rtiles_count = m_tc_tile_h * m_tc_tile_w;
       m_afragments.resize(rtiles_count, 
             std::vector <tc_fragment_quad_t>(m_r_tile_size/QUAD_SIZE));
-      m_pending_flush = false;
+      m_status.reset();
    }
 
    void set_current_coords(unsigned x, unsigned y){
@@ -101,7 +100,7 @@ class tc_engine_t {
          m_input_tiles_bin.push_back(tile);
          return true;
       }
-      m_pending_flush = true;
+      m_status.pending_flush = true;
       return false;
    }
 
@@ -111,13 +110,30 @@ class tc_engine_t {
          m_input_tiles_bin.push_back(tile);
          return true;
       }
+      m_status.reset();
       return false;
    }
 
-   void cycle(){
+   void flush(){
+      if(m_status.pending_frags == 0)
+         return;
+      m_status.waiting_cycles++;
+      if(m_status.pending_flush or
+            (m_status.waiting_cycles > m_wait_threshold)){
+         m_status.reset();
+         for(unsigned tileId=0; tileId<m_afragments.size(); tileId++){
+            for(unsigned quadId=0; quadId<m_afragments[tileId].size(); quadId++){
+               m_afragments[tileId][quadId].covered = false;
+            }
+         }
+      }
+   }
+   void assemble(){
       //check 1 tile per cycle, may make it configurable later
-      for(unsigned tileIdx=0; tileIdx<m_input_tiles_bin.size(); tileIdx++){
-         RasterTile* rtile = m_input_tiles_bin[tileIdx];
+      std::vector<RasterTile*> remove_list;
+      for(std::list<RasterTile*>::iterator it = m_input_tiles_bin.begin();
+         it!=m_input_tiles_bin.end(); ++it){
+         RasterTile* rtile = *it;
          unsigned tc_x = rtile->xCoord%m_tc_tile_w;
          unsigned tc_y = rtile->yCoord%m_tc_tile_h;
          unsigned dstTileId = tc_x*m_tc_tile_w + tc_y;
@@ -129,19 +145,33 @@ class tc_engine_t {
                      &(rtile->getRasterFragment(quadId, fragId));
                   if(frag->alive){
                      m_afragments[dstTileId][quadId].covered = true;
-                     //unsigned dstTileId = tc_x*m_tc_tile_w + tc_y;
-                     //unsigned dstFragId = dstTileId*m_r_tile_size
+                     m_afragments[dstTileId][quadId].fragments[fragId].fragment = frag;
+                     frag->alive = false;
+                     m_status.pending_frags++;
+                     if(rtile->decActiveCount() == 0){
+                        remove_list.push_back(rtile);
+                        *it = NULL;
+                     }
                   }
                }
             }
          }
       }
+
+      for(unsigned r=0; r<remove_list.size(); r++){
+         m_input_tiles_bin.remove(remove_list[r]);
+      }
+      remove_list.clear();
+   }
+   void cycle(){
+      flush();
+      assemble();
    }
 
    private:
    //3d vector tiles, quads, fragments
-   std::vector< std::vector <tc_fragment_quad_t>> m_afragments;
-   std::vector<RasterTile*> m_input_tiles_bin;
+   std::vector<std::vector <tc_fragment_quad_t>> m_afragments;
+   std::list<RasterTile*> m_input_tiles_bin;
    //tc tile size in raster tiles
    const unsigned m_tc_tile_h;
    const unsigned m_tc_tile_w;
@@ -156,15 +186,29 @@ class tc_engine_t {
    unsigned m_rtile_xend;
    unsigned m_rtile_ystart;
    unsigned m_rtile_yend;
-   bool m_pending_flush;
+
+   struct status_t {
+      bool pending_flush;
+      unsigned pending_frags;
+      unsigned waiting_cycles;
+      void reset(){
+         pending_flush=false;
+         pending_frags=0;
+         waiting_cycles=0;
+      }
+   };
+   status_t m_status;
+   const unsigned m_wait_threshold;
 };
 
 class tile_assembly_stage_t {
    public:
    tile_assembly_stage_t(unsigned _tc_bins, 
          unsigned tc_tile_h, unsigned tc_tile_w,
-         unsigned r_tile_h, unsigned r_tile_w): 
-      tc_engines(_tc_bins, tc_engine_t(tc_tile_h, tc_tile_w, r_tile_h, r_tile_w)), 
+         unsigned r_tile_h, unsigned r_tile_w,
+         unsigned wait_threshold): 
+      tc_engines(_tc_bins, tc_engine_t(tc_tile_h, tc_tile_w, 
+               r_tile_h, r_tile_w, wait_threshold)), 
       tc_bins(_tc_bins)
    {}
 
