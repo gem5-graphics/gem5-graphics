@@ -377,7 +377,7 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(unsigned frameHeight, unsign
     unsigned fragCount = 0;
 
     for(int i=0; i< fragmentTiles.size(); i++){
-       fragCount += fragmentTiles[i]->size();
+       fragCount += fragmentTiles[i]->resetActiveCount();
     }
 
     assert(fragCount == m_fragments.size());
