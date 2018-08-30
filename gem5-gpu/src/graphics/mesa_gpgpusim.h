@@ -210,6 +210,7 @@ enum RasterDirection {
 enum class DepthSize : uint32_t { Z16 = 2, Z32 = 4 };
 
 struct mapTileStream_t{
+   std::vector<RasterTile::rasterFragment_t*>* tcTilePtr;
    unsigned tileId;
    unsigned primId;
 };
@@ -235,8 +236,6 @@ struct stage_shading_info_t {
     void* fragCodeAddr;
     //temporarly used with earlyZ util multiple streams are re-enabled
     uint32_t currentEarlyZTile;
-    std::vector<uint32_t> earlyZTilesCounts;
-    std::vector<uint32_t> earlyZTilesIds;
     std::map<uint64_t, mapTileStream_t> cudaStreamTiles;
     std::map<uint64_t, primitiveFragmentsData_t* > cudaStreamPrims;
 
@@ -264,8 +263,6 @@ struct stage_shading_info_t {
         if(earlyZTiles!=NULL) { assert(0); } //should be cleared when earlyZ is done
         //
         currentEarlyZTile = 0;
-        earlyZTilesCounts.clear();
-        earlyZTilesIds.clear();
         cudaStreamTiles.clear();
     }
 };
@@ -364,6 +361,7 @@ public:
     void checkEndOfShader(CudaGPU * cudaGPU);
     void doneEarlyZ(); 
     void launchFragmentTile(RasterTile * rasterTile, unsigned tileId);
+    void launchTCTile(std::vector<RasterTile::rasterFragment_t*>* tcTile);
     void addPrimitive();
     void setVertShaderUsedRegs(int regs){
       m_usedVertShaderRegs = regs;

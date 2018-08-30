@@ -42,6 +42,8 @@
 extern renderData_t g_renderData;
 
 class tc_engine_t {
+   static unsigned tc_engine_id_count;
+   unsigned m_tc_engine_id;
    struct tc_fragment_t {
       tc_fragment_t(): fragment(NULL)
       {}
@@ -49,10 +51,18 @@ class tc_engine_t {
    };
 
    struct tc_fragment_quad_t {
-      tc_fragment_quad_t(): covered(false)
-      {}
-      tc_fragment_t fragments[QUAD_SIZE];
+      tc_fragment_quad_t(): fragments(QUAD_SIZE)
+      {
+         reset();
+      }
+      void reset(){
+         covered=false;
+         for(unsigned f=0; f<fragments.size(); f++){
+            fragments[f].fragment = NULL;
+         }
+      }
       bool covered;
+      std::vector<tc_fragment_t> fragments;
    };
 
    public:
@@ -65,6 +75,7 @@ class tc_engine_t {
       m_r_tile_size(r_tile_h*r_tile_w),
       m_wait_threshold(wait_threshold)
    {
+      m_tc_engine_id=tc_engine_id_count++;
       //raster tiles should be made out of quads
       assert(m_r_tile_h%2 == 0 and m_r_tile_w%2 == 0);
       unsigned rtiles_count = m_tc_tile_h * m_tc_tile_w;
@@ -105,12 +116,12 @@ class tc_engine_t {
    }
 
    bool insert_first_tile(RasterTile* tile){
-      if(m_input_tiles_bin.size() == 0){
+      if(m_input_tiles_bin.size() == 0 and m_status.pending_frags==0){
          set_current_coords(tile->xCoord, tile->yCoord);
          m_input_tiles_bin.push_back(tile);
+         m_status.reset();
          return true;
       }
-      m_status.reset();
       return false;
    }
 
@@ -118,14 +129,21 @@ class tc_engine_t {
       if(m_status.pending_frags == 0)
          return;
       m_status.waiting_cycles++;
+      std::vector<RasterTile::rasterFragment_t*>* tc_frags = 
+         new std::vector<RasterTile::rasterFragment_t*>();
       if(m_status.pending_flush or
             (m_status.waiting_cycles > m_wait_threshold)){
-         m_status.reset();
          for(unsigned tileId=0; tileId<m_afragments.size(); tileId++){
             for(unsigned quadId=0; quadId<m_afragments[tileId].size(); quadId++){
-               m_afragments[tileId][quadId].covered = false;
+               for(unsigned fragId=0; fragId<QUAD_SIZE; fragId++){
+                  tc_frags->push_back(
+                        m_afragments[tileId][quadId].fragments[fragId].fragment);
+               }
+               m_afragments[tileId][quadId].reset();
             }
          }
+         m_status.reset();
+         g_renderData.launchTCTile(tc_frags);
       }
    }
    void assemble(){
@@ -143,14 +161,13 @@ class tc_engine_t {
                for(unsigned fragId=0; fragId<QUAD_SIZE; fragId++){
                   RasterTile::rasterFragment_t* frag = 
                      &(rtile->getRasterFragment(quadId, fragId));
-                  if(frag->alive){
+                  if(rtile->getActiveCount()>0 and frag->alive){
                      m_afragments[dstTileId][quadId].covered = true;
                      m_afragments[dstTileId][quadId].fragments[fragId].fragment = frag;
                      frag->alive = false;
                      m_status.pending_frags++;
                      if(rtile->decActiveCount() == 0){
                         remove_list.push_back(rtile);
-                        *it = NULL;
                      }
                   }
                }
@@ -277,7 +294,6 @@ class graphics_simt_pipeline {
       }
 
       void cycle(){
-         printf("cycle gpipe\n");
          run_ta_stage();
          run_z_unit();
          run_f_raster();
@@ -306,7 +322,7 @@ class graphics_simt_pipeline {
                t< prim->prim->getSimtTiles(m_cluster_id).size(); t++){
             if(m_hiz_pipe->full()) return;
             RasterTile* tile = prim->prim->getSimtTiles(m_cluster_id)[t];
-            if(tile->size() > 0)
+            if(tile->getActiveCount() > 0)
                m_hiz_pipe->push(tile);
             m_current_c_tile++;
             processed_tiles++;
@@ -324,7 +340,7 @@ class graphics_simt_pipeline {
          if(m_f_raster_pipe->full()) return;
          RasterTile* tile = m_hiz_pipe->top();
          assert(tile);
-         assert(tile->size() > 0);
+         assert(tile->getActiveCount() > 0);
          m_f_raster_pipe->push(tile);
          m_hiz_pipe->pop();
       }
@@ -336,28 +352,30 @@ class graphics_simt_pipeline {
             if(m_f_raster_pipe->empty()) return;
             RasterTile* tile = m_f_raster_pipe->top();
             assert(tile);
-            assert(tile->size() > 0);
+            assert(tile->getActiveCount() > 0);
             m_zunit_pipe->push(tile);
             m_f_raster_pipe->pop();
          }
       }
 
       void run_z_unit(){
-         if(m_f_raster_pipe->empty()) return;
+         if(m_zunit_pipe->empty()) return;
          if(m_ta_pipe->full()) return;
-         RasterTile* tile = m_f_raster_pipe->top();
+         RasterTile* tile = m_zunit_pipe->top();
          assert(tile);
-         assert(tile->size() > 0);
-         m_ta_pipe->push(tile);
-         m_f_raster_pipe->pop();
+         assert(tile->getActiveCount() > 0);
+         if(tile->resetActiveCount() > 0){
+            m_ta_pipe->push(tile);
+         }
+         m_zunit_pipe->pop();
       }
 
       void run_ta_stage(){
          m_ta_stage.cycle();
          if(m_ta_pipe->empty()) return;
-         RasterTile* tile = m_f_raster_pipe->top();
+         RasterTile* tile = m_ta_pipe->top();
          assert(tile);
-         assert(tile->size() > 0);
+         assert(tile->getActiveCount() > 0);
          if(m_ta_stage.insert(tile)){
             m_ta_pipe->pop();
          }
