@@ -105,6 +105,11 @@ class tc_engine_t {
       return false;
    }
 
+   bool empty(){
+      return ((m_input_tiles_bin.size() == 0) and
+         (m_status.pending_frags == 0));
+   }
+
    bool append_tile(RasterTile* tile){
       assert(has_tile(tile->xCoord, tile->yCoord));
       if(m_input_tiles_bin.size() < m_tc_tiles_count){
@@ -129,8 +134,7 @@ class tc_engine_t {
       if(m_status.pending_frags == 0)
          return;
       m_status.waiting_cycles++;
-      std::vector<RasterTile::rasterFragment_t*>* tc_frags = 
-         new std::vector<RasterTile::rasterFragment_t*>();
+      tcTilePtr_t tc_frags = new tcTile_t();
       if(m_status.pending_flush or
             (m_status.waiting_cycles > m_wait_threshold)){
          for(unsigned tileId=0; tileId<m_afragments.size(); tileId++){
@@ -143,7 +147,7 @@ class tc_engine_t {
             }
          }
          m_status.reset();
-         g_renderData.launchTCTile(tc_frags);
+         g_renderData.launchTCTile(tc_frags, 0);
       }
    }
    void assemble(){
@@ -243,6 +247,14 @@ class tile_assembly_stage_t {
          }
       }
       return false;
+   }
+
+   bool empty(){
+      bool is_empty = false;
+      for(unsigned te=0; te<tc_engines.size(); te++){
+         is_empty = is_empty and tc_engines[te].empty();
+      }
+      return is_empty;
    }
 
    void cycle(){
@@ -397,8 +409,12 @@ class graphics_simt_pipeline {
       unsigned get_not_completed(){
          bool empty = 
             m_setup_pipe->empty() and
-            m_c_raster_pipe->empty();
-         return !empty;
+            m_c_raster_pipe->empty() and 
+            m_hiz_pipe->empty() and 
+            m_f_raster_pipe->empty() and 
+            m_zunit_pipe->empty() and 
+            m_ta_pipe->empty();
+         return empty and m_ta_stage.empty()? 0 : 1;
       }
 
    private:
