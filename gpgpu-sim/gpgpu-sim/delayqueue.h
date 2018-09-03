@@ -75,15 +75,14 @@ public:
             m_tail->m_next = new fifo_data<T>();
             m_tail = m_tail->m_next;
             m_length++;
-            m_n_element++;
          }
       } else {
          m_head = m_tail = new fifo_data<T>();
          m_length++;
-         m_n_element++;
       }
       m_tail->m_next = NULL;
       m_tail->m_data = data;
+      if(data) m_n_element++;
    }
 
    T* pop() 
@@ -104,10 +103,9 @@ public:
            assert( m_head == NULL );
            m_tail = m_head;
         }
-        m_n_element--; 
+        if(data) m_n_element--; 
          if (m_min_len && m_length < m_min_len) {
             push(NULL);
-            m_n_element--; // uncount NULL elements inserted to create delays
          }
       } else {
          data = NULL;
