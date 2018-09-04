@@ -146,8 +146,8 @@ class tc_engine_t {
                m_afragments[tileId][quadId].reset();
             }
          }
+         g_renderData.launchTCTile(tc_frags, m_status.done_prims);
          m_status.reset();
-         g_renderData.launchTCTile(tc_frags, 0);
       }
    }
    void assemble(){
@@ -180,6 +180,12 @@ class tc_engine_t {
       }
 
       for(unsigned r=0; r<remove_list.size(); r++){
+         if(remove_list[r]->lastPrimTile){
+            m_status.done_prims++;
+         }
+         assert((std::find(m_input_tiles_bin.begin(), 
+                  m_input_tiles_bin.end(), remove_list[r]) != 
+                  m_input_tiles_bin.end()));
          m_input_tiles_bin.remove(remove_list[r]);
       }
       remove_list.clear();
@@ -212,10 +218,12 @@ class tc_engine_t {
       bool pending_flush;
       unsigned pending_frags;
       unsigned waiting_cycles;
+      unsigned done_prims;
       void reset(){
          pending_flush=false;
          pending_frags=0;
          waiting_cycles=0;
+         done_prims=0;
       }
    };
    status_t m_status;
@@ -250,7 +258,7 @@ class tile_assembly_stage_t {
    }
 
    bool empty(){
-      bool is_empty = false;
+      bool is_empty = true;
       for(unsigned te=0; te<tc_engines.size(); te++){
          is_empty = is_empty and tc_engines[te].empty();
       }
@@ -269,7 +277,7 @@ class tile_assembly_stage_t {
 
 class graphics_simt_pipeline {
    private:
-      struct primitive_data_t{
+      struct primitive_data_t {
          primitive_data_t(primitiveFragmentsData_t* _prim):
             prim(_prim)
          {}
@@ -303,6 +311,10 @@ class graphics_simt_pipeline {
       ~graphics_simt_pipeline(){
          delete m_setup_pipe;
          delete m_c_raster_pipe;
+         delete m_hiz_pipe;
+         delete m_f_raster_pipe;
+         delete m_zunit_pipe;
+         delete m_ta_pipe;
       }
 
       void cycle(){
@@ -334,14 +346,16 @@ class graphics_simt_pipeline {
                t< prim->prim->getSimtTiles(m_cluster_id).size(); t++){
             if(m_hiz_pipe->full()) return;
             RasterTile* tile = prim->prim->getSimtTiles(m_cluster_id)[t];
-            if(tile->getActiveCount() > 0)
+            if(tile->getActiveCount() > 0){
                m_hiz_pipe->push(tile);
+            }
             m_current_c_tile++;
             processed_tiles++;
             if(processed_tiles == m_c_tiles_per_cycle)
                break;
          }
          if(m_current_c_tile == prim->prim->getSimtTiles(m_cluster_id).size()){
+            delete  m_c_raster_pipe->top();
             m_c_raster_pipe->pop();
             m_current_c_tile = 0;
          }
@@ -399,22 +413,26 @@ class graphics_simt_pipeline {
             return true;
          if(m_setup_pipe->full())
             return false;
+         //mark last tile for this simt
+         RasterTile* tile = prim->getSimtTiles(m_cluster_id)[
+            prim->getSimtTiles(m_cluster_id).size()-1];
+         tile->lastPrimTile=true;
          primitive_data_t* prim_data = new primitive_data_t(prim);
-         //prim_data->c_raster_delay = 
          m_setup_pipe->push(prim_data);
          return true;
       }
 
       //return if pipeline not empty
       unsigned get_not_completed(){
-         bool empty = 
-            m_setup_pipe->empty() and
-            m_c_raster_pipe->empty() and 
-            m_hiz_pipe->empty() and 
-            m_f_raster_pipe->empty() and 
-            m_zunit_pipe->empty() and 
-            m_ta_pipe->empty();
-         return empty and m_ta_stage.empty()? 0 : 1;
+         unsigned not_complete = 
+            m_setup_pipe->get_n_element() +
+            m_c_raster_pipe->get_n_element() +
+            m_hiz_pipe->get_n_element() +
+            m_f_raster_pipe->get_n_element() +
+            m_zunit_pipe->get_n_element() +
+            m_ta_pipe->get_n_element();
+         unsigned ret = not_complete + (m_ta_stage.empty()? 0 : 1);
+         return ret; 
       }
 
    private:

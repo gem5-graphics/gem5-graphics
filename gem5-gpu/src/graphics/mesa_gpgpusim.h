@@ -107,6 +107,7 @@ class RasterTile {
          primId(_primId), 
          tileH(_tileH), tileW(_tileW),
          xCoord(_xCoord), yCoord(_yCoord),
+         lastPrimTile(false),
          m_fragmentsQuads(_tileH*_tileW/QUAD_SIZE, 
                std::vector<rasterFragment_t>(QUAD_SIZE)),
          m_tilePos(_tilePos), m_prim(_prim)
@@ -188,6 +189,7 @@ class RasterTile {
       const unsigned tileW;
       const unsigned xCoord;
       const unsigned yCoord;
+      bool lastPrimTile;
    private:
       std::vector <std::vector <rasterFragment_t> > m_fragmentsQuads;
       std::vector<unsigned> m_fragmentIndices;
@@ -208,9 +210,11 @@ enum RasterDirection {
 };
 
 enum class DepthSize : uint32_t { Z16 = 2, Z32 = 4 };
-
+typedef std::vector<RasterTile::rasterFragment_t*> tcTile_t;
+typedef std::vector<RasterTile::rasterFragment_t*>* tcTilePtr_t;
 struct mapTileStream_t{
-   std::vector<RasterTile::rasterFragment_t*>* tcTilePtr;
+   mapTileStream_t(): tcTilePtr(NULL){}
+   tcTilePtr_t tcTilePtr;
    unsigned tileId;
    unsigned primId;
 };
@@ -219,8 +223,10 @@ struct mapTileStream_t{
 struct stage_shading_info_t {
     enum class GraphicsPass { NONE , Vertex, Fragment};
     GraphicsPass currentPass;
+    unsigned sent_simt_prims;
     unsigned launched_threads;
     unsigned completed_threads;
+    unsigned pending_kernels;
     bool doneEarlyZ;
     unsigned doneZTiles;
     RasterTiles * earlyZTiles;
@@ -249,8 +255,10 @@ struct stage_shading_info_t {
 
     void clear() {
         currentPass = GraphicsPass::NONE;
+        sent_simt_prims = 0;
         launched_threads = 0;
         completed_threads = 0;
+        pending_kernels = 0;
         doneEarlyZ = true;
         doneZTiles = 0;
         render_init = true;
@@ -263,6 +271,12 @@ struct stage_shading_info_t {
         if(earlyZTiles!=NULL) { assert(0); } //should be cleared when earlyZ is done
         //
         currentEarlyZTile = 0;
+    
+        for(auto it=cudaStreamTiles.begin(); it!=cudaStreamTiles.end(); ++it){
+           if(it->second.tcTilePtr!=NULL){
+              delete it->second.tcTilePtr;
+           }
+        }
         cudaStreamTiles.clear();
     }
 };
@@ -361,7 +375,7 @@ public:
     void checkEndOfShader(CudaGPU * cudaGPU);
     void doneEarlyZ(); 
     void launchFragmentTile(RasterTile * rasterTile, unsigned tileId);
-    void launchTCTile(std::vector<RasterTile::rasterFragment_t*>* tcTile);
+    void launchTCTile(tcTilePtr_t tcTile, unsigned donePrims);
     void addPrimitive();
     void setVertShaderUsedRegs(int regs){
       m_usedVertShaderRegs = regs;
