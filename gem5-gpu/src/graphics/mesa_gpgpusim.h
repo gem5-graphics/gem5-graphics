@@ -107,24 +107,25 @@ class RasterTile {
          primId(_primId), 
          tileH(_tileH), tileW(_tileW),
          xCoord(_xCoord), yCoord(_yCoord),
+         m_tilePos(_tilePos), 
          lastPrimTile(false),
          m_fragmentsQuads(_tileH*_tileW/QUAD_SIZE, 
-               std::vector<rasterFragment_t>(QUAD_SIZE)),
-         m_tilePos(_tilePos), m_prim(_prim)
+         std::vector<rasterFragment_t>(QUAD_SIZE)),
+         m_prim(_prim), m_addedFragsCount(0),
+         m_skipFineDepth(false)
       {}
 
-      void addFragment(fragmentData_t* frag){ 
-         unsigned fragX = frag->uintPos[0]%tileW;
-         unsigned fragY = frag->uintPos[1]%tileH;
-         unsigned fidx = fragY*tileW + fragX;
-         assert(fidx < tileH*tileW);
-         m_fragmentsQuads[fidx/QUAD_SIZE][fidx%QUAD_SIZE].frag = frag;
-         m_fragmentsQuads[fidx/QUAD_SIZE][fidx%QUAD_SIZE].alive = true;
-         m_fragmentsQuads[fidx/QUAD_SIZE][fidx%QUAD_SIZE].tile = this;
-      }
+      void addFragment(fragmentData_t* frag);
 
       unsigned size() const { return m_fragmentsQuads.size()*QUAD_SIZE;} 
 
+      void setSkipFineDepth(){
+         m_skipFineDepth = true;
+      }
+
+      bool skipFineDepth(){
+         return m_skipFineDepth;
+      }
 
       /*fragmentData_t& operator[] (const int index)
       {
@@ -159,11 +160,12 @@ class RasterTile {
          return activeCount;
       }
 
+      bool fullyCovered(){
+         return (resetActiveCount()==size());
+      }
+
       unsigned getFragmentIndex(unsigned id){
          return m_fragmentIndices[id];
-      }
-      unsigned getTilePos(){
-         return m_tilePos;
       }
 
       unsigned resetActiveCount(){
@@ -184,29 +186,42 @@ class RasterTile {
          m_activeCount--;
          return m_activeCount;
       }
+
+      uint64_t backDepth(){
+         return m_backDepth;
+      }
+
+      uint64_t frontDepth(){
+         return m_frontDepth;
+      }
+
       const int primId;
       const unsigned tileH;
       const unsigned tileW;
       const unsigned xCoord;
       const unsigned yCoord;
+      const unsigned m_tilePos;
       bool lastPrimTile;
    private:
       std::vector <std::vector <rasterFragment_t> > m_fragmentsQuads;
       std::vector<unsigned> m_fragmentIndices;
       std::vector<bool> m_validFragments;
-      const unsigned m_tilePos;
       primitiveFragmentsData_t* const m_prim;
       unsigned m_activeCount;
+      uint64_t m_frontDepth;
+      uint64_t m_backDepth;
+      unsigned m_addedFragsCount;
+      bool m_skipFineDepth;
 };
 
 
 typedef std::vector<RasterTile* > RasterTiles;
 
-enum RasterDirection {
-    VerticalRaster,
+enum class RasterDirection {
     HorizontalRaster,
-    BlockedHorizontal,
-    HilbertOrder
+    //VerticalRaster,
+    //HilbertOrder,
+    BlockedHorizontal
 };
 
 enum class DepthSize : uint32_t { Z16 = 2, Z32 = 4 };
@@ -305,7 +320,10 @@ public:
         const unsigned blockH, const unsigned blockW, const RasterDirection rasterDir);
     void sortFragmentsInTiles(unsigned frameHeight, unsigned frameWidth,
         const unsigned tileH, const unsigned tileW,
-        const unsigned blockH, const unsigned blockW, const RasterDirection rasterDir,
+        const unsigned hTiles, const unsigned wTiles,
+        const unsigned tilesCount,
+        const unsigned blockH, const unsigned blockW, 
+        const RasterDirection rasterDir,
         unsigned simtCount);
 
     //primitive max and min depth values, used for z-culling
@@ -410,6 +428,8 @@ public:
     const char* getShaderOutputDir(){
       return m_intFolder.c_str();
     }
+    bool depthTest(uint64_t oldDepth, uint64_t newDepth);
+    bool testHiz(RasterTile* tile);
 
 private:
     bool useInShaderBlending() const;
@@ -469,6 +489,7 @@ private:
     std::string getShaderPTXInfo(int usedRegs, std::string functionName);
     void* getShaderFatBin(std::string vertexShader, std::string fragmentShader);
     gl_state_index getParamStateIndexes(gl_state_index index);
+    void setHizTiles(RasterDirection rasterDir);
 
 private:
     std::string vPTXPrfx;
@@ -502,6 +523,9 @@ private:
     struct gl_renderbuffer * m_mesaDepthBuffer;
     unsigned int m_tile_H;
     unsigned int m_tile_W;
+    unsigned int m_tilesCount;
+    unsigned int m_wTiles;
+    unsigned int m_hTiles;
     unsigned int m_block_H;
     unsigned int m_block_W;
     long long unsigned m_drawcall_num;
@@ -535,6 +559,52 @@ private:
     std::vector<uint64_t> m_texelFetches;
     std::vector< std::vector<ch4_t> > consts;
     unsigned m_fbPixelSize;
+
+    struct hizBuffer_t {
+       hizBuffer_t(renderData_t *rd){
+          m_size = 0;
+          m_renderData = rd;
+       }
+       void setSize(unsigned psize){
+          m_size = psize;
+          frontDepth.resize(psize);
+          backDepth.resize(psize);
+          depthValid.resize(psize, false);
+       }
+
+       void setDepth(unsigned tileIdx,
+             unsigned xCoord, unsigned yCoord,
+             uint64_t depth){
+          assert(tileIdx < frontDepth.size() and tileIdx < backDepth.size());
+          if(!depthValid[tileIdx]){
+             depthValid[tileIdx] = true;
+             frontDepth[tileIdx] = depth;
+             backDepth [tileIdx] = depth;
+             xCoords[tileIdx] = xCoord;
+             yCoords[tileIdx] = yCoord;
+          } else {
+             assert(xCoords[tileIdx] == xCoord);
+             assert(yCoords[tileIdx] == yCoord);
+             if(m_renderData->depthTest(frontDepth[tileIdx], depth)){
+                frontDepth[tileIdx] = depth;
+             } else if(m_renderData->depthTest(depth, backDepth[tileIdx])){
+                backDepth[tileIdx] = depth;
+             }
+          }
+       }
+
+       unsigned size() { return m_size;}
+       std::vector<uint64_t> frontDepth;
+       std::vector<uint64_t> backDepth;
+       std::vector<unsigned> xCoords;
+       std::vector<unsigned> yCoords;
+       std::vector<bool> depthValid;
+       private:
+       unsigned m_size;
+       renderData_t* m_renderData;
+    };
+
+    hizBuffer_t m_hizBuff;
 };
 
 extern renderData_t g_renderData;

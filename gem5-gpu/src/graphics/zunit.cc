@@ -546,7 +546,7 @@ void ZUnit::tick(){
          }
 
          DepthFragmentTile* dt = depthTiles[currTile];
-         unsigned posId = dt->getRasterTile()->getTilePos();
+         unsigned posId = dt->getRasterTile()->m_tilePos;
          assert(posId < hizBuff.size());
          if(depthFunc == GL_NOTEQUAL or depthFunc==GL_EQUAL){ 
             warn_once("Unsupported depth test (GL_NOTEQUAL or GL_EQUAL), skipping HiZ\n");
@@ -692,9 +692,9 @@ void ZUnit::initHizBuffer(uint8_t* depthBuffer, unsigned frameWidth, unsigned fr
        unsigned yPos = i/frameWidth;
        unsigned tileXCoord = xPos/tileW;
        unsigned tileYCoord = yPos/tileH;
-       if(rasterDir == HorizontalRaster){
+       if(rasterDir == RasterDirection::HorizontalRaster){
           tileIdx = tileYCoord*tileRow + tileXCoord;
-       } else if (rasterDir == BlockedHorizontal){
+       } else if (rasterDir == RasterDirection::BlockedHorizontal){
           assert(0); //TODO
        } else assert(0);
 

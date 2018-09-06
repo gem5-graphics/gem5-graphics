@@ -41,6 +41,62 @@
 
 extern renderData_t g_renderData;
 
+/*class hiz_unit_t {
+   public:
+      hiz_unit_t(DepthSize dSize):
+   {}
+   private:
+      bool testAndSetDepth(RasterTile* tile){
+         unsigned tilePos = tile->tilePos;
+         it(m_hiz_depths.find(tilePos) == m_hiz_depths.end()){
+            //test against existing depth on the original depth buffer
+            uint64_t depth_front;
+            uint64_t depth_back;
+            if(g_renderData.depthTest(depthTiles[i]->hizDepthFront, zPos)){
+               depthTiles[i]->hizDepthFront = zPos;
+            }
+            if(g_renderData.depthTest(zPos, depthTiles[i]->hizDepthBack)){
+               depthTiles[i]->hizDepthBack = zPos;
+            }
+            hiz_entry_t entry(tile->depth_front, tile->depth_back,
+                  tile->xCoord, tile->yCoord);
+         } else {
+            assert(tile->xCoord == m_hiz_depths[tilePos]->xCoord);
+            assert(tile->yCoord == m_hiz_depths[tilePos]->yCoord);
+            if(depthTest(m_hiz_depths[tilePos]->depth_front,
+                     tile->depthBack)){
+               m_hiz_depths[tilePos]->depth_front = tile->depthFront;
+               if(tile->fullyCovered()){
+                  m_hiz_depths[tilePos]->depth_back = tile->depthBack;
+               }
+               //set tile fully passed (bypass fine z later)
+            } else if(depthTest(m_hiz_depths[tilePos]->depth_back,
+                     tile->depthFront)){
+               //set hiz thresh to be used in fine raster
+               if(tile->fullyCovered()){
+                  m_hiz_depths[tilePos]->depth_back = tile->depthBack;
+               }
+            } else {
+               //tile is dead
+            }
+
+         }
+      }
+
+      unsigned size() { return m_size;}
+      struct hiz_entry_t {
+         hiz_entry_t(uint64_t _df, uint64_t _db, unsigned x, unsigned y):
+            depth_front(_df), depth_back(_db), xCoord(x), yCoord(y)
+         {}
+         uint64_t depth_front;
+         uint64_t depth_back;
+         //xy coord of the hiz tile
+         unsigned xCoord;
+         unsigned yCoord;
+      };
+      std::map<unsigned, hiz_entry_t> m_hiz_depths;
+};*/
+
 class tc_engine_t {
    static unsigned tc_engine_id_count;
    unsigned m_tc_engine_id;
@@ -288,6 +344,7 @@ class graphics_simt_pipeline {
             unsigned setup_delay, unsigned setup_q_len,
             unsigned c_tiles_per_cycle,
             unsigned f_tiles_per_cycle,
+            unsigned hiz_tiles_per_cycle,
             unsigned tc_bins,
             unsigned tc_tile_h, unsigned tc_tile_w,
             unsigned r_tile_h, unsigned r_tile_w,
@@ -297,7 +354,8 @@ class graphics_simt_pipeline {
          m_ta_stage(tc_bins, tc_tile_h, tc_tile_w, 
                r_tile_h, r_tile_w, tc_wait_threshold),
          m_c_tiles_per_cycle(c_tiles_per_cycle),
-         m_f_tiles_per_cycle(f_tiles_per_cycle)
+         m_f_tiles_per_cycle(f_tiles_per_cycle),
+         m_hiz_tiles_per_cycle(hiz_tiles_per_cycle)
    { 
       m_setup_pipe = new fifo_pipeline<primitive_data_t>("setup-stage", setup_delay, setup_q_len);
       m_c_raster_pipe = new fifo_pipeline<primitive_data_t>("coarse-raster-stage", 0, 2);
@@ -362,13 +420,18 @@ class graphics_simt_pipeline {
       }
 
       void run_hiz(){
-         if(m_hiz_pipe->empty()) return;
-         if(m_f_raster_pipe->full()) return;
-         RasterTile* tile = m_hiz_pipe->top();
-         assert(tile);
-         assert(tile->getActiveCount() > 0);
-         m_f_raster_pipe->push(tile);
-         m_hiz_pipe->pop();
+         for(unsigned processed_tiles=0; processed_tiles < m_hiz_tiles_per_cycle;
+               processed_tiles++){
+            if(m_hiz_pipe->empty()) return;
+            if(m_f_raster_pipe->full()) return;
+            RasterTile* tile = m_hiz_pipe->top();
+            assert(tile);
+            assert(tile->getActiveCount() > 0);
+            if(g_renderData.testHiz(tile)){
+               m_f_raster_pipe->push(tile);
+            }
+            m_hiz_pipe->pop();
+         }
       }
 
       void run_f_raster(){
@@ -449,6 +512,8 @@ class graphics_simt_pipeline {
       //performance configs
       const unsigned m_c_tiles_per_cycle;
       const unsigned m_f_tiles_per_cycle;
+      const unsigned m_hiz_tiles_per_cycle;
+
 };
 
 

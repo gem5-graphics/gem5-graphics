@@ -159,7 +159,8 @@ void primitiveFragmentsData_t::sortFragmentsInRasterOrder(unsigned frameHeight, 
         const unsigned tileH, const unsigned tileW,
         const unsigned blockH, const unsigned blockW, const RasterDirection rasterDir) {
 
-    assert(rasterDir==HorizontalRaster or rasterDir==BlockedHorizontal); //what we do here so far
+    assert(rasterDir==RasterDirection::HorizontalRaster or 
+          rasterDir==RasterDirection::BlockedHorizontal); //what we do here so far
   
     //checking if a suitable block size is provided
     assert((blockH%tileH)==0);
@@ -225,14 +226,14 @@ void primitiveFragmentsData_t::sortFragmentsInRasterOrder(unsigned frameHeight, 
 
     //now adding the fragments in the raster order, tile moves horizontally
 
-    if (rasterDir == HorizontalRaster) {
+    if (rasterDir == RasterDirection::HorizontalRaster) {
          //DPRINTF(MesaGpgpusim, "raster order: HorizontalRaster\n");
         for (unsigned tile = 0; tile < fragmentTiles.size(); tile++) {
             for (unsigned frag = 0; frag < fragmentTiles[tile].size(); frag++) {
                 m_fragments.push_back(fragmentTiles[tile][frag]);
             }
         }
-    } else if (rasterDir == BlockedHorizontal) {
+    } else if (rasterDir == RasterDirection::BlockedHorizontal) {
          //DPRINTF(MesaGpgpusim, "raster order: BlockedHorizontal\n");
         
         std::vector<std::vector<std::vector<fragmentData_t> > >blocks;
@@ -276,7 +277,12 @@ void renderData_t::runEarlyZ(CudaGPU * cudaGPU, unsigned tileH, unsigned tileW, 
 
    RasterTiles * allTiles = new RasterTiles();
    for(int prim=0; prim < drawPrimitives.size(); prim++){
-      drawPrimitives[prim].sortFragmentsInTiles(m_bufferHeight, m_bufferWidth, tileH, tileW, blockH, blockW, dir, clusterCount);
+      drawPrimitives[prim].sortFragmentsInTiles(
+            m_bufferHeight, m_bufferWidth,
+            m_tile_H, m_tile_W, 
+            m_hTiles, m_wTiles,
+            m_tilesCount,
+            blockH, blockW, dir, clusterCount);
       RasterTiles& primTiles = drawPrimitives[prim].getRasterTiles();
       DPRINTF(MesaGpgpusim, "prim %d tiles = %ld\n", prim, primTiles.size());
       for(int tile=0; tile < primTiles.size(); tile++){
@@ -301,11 +307,14 @@ void renderData_t::runEarlyZ(CudaGPU * cudaGPU, unsigned tileH, unsigned tileW, 
 
 void primitiveFragmentsData_t::sortFragmentsInTiles(unsigned frameHeight, unsigned frameWidth,
         const unsigned tileH, const unsigned tileW,
-        const unsigned blockH, const unsigned blockW, const RasterDirection rasterDir,
+        const unsigned hTiles, const unsigned wTiles,
+        const unsigned tilesCount,
+        const unsigned blockH, const unsigned blockW, 
+        const RasterDirection rasterDir,
         unsigned simtCount) {
    
     assert(m_rasterTiles.size() == 0);
-    assert(rasterDir==HorizontalRaster or rasterDir==BlockedHorizontal);
+    assert(rasterDir==RasterDirection::HorizontalRaster);
     printf("Current frame size WxH=%dx%d\n", frameWidth, frameHeight);
 
 
@@ -313,7 +322,7 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(unsigned frameHeight, unsign
     assert((blockH%tileH)==0);
     assert((blockW%tileW)==0);
  
-    //adding padding for rounded pixel locations
+    /*//adding padding for rounded pixel locations
     frameHeight+= blockH;
     frameWidth += blockW;
     
@@ -325,14 +334,9 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(unsigned frameHeight, unsign
     if ((frameHeight % blockH) != 0) {
         frameHeight -= frameHeight % blockH;
         frameHeight += blockH;
-    }
+    }*/
     
 
-    const unsigned fragmentsPerTile = tileH * tileW;
-    const unsigned wTiles = (frameWidth + tileW -1)/ tileW;
-    const unsigned hTiles = (frameHeight + tileH -1)/ tileH;
-    assert(0 == ((frameHeight* frameWidth) % fragmentsPerTile));
-    const unsigned tilesCount = wTiles * hTiles;
 
     DPRINTF(MesaGpgpusim, "Sorting %d framgents in %d tiles \n", m_fragments.size(), tilesCount);
 
@@ -340,11 +344,11 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(unsigned frameHeight, unsign
     minX = minY = -1;
     maxX = maxY = -1;
     std::vector<RasterTile* > fragmentTiles;
-    for (unsigned tile = 0; tile < tilesCount; tile++) {
+    for (unsigned tileId = 0; tileId < tilesCount; tileId++) {
         //std::vector<fragmentData_t>* aSet = new std::vector<fragmentData_t>();
-        unsigned xCoord = tile%wTiles;
-        unsigned yCoord = tile/wTiles;
-        RasterTile * rtile = new RasterTile(this, primId, tile,
+        unsigned xCoord = tileId%wTiles;
+        unsigned yCoord = tileId/wTiles;
+        RasterTile * rtile = new RasterTile(this, primId, tileId,
               tileH, tileW, xCoord, yCoord);
         fragmentTiles.push_back(rtile);
     }
@@ -353,7 +357,7 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(unsigned frameHeight, unsign
     assert((frameWidth%tileW) == 0);
     assert((frameHeight%tileH) == 0);
             
-    unsigned const numberOfHorizontalTiles = frameWidth / tileW;
+    //unsigned const numberOfHorizontalTiles = frameWidth / tileW;
     
     //now we figure which tile every fragment belongs to
     for (int frag = 0; frag < m_fragments.size(); frag++) {
@@ -365,8 +369,8 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(unsigned frameHeight, unsign
         maxX = (maxX == -1)? tileXCoord: std::max(maxX, (int)tileXCoord);
         minY = (minY == -1)? tileYCoord: std::min(minY, (int)tileYCoord);
         maxY = (maxY == -1)? tileYCoord: std::max(maxY, (int)tileYCoord);
-        assert(tileXCoord<numberOfHorizontalTiles);
-        unsigned tileIndex = tileYCoord * numberOfHorizontalTiles + tileXCoord;
+        assert(tileXCoord<wTiles);
+        unsigned tileIndex = tileYCoord * wTiles + tileXCoord;
         assert(tileIndex < fragmentTiles.size());
         fragmentTiles[tileIndex]->addFragment(&m_fragments[frag]);
                 
@@ -399,7 +403,9 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(unsigned frameHeight, unsign
     m_validTiles = true;
 }
 
-renderData_t::renderData_t() {
+renderData_t::renderData_t():
+   m_hizBuff(this)
+{
     m_deviceData = NULL;
     m_currentFrame = 0;
     //callsCount = 0;
@@ -1173,14 +1179,16 @@ void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, voi
             getCurrentShaderName(FRAGMENT_PROGRAM).c_str(),
             -1, (uint3*)0, (uint3*)0, (dim3*)0, (dim3*)0, (int*)0);
 
+    unsigned fragmentsPerTile = m_tile_H * m_tile_W;
+    m_wTiles = (m_bufferWidth + m_tile_W -1)/ m_tile_W;
+    m_hTiles = (m_bufferHeight + m_tile_H -1)/ m_tile_H;
+    assert(0 == ((m_bufferHeight* m_bufferWidth) % fragmentsPerTile));
+    m_tilesCount = m_wTiles * m_hTiles;
+
     m_depthBuffer = NULL;
     if(isDepthTestEnabled()){
         m_depthBuffer = setDepthBuffer(activeDepthSize, trueDepthSize);
-        graphicsMalloc((void**) &m_deviceData, m_colorBufferByteSize + m_depthBufferSize); //for color and depth
-        /*printf("color buffer start=%llx,  end=%llx, depthBuffer start=%llx, end=%llx\n",
-              m_deviceData, m_deviceData + m_colorBufferByteSize-1,
-              m_deviceData + m_colorBufferByteSize, m_deviceData + m_colorBufferByteSize + m_depthBufferSize-1);*/
-
+        graphicsMalloc((void**) &m_deviceData, m_colorBufferByteSize + m_depthBufferSize); 
         if(m_standaloneMode){
            CudaGPU* cg = CudaGPU::getCudaGPU(g_active_device);
            assert(cg->standaloneMode);
@@ -1192,6 +1200,7 @@ void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, voi
            graphicsMemcpy(m_deviceData + m_colorBufferByteSize,
                  m_depthBuffer, m_depthBufferSize, graphicsMemcpyHostToSim);
         }
+        setHizTiles(RasterDirection::HorizontalRaster);
     } else {
         graphicsMalloc((void**) &m_deviceData, m_colorBufferByteSize);
     }
@@ -1461,13 +1470,117 @@ GLboolean renderData_t::doVertexShading(GLvector4f ** inputParams, vp_stage_data
 }
 */
 
+void renderData_t::setHizTiles(RasterDirection rasterDir) {
+   const unsigned frameDim = m_bufferHeight * m_bufferWidth;
+   std::vector<uint64_t> depthValues(frameDim);
+
+   if(m_depthSize == DepthSize::Z16) {
+      uint16_t* p = (uint16_t*) m_depthBuffer;
+      for(unsigned i =0; i< frameDim; i++)
+         depthValues[i] = p[i];
+   } else if(m_depthSize == DepthSize::Z32){
+      uint32_t* p = (uint32_t*) m_depthBuffer;
+      for(unsigned i =0; i< frameDim; i++)
+         depthValues[i] = p[i];
+   } else assert(0);
+
+   std::vector<bool> touchedTiles(m_tilesCount, false);
+   m_hizBuff.setSize(m_tilesCount);
+   assert((m_bufferWidth%m_tile_W) == 0);
+   assert((m_bufferHeight%m_tile_H) == 0);
+   const unsigned tileRow = m_bufferWidth / m_tile_W;
+   for(unsigned i=0; i < depthValues.size(); i++){
+      unsigned tileIdx = -1;
+      unsigned xPos = i%m_bufferWidth;
+      unsigned yPos = i/m_bufferWidth;
+      unsigned tileXCoord = xPos/m_tile_W;
+      unsigned tileYCoord = yPos/m_tile_H;
+      if(rasterDir == RasterDirection::HorizontalRaster){
+         tileIdx = tileYCoord*tileRow + tileXCoord;
+      } else {
+         assert(0);
+      } 
+      m_hizBuff.setDepth(tileIdx, tileXCoord, tileYCoord, depthValues[i]);
+   }
+}
+
+bool renderData_t::testHiz(RasterTile* tile){
+   if(not isDepthTestEnabled()){
+      tile->setSkipFineDepth();
+      return true;
+   }
+   unsigned const tileId = tile->m_tilePos;
+   assert(tile->xCoord == m_hizBuff.xCoords[tileId]);
+   assert(tile->yCoord == m_hizBuff.yCoords[tileId]);
+
+   if(m_mesaCtx->Depth.Func==GL_NOTEQUAL 
+         or m_mesaCtx->Depth.Func==GL_EQUAL){ 
+      warn_once("Unsupported depth test (GL_NOTEQUAL or GL_EQUAL), skipping HiZ\n");
+      return true;
+   } else if(depthTest(m_hizBuff.frontDepth[tileId], tile->backDepth())){
+      m_hizBuff.frontDepth[tileId] = tile->frontDepth();
+      if(tile->fullyCovered()){
+         m_hizBuff.backDepth[tileId] = tile->backDepth();
+      }
+      tile->setSkipFineDepth();
+      return true;
+   } else if(depthTest(m_hizBuff.backDepth[tileId], tile->frontDepth())){
+      return true;
+   } 
+   return false;
+}
+
+bool renderData_t::depthTest(uint64_t oldDepthVal, uint64_t newDepthVal){
+   bool returnVal = false;
+   switch(m_mesaCtx->Depth.Func){
+      case GL_LESS: 
+         if(newDepthVal < oldDepthVal)
+            returnVal = true;
+         break;
+      case GL_LEQUAL:
+         if(newDepthVal <= oldDepthVal)
+            returnVal = true;
+         break;
+      case GL_GEQUAL: 
+         if(newDepthVal >= oldDepthVal)
+            returnVal = true;
+         break;
+      case GL_GREATER: 
+         if(newDepthVal > oldDepthVal)
+            returnVal = true;
+         break;
+      case GL_NOTEQUAL:
+         if(newDepthVal != oldDepthVal)
+            returnVal = true;
+         break;
+      case GL_EQUAL:
+         if(newDepthVal == oldDepthVal)
+            returnVal = true;
+         break;
+      case GL_NEVER:
+         returnVal = false;
+         break;
+      case GL_ALWAYS:
+         returnVal = true;
+      default: 
+         panic("Unsupported depth function %x\n", m_mesaCtx->Depth.Func);
+   }
+   return returnVal;
+}
+
 unsigned int renderData_t::doFragmentShading() {
    CudaGPU* cudaGPU = CudaGPU::getCudaGPU(g_active_device);
    gpgpu_sim* gpu =  cudaGPU->getTheGPU();
    unsigned numClusters = gpu->get_config().num_cluster();
    simt_core_cluster* simt_clusters = gpu->getSIMTCluster();
    for(unsigned prim=0; prim < drawPrimitives.size(); prim++){
-      drawPrimitives[prim].sortFragmentsInTiles(m_bufferHeight, m_bufferWidth, m_tile_H, m_tile_W, m_block_H, m_block_W, HorizontalRaster, numClusters);
+      drawPrimitives[prim].sortFragmentsInTiles(m_bufferHeight, m_bufferWidth, 
+            m_tile_H, m_tile_W, 
+            m_hTiles, m_wTiles,
+            m_tilesCount,
+            m_block_H, m_block_W, 
+            RasterDirection::HorizontalRaster, 
+            numClusters);
       for(unsigned clusterId=0; clusterId < numClusters; clusterId++){
          bool res = simt_clusters[clusterId].getGraphicsPipeline()->add_primitive(&drawPrimitives[prim], 0);
          assert(res);
@@ -2032,4 +2145,28 @@ byte* Utils::RGB888_to_RGBA888(byte* rgb, int size, byte alpha){
    }
 
    return rgba;
+}
+
+void RasterTile::addFragment(fragmentData_t* frag){ 
+   unsigned fragX = frag->uintPos[0]%tileW;
+   unsigned fragY = frag->uintPos[1]%tileH;
+   unsigned fidx = fragY*tileW + fragX;
+   assert(fidx < tileH*tileW);
+   assert(not m_fragmentsQuads[fidx/QUAD_SIZE][fidx%QUAD_SIZE].alive);
+   m_fragmentsQuads[fidx/QUAD_SIZE][fidx%QUAD_SIZE].frag = frag;
+   m_fragmentsQuads[fidx/QUAD_SIZE][fidx%QUAD_SIZE].alive = true;
+   m_fragmentsQuads[fidx/QUAD_SIZE][fidx%QUAD_SIZE].tile = this;
+   if(m_addedFragsCount==0){
+      //first frag, set front and back depths
+      m_frontDepth = frag->uintPos[2];
+      m_backDepth = frag->uintPos[2];
+   } else {
+      if(g_renderData.depthTest(m_frontDepth, frag->uintPos[2])){
+         m_frontDepth = frag->uintPos[2];
+      }
+      if(g_renderData.depthTest(frag->uintPos[2], m_backDepth)){
+         m_backDepth = frag->uintPos[2];
+      }
+   }
+   m_addedFragsCount++;
 }
