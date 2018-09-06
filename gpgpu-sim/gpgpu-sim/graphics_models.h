@@ -404,7 +404,7 @@ class graphics_simt_pipeline {
                t< prim->prim->getSimtTiles(m_cluster_id).size(); t++){
             if(m_hiz_pipe->full()) return;
             RasterTile* tile = prim->prim->getSimtTiles(m_cluster_id)[t];
-            if(tile->getActiveCount() > 0){
+            if(tile->lastPrimTile or (tile->getActiveCount() > 0)){
                m_hiz_pipe->push(tile);
             }
             m_current_c_tile++;
@@ -426,8 +426,8 @@ class graphics_simt_pipeline {
             if(m_f_raster_pipe->full()) return;
             RasterTile* tile = m_hiz_pipe->top();
             assert(tile);
-            assert(tile->getActiveCount() > 0);
-            if(g_renderData.testHiz(tile)){
+            assert(tile->lastPrimTile or (tile->getActiveCount() > 0));
+            if(tile->lastPrimTile or g_renderData.testHiz(tile)){
                m_f_raster_pipe->push(tile);
             }
             m_hiz_pipe->pop();
@@ -441,7 +441,7 @@ class graphics_simt_pipeline {
             if(m_f_raster_pipe->empty()) return;
             RasterTile* tile = m_f_raster_pipe->top();
             assert(tile);
-            assert(tile->getActiveCount() > 0);
+            assert(tile->lastPrimTile or (tile->getActiveCount() > 0));
             m_zunit_pipe->push(tile);
             m_f_raster_pipe->pop();
          }
@@ -452,8 +452,8 @@ class graphics_simt_pipeline {
          if(m_ta_pipe->full()) return;
          RasterTile* tile = m_zunit_pipe->top();
          assert(tile);
-         assert(tile->getActiveCount() > 0);
-         if(tile->resetActiveCount() > 0){
+         assert(tile->lastPrimTile or (tile->getActiveCount() > 0));
+         if(tile->lastPrimTile or tile->resetActiveCount() > 0){
             m_ta_pipe->push(tile);
          }
          m_zunit_pipe->pop();
@@ -464,8 +464,13 @@ class graphics_simt_pipeline {
          if(m_ta_pipe->empty()) return;
          RasterTile* tile = m_ta_pipe->top();
          assert(tile);
-         assert(tile->getActiveCount() > 0);
-         if(m_ta_stage.insert(tile)){
+         assert(tile->lastPrimTile or (tile->getActiveCount() > 0));
+         if(tile->lastPrimTile){
+            if(m_ta_stage.empty()){
+               g_renderData.launchTCTile(NULL, 1);
+               m_ta_pipe->pop();
+            }
+         } else if(m_ta_stage.insert(tile)){
             m_ta_pipe->pop();
          }
       }
@@ -476,10 +481,6 @@ class graphics_simt_pipeline {
             return true;
          if(m_setup_pipe->full())
             return false;
-         //mark last tile for this simt
-         RasterTile* tile = prim->getSimtTiles(m_cluster_id)[
-            prim->getSimtTiles(m_cluster_id).size()-1];
-         tile->lastPrimTile=true;
          primitive_data_t* prim_data = new primitive_data_t(prim);
          m_setup_pipe->push(prim_data);
          return true;

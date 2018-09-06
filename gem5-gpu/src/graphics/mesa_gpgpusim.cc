@@ -400,7 +400,17 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(unsigned frameHeight, unsign
           delete fragmentTiles[tile];
        }
     }
+
+    //add terminating tiles
+    for(unsigned s=0; s<simtCount; s++){
+       RasterTile* rtile = new RasterTile(NULL, -1, -1, -1, -1, -1, -1);
+       m_simtRasterTiles[s].push_back(rtile);
+       rtile->lastPrimTile=true;
+    }
+
     m_validTiles = true;
+
+
 }
 
 renderData_t::renderData_t():
@@ -2037,7 +2047,6 @@ void renderData_t::checkEndOfShader(CudaGPU * cudaGPU){
    assert(m_sShading_info.pending_kernels > 0);
    m_sShading_info.pending_kernels--;
    if(m_flagEndFragmentShader and (m_sShading_info.pending_kernels==0)){
-      printf("doneZTils = %d\n", m_sShading_info.doneZTiles);
       if(m_sShading_info.earlyZTiles==NULL or
             m_sShading_info.earlyZTiles->size()==m_sShading_info.doneZTiles){
          endFragmentShading();
@@ -2101,9 +2110,19 @@ void renderData_t::launchFragmentTile(RasterTile * rasterTile, unsigned tileId){
 
 void renderData_t::launchTCTile(
       tcTilePtr_t tcTile, unsigned donePrims){
-   /*unsigned fragsCount = rasterTile->setActiveFragmentsIndices();
-   DPRINTF(MesaGpgpusim, "Launching tile, active count=%d of of %d\n", fragsCount, rasterTile->size());*/
 
+   if(tcTile == NULL){
+      assert(donePrims > 0);
+      assert(m_sShading_info.sent_simt_prims >= donePrims);
+      m_sShading_info.sent_simt_prims-=donePrims;
+      if(m_sShading_info.sent_simt_prims == 0 
+            and m_sShading_info.completed_threads == m_sShading_info.launched_threads
+            and m_sShading_info.pending_kernels==0){
+         m_flagEndFragmentShader = false;
+         endFragmentShading();
+      }
+      return;
+   }
    assert(tcTile->size() > 0);
 
    unsigned threadsPerBlock = 256; //TODO: add it to options, chunks used to distribute work
@@ -2114,8 +2133,6 @@ void renderData_t::launchTCTile(
    byte* arg= getDeviceData() + getColorBufferByteSize();
    mapTileStream_t map;
    map.tcTilePtr = tcTile;
-   assert(m_sShading_info.sent_simt_prims >= donePrims);
-   m_sShading_info.sent_simt_prims-=donePrims;
 
    m_sShading_info.cudaStreamTiles[(uint64_t)(m_sShading_info.cudaStreams.back())] = map;
 
