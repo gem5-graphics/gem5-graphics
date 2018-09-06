@@ -567,38 +567,41 @@ private:
        }
        void setSize(unsigned psize){
           m_size = psize;
-          frontDepth.resize(psize);
-          backDepth.resize(psize);
-          depthValid.resize(psize, false);
+          m_hizEntries.resize(psize);
        }
 
        void setDepth(unsigned tileIdx,
              unsigned xCoord, unsigned yCoord,
              uint64_t depth){
-          assert(tileIdx < frontDepth.size() and tileIdx < backDepth.size());
-          if(!depthValid[tileIdx]){
-             depthValid[tileIdx] = true;
-             frontDepth[tileIdx] = depth;
-             backDepth [tileIdx] = depth;
-             xCoords[tileIdx] = xCoord;
-             yCoords[tileIdx] = yCoord;
+          assert(tileIdx < m_hizEntries.size());
+          if(!m_hizEntries[tileIdx].depthValid){
+             m_hizEntries[tileIdx].depthValid = true;
+             m_hizEntries[tileIdx].frontDepth = depth;
+             m_hizEntries[tileIdx].backDepth  = depth;
+             m_hizEntries[tileIdx].xCoord = xCoord;
+             m_hizEntries[tileIdx].yCoord = yCoord;
           } else {
-             assert(xCoords[tileIdx] == xCoord);
-             assert(yCoords[tileIdx] == yCoord);
-             if(m_renderData->depthTest(frontDepth[tileIdx], depth)){
-                frontDepth[tileIdx] = depth;
-             } else if(m_renderData->depthTest(depth, backDepth[tileIdx])){
-                backDepth[tileIdx] = depth;
+             assert(m_hizEntries[tileIdx].xCoord == xCoord);
+             assert(m_hizEntries[tileIdx].yCoord == yCoord);
+             if(m_renderData->depthTest(m_hizEntries[tileIdx].frontDepth, depth)){
+                m_hizEntries[tileIdx].frontDepth = depth;
+             } else if(m_renderData->depthTest(depth, m_hizEntries[tileIdx].backDepth)){
+                m_hizEntries[tileIdx].backDepth = depth;
              }
           }
        }
 
        unsigned size() { return m_size;}
-       std::vector<uint64_t> frontDepth;
-       std::vector<uint64_t> backDepth;
-       std::vector<unsigned> xCoords;
-       std::vector<unsigned> yCoords;
-       std::vector<bool> depthValid;
+       struct hiz_entry_t {
+          hiz_entry_t():
+             depthValid(false){}
+          uint64_t frontDepth;
+          uint64_t backDepth;
+          unsigned xCoord;
+          unsigned yCoord;
+          bool depthValid;
+       };
+       std::vector<hiz_entry_t> m_hizEntries;
        private:
        unsigned m_size;
        renderData_t* m_renderData;

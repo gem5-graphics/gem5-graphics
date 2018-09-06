@@ -1510,21 +1510,22 @@ bool renderData_t::testHiz(RasterTile* tile){
       return true;
    }
    unsigned const tileId = tile->m_tilePos;
-   assert(tile->xCoord == m_hizBuff.xCoords[tileId]);
-   assert(tile->yCoord == m_hizBuff.yCoords[tileId]);
+   assert(tile->xCoord == m_hizBuff.m_hizEntries[tileId].xCoord);
+   assert(tile->yCoord == m_hizBuff.m_hizEntries[tileId].yCoord);
 
    if(m_mesaCtx->Depth.Func==GL_NOTEQUAL 
          or m_mesaCtx->Depth.Func==GL_EQUAL){ 
       warn_once("Unsupported depth test (GL_NOTEQUAL or GL_EQUAL), skipping HiZ\n");
       return true;
-   } else if(depthTest(m_hizBuff.frontDepth[tileId], tile->backDepth())){
-      m_hizBuff.frontDepth[tileId] = tile->frontDepth();
+   } else if(depthTest(m_hizBuff.m_hizEntries[tileId].frontDepth,
+            tile->backDepth())){
+      m_hizBuff.m_hizEntries[tileId].frontDepth = tile->frontDepth();
       if(tile->fullyCovered()){
-         m_hizBuff.backDepth[tileId] = tile->backDepth();
+         m_hizBuff.m_hizEntries[tileId].backDepth = tile->backDepth();
       }
       tile->setSkipFineDepth();
       return true;
-   } else if(depthTest(m_hizBuff.backDepth[tileId], tile->frontDepth())){
+   } else if(depthTest(m_hizBuff.m_hizEntries[tileId].backDepth, tile->frontDepth())){
       return true;
    } 
    return false;
