@@ -81,9 +81,8 @@ struct fragmentData_t {
    fragmentData_t(): passedDepth(false) {}
    GLfloat attribs[PIPE_MAX_SHADER_INPUTS][4];
    std::vector<ch4_t> inputs;
-   unsigned uintPos[3];
+   uint64_t uintPos[3];
    unsigned quadIdx;
-   //GLfloat floatPos[3];
    bool passedDepth;
    bool isLive;
 };
@@ -430,6 +429,7 @@ public:
     }
     bool depthTest(uint64_t oldDepth, uint64_t newDepth);
     bool testHiz(RasterTile* tile);
+    struct gl_context * getMesaCtx(){return m_mesaCtx;}
 
 private:
     bool useInShaderBlending() const;
@@ -478,7 +478,6 @@ private:
     inline GLuint getBufferHeight(){return m_bufferHeight;}
     inline GLuint getPixelBufferSize(){ return m_bufferWidth*m_bufferHeight;}
     inline unsigned getFBPixelSize(){ return m_fbPixelSize; }
-    struct gl_context * getMesaCtx(){return m_mesaCtx;}
     struct gl_renderbuffer * getMesaBuffer(){return m_mesaColorBuffer;}
     std::string getIntFolder(){return m_intFolder;}
     std::string getFbFolder(){return m_fbFolder;}
