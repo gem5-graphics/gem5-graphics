@@ -3,7 +3,6 @@
  *
  */
 
-
 #include <assert.h>
 #include <chrono>
 #include <functional>
@@ -1039,6 +1038,7 @@ byte* renderData_t::setRenderBuffer(){
       return tempBuffer2;*/
 }
 
+
 byte* renderData_t::setDepthBuffer(DepthSize activeDepthSize, DepthSize actualDepthSize){
     //gl_renderbuffer *rb = m_mesaCtx->DrawBuffer->_DepthBuffer;
     gl_renderbuffer *rb = m_mesaCtx->ReadBuffer->Attachment[BUFFER_DEPTH].Renderbuffer;
@@ -1051,25 +1051,50 @@ byte* renderData_t::setDepthBuffer(DepthSize activeDepthSize, DepthSize actualDe
     m_depthBufferHeight = rb->Height;
     m_depthSize = activeDepthSize;
     m_mesaDepthSize = actualDepthSize;
-  
-    DPRINTF(MesaGpgpusim, "gpgpusim-graphics: fb height=%d width=%d\n",m_bufferHeight, m_bufferWidth);
     m_mesaDepthBuffer = rb;
-    //m_depthBufferPutRow = rb->PutRow;
-    //GetRowFunc GetRow = rb->GetRow;
-    uint32_t mesaDepthBufferSize = buffSize * sizeof (byte)* mesaDbSize;
-    byte *tempBuffer  = new byte [mesaDepthBufferSize];
-    std::memset(tempBuffer, 0, mesaDepthBufferSize);
-    /*for (int i = 0; i < m_depthBufferHeight; i++){
-        unsigned xpos = ((m_depthBufferHeight - i - 1)* m_depthBufferWidth * mesaDbSize);
-        assert(0);
-        //_mesa_readpixels(m_mesaCtx, 0, 0, rb->Width, rb->Height, rb->Format, GL_UNSIGNED_BYTE, &m_mesaCtx->Pack, tempBuffer);
-        //read_depth_pixels(m_mesaCtx, 0, 0, rb->Width, rb->Height, rb->Format, tempBuffer, &m_mesaCtx->Pack);
-        //GetRow(m_mesaCtx, rb, m_depthBufferWidth, 0, i, tempBuffer + xpos);
-    }*/
 
-    //convertng the buffer format from Z16 to Z32 in case the buffers are of different sizes
-    //this case happes when in-shader depth is used with a 16 bit mesa depth buffer
-    assert((actualDepthSize == activeDepthSize) or ((actualDepthSize == DepthSize::Z16) and (activeDepthSize == DepthSize::Z32)));
+    assert(m_depthBufferWidth  == m_bufferWidth);
+    assert(m_depthBufferHeight == m_bufferHeight);
+
+    //assert our assumptions
+    assert(DepthSize::Z32==m_depthSize);
+    assert(DepthSize::Z32==m_mesaDepthSize);
+    assert(rb->Format == MESA_FORMAT_Z24_UNORM_S8_UINT);
+    assert(rb->InternalFormat == GL_DEPTH24_STENCIL8);
+    assert(rb->_BaseFormat == GL_DEPTH_STENCIL);
+    DPRINTF(MesaGpgpusim, 
+          "gpgpusim-graphics: fb height=%d width=%d\n",m_bufferHeight, m_bufferWidth);
+    const unsigned depthSize = 4;
+    uint32_t mesaDepthBufferSize = buffSize * depthSize;
+    byte *tempBuffer  = new byte [mesaDepthBufferSize];
+    //std::memset(tempBuffer, 0, mesaDepthBufferSize);
+    byte* renderBuf;
+    int rbStride;
+    m_mesaCtx->Driver.MapRenderbuffer_base(m_mesaCtx, rb,
+                                      0, 0, m_depthBufferWidth,
+                                      m_depthBufferHeight,
+                                      GL_MAP_READ_BIT,
+                                      &renderBuf, &rbStride);
+
+    //_mesa_unpack_ubyte_stencil_row(rb->Format, 3, NULL, NULL);
+
+    byte* tempBufferEnd = tempBuffer + mesaDepthBufferSize;
+    for(int h=0; h < m_bufferHeight; h++)
+       for(int w=0; w< m_bufferWidth; w++){
+          int srcPixel = ((m_bufferHeight - h - 1) * rbStride)
+             + (w * depthSize);
+          int dstPixel = ((m_bufferHeight - h) * m_bufferWidth * depthSize*-1)
+             + (w * depthSize);
+
+          tempBufferEnd[dstPixel + 0] = renderBuf[srcPixel + 0];
+          tempBufferEnd[dstPixel + 1] = renderBuf[srcPixel + 1];
+          tempBufferEnd[dstPixel + 2] = renderBuf[srcPixel + 2];
+          tempBufferEnd[dstPixel + 3] = 0;
+
+       }
+    return tempBuffer;
+
+    /*assert((actualDepthSize == activeDepthSize) or ((actualDepthSize == DepthSize::Z16) and (activeDepthSize == DepthSize::Z32)));
     if((actualDepthSize == DepthSize::Z16) and (activeDepthSize == DepthSize::Z32))
     {
        uint32_t * sbuf = new uint32_t[buffSize];
@@ -1081,9 +1106,7 @@ byte* renderData_t::setDepthBuffer(DepthSize activeDepthSize, DepthSize actualDe
        tempBuffer = (byte*) sbuf;
     }
 
-    return tempBuffer;
-
-    return NULL;
+    return tempBuffer;*/
 }
 
 void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, void* sp, void* mapped_indices) {
@@ -1115,7 +1138,8 @@ void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, voi
 
     gl_renderbuffer *rb = m_mesaCtx->ReadBuffer->Attachment[BUFFER_DEPTH].Renderbuffer;
     if(isDepthTestEnabled()){
-       if(rb->Format==MESA_FORMAT_Z_UNORM32 or rb->Format==MESA_FORMAT_Z24_UNORM_S8_UINT){
+       if(rb->Format==MESA_FORMAT_Z_UNORM32 or
+             rb->Format==MESA_FORMAT_Z24_UNORM_S8_UINT){
           activeDepthSize = trueDepthSize = DepthSize::Z32;
        } else if(rb->Format==MESA_FORMAT_Z_UNORM16){
           if(m_inShaderDepth){
