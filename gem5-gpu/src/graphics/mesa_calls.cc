@@ -41,10 +41,11 @@ extern "C" void gpgpusimAddFragQuad(struct  tgsi_exec_machine *mach,
     for(int qf=0; qf < TGSI_QUAD_SIZE; qf++){
       frags[qf].isLive = mask & (1 << qf)? true: false;
       frags[qf].quadIdx = qf;
-      for(int pos=0; pos <3; pos++){
-        frags[qf].uintPos[pos] = (unsigned) mach->QuadPos.xyzw[pos].f[qf];
-      }
-      //printf("quad position %d (%d,%d,%d) \n", qf, frags[qf].intPos[0], frags[qf].intPos[1], frags[qf].intPos[2]);
+      frags[qf].uintPos[0] = (unsigned) mach->QuadPos.xyzw[0].f[qf];
+      frags[qf].uintPos[1] = (unsigned) mach->QuadPos.xyzw[1].f[qf];
+      assert(mach->QuadPos.xyzw[2].f[qf] < 1.0);
+      frags[qf].uintPos[2] = (unsigned) (mach->QuadPos.xyzw[2].f[qf]*
+            g_renderData.getMesaCtx()->DrawBuffer->_DepthMaxF);
     }
 
     //add input files
