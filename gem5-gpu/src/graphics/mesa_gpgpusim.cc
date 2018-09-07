@@ -989,8 +989,6 @@ byte* renderData_t::setRenderBuffer(){
                                       GL_MAP_READ_BIT,
                                       &renderBuf, &rbStride);
 
-      /*struct dri_swrast_renderbuffer* xrb = (struct dri_swrast_renderbuffer*) m_mesaColorBuffer;
-      renderBuf = xrb->Base.Buffer;*/
       byte* tempBufferEnd = tempBuffer2 + m_colorBufferByteSize;
       for(int h=0; h < m_bufferHeight; h++)
         for(int w=0; w< m_bufferWidth; w++){
@@ -1005,37 +1003,7 @@ byte* renderData_t::setRenderBuffer(){
         }
 
       m_mesaCtx->Driver.UnmapRenderbuffer_base(m_mesaCtx, m_mesaColorBuffer);
-     // delete [] tempBuffer;
       return tempBuffer2;
-      ///
-      /*if(m_fbPixelSize == 3) {
-        for(int h=0; h < m_bufferHeight; h++)
-        for(int w=0; w< m_bufferWidth; w++){
-        int dstPixel = (h*m_bufferWidth + w) * 4;
-        int srcPixel = (((m_bufferHeight - h) * m_bufferWidth) - (m_bufferWidth - w)) * m_fbPixelSize;
-      //int srcPixel = (h*m_bufferWidth + w) * m_fbPixelSize;
-      tempBuffer2[dstPixel + 0] = tempBuffer[srcPixel + 0];
-      tempBuffer2[dstPixel + 1] = tempBuffer[srcPixel + 1];
-      tempBuffer2[dstPixel + 2] = tempBuffer[srcPixel + 2];
-      tempBuffer2[dstPixel + 3] = tempBuffer[srcPixel + 3];
-      tempBuffer2[dstPixel + 4] = 255;
-      }
-      m_fbPixelSize = 4;
-      } else {
-      for(int h=0; h < m_bufferHeight; h++)
-      for(int w=0; w< m_bufferWidth; w++){
-      int dstPixel = (h*m_bufferWidth + w) * m_fbPixelSize;
-      int srcPixel = (((m_bufferHeight - h) * m_bufferWidth) - (m_bufferWidth - w)) * m_fbPixelSize;
-      tempBuffer2[dstPixel + 0] = tempBuffer[srcPixel + 0];
-      tempBuffer2[dstPixel + 1] = tempBuffer[srcPixel + 1];
-      tempBuffer2[dstPixel + 2] = tempBuffer[srcPixel + 2];
-      tempBuffer2[dstPixel + 3] = tempBuffer[srcPixel + 3];
-      }
-      }
-
-      delete [] tempBuffer;
-
-      return tempBuffer2;*/
 }
 
 
@@ -1093,20 +1061,6 @@ byte* renderData_t::setDepthBuffer(DepthSize activeDepthSize, DepthSize actualDe
 
        }
     return tempBuffer;
-
-    /*assert((actualDepthSize == activeDepthSize) or ((actualDepthSize == DepthSize::Z16) and (activeDepthSize == DepthSize::Z32)));
-    if((actualDepthSize == DepthSize::Z16) and (activeDepthSize == DepthSize::Z32))
-    {
-       uint32_t * sbuf = new uint32_t[buffSize];
-       uint16_t * mesaBuf = (uint16_t*) tempBuffer;
-       for(unsigned i=0; i < buffSize; i++){
-          sbuf[i] = mesaBuf[i] << 16;
-       }
-       delete [] tempBuffer;
-       tempBuffer = (byte*) sbuf;
-    }
-
-    return tempBuffer;*/
 }
 
 void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, void* sp, void* mapped_indices) {
