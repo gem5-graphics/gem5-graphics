@@ -1627,6 +1627,7 @@ unsigned int renderData_t::noDepthFragmentShading() {
 
        mapTileStream_t map;
        map.primId =  prim;
+       map.pendingFrags = numberOfBlocks*threadsPerBlock;
        m_sShading_info.cudaStreamTiles[(uint64_t)(m_sShading_info.cudaStreams.back())] = map;
 
        assert(numberOfBlocks);
@@ -1995,6 +1996,8 @@ void renderData_t::checkGraphicsThreadExit(void * kernelPtr, unsigned tid, void*
    } else  if(m_sShading_info.currentPass == stage_shading_info_t::GraphicsPass::Fragment){
       m_sShading_info.completed_threads++;
       assert(m_sShading_info.completed_threads <= m_sShading_info.launched_threads);
+      assert(m_sShading_info.cudaStreamTiles[(uint64_t)stream].pendingFrags>0);
+      m_sShading_info.cudaStreamTiles[(uint64_t)stream].pendingFrags--;
 
        if(m_sShading_info.completed_threads%10000 == 0)
          printf("completed threads = %d out of %d\n", m_sShading_info.completed_threads,  m_sShading_info.launched_threads);
@@ -2002,6 +2005,10 @@ void renderData_t::checkGraphicsThreadExit(void * kernelPtr, unsigned tid, void*
       if (m_sShading_info.completed_threads == m_sShading_info.launched_threads){
          
          m_flagEndFragmentShader = (m_sShading_info.sent_simt_prims == 0);
+         if(m_sShading_info.cudaStreamTiles[(uint64_t)stream].pendingFrags==0){
+            assert(!m_sShading_info.cudaStreamTiles[(uint64_t)stream].tcTilePtr->done);
+            m_sShading_info.cudaStreamTiles[(uint64_t)stream].tcTilePtr->done = true;
+         }
          printf("done threads = %d\n", m_sShading_info.completed_threads);
          /*if(m_inShaderDepth or !isDepthTestEnabled())
          {
@@ -2070,6 +2077,7 @@ void renderData_t::launchFragmentTile(RasterTile * rasterTile, unsigned tileId){
    mapTileStream_t map;
    map.tileId = tileId;
    map.primId = rasterTile->primId;
+   map.pendingFrags = numberOfBlocks*threadsPerBlock;
 
    m_sShading_info.cudaStreamTiles[(uint64_t)(m_sShading_info.cudaStreams.back())] = map;
 
@@ -2088,7 +2096,6 @@ void renderData_t::launchFragmentTile(RasterTile * rasterTile, unsigned tileId){
 
 void renderData_t::launchTCTile(
       tcTilePtr_t tcTile, unsigned donePrims){
-
    if(tcTile == NULL){
       assert(donePrims > 0);
       assert(m_sShading_info.sent_simt_prims >= donePrims);
@@ -2101,6 +2108,7 @@ void renderData_t::launchTCTile(
       }
       return;
    }
+
    assert(tcTile->size() > 0);
 
    unsigned threadsPerBlock = 256; //TODO: add it to options, chunks used to distribute work
@@ -2111,6 +2119,7 @@ void renderData_t::launchTCTile(
    byte* arg= getDeviceData() + getColorBufferByteSize();
    mapTileStream_t map;
    map.tcTilePtr = tcTile;
+   map.pendingFrags = numberOfBlocks*threadsPerBlock;
 
    m_sShading_info.cudaStreamTiles[(uint64_t)(m_sShading_info.cudaStreams.back())] = map;
 

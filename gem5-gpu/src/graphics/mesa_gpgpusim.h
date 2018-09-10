@@ -224,13 +224,39 @@ enum class RasterDirection {
 };
 
 enum class DepthSize : uint32_t { Z16 = 2, Z32 = 4 };
-typedef std::vector<RasterTile::rasterFragment_t*> tcTile_t;
-typedef std::vector<RasterTile::rasterFragment_t*>* tcTilePtr_t;
+
+class tcTile_t {
+   public:
+      tcTile_t(unsigned _x, unsigned _y):
+         x(_x), y(_y)
+      {
+         done=false;
+      }
+   unsigned size(){
+      return m_frags.size();
+   }
+   void push_back(RasterTile::rasterFragment_t* frag){
+      m_frags.push_back(frag);
+   }
+   RasterTile::rasterFragment_t*& at(unsigned idx){
+      return m_frags.at(idx);
+   }
+   const unsigned x;
+   const unsigned y;
+   bool done;
+   private:
+      std::vector<RasterTile::rasterFragment_t*> m_frags;
+};
+
+typedef tcTile_t* tcTilePtr_t;
+
 struct mapTileStream_t{
-   mapTileStream_t(): tcTilePtr(NULL){}
-   tcTilePtr_t tcTilePtr;
+   mapTileStream_t():
+      tcTilePtr(NULL), pendingFrags(0){}
    unsigned tileId;
    unsigned primId;
+   tcTilePtr_t tcTilePtr;
+   unsigned pendingFrags;
 };
 
 
