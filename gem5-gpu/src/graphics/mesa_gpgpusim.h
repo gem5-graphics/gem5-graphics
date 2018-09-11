@@ -111,7 +111,7 @@ class RasterTile {
          m_fragmentsQuads(_tileH*_tileW/QUAD_SIZE, 
          std::vector<rasterFragment_t>(QUAD_SIZE)),
          m_prim(_prim), m_addedFragsCount(0),
-         m_skipFineDepth(false)
+         m_skipFineDepth(false), m_hizThreshSet(false)
       {}
 
       void addFragment(fragmentData_t* frag);
@@ -126,18 +126,11 @@ class RasterTile {
          return m_skipFineDepth;
       }
 
-      /*fragmentData_t& operator[] (const int index)
-      {
-         return *(m_fragments[index].frag);
-      }*/
-
-
       fragmentData_t& getFragment (const int index)
       {
          //assert(m_fragments[index].alive);
          return *(m_fragmentsQuads[index/QUAD_SIZE][index%QUAD_SIZE].frag);
       }
-
 
       rasterFragment_t& getRasterFragment (const int quadId, unsigned fragId){
          return m_fragmentsQuads[quadId][fragId];
@@ -193,7 +186,12 @@ class RasterTile {
       uint64_t frontDepth(){
          return m_frontDepth;
       }
+      void setHizThresh(uint64_t depth){
+         m_hizThresh = depth;
+         m_hizThreshSet = true;
+      }
 
+      void testHizThresh();
       const int primId;
       const unsigned tileH;
       const unsigned tileW;
@@ -211,6 +209,8 @@ class RasterTile {
       uint64_t m_backDepth;
       unsigned m_addedFragsCount;
       bool m_skipFineDepth;
+      uint64_t m_hizThresh;
+      bool m_hizThreshSet;
 };
 
 

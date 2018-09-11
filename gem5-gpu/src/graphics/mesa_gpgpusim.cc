@@ -314,8 +314,6 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(unsigned frameHeight, unsign
    
     assert(m_rasterTiles.size() == 0);
     assert(rasterDir==RasterDirection::HorizontalRaster);
-    printf("Current frame size WxH=%dx%d\n", frameWidth, frameHeight);
-
 
     //checking if a suitable block size is provided
     assert((blockH%tileH)==0);
@@ -447,6 +445,8 @@ shaderAttrib_t renderData_t::getFragmentData(unsigned utid, unsigned tid, unsign
       }
       return retVal;
    }
+   assert(m_sShading_info.cudaStreamTiles.find((uint64_t)stream) != 
+         m_sShading_info.cudaStreamTiles.end());
    tcTilePtr_t tcTilePtr = m_sShading_info.cudaStreamTiles[(uint64_t)stream].tcTilePtr;
 
    shaderAttrib_t retVal;
@@ -1514,6 +1514,7 @@ bool renderData_t::testHiz(RasterTile* tile){
       tile->setSkipFineDepth();
       return true;
    } else if(depthTest(m_hizBuff.m_hizEntries[tileId].backDepth, tile->frontDepth())){
+      tile->setHizThresh(m_hizBuff.m_hizEntries[tileId].backDepth);
       return true;
    } 
    return false;
@@ -2169,9 +2170,23 @@ void RasterTile::addFragment(fragmentData_t* frag){
       if(g_renderData.depthTest(m_frontDepth, frag->uintPos[2])){
          m_frontDepth = frag->uintPos[2];
       }
-      if(g_renderData.depthTest(frag->uintPos[2], m_backDepth)){
+      if(!g_renderData.depthTest(m_backDepth, frag->uintPos[2])){
          m_backDepth = frag->uintPos[2];
       }
    }
    m_addedFragsCount++;
+}
+
+void RasterTile::testHizThresh(){
+   assert(m_hizThreshSet);
+   for(unsigned quadId=0; quadId < m_fragmentsQuads.size(); quadId++)
+      for(unsigned fragId=0; fragId < m_fragmentsQuads[quadId].size(); fragId++){
+         rasterFragment_t* frag = &m_fragmentsQuads[quadId][fragId];
+         if(frag->alive){
+            if(g_renderData.depthTest(frag->frag->uintPos[2], m_hizThresh)){
+               frag->alive = false;
+               m_activeCount--;
+            }
+         } 
+      }
 }
