@@ -348,16 +348,22 @@ def createGPU(options, gpu_mem_range):
             # roughly 19 total cycles with ~4 cycles for tag access
             sc.lsq.l1_tag_cycles = 4
             sc.lsq.latency = 14
+            sc.tex_lq.l1_tag_cycles = 4
+            sc.tex_lq.latency = 14
         elif options.gpu_core_config == 'Maxwell':
             # Maxwell latency for zero-load independent memory instructions is
             # 8-10 cycles quicker than Fermi, and tag access appears shorter
             sc.lsq.l1_tag_cycles = 1
             sc.lsq.latency = 6
+            sc.tex_lq.l1_tag_cycles = 1
+            sc.tex_lq.latency = 6
         elif options.gpu_core_config == 'Tegra':
             #for now copy fermi configs
             #FIXME
             sc.lsq.l1_tag_cycles = 1
             sc.lsq.latency = 6
+            sc.tex_lq.l1_tag_cycles = 1
+            sc.tex_lq.latency = 6
 
     gpu.config_path = gpgpusimOptions
     gpu.dump_kernel_stats = options.kernel_stats
@@ -468,9 +474,14 @@ def connectGPUPorts_classic(system, gpu, options):
                                 assoc=options.sc_il1_assoc)
         sc.icache.mem_side = gpu.l2NetToL2.slave
         sc.inst_port = sc.icache.cpu_side
-        sc.lsq.cache_port = gpu.l2NetToL2.slave
 
-        #readonly cache
+        #data cache
+        sc.dcache = L1_DCache(size=options.sc_l1_size,
+                             assoc=options.sc_l1_assoc)
+        sc.dcache.mem_side = gpu.l2NetToL2.slave 
+        sc.lsq.cache_port = sc.dcache.cpu_side
+
+        #readonly tex cache
         sc.tcache = L1_ICache(size=options.sc_tl1_size,
                                 assoc=options.sc_tl1_assoc)
         sc.tcache.mem_side = gpu.l2NetToL2.slave
