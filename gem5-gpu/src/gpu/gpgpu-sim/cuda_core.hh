@@ -170,6 +170,7 @@ class CudaCore : public MemObject
     // Ports for each of the GPU lanes
     std::vector<LSQPort*> lsqPorts;
     std::vector<LSQPort*> texPorts;
+    std::vector<LSQPort*> zPorts;
 
     /**
      * A port to send control commands to the LSQ. Currently, this is used
@@ -194,10 +195,11 @@ class CudaCore : public MemObject
     };
     LSQControlPort lsqControlPort;
     LSQControlPort texControlPort;
+    LSQControlPort zControlPort;
 
     // Port that is blocked. If -1 then no port is blocked.
     struct LSQCntrlPortType_enum {
-       enum LSQCntrlPortType {LSQ, TEX, SIZE };
+       enum LSQCntrlPortType {LSQ, TEX, SIZE, Z };
     };
     typedef LSQCntrlPortType_enum::LSQCntrlPortType LSQCntrlPortType;
     int writebackBlocked[LSQCntrlPortType::SIZE];
@@ -216,6 +218,7 @@ class CudaCore : public MemObject
     MasterID dataMasterId;
     MasterID instMasterId;
     MasterID texMasterId;
+    MasterID zMasterId;
 
   private:
 
@@ -388,6 +391,8 @@ class CudaCore : public MemObject
     Stats::Scalar numParamLocalStores;
     Stats::Scalar numConstLoads;
     Stats::Scalar numTexLoads;
+    Stats::Scalar numZLoads;
+    Stats::Scalar numZStores;
     Stats::Scalar numGlobalLoads;
     Stats::Scalar numGlobalStores;
     Stats::Scalar numSurfLoads;

@@ -37,22 +37,22 @@ class CudaCore(MemObject):
     cxx_header = "gpu/gpgpu-sim/cuda_core.hh"
 
     inst_port = MasterPort("The instruction cache port for this SC")
-
     tex_port = MasterPort("The texture cache port for this SC")
 
     lsq_port = VectorMasterPort("the load/store queue coalescer ports")
     lsq_ctrl_port = MasterPort("The load/store queue control port")
     
-    tex_lq_port = VectorMasterPort("the texture load queue coalescer ports")
-    tex_ctrl_port = MasterPort("The texture load queue control port")
+    tex_lq_port = VectorMasterPort("texture load queue coalescer ports")
+    tex_ctrl_port = MasterPort("texture load queue control port")
+
+    z_lsq_port = VectorMasterPort("z load/store queue coalescer ports")
+    z_ctrl_port = MasterPort("z load/store queue control port")
 
     sys = Param.System(Parent.any, "system sc will run on")
     gpu = Param.CudaGPU(Parent.any, "The GPU this core is part of")
 
     itb = Param.ShaderTLB(ShaderTLB(), "Instruction TLB")
-
     ttb = Param.ShaderTLB(ShaderTLB(), "Texture TLB")
 
     id = Param.Int(-1, "ID of the SP")
-
     warp_contexts = Param.Int(48, "Number of warps possible per GPU core")

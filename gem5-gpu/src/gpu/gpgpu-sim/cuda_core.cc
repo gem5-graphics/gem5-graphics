@@ -46,11 +46,15 @@ CudaCore::CudaCore(const Params *p) :
     MemObject(p), instPort(name() + ".inst_port", this, CorePortType::Inst),
     texPort(name()+ ".tex_port", this, CorePortType::Tex),
     lsqControlPort(name() + ".lsq_ctrl_port", this),
-    texControlPort(name() + ".tex_ctrl_port", this), _params(p),
+    texControlPort(name() + ".tex_ctrl_port", this), 
+    zControlPort(name() + ".z_ctrl_port", this), _params(p),
     dataMasterId(p->sys->getMasterId(name() + ".data")),
     instMasterId(p->sys->getMasterId(name() + ".inst")),
-    texMasterId(p->sys->getMasterId(name() +  ".tex")), id(p->id),
-    itb(p->itb), ttb(p->ttb), cudaGPU(p->gpu), maxNumWarpsPerCore(p->warp_contexts)
+    texMasterId(p->sys->getMasterId(name() +  ".tex")), 
+    zMasterId(p->sys->getMasterId(name() +  ".z")), 
+    id(p->id),
+    itb(p->itb), ttb(p->ttb),
+    cudaGPU(p->gpu), maxNumWarpsPerCore(p->warp_contexts)
 {
     writebackBlocked[LSQCntrlPortType::LSQ] = -1; // Writeback is not blocked
     writebackBlocked[LSQCntrlPortType::TEX] = -1;
@@ -72,10 +76,16 @@ CudaCore::CudaCore(const Params *p) :
         panic("Shader core tex_lq_port size != to warp size\n");
     }
 
+    if (p->port_z_lsq_port_connection_count != warpSize) {
+        panic("Shader core z_lsq_port size != to warp size\n");
+    }
+
+
     // create the ports
     for (int i = 0; i < warpSize; ++i) {
         lsqPorts.push_back(new LSQPort(csprintf("%s-lsqPort%d", name(), i), this, i));
         texPorts.push_back(new LSQPort(csprintf("%s-texPort%d", name(), i), this, i));
+        zPorts.push_back(new LSQPort(csprintf("%s-zPort%d", name(), i), this, i));
     }
 
     activeCTAs = 0;
@@ -93,9 +103,11 @@ CudaCore::~CudaCore()
     for (int i = 0; i < warpSize; ++i) {
         delete lsqPorts[i];
         delete texPorts[i];
+        delete zPorts[i];
     }
     lsqPorts.clear();
     texPorts.clear();
+    zPorts.clear();
 }
 
 BaseMasterPort&
@@ -115,10 +127,17 @@ CudaCore::getMasterPort(const std::string &if_name, PortID idx)
             panic("CudaCore::getMasterPort: unknown index %d\n", idx);
         }
         return * texPorts[idx];
+    } else if (if_name == "z_lsq_port") {
+        if (idx >= static_cast<PortID>(zPorts.size())) {
+            panic("CudaCore::getMasterPort: unknown index %d\n", idx);
+        }
+        return * zPorts[idx];
     } else if (if_name == "lsq_ctrl_port") {
         return lsqControlPort;
     } else if (if_name == "tex_ctrl_port") {
         return texControlPort;
+    } else if (if_name == "z_ctrl_port") {
+        return zControlPort;
     } else{
         return MemObject::getMasterPort(if_name, idx);
     }
@@ -278,6 +297,10 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
        gpuFlags.set(Request::TEX_FETCH);
     }
 
+    if(inst.space.get_type() == z_space){
+       gpuFlags.set(Request::Z_FETCH);
+    }
+
     if (inst.space.get_type() == const_space) {
         DPRINTF(CudaCoreAccess, "Const space: %p\n", inst.pc);
     } else if (inst.space.get_type() == local_space) {
@@ -286,6 +309,8 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
         DPRINTF(CudaCoreAccess, "Param local space: %p\n", inst.pc);
     } else if (inst.space.get_type() == tex_space) {
         DPRINTF(CudaCoreAccess, "Tex space: %p\n", inst.pc);
+    } else if (inst.space.get_type() == z_space) {
+        DPRINTF(CudaCoreAccess, "Z space: %p\n", inst.pc);
     } else {
         DPRINTF(CudaCoreAccess, "Global space: %p\n", inst.pc);
     }
@@ -316,7 +341,11 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
                        panic("Unhandled cache operator (%d) on load\n",
                              inst.cache_op);
                    }
-                   MasterID reqMasterId = (inst.space.get_type() == tex_space)? texMasterId : dataMasterId;
+                   MasterID reqMasterId = dataMasterId;
+                   if(inst.space.get_type() == tex_space)
+                      reqMasterId = texMasterId;
+                   if(inst.space.get_type() == z_space)
+                      reqMasterId = zMasterId;
                    RequestPtr req = new Request(asid, addr, size, flags,
                            reqMasterId, inst.pc, inst.warp_id());
                    pkt = new Packet(req, MemCmd::ReadReq);
@@ -380,6 +409,8 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
                LSQPort * sendPort;
                if(inst.space.get_type() == tex_space){
                   sendPort = texPorts[lane];
+               } else if(inst.space.get_type() == z_space) {
+                  sendPort = zPorts[lane];
                } else {
                   sendPort = lsqPorts[lane];
                }
@@ -435,6 +466,10 @@ CudaCore::recvLSQDataResp(PacketPtr pkt, int lane_id)
                 DPRINTF(CudaCoreAccess, "Setting tex port blocked at lane %d\n", lane_id);
                 assert(writebackBlocked[LSQCntrlPortType::TEX] < 0);
                 writebackBlocked[LSQCntrlPortType::TEX] = lane_id;
+            } else if(gpuFlags.isSet(Request::Z_FETCH)){
+                DPRINTF(CudaCoreAccess, "Setting z port blocked at lane %d\n", lane_id);
+                assert(writebackBlocked[LSQCntrlPortType::Z] < 0);
+                writebackBlocked[LSQCntrlPortType::Z] = lane_id;
             } else {
                 DPRINTF(CudaCoreAccess, "Setting lsq blocked at lane %d\n", lane_id);
                 assert(writebackBlocked[LSQCntrlPortType::LSQ] < 0);
@@ -514,6 +549,11 @@ CudaCore::writebackClear()
        texPorts[writebackBlocked[LSQCntrlPortType::TEX]]->sendRetryResp();
        writebackBlocked[LSQCntrlPortType::TEX] = -1;
     }
+
+    if (writebackBlocked[LSQCntrlPortType::Z] >= 0){
+       zPorts[writebackBlocked[LSQCntrlPortType::Z]]->sendRetryResp();
+       writebackBlocked[LSQCntrlPortType::Z] = -1;
+    }
 }
 
 void
@@ -525,9 +565,9 @@ CudaCore::flush()
     RequestPtr req = new Request(asid, addr, flags, dataMasterId);
     PacketPtr pkt = new Packet(req, MemCmd::FlushReq);
 
-    sentFlushReqs+=2;
+    sentFlushReqs+=3;
     
-    DPRINTF(CudaCoreAccess, "Sending flush request\n");
+    DPRINTF(CudaCoreAccess, "Sending flush requests\n");
     if (!lsqControlPort.sendTimingReq(pkt)){
         panic("Flush requests should never fail");
     }
@@ -537,6 +577,13 @@ CudaCore::flush()
     if (!texControlPort.sendTimingReq(texPkt)){
         panic("Flush requests should never fail");
     }
+
+    RequestPtr zReq = new Request(asid, addr, flags, dataMasterId);
+    PacketPtr zPkt = new Packet(zReq, MemCmd::FlushReq);
+    if (!zControlPort.sendTimingReq(zPkt)){
+        panic("Flush requests should never fail");
+    }
+
 }
 
 void
@@ -657,6 +704,14 @@ CudaCore::regStats()
         .name(name() + ".tex_loads")
         .desc("Number of loads from texture space")
         ;
+    numZLoads
+        .name(name() + ".z_loads")
+        .desc("Number of loads from z space")
+        ;
+    numZStores
+        .name(name() + ".z_stores")
+        .desc("Number of stores to z space")
+        ;
     numGlobalLoads
         .name(name() + ".global_loads")
         .desc("Number of loads from global space")
@@ -735,6 +790,7 @@ CudaCore::record_ld(memory_space_t space)
     case surf_space: numSurfLoads++; break;
     case global_space: numGlobalLoads++; break;
     case generic_space: numGenericLoads++; break;
+    case z_space: numZLoads++; break;
     case param_space_unclassified:
     case undefined_space:
     case reg_space:
@@ -754,6 +810,7 @@ CudaCore::record_st(memory_space_t space)
     case param_space_local: numParamLocalStores++; break;
     case global_space: numGlobalStores++; break;
     case generic_space: numGenericStores++; break;
+    case z_space: numZStores++; break;
 
     case param_space_kernel:
     case const_space:

@@ -325,24 +325,32 @@ def createGPU(options, gpu_mem_range):
     for sc in gpu.shader_cores:
         sc.lsq = ShaderLSQ()
         sc.tex_lq = ShaderLSQ()
+        sc.z_lsq = ShaderLSQ()
 
         sc.lsq.data_tlb.entries = options.gpu_tlb_entries
         sc.tex_lq.data_tlb.entries = options.gpu_ttlb_entries
+        sc.z_lsq.data_tlb.entries = options.gpu_ttlb_entries
 
         sc.lsq.forward_flush = (buildEnv['PROTOCOL'] == 'VI_hammer_fusion' and options.flush_kernel_end)
         sc.tex_lq.forward_flush = (buildEnv['PROTOCOL'] == 'VI_hammer_fusion' and options.flush_kernel_end)
+        sc.z_lsq.forward_flush = (buildEnv['PROTOCOL'] == 'VI_hammer_fusion' and options.flush_kernel_end)
 
         sc.lsq.warp_size = options.gpu_warp_size
         sc.tex_lq.warp_size = options.gpu_warp_size
+        sc.z_lsq.warp_size = options.gpu_warp_size
 
         sc.lsq.cache_line_size = options.cacheline_size
         sc.tex_lq.cache_line_size = options.cacheline_size
+        sc.z_lsq.cache_line_size = options.cacheline_size
+
         #sc.lsq.request_buffer_depth = options.gpu_l1_buf_depth
         #sc.tex_lq.request_buffer_depth = options.gpu_tl1_buf_depth
         if options.gpu_threads_per_core % options.gpu_warp_size:
             fatal("gpu_warp_size must divide gpu_threads_per_core evenly.")
         sc.lsq.warp_contexts = warps_per_core
         sc.tex_lq.warp_contexts = warps_per_core
+        sc.z_lsq.warp_contexts = warps_per_core
+
         if options.gpu_core_config == 'Fermi':
             # Fermi latency for zero-load independent memory instructions is
             # roughly 19 total cycles with ~4 cycles for tag access
@@ -350,6 +358,8 @@ def createGPU(options, gpu_mem_range):
             sc.lsq.latency = 14
             sc.tex_lq.l1_tag_cycles = 4
             sc.tex_lq.latency = 14
+            sc.z_lsq.l1_tag_cycles = 4
+            sc.z_lsq.latency = 14
         elif options.gpu_core_config == 'Maxwell':
             # Maxwell latency for zero-load independent memory instructions is
             # 8-10 cycles quicker than Fermi, and tag access appears shorter
@@ -357,6 +367,8 @@ def createGPU(options, gpu_mem_range):
             sc.lsq.latency = 6
             sc.tex_lq.l1_tag_cycles = 1
             sc.tex_lq.latency = 6
+            sc.z_lsq.l1_tag_cycles = 1
+            sc.z_lsq.latency = 6
         elif options.gpu_core_config == 'Tegra':
             #for now copy fermi configs
             #FIXME
@@ -364,6 +376,8 @@ def createGPU(options, gpu_mem_range):
             sc.lsq.latency = 6
             sc.tex_lq.l1_tag_cycles = 1
             sc.tex_lq.latency = 6
+            sc.z_lsq.l1_tag_cycles = 1
+            sc.z_lsq.latency = 6
 
     gpu.config_path = gpgpusimOptions
     gpu.dump_kernel_stats = options.kernel_stats
@@ -476,10 +490,11 @@ def connectGPUPorts_classic(system, gpu, options):
         sc.inst_port = sc.icache.cpu_side
 
         #data cache
-        sc.dcache = L1_DCache(size=options.sc_l1_size,
+        '''sc.dcache = L1_DCache(size=options.sc_l1_size,
                              assoc=options.sc_l1_assoc)
         sc.dcache.mem_side = gpu.l2NetToL2.slave 
-        sc.lsq.cache_port = sc.dcache.cpu_side
+        sc.lsq.cache_port = sc.dcache.cpu_side'''
+        sc.lsq.cache_port = gpu.l2NetToL2.slave
 
         #readonly tex cache
         sc.tcache = L1_ICache(size=options.sc_tl1_size,
@@ -487,12 +502,21 @@ def connectGPUPorts_classic(system, gpu, options):
         sc.tcache.mem_side = gpu.l2NetToL2.slave
         sc.tex_lq.cache_port = sc.tcache.cpu_side
 
+        #z cache
+        '''sc.zcache = L1_DCache(size=options.sc_zl1_size,
+                                assoc=options.sc_zl1_assoc)
+        sc.zcache.mem_side = gpu.l2NetToL2.slave
+        sc.z_lsq.cache_port = sc.zcache.cpu_side'''
+        sc.z_lsq.cache_port = gpu.l2NetToL2.slave
+
         for j in xrange(options.gpu_warp_size):
             sc.lsq_port[j] = sc.lsq.lane_port[j]
             sc.tex_lq_port[j] = sc.tex_lq.lane_port[j]
+            sc.z_lsq_port[j] = sc.z_lsq.lane_port[j]
 
         sc.lsq_ctrl_port = sc.lsq.control_port
         sc.tex_ctrl_port = sc.tex_lq.control_port
+        sc.z_ctrl_port = sc.z_lsq.control_port
 
     assert(not options.split);
     gpu.shader_mmu.setUpPagewalkers(options.gpu_l1_pagewalkers, options.gpu_tlb_bypass_l1, gpu.l2NetToL2.slave)
