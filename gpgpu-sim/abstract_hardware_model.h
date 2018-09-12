@@ -50,7 +50,8 @@ enum _memory_space_t {
    surf_space,
    global_space,
    generic_space,
-   instruction_space
+   instruction_space,
+   z_space
 };
 
 
