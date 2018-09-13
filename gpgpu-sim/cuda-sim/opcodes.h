@@ -84,6 +84,7 @@ enum special_regs {
    SHADER_CONST02,
    SHADER_CONST03,
    FRAGMENT_ACTIVE,
+   SKIP_DEPTH_TEST,
    
    //PART3: other
    RB_WIDTH, //the width of the render buffer used to calculate the written to address

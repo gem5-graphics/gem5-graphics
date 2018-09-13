@@ -125,6 +125,8 @@ sqrt	TC; ptx_lval.int_value = SQRT_OP; return OPCODE;
 ssy     TC; ptx_lval.int_value = SSY_OP; return OPCODE;
 st      TC; ptx_lval.int_value = ST_OP; return OPCODE;
 stp     TC; ptx_lval.int_value = STP_OP; return OPCODE;
+ztest   TC; ptx_lval.int_value = ZTEST_OP; return OPCODE;
+zwrite  TC; ptx_lval.int_value = ZWRITE_OP; return OPCODE;
 st.volatile TC; ptx_lval.int_value = ST_OP; return OPCODE;
 sub	TC; ptx_lval.int_value = SUB_OP; return OPCODE;
 subc	TC; ptx_lval.int_value = SUBC_OP; return OPCODE;
@@ -238,6 +240,7 @@ printf     TC; ptx_lval.int_value = PRINTF_OP; return OPCODE;
 "CONST03"  TC; ptx_lval.int_value = SHADER_CONST03; return SPECIAL_REGISTER;
 "COLOR0"     TC; ptx_lval.int_value = SHADER_COLOR0; return SPECIAL_REGISTER;
 "%fragment_active"  TC; ptx_lval.int_value = FRAGMENT_ACTIVE; return SPECIAL_REGISTER;
+"%skip_depth_test"  TC; ptx_lval.int_value = SKIP_DEPTH_TEST; return SPECIAL_REGISTER;
 
 "%rb_width"  TC; ptx_lval.int_value = RB_WIDTH; return SPECIAL_REGISTER;
 "%rb_size"  TC; ptx_lval.int_value = RB_SIZE; return SPECIAL_REGISTER;

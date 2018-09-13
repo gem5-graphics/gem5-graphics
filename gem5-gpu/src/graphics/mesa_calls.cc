@@ -110,3 +110,7 @@ extern "C" bool gpgpusimIsBusy(){
 extern "C" void gpgpusimUpdateMachine(struct tgsi_exec_machine* tmachine){
   g_renderData.updateMachine(tmachine);
 }
+
+extern "C" bool gpgpusimGenerateDepthCode(FILE* inst_stream){
+   g_renderData.generateDepthCode(inst_stream);
+}

@@ -839,9 +839,10 @@ void core_t::execute_warp_inst_t(warp_inst_t &inst, unsigned warpId)
 void core_t::writeRegister(const warp_inst_t &inst, unsigned warpSize, unsigned lane_id, char *data) {
     assert(inst.active(lane_id));
     
-    //tex operations are functionally executed in tex_impl
+    //tex and ztest operations are functionally executed in tex_impl
     //TODO: move tex space filtering and writebacks to here 
     if(inst.space.get_type() == tex_space) return; 
+    if(inst.space.is_z()) return;
     
     int warpId = inst.warp_id();
     m_thread[warpSize*warpId+lane_id]->writeRegister(inst, lane_id, data);

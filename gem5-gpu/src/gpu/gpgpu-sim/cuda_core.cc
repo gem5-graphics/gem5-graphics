@@ -58,6 +58,7 @@ CudaCore::CudaCore(const Params *p) :
 {
     writebackBlocked[LSQCntrlPortType::LSQ] = -1; // Writeback is not blocked
     writebackBlocked[LSQCntrlPortType::TEX] = -1;
+    writebackBlocked[LSQCntrlPortType::Z] = -1;
 
     stallOnICacheRetry = false;
     stallOnTexCacheRetry  = false;
@@ -297,7 +298,7 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
        gpuFlags.set(Request::TEX_FETCH);
     }
 
-    if(inst.space.get_type() == z_space){
+    if(inst.space.is_z()){
        gpuFlags.set(Request::Z_FETCH);
     }
 
@@ -309,7 +310,7 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
         DPRINTF(CudaCoreAccess, "Param local space: %p\n", inst.pc);
     } else if (inst.space.get_type() == tex_space) {
         DPRINTF(CudaCoreAccess, "Tex space: %p\n", inst.pc);
-    } else if (inst.space.get_type() == z_space) {
+    } else if (inst.space.is_z()) {
         DPRINTF(CudaCoreAccess, "Z space: %p\n", inst.pc);
     } else {
         DPRINTF(CudaCoreAccess, "Global space: %p\n", inst.pc);
@@ -344,7 +345,7 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
                    MasterID reqMasterId = dataMasterId;
                    if(inst.space.get_type() == tex_space)
                       reqMasterId = texMasterId;
-                   if(inst.space.get_type() == z_space)
+                   if(inst.space.is_z())
                       reqMasterId = zMasterId;
                    RequestPtr req = new Request(asid, addr, size, flags,
                            reqMasterId, inst.pc, inst.warp_id());
@@ -409,7 +410,7 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
                LSQPort * sendPort;
                if(inst.space.get_type() == tex_space){
                   sendPort = texPorts[lane];
-               } else if(inst.space.get_type() == z_space) {
+               } else if(inst.space.is_z()) {
                   sendPort = zPorts[lane];
                } else {
                   sendPort = lsqPorts[lane];

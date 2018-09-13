@@ -231,6 +231,7 @@ class tcTile_t {
          x(_x), y(_y)
       {
          done=false;
+         skipDepthTest=false;
       }
    unsigned size(){
       return m_frags.size();
@@ -244,6 +245,7 @@ class tcTile_t {
    const unsigned x;
    const unsigned y;
    bool done;
+   bool skipDepthTest;
    private:
       std::vector<RasterTile::rasterFragment_t*> m_frags;
 };
@@ -456,6 +458,10 @@ public:
     bool depthTest(uint64_t oldDepth, uint64_t newDepth);
     bool testHiz(RasterTile* tile);
     struct gl_context * getMesaCtx(){return m_mesaCtx;}
+    void generateDepthCode(FILE* inst_stream);
+    unsigned getDepthSize(){ return (unsigned)m_depthSize;}
+    void modeMemcpy(byte* dst, byte *src, 
+      unsigned count, enum cudaMemcpyKind kind);
 
 private:
     bool useInShaderBlending() const;

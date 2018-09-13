@@ -558,7 +558,7 @@ typedef std::list<gpgpu_ptx_sim_arg> gpgpu_ptx_sim_arg_list_t;
 
 class memory_space_t {
 public:
-   memory_space_t() { m_type = undefined_space; m_bank=0; }
+   memory_space_t():m_is_z(false) { m_type = undefined_space; m_bank=0; }
    memory_space_t( const enum _memory_space_t &from ) { m_type = from; m_bank = 0; }
    bool operator==( const memory_space_t &x ) const { return (m_bank == x.m_bank) && (m_type == x.m_type); }
    bool operator!=( const memory_space_t &x ) const { return !(*this == x); }
@@ -578,10 +578,13 @@ public:
    bool is_const() const { return (m_type == const_space) || (m_type == param_space_kernel); }
    bool is_local() const { return (m_type == local_space) || (m_type == param_space_local); }
    bool is_global() const { return (m_type == global_space); }
+   void set_z() { m_is_z = true; }
+   bool is_z() const { return m_is_z;}
 
 private:
    enum _memory_space_t m_type;
    unsigned m_bank; // n in ".const[n]"; note .const == .const[0] (see PTX 2.1 manual, sec. 5.1.3)
+   bool m_is_z;
 };
 
 const unsigned MAX_MEMORY_ACCESS_SIZE = 128;

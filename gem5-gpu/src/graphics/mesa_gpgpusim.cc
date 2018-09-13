@@ -128,7 +128,7 @@ shaderAttrib_t primitiveFragmentsData_t::getFragmentData(unsigned utid, unsigned
       break;
       }
     case FRAG_UINT_POS: {
-      retVal.u32 =  frag->uintPos[attribIndex];
+      retVal.u64 =  frag->uintPos[attribIndex];
       isRetVal = true;
       break;
     }
@@ -465,6 +465,11 @@ shaderAttrib_t renderData_t::getFragmentData(unsigned utid, unsigned tid, unsign
          isRetVal = true;
          break;
       }
+      case DEPTH_TEST_NOT_ACTIVE: {
+        retVal.u32 = tcTilePtr->skipDepthTest? 1: 0;
+        isRetVal = true;
+        break;
+      }
       case QUAD_INDEX: {
         retVal.u32 =  frag->quadIdx;
         isRetVal = true;
@@ -475,6 +480,17 @@ shaderAttrib_t renderData_t::getFragmentData(unsigned utid, unsigned tid, unsign
            isRetVal = true;
            break;
         }
+      case FRAG_DEPTH_ADDR: {
+           uint64_t xPos = frag->uintPos[0];
+           uint64_t yPos = frag->uintPos[1];
+           retVal.u64 = ((uint64_t) (m_deviceData 
+                    + m_colorBufferByteSize)
+                    + m_depthBufferSize) 
+              - ((yPos+1) * m_depthBufferWidth * (unsigned)m_depthSize) 
+              + (xPos * (unsigned)m_depthSize);
+           isRetVal = true;
+           break;
+       }
       case TGSI_FILE_INPUT: {
              retVal.f32 = frag->inputs[fileIdx][attribIndex];
              isRetVal = true;
@@ -1177,32 +1193,14 @@ void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, voi
     if(isDepthTestEnabled()){
         m_depthBuffer = setDepthBuffer(activeDepthSize, trueDepthSize);
         graphicsMalloc((void**) &m_deviceData, m_colorBufferByteSize + m_depthBufferSize); 
-        if(m_standaloneMode){
-           CudaGPU* cg = CudaGPU::getCudaGPU(g_active_device);
-           assert(cg->standaloneMode);
-           GraphicsStandalone* gs = cg->getGraphicsStandalone();
-           assert(gs != NULL);
-           gs->physProxy.writeBlob((Addr)m_deviceData + m_colorBufferByteSize,
-                 m_depthBuffer,  m_depthBufferSize);
-        } else {
-           graphicsMemcpy(m_deviceData + m_colorBufferByteSize,
+        modeMemcpy(m_deviceData + m_colorBufferByteSize,
                  m_depthBuffer, m_depthBufferSize, graphicsMemcpyHostToSim);
-        }
         setHizTiles(RasterDirection::HorizontalRaster);
     } else {
         graphicsMalloc((void**) &m_deviceData, m_colorBufferByteSize);
     }
 
-    if(m_standaloneMode){
-       CudaGPU* cg = CudaGPU::getCudaGPU(g_active_device);
-       assert(cg->standaloneMode);
-       GraphicsStandalone* gs = cg->getGraphicsStandalone();
-       assert(gs != NULL);
-       gs->physProxy.writeBlob((Addr)m_deviceData, currentBuffer, getColorBufferByteSize());
-    } else {
-       graphicsMemcpy(m_deviceData, currentBuffer, getColorBufferByteSize(), graphicsMemcpyHostToSim);
-    }
-
+    modeMemcpy(m_deviceData, currentBuffer, getColorBufferByteSize(), graphicsMemcpyHostToSim);
     std::string bufferFormat = m_fbPixelSize == 4? "bgra" : "rgb";
     writeDrawBuffer("pre", currentBuffer,  m_colorBufferByteSize, m_bufferWidth, m_bufferHeight, bufferFormat.c_str(), 8);
 
@@ -1649,17 +1647,7 @@ unsigned int renderData_t::noDepthFragmentShading() {
 void renderData_t::putDataOnColorBuffer() {
     //copying the result render buffer to mesa
     byte * tempBuffer = new byte [getColorBufferByteSize()];
-
-    if(m_standaloneMode){
-       CudaGPU* cg = CudaGPU::getCudaGPU(g_active_device);
-       assert(cg->standaloneMode);
-       GraphicsStandalone* gs = cg->getGraphicsStandalone();
-       assert(gs != NULL);
-       gs->physProxy.readBlob((Addr)m_deviceData, tempBuffer, getColorBufferByteSize());
-    } else {
-       graphicsMemcpy(tempBuffer, m_deviceData, getColorBufferByteSize(), graphicsMemcpySimToHost);
-    }
-
+    modeMemcpy(tempBuffer, m_deviceData, getColorBufferByteSize(), graphicsMemcpySimToHost);
     writeDrawBuffer("post", (byte*)tempBuffer, getColorBufferByteSize(), m_bufferWidth, m_bufferHeight, "bgra", 8);
 
     byte* renderBuf;
@@ -1694,17 +1682,8 @@ void renderData_t::putDataOnColorBuffer() {
 //copying the result depth buffer to mesa
 void renderData_t::putDataOnDepthBuffer(){
     byte * tempBuffer = new byte [m_depthBufferSize];
-    if(m_standaloneMode){
-       CudaGPU* cg = CudaGPU::getCudaGPU(g_active_device);
-       assert(cg->standaloneMode);
-       GraphicsStandalone* gs = cg->getGraphicsStandalone();
-       assert(gs != NULL);
-       gs->physProxy.readBlob((Addr)m_deviceData + m_colorBufferByteSize, tempBuffer, m_depthBufferSize);
-    } else {
-       graphicsMemcpy(tempBuffer, m_deviceData + m_colorBufferByteSize,
-             m_depthBufferSize, graphicsMemcpySimToHost);
-    }
-
+    modeMemcpy(tempBuffer, m_deviceData + m_colorBufferByteSize,
+          m_depthBufferSize, graphicsMemcpySimToHost);
     writeDrawBuffer("post_depth", tempBuffer,  m_depthBufferSize, m_bufferWidth, m_bufferHeight, "a", 8*(int)m_depthSize);
 
     assert((m_depthSize == m_mesaDepthSize) or ((m_mesaDepthSize == DepthSize::Z16) and (m_depthSize == DepthSize::Z32)));
@@ -2189,4 +2168,35 @@ void RasterTile::testHizThresh(){
             }
          } 
       }
+}
+
+
+void renderData_t::generateDepthCode(FILE* inst_stream){
+   const char* depthSize = m_depthSize==DepthSize::Z32? "u32" : "u16";
+   fprintf(inst_stream, ".reg .pred testDepth, passedDepth;\n");
+   fprintf(inst_stream, ".reg .u32 depthTestRes;\n");
+   fprintf(inst_stream, "setp.eq.u32 passedDepth, 0, 0;\n");
+   fprintf(inst_stream, "setp.eq.u32 testDepth, 0, %%skip_depth_test;\n");
+   fprintf(inst_stream, "@testDepth ztest.global.%s depthTestRes;\n", depthSize);
+   fprintf(inst_stream, "@testDepth setp.ne.u32 passedDepth, 0, depthTestRes;\n");
+   fprintf(inst_stream, "@passedDepth zwrite.global.%s;\n", depthSize);
+   fprintf(inst_stream, "@!passedDepth exit;\n", depthSize);
+}
+
+
+void renderData_t::modeMemcpy(byte* dst, byte *src, 
+      unsigned count, enum cudaMemcpyKind kind){
+   if(m_standaloneMode){
+      CudaGPU* cg = CudaGPU::getCudaGPU(g_active_device);
+      assert(cg->standaloneMode);
+      GraphicsStandalone* gs = cg->getGraphicsStandalone();
+      assert(gs != NULL);
+      if(kind == graphicsMemcpyHostToSim)
+         gs->physProxy.writeBlob((Addr)dst, src, count);
+      else if(kind == graphicsMemcpySimToHost)
+         gs->physProxy.readBlob((Addr)src, dst, count);
+      else assert(0);
+   } else {
+      graphicsMemcpy(dst, src, count, kind);
+   }
 }

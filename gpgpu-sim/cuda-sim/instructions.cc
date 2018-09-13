@@ -144,6 +144,10 @@ shaderAttrib_t readFragmentInputData(ptx_thread_info *thread,int builtin_id, uns
         attribID = FRAG_ACTIVE;
         break;
       }
+      case SKIP_DEPTH_TEST: {
+        attribID = DEPTH_TEST_NOT_ACTIVE;
+        break;
+      }
       default: printf("Undefined fragment input register \n"); abort();
     }
     return readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), attribID, attribIndex, fileIdx, idx2D, stream);
@@ -4162,8 +4166,8 @@ void tex_impl( const ptx_instruction *pI, ptx_thread_info *thread){
 
      unsigned uniqueThreadId = thread->get_uid_in_kernel();
      void* stream = thread->get_kernel_info()->get_stream();
-     unsigned posX = readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), FRAG_UINT_POS, 0, -1, -1, stream).u32;
-     unsigned posY = readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), FRAG_UINT_POS, 1, -1, -1, stream).u32;
+     uint64_t posX = readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), FRAG_UINT_POS, 0, -1, -1, stream).u64;
+     uint64_t posY = readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), FRAG_UINT_POS, 1, -1, -1, stream).u64;
 
      std::vector<uint64_t> texelAddrs;
      //texelAddrs = fetchMesaTexels(0, samplingUnit, dim, fcoords, dim, fdst, elems, thread->get_uid_in_kernel(), isTxf, isTxb);
@@ -4656,25 +4660,54 @@ void stp_impl( const ptx_instruction *pI, ptx_thread_info *thread )
 
    unsigned uniqueThreadId = thread->get_uid_in_kernel();
    void* stream = thread->get_kernel_info()->get_stream();
-   unsigned posX = readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), FRAG_UINT_POS, 0, -1, -1, stream).u32;
-   unsigned posY = readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), FRAG_UINT_POS, 1, -1, -1, stream).u32;
+   uint64_t posX = readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), FRAG_UINT_POS, 0, -1, -1, stream).u64;
+   uint64_t posY = readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), FRAG_UINT_POS, 1, -1, -1, stream).u64;
    addr_t addr = getFramebufferFragmentAddr(posX, posY, size);
 
    //FIXME
    if(isBlendingEnabled())
    {
      uint32_t oldPixel;
-     graphicsMemcpy(&oldPixel, (void*)addr, 4, graphicsMemcpySimToHost);
+     g_renderData.modeMemcpy((byte*) &oldPixel, (byte*)addr, 4, graphicsMemcpySimToHost);
      dst.u32 = blendU32(dst.u32, oldPixel);
    }//END FIXME
-
-
 
    thread->set_builtin_dst(dst, size);
    thread->get_gpu()->gem5CudaGPU->getCudaCore(thread->get_hw_sid())->record_st(space);
    thread->m_last_effective_address.set(addr);
    thread->m_last_memory_space = space;
 }
+
+
+void ztest_impl( const ptx_instruction *pI, ptx_thread_info *thread )
+{
+   const operand_info &dst = pI->dst();
+   unsigned type = pI->get_type();
+   //ptx_reg_t src1_data = thread->get_operand_value(src1, dst, type, thread, 1);
+   ptx_reg_t data;
+   pI->get_space().set_z();
+   unsigned uniqueThreadId = thread->get_uid_in_kernel();
+   void* stream = thread->get_kernel_info()->get_stream();
+   addr_t addr = readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), FRAG_DEPTH_ADDR, 1, -1, -1, stream).u64;
+   uint64_t oldDepth = 0;
+   g_renderData.modeMemcpy((byte*)&oldDepth, (byte*)addr, g_renderData.getDepthSize(), graphicsMemcpySimToHost);
+   uint64_t posZ = readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), FRAG_UINT_POS, 2, -1, -1, stream).u64;
+   bool passedDepth = g_renderData.depthTest(oldDepth, posZ);
+   ptx_reg_t reg;
+   if(passedDepth){
+      reg.u32 = 1;
+   } else {
+      reg.u32 = 0;
+   }
+   thread->set_operand_value(dst,reg, type, thread, pI);
+   thread->get_gpu()->gem5CudaGPU->getCudaCore(thread->get_hw_sid())->record_ld(z_space);
+   thread->m_last_effective_address.set(addr);
+   memory_space_t space = pI->get_space();
+   thread->m_last_memory_space = space; 
+}
+
+void zwrite_impl( const ptx_instruction *pI, ptx_thread_info *thread )
+{}
 
 void frc_impl( const ptx_instruction *pI, ptx_thread_info *thread ) 
 { 

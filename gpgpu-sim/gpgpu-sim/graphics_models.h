@@ -156,7 +156,7 @@ class tc_engine_t {
                m_afragments[tileId][quadId].reset();
             }
          }
-
+         tc_tile->skipDepthTest = m_status.skip_depth_test;
          assert(m_pending_tiles.find(std::make_pair(tc_tile->x,tc_tile->y))
                == m_pending_tiles.end());
          m_pending_tiles.insert(
@@ -186,6 +186,7 @@ class tc_engine_t {
                      if(rtile->decActiveCount() == 0){
                         remove_list.push_back(rtile);
                      }
+                     m_status.skip_depth_test &= rtile->skipFineDepth();
                   }
                }
             }
@@ -234,6 +235,7 @@ class tc_engine_t {
       unsigned rtile_xend;
       unsigned rtile_ystart;
       unsigned rtile_yend;
+      bool skip_depth_test;
       void reset(){
          pending_flush=false;
          pending_frags=0;
@@ -243,6 +245,7 @@ class tc_engine_t {
          rtile_xend=-1;
          rtile_ystart=-1;
          rtile_yend=-1;
+         skip_depth_test=true;
       }
    };
    status_t m_status;
