@@ -100,7 +100,7 @@ ZUnit::ZCachePort::recvFunctional(PacketPtr pkt)
 
 bool
 ZUnit::recvDepthResponse(PacketPtr pkt){
-   assert(pkt->req->isZFetch());
+   assert(pkt->req->isZRequest());
 
    if(depthResponseQ.size() >= depthResponseQueueSize) 
       return false;
@@ -256,7 +256,7 @@ void ZUnit::sendZTransReq(DepthFragmentTile::DepthFragment * df){
 
    BaseTLB::Mode mode = BaseTLB::Read;
    req->setVirt(asid, df->getDepthVaddr(), (int)depthSize, flags, zcacheMasterId, 0);
-   req->setGpuFlags(Request::Z_FETCH);
+   req->setGpuFlags(Request::Z_REQUEST);
    req->setExtraData((uint64_t)df);
 
    WholeTranslationState *state =
@@ -329,7 +329,7 @@ void ZUnit::sendZcacheAccess(PacketPtr pkt){
 
 void ZUnit::sendZWrite(DepthFragmentTile::DepthFragment * df){
    RequestPtr req = new Request(df->getDepthPaddr(), (int)depthSize, 0, zcacheMasterId);
-   req->setGpuFlags(Request::Z_FETCH);
+   req->setGpuFlags(Request::Z_REQUEST);
    req->setExtraData((uint64_t)df);
 
    PacketPtr pkt = new Packet(req, MemCmd::WriteReq);

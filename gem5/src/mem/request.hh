@@ -197,7 +197,7 @@ class Request
         /** The request is a texture fetch request */
         TEX_FETCH                  = 0x00000001,
         /** The request is a z-unit depth fetch request */
-        Z_FETCH                  = 0x00000002
+        Z_REQUEST                  = 0x00000002
        };
 
     /** Master Ids that are statically allocated
@@ -811,7 +811,7 @@ class Request
     bool isAtomicNoReturn() const { return _flags.isSet(ATOMIC_NO_RETURN_OP); }
     bool isBypassL1() const { return _flags.isSet(BYPASS_L1); }
     bool isTexFetch() const {return _gpuFlags.isSet(TEX_FETCH); }
-    bool isZFetch() const {return _gpuFlags.isSet(Z_FETCH); }
+    bool isZRequest() const {return _gpuFlags.isSet(Z_REQUEST); }
 
     bool
     isAtomic() const

@@ -4489,72 +4489,6 @@ C_DATA_TYPE get_final_color_result(zrop_callback_t::zrop_input_t color, new_addr
     return color;
 }
 
-//bool z_st_callback(const class inst_t* instruction,class ptx_thread_info* thread, zrop_callback_t::zrop_input_t depth, zrop_callback_t::zrop_input_t color, new_addr_type addr)
-//{
-//    const ptx_instruction *pI = dynamic_cast<const ptx_instruction*>(instruction);
-//    Z_DATA_TYPE storedDepth = globalZBuffer.readZValue(addr);
-//    bool write = depth Z_IS_CLOSER_THAN storedDepth;
-//    extern gpgpu_sim *g_the_gpu;
-//    
-//    if(isBlendingEnabled()){
-//        assert(!isDepthTestEnabled());
-//        g_the_gpu->get_global_memory()->write(addr,C_DATA_SIZE,&color,thread,pI);
-//        return true;
-//    }
-//    
-//    if(!isDepthTestEnabled()){
-//        g_the_gpu->get_global_memory()->write(addr,C_DATA_SIZE,&color,thread,pI);
-//        return true;
-//    }
-//    
-//    if(write){
-//        //write to the z memory
-//        globalZBuffer.writeZValue(depth,addr,thread,instruction);
-//        //z call back can be called by fetches that does not correspond to real threads so we use g_the_gpu, when this always used with real threads
-//        //then we can use thread->getGlobalMemory
-//        g_the_gpu->get_global_memory()->write(addr,C_DATA_SIZE,&color,thread,pI);
-//    }
-//    return write;
-//}
-//
-////zwrite operation implementation, if the write operation is to a z allocated location 
-////then the write operation will be done using callbacks from the z-unit
-//void z_st( const ptx_instruction *pI, ptx_thread_info *thread ) 
-//{
-//   const operand_info &dst = pI->dst();
-//   const operand_info &src1 = pI->src1();
-//   unsigned type = pI->get_type();
-//   ptx_reg_t addr_reg = thread->get_operand_value(dst, dst, type, thread, 1);
-//   memory_space_t space = pI->get_space();
-//   unsigned vector_spec = pI->get_vector();
-//
-//   addr_t addr = addr_reg.u32;
-//   assert(space.get_type()==global_space);
-//   assert(vector_spec==V2_TYPE); //should be vector instruction with 2 values depth and color
-//   
-//   size_t size;
-//   int t;
-//   type_info_key::type_decode(type,size,t);
-//   assert(size==32);
-//   ptx_reg_t* ptx_regs = new ptx_reg_t[2]; 
-//   thread->get_vector_operand_values(src1, ptx_regs, 2); 
-//   thread->m_last_memory_space = space;
-//   thread->m_last_effective_address.set(addr);
-//   
-//   C_DATA_TYPE final_color = get_final_color_result(ptx_regs[0].u32,addr);
-//   
-//   if(isDepthTestEnabled() || isBlendingEnabled()){
-//       thread->m_last_zrop_callback.function = z_st_callback;
-//       thread->m_last_zrop_callback.instruction = pI; 
-//       thread->m_last_zrop_callback.color = final_color;
-//       thread->m_last_zrop_callback.depth = ptx_regs[1].u32;
-//       thread->m_last_zrop_callback.address = addr;
-//   } 
-//   else z_st_callback(pI, thread, ptx_regs[1].u32, final_color, addr);
-//
-//   delete [] ptx_regs;
-//}
-
 void st_impl( const ptx_instruction *pI, ptx_thread_info *thread ) 
 {
    const operand_info &dst = pI->dst();
@@ -4567,11 +4501,6 @@ void st_impl( const ptx_instruction *pI, ptx_thread_info *thread )
 
    memory_space *mem = NULL;
    addr_t addr = addr_reg.u64;
-//   //calling the z_st if the address is in the z buffer, should be done as separate instruction later
-//   if(globalZBuffer.isInZBuffers(addr)){
-//       z_st(pI,thread);
-//       return;
-//   }
    decode_space(space,thread,dst,mem,addr);
    thread->get_gpu()->gem5CudaGPU->getCudaCore(thread->get_hw_sid())->record_st(space);
 
@@ -4707,7 +4636,30 @@ void ztest_impl( const ptx_instruction *pI, ptx_thread_info *thread )
 }
 
 void zwrite_impl( const ptx_instruction *pI, ptx_thread_info *thread )
-{}
+{
+   memory_space_t space = pI->get_space();
+   //ptx_reg_t src1_data = thread->get_operand_value(src1, dst, type, thread, 1);
+   ptx_reg_t data;
+   pI->get_space().set_z();
+   unsigned uniqueThreadId = thread->get_uid_in_kernel();
+   void* stream = thread->get_kernel_info()->get_stream();
+   addr_t addr = readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), FRAG_DEPTH_ADDR, 1, -1, -1, stream).u64;
+   uint64_t posZ = readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), FRAG_UINT_POS, 2, -1, -1, stream).u64;
+   unsigned size = g_renderData.getDepthSize();
+   ptx_reg_t dst;
+   dst.u32 = 0;
+   dst.u16 = 0;
+   if(size == 2){
+      dst.u16 = (uint16_t) posZ;
+   } else if(size == 4){
+      dst.u32 = (uint32_t) posZ;
+   } else assert(0);
+
+   thread->set_builtin_dst(dst, size);
+   thread->get_gpu()->gem5CudaGPU->getCudaCore(thread->get_hw_sid())->record_st(z_space);
+   thread->m_last_effective_address.set(addr);
+   thread->m_last_memory_space = space;
+}
 
 void frc_impl( const ptx_instruction *pI, ptx_thread_info *thread ) 
 { 

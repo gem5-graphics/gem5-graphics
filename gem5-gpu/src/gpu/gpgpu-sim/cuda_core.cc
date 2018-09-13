@@ -299,7 +299,7 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
     }
 
     if(inst.space.is_z()){
-       gpuFlags.set(Request::Z_FETCH);
+       gpuFlags.set(Request::Z_REQUEST);
     }
 
     if (inst.space.get_type() == const_space) {
@@ -386,8 +386,12 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
                              inst.cache_op);
                    }
                    Addr addr = inst.get_addr(lane, reqNum);
+                   assert(inst.space.get_type() != tex_space);
+                   MasterID reqMasterId = dataMasterId;
+                   if(inst.space.is_z())
+                      reqMasterId = zMasterId;
                    RequestPtr req = new Request(asid, addr, size, flags,
-                           dataMasterId, inst.pc, inst.warp_id());
+                           reqMasterId, inst.pc, inst.warp_id());
                    pkt = new Packet(req, MemCmd::WriteReq);
                    pkt->allocate();
                    pkt->setData((uint8_t*)inst.get_data(lane));
@@ -467,7 +471,7 @@ CudaCore::recvLSQDataResp(PacketPtr pkt, int lane_id)
                 DPRINTF(CudaCoreAccess, "Setting tex port blocked at lane %d\n", lane_id);
                 assert(writebackBlocked[LSQCntrlPortType::TEX] < 0);
                 writebackBlocked[LSQCntrlPortType::TEX] = lane_id;
-            } else if(gpuFlags.isSet(Request::Z_FETCH)){
+            } else if(gpuFlags.isSet(Request::Z_REQUEST)){
                 DPRINTF(CudaCoreAccess, "Setting z port blocked at lane %d\n", lane_id);
                 assert(writebackBlocked[LSQCntrlPortType::Z] < 0);
                 writebackBlocked[LSQCntrlPortType::Z] = lane_id;

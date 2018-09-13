@@ -603,6 +603,7 @@ void ptx_instruction::set_opcode_and_latency()
    case ZTEST_OP: op = LOAD_OP; break;
    case ST_OP: op = STORE_OP; break;
    case STP_OP: op = STORE_OP; break;
+   case ZWRITE_OP: op = STORE_OP; break;
    case BRA_OP: op = BRANCH_OP; break;
    case BREAKADDR_OP: op = BRANCH_OP; break;
    case TEX_OP: op = LOAD_OP; mem_op=TEX; break;
@@ -857,12 +858,11 @@ void ptx_instruction::pre_decode()
       if( m_opcode == LD_OP || m_opcode == LDU_OP 
             || m_opcode == ZTEST_OP) 
          cache_op = CACHE_ALL;
-      else if( m_opcode == ST_OP ) 
+      else if( m_opcode == ST_OP || m_opcode == STP_OP 
+            || m_opcode == ZWRITE_OP) 
          cache_op = CACHE_WRITE_BACK;
       else if( m_opcode == ATOM_OP ) 
          cache_op = CACHE_GLOBAL;
-      else if (m_opcode == STP_OP)
-         cache_op = CACHE_WRITE_BACK;
       break;
    }
 
@@ -1214,7 +1214,7 @@ int ptx_thread_info::readRegister(const warp_inst_t &inst, unsigned lane_id, cha
    int bytes = -1;
 
    //special handling for instructions using builtin storage
-   //e.g., store pixel (stp)
+   //e.g., store pixel (stp), z write (zwrite)
    if(pI->get_num_operands() == 0){
      assert(m_builtin_dst.valid);
      m_builtin_dst.valid = false;

@@ -1169,7 +1169,8 @@ ptx_instruction::ptx_instruction( int opcode,
    }
    m_scalar_type = scalar_type;
    m_space_spec = space_spec;
-   if( ( opcode == ST_OP || opcode == STP_OP || opcode == LD_OP || opcode == LDU_OP || opcode == ZTEST_OP ) 
+   if( ( opcode == ST_OP || opcode == STP_OP || opcode == ZWRITE_OP
+            || opcode == LD_OP || opcode == LDU_OP || opcode == ZTEST_OP ) 
          && (space_spec == undefined_space) ) {
       m_space_spec = generic_space;
    } 
