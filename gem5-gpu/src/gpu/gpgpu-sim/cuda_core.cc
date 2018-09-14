@@ -577,13 +577,13 @@ CudaCore::flush()
         panic("Flush requests should never fail");
     }
     
-    RequestPtr texReq = new Request(asid, addr, flags, dataMasterId);
+    RequestPtr texReq = new Request(asid, addr, flags, texMasterId);
     PacketPtr texPkt = new Packet(texReq, MemCmd::FlushReq);
     if (!texControlPort.sendTimingReq(texPkt)){
         panic("Flush requests should never fail");
     }
 
-    RequestPtr zReq = new Request(asid, addr, flags, dataMasterId);
+    RequestPtr zReq = new Request(asid, addr, flags, zMasterId);
     PacketPtr zPkt = new Packet(zReq, MemCmd::FlushReq);
     if (!zControlPort.sendTimingReq(zPkt)){
         panic("Flush requests should never fail");
