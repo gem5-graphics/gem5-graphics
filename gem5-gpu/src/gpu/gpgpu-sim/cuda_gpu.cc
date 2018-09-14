@@ -1057,11 +1057,14 @@ void CudaGPU::GMemory::freeMem(Addr addr) {
 */
 void GPUExitCallback::process()
 {
-    std::ostream *os = simout.find(stats_filename)->stream();
-    if (!os) {
-        os = simout.create(stats_filename)->stream();
+    OutputStream* outs = simout.find(stats_filename);
+    if(outs){
+       std::ostream *os = outs->stream();
+       if (!os) {
+          os = simout.create(stats_filename)->stream();
+       }
+       gpu->gpuPrintStats(*os);
+       *os << std::endl;
     }
-    gpu->gpuPrintStats(*os);
-    *os << std::endl;
 }
 
