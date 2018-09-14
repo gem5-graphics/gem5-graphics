@@ -645,7 +645,9 @@ bool renderData_t::useInShaderBlending() const {
 
 void renderData_t::checkExitCond(){
    if(((m_currentFrame== m_endFrame) and (m_drawcall_num > m_endDrawcall)) or (m_currentFrame > m_endFrame)){
+      g_gpuMutex.lock();
       exitSimLoop("gem5 exit, end of graphics simulation", 0, curTick(), 0, true);
+      g_gpuMutex.unlock();
    }
 }
 
