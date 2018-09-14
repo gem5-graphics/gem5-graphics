@@ -70,7 +70,7 @@ void
 GraphicsStandalone::tick()
 {
    if(traceDone){
-      panic("need to check gpu has no work left");
+      //panic("need to check gpu has no work left");
       exitSimLoop("Done with trace\n");
       return;
    } 
