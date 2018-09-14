@@ -442,7 +442,11 @@ class Request
 
     Request(int asid, Addr vaddr, unsigned size, Flags flags, MasterID mid,
             Addr pc, ContextID cid, AtomicOpFunctor *atomic_op)
-        : atomicOpFunctor(atomic_op)
+        :_paddr(0), _size(0), _masterId(invldMasterId), _time(0),
+          _taskId(ContextSwitchTaskId::Unknown), _asid(0), _vaddr(0),
+          _extraData(0), _contextId(0), _pc(0),
+          _reqInstSeqNum(0), atomicOpFunctor(atomic_op), translateDelta(0),
+          accessDelta(0), depth(0)
     {
         setVirt(asid, vaddr, size, flags, mid, pc);
         setContext(cid);
