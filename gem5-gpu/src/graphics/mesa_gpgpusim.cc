@@ -536,7 +536,7 @@ void renderData_t::sortFragmentsInRasterOrder(unsigned tileH, unsigned tileW, un
 }
 
 void renderData_t::endDrawCall() {
-    printf("ending drawcall tick = %ld\n", curTick());
+   printf("ending drawcall tick = %ld\n", curTick());
    printf("endDrawCall: start\n");
    uint64_t ticks = curTick() - g_startTick;
    g_totalTicks+= ticks;
@@ -1209,7 +1209,7 @@ void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, voi
     delete [] currentBuffer;
 
     if(m_depthBuffer!=NULL) {
-       writeDrawBuffer("pre_depth", m_depthBuffer,  m_depthBufferSize, m_bufferWidth, m_bufferHeight, "a", 8*(int)activeDepthSize);
+       writeDrawBuffer("pre_depth", m_depthBuffer,  m_depthBufferSize, m_bufferWidth, m_bufferHeight, "gray", 8*(int)m_mesaDepthSize);
     }
 
     if(isBlendingEnabled()){
@@ -1686,7 +1686,7 @@ void renderData_t::putDataOnDepthBuffer(){
     byte * tempBuffer = new byte [m_depthBufferSize];
     modeMemcpy(tempBuffer, m_deviceData + m_colorBufferByteSize,
           m_depthBufferSize, graphicsMemcpySimToHost);
-    writeDrawBuffer("post_depth", tempBuffer,  m_depthBufferSize, m_bufferWidth, m_bufferHeight, "a", 8*(int)m_depthSize);
+    writeDrawBuffer("post_depth", tempBuffer,  m_depthBufferSize, m_bufferWidth, m_bufferHeight, "gray", 8*(int)m_depthSize);
 
     assert((m_depthSize == m_mesaDepthSize) or ((m_mesaDepthSize == DepthSize::Z16) and (m_depthSize == DepthSize::Z32)));
     byte* readDepth = tempBuffer;
@@ -1959,7 +1959,6 @@ void renderData_t::endVertexShading(CudaGPU * cudaGPU){
 void renderData_t::endFragmentShading() {
     printf("end fragment shading\n");
     m_sShading_info.currentPass = stage_shading_info_t::GraphicsPass::NONE;
-    printf("unlock frag lock\n"); fflush(stdout);
     endDrawCall(); 
 }
 
