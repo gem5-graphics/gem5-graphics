@@ -420,6 +420,8 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
                   sendPort = lsqPorts[lane];
                }
 
+               std::string ttype = inst.is_load()? "load" : inst.is_store()? "store": "barrier";
+               DPRINTF(CudaCoreAccess, "Sent a %s request from lane %d\n", ttype.c_str(), lane);
                if (!sendPort->sendTimingReq(pkt)) {
                    // NOTE: This should fail early. If executeMemOp fails after
                    // some, but not all, of the requests have been sent the
@@ -480,7 +482,6 @@ CudaCore::recvLSQDataResp(PacketPtr pkt, int lane_id)
                 assert(writebackBlocked[LSQCntrlPortType::LSQ] < 0);
                 writebackBlocked[LSQCntrlPortType::LSQ] = lane_id;
             }
-
             return false;
         }
 
