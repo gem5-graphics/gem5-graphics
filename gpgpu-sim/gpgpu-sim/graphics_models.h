@@ -86,16 +86,18 @@ class tc_engine_t {
    void set_current_coords(unsigned x, unsigned y){
       //only possible to (re)assign empty tiles
       assert(m_input_tiles_bin.size() == 0);
-      x = x - x%m_tc_tile_w;
-      y = y - y%m_tc_tile_h;
+      x = x - x%(m_tc_tile_w*m_r_tile_w);
+      y = y - y%(m_tc_tile_h*m_r_tile_h);
       m_status.rtile_xstart = x;
-      m_status.rtile_xend = x + m_tc_tile_w - 1;
+      m_status.rtile_xend = x + m_tc_tile_w*m_r_tile_w - 1;
       m_status.rtile_ystart = y;
-      m_status.rtile_yend = y + m_tc_tile_h - 1;
+      m_status.rtile_yend = y + m_tc_tile_h*m_r_tile_h - 1;
    }
 
    //check if raster tile is mapped to this bin
    bool has_tile(unsigned x, unsigned y){
+      if(m_input_tiles_bin.size() == 0)
+            return false;
       if(       x >= m_status.rtile_xstart 
             and x <= m_status.rtile_xend
             and y >= m_status.rtile_ystart
@@ -121,9 +123,9 @@ class tc_engine_t {
 
    bool insert_first_tile(RasterTile* tile){
       if(m_input_tiles_bin.size() == 0 and m_status.pending_frags==0){
+         m_status.reset();
          set_current_coords(tile->xCoord, tile->yCoord);
          m_input_tiles_bin.push_back(tile);
-         m_status.reset();
          return true;
       }
       return false;
