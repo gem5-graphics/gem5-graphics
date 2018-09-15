@@ -145,10 +145,10 @@ class tc_engine_t {
                      m_status.rtile_ystart));
          } else return;
       }
-      tcTilePtr_t tc_tile = 
-         new tcTile_t(m_status.rtile_xstart, m_status.rtile_ystart);
       if(m_status.pending_flush or
             (m_status.waiting_cycles > m_wait_threshold)){
+         tcTilePtr_t tc_tile = 
+            new tcTile_t(m_status.rtile_xstart, m_status.rtile_ystart);
          for(unsigned tileId=0; tileId<m_afragments.size(); tileId++){
             for(unsigned quadId=0; quadId<m_afragments[tileId].size(); quadId++){
                for(unsigned fragId=0; fragId<QUAD_SIZE; fragId++){
@@ -392,6 +392,7 @@ class graphics_simt_pipeline {
             delete  m_c_raster_pipe->top();
             m_c_raster_pipe->pop();
             m_current_c_tile = 0;
+
          }
       }
 
