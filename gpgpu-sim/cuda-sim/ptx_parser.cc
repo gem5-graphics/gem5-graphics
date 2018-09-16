@@ -93,6 +93,31 @@ static function_info *g_func_info = NULL;
 static std::map<unsigned,std::string> g_ptx_token_decode;
 static operand_info g_return_var;
 
+bool is_swizzle(char c){
+   switch(c){
+      case 'x':
+      case 'y':
+      case 'z':
+      case 'w':
+      return true;
+      default: return false;
+   }
+   return false;
+}
+
+
+int get_swizzle_num(char c){
+   switch(c){
+      case 'x': return 0;
+      case 'y': return 1;
+      case 'z': return 2;
+      case 'w': return 3;
+      default: assert(0);
+   }
+   assert(0);
+   return -1;
+}
+
 const char *decode_token( int type )
 {
    return g_ptx_token_decode[type].c_str();
@@ -416,6 +441,9 @@ void add_identifier( const char *identifier, int array_dim, unsigned array_ident
       }
       if (strcmp(identifier, "%sp") == 0) {
          arch_regnum = 0;
+      }
+      if(is_swizzle(identifier[strlen(identifier)-1])){
+         arch_regnum = get_swizzle_num(identifier[strlen(identifier)-1]);
       }
       g_last_symbol->set_regno(regnum, arch_regnum);
       } break;
