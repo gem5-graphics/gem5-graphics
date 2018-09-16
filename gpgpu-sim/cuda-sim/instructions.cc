@@ -4166,12 +4166,11 @@ void tex_impl( const ptx_instruction *pI, ptx_thread_info *thread){
 
      unsigned uniqueThreadId = thread->get_uid_in_kernel();
      void* stream = thread->get_kernel_info()->get_stream();
-     uint64_t posX = readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), FRAG_UINT_POS, 0, -1, -1, stream).u64;
-     uint64_t posY = readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), FRAG_UINT_POS, 1, -1, -1, stream).u64;
 
      std::vector<uint64_t> texelAddrs;
-     //texelAddrs = fetchMesaTexels(0, samplingUnit, dim, fcoords, dim, fdst, elems, thread->get_uid_in_kernel(), isTxf, isTxb);
-     texelAddrs = fetchMesaTexels(0, samplingUnit, dim, fcoords, 4, fdst, elems, thread->get_uid_in_kernel(), isTxf, isTxb);
+     //texelAddrs = g_renderData.fetchTexels(0, samplingUnit, dim, fcoords, dim, fdst, elems, thread->get_uid_in_kernel(), isTxf, isTxb);
+     texelAddrs = g_renderData.fetchTexels(0, samplingUnit, dim, fcoords,
+           4, fdst, elems, thread->get_uid_in_kernel(), stream, isTxf, isTxb);
 
      dataX.f32 = fdst[0];
      dataY.f32 = fdst[1];

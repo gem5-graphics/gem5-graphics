@@ -54,13 +54,6 @@ void checkGraphicsThreadExit(void* kernelPtr, unsigned tid, void* stream){
     g_renderData.checkGraphicsThreadExit(kernelPtr, tid, stream);
 }
 
-//read texels
-std::vector<uint64_t> fetchMesaTexels(int modifier, int unit, int dim,
-                                      float* coords, int num_coords,
-                                      float* dst, int num_dst, unsigned tid, bool isTxq, bool isTxb){
-  return g_renderData.fetchTexels(modifier, unit, dim, coords, num_coords, dst, num_dst, tid, isTxq, isTxb);
-}
-
 //get texel size
 unsigned getMesaTexelSize(int samplingUnit){
   return g_renderData.getTexelSize(samplingUnit);

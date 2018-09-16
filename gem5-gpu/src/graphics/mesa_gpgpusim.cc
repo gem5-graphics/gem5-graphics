@@ -1227,13 +1227,15 @@ void renderData_t::addTexelFetch(int x, int y, int level){
   m_texelFetches.push_back(texelAddr);
 }
 
-std::vector<uint64_t> renderData_t::fetchTexels(int modifier, int unit, int dim, float* coords,
-                                                int num_coords, float* dst, int num_dst, unsigned utid,
-                                                bool isTxf, bool isTxb){
+std::vector<uint64_t> renderData_t::fetchTexels(
+      int modifier, int unit, int dim, float* coords,
+      int num_coords, float* dst, int num_dst, 
+      unsigned utid, void* stream,
+      bool isTxf, bool isTxb){
   m_currSamplingUnit = unit;
   texelInfo_t* ti = &m_textureInfo[m_currSamplingUnit];
 
-  unsigned  quadIdx = getFragmentData(utid, -1, QUAD_INDEX, -1, -1, -1, NULL).u32;
+  unsigned  quadIdx = getFragmentData(utid, -1, QUAD_INDEX, -1, -1, -1, stream).u32;
   if(isTxf) {
     //FIXME: use txf
     //mesaFetchTxf(m_tmachine, modifier, unit, dim, coords, num_coords , dst, num_dst, quadIdx);
@@ -1564,7 +1566,8 @@ unsigned int renderData_t::doFragmentShading() {
    unsigned numClusters = gpu->get_config().num_cluster();
    simt_core_cluster* simt_clusters = gpu->getSIMTCluster();
    for(unsigned prim=0; prim < drawPrimitives.size(); prim++){
-      drawPrimitives[prim].sortFragmentsInTiles(m_bufferHeight, m_bufferWidth, 
+      drawPrimitives[prim].sortFragmentsInTiles(
+            m_bufferHeight, m_bufferWidth, 
             m_tile_H, m_tile_W, 
             m_hTiles, m_wTiles,
             m_tilesCount,
@@ -2173,6 +2176,7 @@ void RasterTile::testHizThresh(){
 
 
 void renderData_t::generateDepthCode(FILE* inst_stream){
+   if(not isDepthTestEnabled()) return;
    const char* depthSize = m_depthSize==DepthSize::Z32? "u32" : "u16";
    fprintf(inst_stream, ".reg .pred testDepth, passedDepth;\n");
    fprintf(inst_stream, ".reg .u32 depthTestRes;\n");

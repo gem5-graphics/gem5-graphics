@@ -436,7 +436,8 @@ public:
     void setMesaCtx(struct gl_context * ctx){m_mesaCtx=ctx;}
     std::vector<uint64_t> fetchTexels(int modifier, int unit, int dim,
                                       float* coords, int num_coords,
-                                      float* dst, int num_dst, unsigned tid,
+                                      float* dst, int num_dst,
+                                      unsigned tid, void* stream,
                                       bool isTxf, bool isTxb);
     unsigned  getTexelSize(int samplingUnit);
     void addTexelFetch(int x, int y, int level);
