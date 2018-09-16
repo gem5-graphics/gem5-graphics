@@ -96,8 +96,6 @@ class tc_engine_t {
 
    //check if raster tile is mapped to this bin
    bool has_tile(unsigned x, unsigned y){
-      if(m_input_tiles_bin.size() == 0)
-            return false;
       if(       x >= m_status.rtile_xstart 
             and x <= m_status.rtile_xend
             and y >= m_status.rtile_ystart
@@ -143,6 +141,7 @@ class tc_engine_t {
          if(pending->done){
             m_pending_tiles.erase(std::make_pair(m_status.rtile_xstart, 
                      m_status.rtile_ystart));
+            delete pending;
          } else return;
       }
       if(m_status.pending_flush or
@@ -169,7 +168,9 @@ class tc_engine_t {
    }
    void assemble(){
       //check 1 tile per cycle, may make it configurable later
-      std::vector<RasterTile*> remove_list; for(std::list<RasterTile*>::iterator it = m_input_tiles_bin.begin(); it!=m_input_tiles_bin.end(); ++it){
+      std::vector<RasterTile*> remove_list;
+      for(std::list<RasterTile*>::iterator it = m_input_tiles_bin.begin(); 
+            it!=m_input_tiles_bin.end(); ++it){
          RasterTile* rtile = *it;
          unsigned tc_x = rtile->xCoord%m_tc_tile_w;
          unsigned tc_y = rtile->yCoord%m_tc_tile_h;
