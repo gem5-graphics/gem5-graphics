@@ -1982,6 +1982,11 @@ void renderData_t::checkGraphicsThreadExit(void * kernelPtr, unsigned tid, void*
       assert(m_sShading_info.completed_threads <= m_sShading_info.launched_threads);
       assert(m_sShading_info.cudaStreamTiles[(uint64_t)stream].pendingFrags>0);
       m_sShading_info.cudaStreamTiles[(uint64_t)stream].pendingFrags--;
+      if(m_sShading_info.cudaStreamTiles[(uint64_t)stream].pendingFrags==0){
+         assert(!m_sShading_info.cudaStreamTiles[(uint64_t)stream].tcTilePtr->done);
+         m_sShading_info.cudaStreamTiles[(uint64_t)stream].tcTilePtr->done = true;
+         m_sShading_info.cudaStreamTiles.erase((uint64_t)stream);
+      }
 
        if(m_sShading_info.completed_threads%10000 == 0)
          printf("completed threads = %d out of %d\n", m_sShading_info.completed_threads,  m_sShading_info.launched_threads);
@@ -1989,10 +1994,6 @@ void renderData_t::checkGraphicsThreadExit(void * kernelPtr, unsigned tid, void*
       if (m_sShading_info.completed_threads == m_sShading_info.launched_threads){
          
          m_flagEndFragmentShader = (m_sShading_info.sent_simt_prims == 0);
-         if(m_sShading_info.cudaStreamTiles[(uint64_t)stream].pendingFrags==0){
-            assert(!m_sShading_info.cudaStreamTiles[(uint64_t)stream].tcTilePtr->done);
-            m_sShading_info.cudaStreamTiles[(uint64_t)stream].tcTilePtr->done = true;
-         }
          printf("done threads = %d\n", m_sShading_info.completed_threads);
          /*if(m_inShaderDepth or !isDepthTestEnabled())
          {
