@@ -104,6 +104,7 @@ or      TC; ptx_lval.int_value = OR_OP; return OPCODE;
 orn     TC; ptx_lval.int_value = ORN_OP; return OPCODE;
 pmevent TC; ptx_lval.int_value = PMEVENT_OP; return OPCODE;
 popc    TC; ptx_lval.int_value = POPC_OP; return OPCODE;
+pow	  TC; ptx_lval.int_value = POW_OP; return OPCODE;
 prefetch TC; ptx_lval.int_value = PREFETCH_OP; return OPCODE;
 prefetchu TC; ptx_lval.int_value = PREFETCHU_OP; return OPCODE;
 prmt    TC; ptx_lval.int_value = PRMT_OP; return OPCODE;

@@ -2150,6 +2150,33 @@ void div_impl( const ptx_instruction *pI, ptx_thread_info *thread )
    thread->set_operand_value(dst,data, i_type, thread,pI);
 }
 
+void pow_impl( const ptx_instruction *pI, ptx_thread_info *thread ) 
+{ 
+   ptx_reg_t src1_data, src2_data, data;
+   const operand_info &dst  = pI->dst();
+   const operand_info &src1 = pI->src1();
+   const operand_info &src2 = pI->src2();
+
+   unsigned i_type = pI->get_type();
+
+   src1_data = thread->get_operand_value(src1, dst, i_type, thread, 1);
+   src2_data = thread->get_operand_value(src2, dst, i_type, thread, 1);
+
+
+   switch ( i_type ) {
+   case F32_TYPE: 
+      data.f32 = cuda_math::__powf(src1_data.f32, src2_data.f32);
+      break;
+   default:
+      printf("Execution error: type mismatch with instruction\n");
+      assert(0); 
+      break;
+   }
+   
+   thread->set_operand_value(dst,data, i_type, thread,pI);
+}
+
+
 void ex2_impl( const ptx_instruction *pI, ptx_thread_info *thread ) 
 { 
    ptx_reg_t src1_data, src2_data, data;
@@ -4170,7 +4197,7 @@ void tex_impl( const ptx_instruction *pI, ptx_thread_info *thread){
      std::vector<uint64_t> texelAddrs;
      //texelAddrs = g_renderData.fetchTexels(0, samplingUnit, dim, fcoords, dim, fdst, elems, thread->get_uid_in_kernel(), isTxf, isTxb);
      texelAddrs = g_renderData.fetchTexels(0, samplingUnit, dim, fcoords,
-           4, fdst, elems, thread->get_uid_in_kernel(), stream, isTxf, isTxb);
+           4, fdst, elems, uniqueThreadId, stream, isTxf, isTxb);
 
      dataX.f32 = fdst[0];
      dataY.f32 = fdst[1];
