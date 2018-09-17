@@ -78,6 +78,7 @@ enum special_regs {
    SHADER_IN0,
    SHADER_IN1,
    SHADER_IN2,
+   SHADER_IN3,
    SHADER_COLOR0,
    SHADER_CONST00,
    SHADER_CONST01,

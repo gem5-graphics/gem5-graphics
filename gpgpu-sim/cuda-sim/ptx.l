@@ -235,6 +235,7 @@ printf     TC; ptx_lval.int_value = PRINTF_OP; return OPCODE;
 "IN0"  TC; ptx_lval.int_value = SHADER_IN0; return SPECIAL_REGISTER;
 "IN1"  TC; ptx_lval.int_value = SHADER_IN1; return SPECIAL_REGISTER;
 "IN2"  TC; ptx_lval.int_value = SHADER_IN2; return SPECIAL_REGISTER;
+"IN3"  TC; ptx_lval.int_value = SHADER_IN3; return SPECIAL_REGISTER;
 "CONST00"  TC; ptx_lval.int_value = SHADER_CONST00; return SPECIAL_REGISTER;
 "CONST01"  TC; ptx_lval.int_value = SHADER_CONST01; return SPECIAL_REGISTER;
 "CONST02"  TC; ptx_lval.int_value = SHADER_CONST02; return SPECIAL_REGISTER;

@@ -95,18 +95,11 @@ shaderAttrib_t readFragmentInputData(ptx_thread_info *thread,int builtin_id, uns
     unsigned idx2D = -1;
 
     switch(builtin_id){
-      case SHADER_IN0: {
-        fileIdx = 0;
-        attribID=TGSI_FILE_INPUT;
-        break;
-      }
-      case SHADER_IN1: {
-        fileIdx = 1;
-        attribID=TGSI_FILE_INPUT;
-        break;
-      }
-      case SHADER_IN2: {
-        fileIdx = 2;
+      case SHADER_IN0:
+      case SHADER_IN1: 
+      case SHADER_IN2:
+      case SHADER_IN3:{
+        fileIdx = builtin_id - SHADER_IN0;
         attribID=TGSI_FILE_INPUT;
         break;
       }
