@@ -1178,6 +1178,9 @@ class core_t {
         kernel_info_t * get_kernel_info(){ return m_kernel;}
         unsigned get_warp_size() const { return m_warp_size; }
         void writeRegister(const warp_inst_t &inst, unsigned warpSize, unsigned lane_id, char* data);
+        ptx_thread_info * get_thread(unsigned hwtid){
+           return m_thread[hwtid];
+        }
     protected:
         class gpgpu_sim *m_gpu;
         kernel_info_t *m_kernel;

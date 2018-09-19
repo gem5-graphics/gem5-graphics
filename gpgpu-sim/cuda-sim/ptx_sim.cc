@@ -276,6 +276,7 @@ unsigned ptx_thread_info::get_builtin( int builtin_id, unsigned dim_mod)
    case RB_WIDTH: return readMESABufferWidth();
    case RB_SIZE: return readMESABufferSize();
    case FRAGMENT_ACTIVE: return readFragmentInputData(this,builtin_id, dim_mod).u32;
+   case FQUAD_ACTIVE: return readFragmentInputData(this,builtin_id, dim_mod).u32;
    case SKIP_DEPTH_TEST: return readFragmentInputData(this,builtin_id, dim_mod).u32;
    case VERTEX_ACTIVE: return readVertexInputData(this,builtin_id, dim_mod);
    default: return readFragmentInputData(this,builtin_id, dim_mod).u32;

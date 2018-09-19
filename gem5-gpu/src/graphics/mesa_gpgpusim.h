@@ -5,12 +5,14 @@
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 #include <iostream>
 #include <vector>
 #include <mutex>
 #include <map>
 #include <GL/gl.h>
+#include <unordered_map>
 #include <unordered_set>
 
 extern "C" {
@@ -81,10 +83,24 @@ struct fragmentData_t {
    fragmentData_t(): passedDepth(false) {}
    GLfloat attribs[PIPE_MAX_SHADER_INPUTS][4];
    std::vector<ch4_t> inputs;
-   uint64_t uintPos[3];
    unsigned quadIdx;
    bool passedDepth;
    bool isLive;
+   uint64_t _uintPos[3];
+   fragmentData_t* mesaQuadFrags[TGSI_QUAD_SIZE];
+
+   uint64_t& uintPos (const int pos)
+   {
+      assert(pos < 3);
+      return _uintPos[pos];
+   }
+
+   bool hasLiveQuad(){
+      for(unsigned q=0; q<TGSI_QUAD_SIZE; q++)
+         if(mesaQuadFrags[q]->isLive)
+            return true;
+      return false;
+   }
 };
 
 class primitiveFragmentsData_t;
@@ -128,7 +144,6 @@ class RasterTile {
 
       fragmentData_t& getFragment (const int index)
       {
-         //assert(m_fragments[index].alive);
          return *(m_fragmentsQuads[index/QUAD_SIZE][index%QUAD_SIZE].frag);
       }
 
@@ -250,6 +265,21 @@ class tcTile_t {
       std::vector<RasterTile::rasterFragment_t*> m_frags;
 };
 
+struct quadTexCoords_t {
+   quadTexCoords_t():
+      remainingAccesses(TGSI_QUAD_SIZE){}
+   void setCoords(float* _fcoords){
+      std::memcpy((void*) fcoords, (void*) _fcoords, 
+            sizeof(float)*TGSI_QUAD_SIZE*4);
+      remainingAccesses--;
+   }
+   float* getCoords(){
+      return fcoords;
+   }
+   unsigned remainingAccesses;
+   float fcoords[TGSI_QUAD_SIZE*4];
+};
+
 typedef tcTile_t* tcTilePtr_t;
 
 struct mapTileStream_t{
@@ -259,6 +289,10 @@ struct mapTileStream_t{
    unsigned primId;
    tcTilePtr_t tcTilePtr;
    unsigned pendingFrags;
+   std::unordered_map<unsigned, quadTexCoords_t> quadCoords;
+   ~mapTileStream_t(){
+      assert(quadCoords.size() == 0);
+   }
 };
 
 
@@ -435,7 +469,8 @@ public:
     }
     void setMesaCtx(struct gl_context * ctx){m_mesaCtx=ctx;}
     std::vector<uint64_t> fetchTexels(int modifier, int unit, int dim,
-                                      float* coords, int num_coords,
+                                      float* coords,
+                                      int num_coords,
                                       float* dst, int num_dst,
                                       unsigned tid, void* stream,
                                       bool isTxf, bool isTxb);
@@ -463,6 +498,8 @@ public:
     unsigned getDepthSize(){ return (unsigned)m_depthSize;}
     void modeMemcpy(byte* dst, byte *src, 
       unsigned count, enum cudaMemcpyKind kind);
+    float* getTexCoords(unsigned utid, void* stream);
+    void setTexCoords(unsigned utid, void* stream, float* coords);
 
 private:
     bool useInShaderBlending() const;

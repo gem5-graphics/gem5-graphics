@@ -137,13 +137,17 @@ shaderAttrib_t readFragmentInputData(ptx_thread_info *thread,int builtin_id, uns
         attribID = FRAG_ACTIVE;
         break;
       }
+      case FQUAD_ACTIVE: {
+        attribID = QUAD_ACTIVE;
+        break;
+      }
       case SKIP_DEPTH_TEST: {
         attribID = DEPTH_TEST_NOT_ACTIVE;
         break;
       }
       default: printf("Undefined fragment input register \n"); abort();
     }
-    return readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), attribID, attribIndex, fileIdx, idx2D, stream);
+    return readFragmentAttribs(uniqueThreadId, uniqueThreadId, attribID, attribIndex, fileIdx, idx2D, stream);
 }
 
 uint32_t readVertexInputData(ptx_thread_info *thread,int builtin_id, unsigned dim_mod){
@@ -3833,7 +3837,6 @@ void sured_impl( const ptx_instruction *pI, ptx_thread_info *thread ) { inst_not
 void sust_impl( const ptx_instruction *pI, ptx_thread_info *thread ) { inst_not_implemented(pI); }
 void suq_impl( const ptx_instruction *pI, ptx_thread_info *thread ) { inst_not_implemented(pI); }
 
-ptx_reg_t* ptx_tex_regs = NULL;
 
 union intfloat {
    int a;
@@ -4045,9 +4048,8 @@ void tex_impl( const ptx_instruction *pI, ptx_thread_info *thread){
    unsigned to_type = pI->get_type();
    unsigned coords_type = pI->get_type2();
    fflush(stdout);
-   if (!ptx_tex_regs) ptx_tex_regs = new ptx_reg_t[4];
-   unsigned nelem = src2.get_vect_nelem();
-   thread->get_vector_operand_values(src2, ptx_tex_regs, nelem); //ptx_reg should be 4 entry vector type...coordinates into texture
+   ptx_reg_t* ptx_tex_regs[TGSI_QUAD_SIZE];
+   unsigned src_elems = src2.get_vect_nelem();
    thread->get_gpu()->gem5CudaGPU->getCudaCore(thread->get_hw_sid())->record_ld(tex_space);
    //registers to save return data
    ptx_reg_t dataX, dataY, dataZ, dataW;
@@ -4056,7 +4058,8 @@ void tex_impl( const ptx_instruction *pI, ptx_thread_info *thread){
      gpgpu_sim *gpu = thread->get_gpu();
      const struct textureReference* texref = gpu->get_texref(textureName);
      const struct cudaArray* cuArray = gpu->get_texarray(texref); 
-
+     ptx_tex_regs[0] = new ptx_reg_t[4];
+     thread->get_vector_operand_values(src2, ptx_tex_regs[0], src_elems); //ptx_reg should be 4 entry vector type...coordinates into texture
      //check that our texels align with texture line size as we assume this when we retrieve and then writeback texels data
      unsigned const texelSize= (cuArray->desc.x + cuArray->desc.y + cuArray->desc.z +cuArray->desc.w)/8;
      assert(texelSize %thread->get_gpu()->get_config().get_texcache_linesize());
@@ -4072,14 +4075,16 @@ void tex_impl( const ptx_instruction *pI, ptx_thread_info *thread){
 
      switch ( coords_type ) {
        case S32_TYPE:
-         x_f32 = ptx_tex_regs[0].s32; 
-         y_f32 = ptx_tex_regs[1].s32; 
+         x_f32 = ptx_tex_regs[0][0].s32; 
+         y_f32 = ptx_tex_regs[0][1].s32; 
        case F32_TYPE: 
-         x_f32 = reduce_precision(ptx_tex_regs[0].f32,16);
-         y_f32 = reduce_precision(ptx_tex_regs[1].f32,15);
+         x_f32 = reduce_precision(ptx_tex_regs[0][0].f32,16);
+         y_f32 = reduce_precision(ptx_tex_regs[0][1].f32,15);
      }
      //3D is not supported now
      assert(dimension!=GEOM_MODIFIER_3D); 
+
+     delete [] ptx_tex_regs[0];
 
      //channels should be a multiple of byte in size
      assert(!(cuArray->desc.x%8) and !(cuArray->desc.y%8) and !(cuArray->desc.z%8) and !(cuArray->desc.w%8));
@@ -4149,24 +4154,29 @@ void tex_impl( const ptx_instruction *pI, ptx_thread_info *thread){
 
      thread->set_vector_operand_values(dst,dataX,dataY,dataZ,dataW);
    } else {
-     //new_addr_type tex_array_base = (new_addr_type) cuArray->devPtr;
-     //------------------------------------------
-     float fcoords[4];
-
-     switch ( coords_type ) {
-       /*case S32_TYPE:
-         fcoords[0] = ptx_tex_regs[0].s32;
-         fcoords[1] = ptx_tex_regs[1].s32;
-         fcoords[2] = ptx_tex_regs[2].s32;
-         fcoords[3] = ptx_tex_regs[3].s32;
-         break;*/
-       case F32_TYPE:
-         fcoords[0] = ptx_tex_regs[0].f32;
-         fcoords[1] = ptx_tex_regs[1].f32;
-         fcoords[2] = ptx_tex_regs[2].f32;
-         fcoords[3] = ptx_tex_regs[3].f32;
-         break;
-       default: assert("unsupported texture coord type\n" == 0);
+     assert(coords_type==F32_TYPE);
+     unsigned uniqueThreadId = thread->get_uid_in_kernel();
+     void* stream = thread->get_kernel_info()->get_stream();
+     const unsigned hwtid = thread->get_hw_tid();
+     float* fcoords = g_renderData.getTexCoords(uniqueThreadId, stream);
+     bool del_fcoords = false;
+     if(fcoords == NULL){
+        fcoords = new float[TGSI_QUAD_SIZE*4];
+        del_fcoords = true;
+        for(unsigned qf=0; qf<TGSI_QUAD_SIZE; qf++)
+           ptx_tex_regs[qf] = new ptx_reg_t[4];
+        unsigned startFrag =  hwtid - (hwtid%TGSI_QUAD_SIZE);
+        unsigned endFrag = startFrag + TGSI_QUAD_SIZE - 1;
+        for(unsigned qf=startFrag; qf <= endFrag; qf++){
+           thread->get_core()->get_thread(qf)->get_vector_operand_values(
+                 src2, ptx_tex_regs[qf-startFrag], src_elems);
+           for(unsigned c=0; c<4; c++){
+              fcoords[(qf-startFrag)*TGSI_QUAD_SIZE+c] = ptx_tex_regs[qf-startFrag][c].f32;
+           }
+        }
+        g_renderData.setTexCoords(uniqueThreadId, stream, fcoords);
+        for(unsigned qf=0; qf<TGSI_QUAD_SIZE; qf++)
+           delete [] ptx_tex_regs[qf];
      }
 
      int dim = -1;
@@ -4181,22 +4191,25 @@ void tex_impl( const ptx_instruction *pI, ptx_thread_info *thread){
      unitNum = unitNum.substr(unitNum.find('_') + 1);
      int samplingUnit = std::stoi(unitNum, nullptr);
 
-     unsigned elems = dst.get_vect_nelem();
-     float* fdst = new float[4]; //should only use elems
-
-     unsigned uniqueThreadId = thread->get_uid_in_kernel();
-     void* stream = thread->get_kernel_info()->get_stream();
+     unsigned dst_elems = dst.get_vect_nelem();
+     float* fdst = new float[dst_elems]; //should only use elems
 
      std::vector<uint64_t> texelAddrs;
-     //texelAddrs = g_renderData.fetchTexels(0, samplingUnit, dim, fcoords, dim, fdst, elems, thread->get_uid_in_kernel(), isTxf, isTxb);
      texelAddrs = g_renderData.fetchTexels(0, samplingUnit, dim, fcoords,
-           4, fdst, elems, uniqueThreadId, stream, isTxf, isTxb);
+           src_elems, fdst, dst_elems, uniqueThreadId, stream, isTxf, isTxb);
+
+     uint64_t posX = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 0, -1, -1, stream).u64;
+     uint64_t posY = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 1, -1, -1, stream).u64;
+
 
      dataX.f32 = fdst[0];
-     dataY.f32 = fdst[1];
-     dataZ.f32 = fdst[2];
-     dataW.f32 = fdst[3];
+     if(dst_elems > 0) dataY.f32 = fdst[1];
+     if(dst_elems > 1) dataZ.f32 = fdst[2];
+     if(dst_elems > 2) dataW.f32 = fdst[3];
 
+     if(del_fcoords)
+        delete[] fcoords;
+     delete [] fdst;
      for(int ta = 0; ta < texelAddrs.size(); ta++){
        thread->m_last_effective_address.set(texelAddrs[ta], ta);
      }
@@ -4608,8 +4621,8 @@ void stp_impl( const ptx_instruction *pI, ptx_thread_info *thread )
 
    unsigned uniqueThreadId = thread->get_uid_in_kernel();
    void* stream = thread->get_kernel_info()->get_stream();
-   uint64_t posX = readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), FRAG_UINT_POS, 0, -1, -1, stream).u64;
-   uint64_t posY = readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), FRAG_UINT_POS, 1, -1, -1, stream).u64;
+   uint64_t posX = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 0, -1, -1, stream).u64;
+   uint64_t posY = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 1, -1, -1, stream).u64;
    addr_t addr = getFramebufferFragmentAddr(posX, posY, size);
 
    //FIXME

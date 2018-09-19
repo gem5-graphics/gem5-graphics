@@ -41,18 +41,15 @@ extern "C" void gpgpusimAddFragQuad(struct  tgsi_exec_machine *mach,
     for(int qf=0; qf < TGSI_QUAD_SIZE; qf++){
       frags[qf].isLive = mask & (1 << qf)? true: false;
       frags[qf].quadIdx = qf;
-      frags[qf].uintPos[0] = (unsigned) mach->QuadPos.xyzw[0].f[qf];
-      frags[qf].uintPos[1] = (unsigned) mach->QuadPos.xyzw[1].f[qf];
+      frags[qf]._uintPos[0] = (unsigned) mach->QuadPos.xyzw[0].f[qf];
+      frags[qf]._uintPos[1] = (unsigned) mach->QuadPos.xyzw[1].f[qf];
       assert(mach->QuadPos.xyzw[2].f[qf] < 1.0);
-      frags[qf].uintPos[2] = (unsigned) (mach->QuadPos.xyzw[2].f[qf]*
+      frags[qf]._uintPos[2] = (unsigned) (mach->QuadPos.xyzw[2].f[qf]*
             g_renderData.getMesaCtx()->DrawBuffer->_DepthMaxF);
     }
 
     //add input files
     for (int j = 0; j < TGSI_QUAD_SIZE; j++) {
-      if(!frags[j].isLive){
-        continue;
-      }
       for (int i = firstInput; i <= lastInput; ++i) {
         ch4_t elm;
         elm[0] = mach->Inputs[i].xyzw[0].f[j];
@@ -63,6 +60,11 @@ extern "C" void gpgpusimAddFragQuad(struct  tgsi_exec_machine *mach,
       }
     }
 
+    for (int j = 0; j < TGSI_QUAD_SIZE; j++) {
+       for (int k= 0; k < TGSI_QUAD_SIZE; k++) {
+          frags[j].mesaQuadFrags[k] = &frags[k];
+       }
+    }
     g_renderData.addFragmentsQuad(frags);
 }
 

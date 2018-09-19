@@ -85,6 +85,7 @@ enum special_regs {
    SHADER_CONST02,
    SHADER_CONST03,
    FRAGMENT_ACTIVE,
+   FQUAD_ACTIVE,
    SKIP_DEPTH_TEST,
    
    //PART3: other

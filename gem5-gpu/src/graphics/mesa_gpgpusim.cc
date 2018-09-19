@@ -123,12 +123,13 @@ shaderAttrib_t primitiveFragmentsData_t::getFragmentData(unsigned utid, unsigned
         break;
       }
     case QUAD_INDEX: {
+      assert(frag->quadIdx < TGSI_QUAD_SIZE);
       retVal.u32 =  frag->quadIdx;
       isRetVal = true;
       break;
       }
     case FRAG_UINT_POS: {
-      retVal.u64 =  frag->uintPos[attribIndex];
+      retVal.u64 =  frag->uintPos(attribIndex);
       isRetVal = true;
       break;
     }
@@ -147,8 +148,8 @@ shaderAttrib_t primitiveFragmentsData_t::getFragmentData(unsigned utid, unsigned
 }
 
 void primitiveFragmentsData_t::addFragment(fragmentData_t fd) {
-    maxDepth = std::max(maxDepth, (uint64_t) fd.uintPos[2]);
-    minDepth = std::min(minDepth, (uint64_t) fd.uintPos[2]);
+    maxDepth = std::max(maxDepth, (uint64_t) fd.uintPos(2));
+    minDepth = std::min(minDepth, (uint64_t) fd.uintPos(2));
     m_fragments.push_back(fd);
 }
 
@@ -207,8 +208,8 @@ void primitiveFragmentsData_t::sortFragmentsInRasterOrder(unsigned frameHeight, 
     
     //now we figure which tile every fragment belongs to
     for (int frag = 0; frag < m_fragments.size(); frag++) {
-        unsigned xPosition = m_fragments[frag].uintPos[0];
-        unsigned yPosition = m_fragments[frag].uintPos[1];
+        unsigned xPosition = m_fragments[frag].uintPos(0);
+        unsigned yPosition = m_fragments[frag].uintPos(1);
         unsigned tileXCoord = xPosition / tileW;
         unsigned tileYCoord = yPosition / tileH; //normalize this guy
         assert(tileXCoord<numberOfHorizontalTiles);
@@ -304,13 +305,14 @@ void renderData_t::runEarlyZ(CudaGPU * cudaGPU, unsigned tileH, unsigned tileW, 
          m_depthBuffer, m_bufferWidth, m_bufferHeight, tileH, tileW, blockH, blockW, dir);
 }
 
-void primitiveFragmentsData_t::sortFragmentsInTiles(unsigned frameHeight, unsigned frameWidth,
-        const unsigned tileH, const unsigned tileW,
-        const unsigned hTiles, const unsigned wTiles,
-        const unsigned tilesCount,
-        const unsigned blockH, const unsigned blockW, 
-        const RasterDirection rasterDir,
-        unsigned simtCount) {
+void primitiveFragmentsData_t::sortFragmentsInTiles(
+      unsigned frameHeight, unsigned frameWidth,
+      const unsigned tileH, const unsigned tileW,
+      const unsigned hTiles, const unsigned wTiles,
+      const unsigned tilesCount,
+      const unsigned blockH, const unsigned blockW, 
+      const RasterDirection rasterDir,
+      unsigned simtCount) {
    
     assert(m_rasterTiles.size() == 0);
     assert(rasterDir==RasterDirection::HorizontalRaster);
@@ -358,8 +360,8 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(unsigned frameHeight, unsign
     
     //now we figure which tile every fragment belongs to
     for (int frag = 0; frag < m_fragments.size(); frag++) {
-        unsigned xPosition = m_fragments[frag].uintPos[0];
-        unsigned yPosition = m_fragments[frag].uintPos[1];
+        unsigned xPosition = m_fragments[frag].uintPos(0);
+        unsigned yPosition = m_fragments[frag].uintPos(1);
         unsigned tileXCoord = xPosition / tileW;
         unsigned tileYCoord = yPosition / tileH; //normalize this guy
         minX = (minX == -1)? tileXCoord: std::min(minX, (int)tileXCoord);
@@ -435,6 +437,7 @@ shaderAttrib_t renderData_t::getFragmentData(unsigned utid, unsigned tid, unsign
       unsigned fileIdx, unsigned idx2D, void * stream) {
    //bool z_unit_disabled = m_inShaderDepth or !isDepthTestEnabled(); 
 
+   assert(utid == tid);
    if( attribID == TGSI_FILE_CONSTANT){
       shaderAttrib_t retVal;
       if((fileIdx > consts.size()) or (idx2D > consts[fileIdx].size())){
@@ -455,6 +458,20 @@ shaderAttrib_t renderData_t::getFragmentData(unsigned utid, unsigned tid, unsign
    fragmentData_t* frag = tcTilePtr->at(utid) == NULL? NULL: tcTilePtr->at(utid)->frag;
 
    switch(attribID){
+      case QUAD_ACTIVE: {
+         //retVal.u32 = frag->hasLiveQuad()? 1 : 0;
+         unsigned startFrag = utid - (utid%TGSI_QUAD_SIZE);
+         unsigned endFrag = startFrag + TGSI_QUAD_SIZE - 1;
+         retVal.u32 = 0;
+         for(unsigned qf=startFrag; qf <= endFrag; qf++){
+            if(getFragmentData(qf, qf, FRAG_ACTIVE, -1, -1, -1, stream).u32 > 0){
+               retVal.u32 = 1;
+               break;
+            }
+         }
+         isRetVal = true;
+         break;
+      }
       case FRAG_ACTIVE: {
          if(frag == NULL){
             retVal.u32 = 0;
@@ -471,18 +488,19 @@ shaderAttrib_t renderData_t::getFragmentData(unsigned utid, unsigned tid, unsign
         break;
       }
       case QUAD_INDEX: {
+        assert(frag->quadIdx < TGSI_QUAD_SIZE);
         retVal.u32 =  frag->quadIdx;
         isRetVal = true;
         break;
                        }
       case FRAG_UINT_POS: {
-           retVal.u32 =  frag->uintPos[attribIndex];
+           retVal.u32 =  frag->uintPos(attribIndex);
            isRetVal = true;
            break;
         }
       case FRAG_DEPTH_ADDR: {
-           uint64_t xPos = frag->uintPos[0];
-           uint64_t yPos = frag->uintPos[1];
+           uint64_t xPos = frag->uintPos(0);
+           uint64_t yPos = frag->uintPos(1);
            retVal.u64 = ((uint64_t) (m_deviceData 
                     + m_colorBufferByteSize)
                     + m_depthBufferSize) 
@@ -1228,14 +1246,15 @@ void renderData_t::addTexelFetch(int x, int y, int level){
 }
 
 std::vector<uint64_t> renderData_t::fetchTexels(
-      int modifier, int unit, int dim, float* coords,
+      int modifier, int unit, int dim,
+      float* coords,
       int num_coords, float* dst, int num_dst, 
       unsigned utid, void* stream,
       bool isTxf, bool isTxb){
   m_currSamplingUnit = unit;
   texelInfo_t* ti = &m_textureInfo[m_currSamplingUnit];
 
-  unsigned  quadIdx = getFragmentData(utid, -1, QUAD_INDEX, -1, -1, -1, stream).u32;
+  unsigned  quadIdx = getFragmentData(utid, utid, QUAD_INDEX, -1, -1, -1, stream).u32;
   if(isTxf) {
     //FIXME: use txf
     //mesaFetchTxf(m_tmachine, modifier, unit, dim, coords, num_coords , dst, num_dst, quadIdx);
@@ -2138,24 +2157,28 @@ byte* Utils::RGB888_to_RGBA888(byte* rgb, int size, byte alpha){
 }
 
 void RasterTile::addFragment(fragmentData_t* frag){ 
-   unsigned fragX = frag->uintPos[0]%tileW;
-   unsigned fragY = frag->uintPos[1]%tileH;
-   unsigned fidx = fragY*tileW + fragX;
-   assert(fidx < tileH*tileW);
-   assert(not m_fragmentsQuads[fidx/QUAD_SIZE][fidx%QUAD_SIZE].alive);
-   m_fragmentsQuads[fidx/QUAD_SIZE][fidx%QUAD_SIZE].frag = frag;
-   m_fragmentsQuads[fidx/QUAD_SIZE][fidx%QUAD_SIZE].alive = true;
-   m_fragmentsQuads[fidx/QUAD_SIZE][fidx%QUAD_SIZE].tile = this;
+   unsigned fragX = frag->uintPos(0)%tileW;
+   unsigned fragY = frag->uintPos(1)%tileH;
+   const unsigned qd = QUAD_SIZE/2;
+   unsigned tidx = (fragY/qd)*(tileW/qd) + fragX/qd;
+   unsigned quadIdx = fragY%qd == 0? 
+      (fragX%qd == 0? 0 : 1): 
+      (fragX%qd == 0? 2 : 3);
+   assert(tidx < tileH*tileW/QUAD_SIZE);
+   assert(not m_fragmentsQuads[tidx][quadIdx].alive);
+   m_fragmentsQuads[tidx][quadIdx].frag = frag;
+   m_fragmentsQuads[tidx][quadIdx].alive = true;
+   m_fragmentsQuads[tidx][quadIdx].tile = this;
    if(m_addedFragsCount==0){
       //first frag, set front and back depths
-      m_frontDepth = frag->uintPos[2];
-      m_backDepth = frag->uintPos[2];
+      m_frontDepth = frag->uintPos(2);
+      m_backDepth = frag->uintPos(2);
    } else {
-      if(g_renderData.depthTest(m_frontDepth, frag->uintPos[2])){
-         m_frontDepth = frag->uintPos[2];
+      if(g_renderData.depthTest(m_frontDepth, frag->uintPos(2))){
+         m_frontDepth = frag->uintPos(2);
       }
-      if(!g_renderData.depthTest(m_backDepth, frag->uintPos[2])){
-         m_backDepth = frag->uintPos[2];
+      if(!g_renderData.depthTest(m_backDepth, frag->uintPos(2))){
+         m_backDepth = frag->uintPos(2);
       }
    }
    m_addedFragsCount++;
@@ -2167,7 +2190,7 @@ void RasterTile::testHizThresh(){
       for(unsigned fragId=0; fragId < m_fragmentsQuads[quadId].size(); fragId++){
          rasterFragment_t* frag = &m_fragmentsQuads[quadId][fragId];
          if(frag->alive){
-            if(g_renderData.depthTest(frag->frag->uintPos[2], m_hizThresh)){
+            if(g_renderData.depthTest(frag->frag->uintPos(2), m_hizThresh)){
                frag->alive = false;
                m_activeCount--;
             }
@@ -2179,6 +2202,7 @@ void RasterTile::testHizThresh(){
 void renderData_t::generateDepthCode(FILE* inst_stream){
    if(not isDepthTestEnabled()) return;
    const char* depthSize = m_depthSize==DepthSize::Z32? "u32" : "u16";
+   fprintf(inst_stream, "@!fflag skipDepthTest; //skip z test if fragment is dead\n");
    fprintf(inst_stream, ".reg .pred testDepth, passedDepth;\n");
    fprintf(inst_stream, ".reg .u32 depthTestRes;\n");
    fprintf(inst_stream, "setp.eq.u32 passedDepth, 0, 0;\n");
@@ -2186,7 +2210,8 @@ void renderData_t::generateDepthCode(FILE* inst_stream){
    fprintf(inst_stream, "@testDepth ztest.global.%s depthTestRes;\n", depthSize);
    fprintf(inst_stream, "@testDepth setp.ne.u32 passedDepth, 0, depthTestRes;\n");
    fprintf(inst_stream, "@passedDepth zwrite.global.%s;\n", depthSize);
-   fprintf(inst_stream, "@!passedDepth exit;\n", depthSize);
+   fprintf(inst_stream, "@!passedDepth exit;\n");
+   fprintf(inst_stream, "skipDepthTest:\n");
 }
 
 
@@ -2205,4 +2230,27 @@ void renderData_t::modeMemcpy(byte* dst, byte *src,
    } else {
       graphicsMemcpy(dst, src, count, kind);
    }
+}
+
+float* renderData_t::getTexCoords(unsigned utid, void* stream){
+   mapTileStream_t& map =  m_sShading_info.cudaStreamTiles[(uint64_t)stream];
+   unsigned qid = utid/TGSI_QUAD_SIZE;
+   if(map.quadCoords.find(qid) == map.quadCoords.end()){
+      return NULL;
+   } else {
+      float* fcoords = map.quadCoords[qid].getCoords();
+      assert(map.quadCoords[qid].remainingAccesses > 0);
+      map.quadCoords[qid].remainingAccesses--;
+      if(map.quadCoords[qid].remainingAccesses == 0)
+         map.quadCoords.erase(qid);
+      return fcoords;
+   }
+}
+
+void renderData_t::setTexCoords(unsigned utid, void* stream, float* coords){
+   mapTileStream_t& map =  m_sShading_info.cudaStreamTiles[(uint64_t)stream];
+   unsigned qid = utid/TGSI_QUAD_SIZE;
+   assert(map.quadCoords.find(qid) == map.quadCoords.end());
+   map.quadCoords[qid] = quadTexCoords_t();
+   map.quadCoords[qid].setCoords(coords);
 }

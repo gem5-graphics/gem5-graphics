@@ -242,6 +242,7 @@ printf     TC; ptx_lval.int_value = PRINTF_OP; return OPCODE;
 "CONST03"  TC; ptx_lval.int_value = SHADER_CONST03; return SPECIAL_REGISTER;
 "COLOR0"     TC; ptx_lval.int_value = SHADER_COLOR0; return SPECIAL_REGISTER;
 "%fragment_active"  TC; ptx_lval.int_value = FRAGMENT_ACTIVE; return SPECIAL_REGISTER;
+"%quad_active"  TC; ptx_lval.int_value = FQUAD_ACTIVE; return SPECIAL_REGISTER;
 "%skip_depth_test"  TC; ptx_lval.int_value = SKIP_DEPTH_TEST; return SPECIAL_REGISTER;
 
 "%rb_width"  TC; ptx_lval.int_value = RB_WIDTH; return SPECIAL_REGISTER;

@@ -178,19 +178,26 @@ class tc_engine_t {
          for(unsigned quadId=0; quadId<m_afragments[dstTileId].size(); quadId++){
             //check if this quad is already covered
             if(!m_afragments[dstTileId][quadId].covered){
+               bool hasLiveFrags = false;
+               for(unsigned fragId=0; fragId<QUAD_SIZE; fragId++){
+                  hasLiveFrags = hasLiveFrags or
+                     (rtile->getRasterFragment(quadId, fragId)).alive;
+               }
+               if(not hasLiveFrags)
+                  continue;
                for(unsigned fragId=0; fragId<QUAD_SIZE; fragId++){
                   RasterTile::rasterFragment_t* frag = 
                      &(rtile->getRasterFragment(quadId, fragId));
-                  if(rtile->getActiveCount()>0 and frag->alive){
-                     m_afragments[dstTileId][quadId].covered = true;
-                     m_afragments[dstTileId][quadId].fragments[fragId].fragment = frag;
+                  m_afragments[dstTileId][quadId].covered = true;
+                  m_afragments[dstTileId][quadId].fragments[fragId].fragment = frag;
+                  m_status.pending_frags++;
+                  if(frag->alive){
                      frag->alive = false;
-                     m_status.pending_frags++;
                      if(rtile->decActiveCount() == 0){
                         remove_list.push_back(rtile);
                      }
-                     m_status.skip_depth_test &= rtile->skipFineDepth();
                   }
+                  m_status.skip_depth_test &= rtile->skipFineDepth();
                }
             }
          }

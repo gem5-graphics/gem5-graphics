@@ -402,12 +402,12 @@ void ZUnit::startEarlyZ(uint64_t depthBuffStart, uint64_t depthBuffEnd, uint32_t
       if(tiles[i]->size() == 0)
          continue;
 
-      depthTiles[i]->hizDepthFront = (*(tiles[i])).getFragment(0).uintPos[2];
-      depthTiles[i]->hizDepthBack = (*(tiles[i])).getFragment(0).uintPos[2];
+      depthTiles[i]->hizDepthFront = (*(tiles[i])).getFragment(0).uintPos(2);
+      depthTiles[i]->hizDepthBack = (*(tiles[i])).getFragment(0).uintPos(2);
       for(int j=0; j< tiles[i]->size();  j++){
-         unsigned xPos = (*(tiles[i])).getFragment(j).uintPos[0];
-         unsigned yPos = (*(tiles[i])).getFragment(j).uintPos[1];
-         unsigned zPos = (*(tiles[i])).getFragment(j).uintPos[2];
+         unsigned xPos = (*(tiles[i])).getFragment(j).uintPos(0);
+         unsigned yPos = (*(tiles[i])).getFragment(j).uintPos(1);
+         unsigned zPos = (*(tiles[i])).getFragment(j).uintPos(2);
          Addr addr = depthAddrEnd - ((yPos+1) * bufWidth * (unsigned)depthSize) + (xPos * (unsigned)depthSize);
          assert((addr >= depthAddrStart) and (addr < depthAddrEnd));
          fragmentData_t& rasterFrag =  (*tiles[i]).getFragment(j);
