@@ -4649,10 +4649,10 @@ void ztest_impl( const ptx_instruction *pI, ptx_thread_info *thread )
    pI->get_space().set_z();
    unsigned uniqueThreadId = thread->get_uid_in_kernel();
    void* stream = thread->get_kernel_info()->get_stream();
-   addr_t addr = readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), FRAG_DEPTH_ADDR, 1, -1, -1, stream).u64;
+   addr_t addr = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_DEPTH_ADDR, 1, -1, -1, stream).u64;
    uint64_t oldDepth = 0;
    g_renderData.modeMemcpy((byte*)&oldDepth, (byte*)addr, g_renderData.getDepthSize(), graphicsMemcpySimToHost);
-   uint64_t posZ = readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), FRAG_UINT_POS, 2, -1, -1, stream).u64;
+   uint64_t posZ = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 2, -1, -1, stream).u64;
    bool passedDepth = g_renderData.depthTest(oldDepth, posZ);
    ptx_reg_t reg;
    if(passedDepth){
@@ -4675,8 +4675,8 @@ void zwrite_impl( const ptx_instruction *pI, ptx_thread_info *thread )
    pI->get_space().set_z();
    unsigned uniqueThreadId = thread->get_uid_in_kernel();
    void* stream = thread->get_kernel_info()->get_stream();
-   addr_t addr = readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), FRAG_DEPTH_ADDR, 1, -1, -1, stream).u64;
-   uint64_t posZ = readFragmentAttribs(uniqueThreadId, thread->get_flat_tid(), FRAG_UINT_POS, 2, -1, -1, stream).u64;
+   addr_t addr = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_DEPTH_ADDR, 1, -1, -1, stream).u64;
+   uint64_t posZ = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 2, -1, -1, stream).u64;
    unsigned size = g_renderData.getDepthSize();
    ptx_reg_t dst;
    dst.u32 = 0;
