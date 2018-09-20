@@ -365,18 +365,19 @@ class graphics_simt_pipeline {
       }
 
       void run_setup(){
-         primitive_data_t* prim = m_setup_pipe->top();
-         if(prim){
+         unsigned elms = m_setup_pipe->get_n_element();
+         if(elms == 0) return;
+         for(unsigned p=0; p < elms; p++){
+            primitive_data_t* prim =  m_setup_pipe->get_elm(p);
             if(prim->delay > 0){
                prim->delay--;
-               return;
             }
-            if(m_c_raster_pipe->full()) return;
-            m_c_raster_pipe->push(prim);
-            m_setup_pipe->pop();
-         } else {
-            m_setup_pipe->pop();
          }
+         primitive_data_t* prim = m_setup_pipe->top();
+         assert(prim);
+         if(m_c_raster_pipe->full()) return;
+         m_c_raster_pipe->push(prim);
+         m_setup_pipe->pop();
       }
 
       void run_c_raster(){
