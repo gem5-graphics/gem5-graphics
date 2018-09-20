@@ -408,8 +408,6 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(
     }
 
     m_validTiles = true;
-
-
 }
 
 renderData_t::renderData_t():
@@ -542,6 +540,10 @@ void renderData_t::addFragment(fragmentData_t fragmentData) {
 
 void renderData_t::addPrimitive() {
     if(!GPGPUSimSimulationActive()) return;
+    //if the last primitive has not frags use it instead of adding a new one
+    if(drawPrimitives.size() > 0)
+       if(drawPrimitives[drawPrimitives.size()-1].size() == 0) 
+          return;
     primitiveFragmentsData_t prim(drawPrimitives.size());
     DPRINTF(MesaGpgpusim, "adding new primitive, total = %ld\n", drawPrimitives.size()+1);
     drawPrimitives.push_back(prim);
@@ -2202,16 +2204,18 @@ void RasterTile::testHizThresh(){
 void renderData_t::generateDepthCode(FILE* inst_stream){
    if(not isDepthTestEnabled()) return;
    const char* depthSize = m_depthSize==DepthSize::Z32? "u32" : "u16";
-   fprintf(inst_stream, "@!fflag skipDepthTest; //skip z test if fragment is dead\n");
+   //fprintf(inst_stream, "@!fflag bra skipDepthTest; //skip z test if fragment is dead\n");
    fprintf(inst_stream, ".reg .pred testDepth, passedDepth;\n");
    fprintf(inst_stream, ".reg .u32 depthTestRes;\n");
-   fprintf(inst_stream, "setp.eq.u32 passedDepth, 0, 0;\n");
+   fprintf(inst_stream, "setp.eq.u32 passedDepth, !fflag, 0;\n");
    fprintf(inst_stream, "setp.eq.u32 testDepth, 0, %%skip_depth_test;\n");
+   fprintf(inst_stream, "setp.eq.u32 testDepth, !fflag, !testDepth;\n");
    fprintf(inst_stream, "@testDepth ztest.global.%s depthTestRes;\n", depthSize);
+   //after depth testing exit dead quads
+   fprintf(inst_stream, "setp.ne.u32 qflag, 0, %%quad_active;\n");
+   fprintf(inst_stream, "@!qflag exit;\n");
    fprintf(inst_stream, "@testDepth setp.ne.u32 passedDepth, 0, depthTestRes;\n");
    fprintf(inst_stream, "@passedDepth zwrite.global.%s;\n", depthSize);
-   fprintf(inst_stream, "@!passedDepth exit;\n");
-   fprintf(inst_stream, "skipDepthTest:\n");
 }
 
 
@@ -2233,6 +2237,8 @@ void renderData_t::modeMemcpy(byte* dst, byte *src,
 }
 
 float* renderData_t::getTexCoords(unsigned utid, void* stream){
+   assert(m_sShading_info.cudaStreamTiles.find((uint64_t)stream) != 
+         m_sShading_info.cudaStreamTiles.end());
    mapTileStream_t& map =  m_sShading_info.cudaStreamTiles[(uint64_t)stream];
    unsigned qid = utid/TGSI_QUAD_SIZE;
    if(map.quadCoords.find(qid) == map.quadCoords.end()){
@@ -2248,9 +2254,22 @@ float* renderData_t::getTexCoords(unsigned utid, void* stream){
 }
 
 void renderData_t::setTexCoords(unsigned utid, void* stream, float* coords){
+   assert(m_sShading_info.cudaStreamTiles.find((uint64_t)stream) != 
+         m_sShading_info.cudaStreamTiles.end());
    mapTileStream_t& map =  m_sShading_info.cudaStreamTiles[(uint64_t)stream];
    unsigned qid = utid/TGSI_QUAD_SIZE;
    assert(map.quadCoords.find(qid) == map.quadCoords.end());
    map.quadCoords[qid] = quadTexCoords_t();
    map.quadCoords[qid].setCoords(coords);
+}
+
+
+void renderData_t::setFragLiveStatus(unsigned utid, void* stream, bool status){
+   assert(m_sShading_info.cudaStreamTiles.find((uint64_t)stream) != 
+         m_sShading_info.cudaStreamTiles.end());
+   tcTilePtr_t tcTilePtr = m_sShading_info.cudaStreamTiles[(uint64_t)stream].tcTilePtr;
+   assert(utid < tcTilePtr->size());
+   fragmentData_t* frag = tcTilePtr->at(utid) == NULL? NULL: tcTilePtr->at(utid)->frag;
+   assert(frag);
+   frag->isLive = status;
 }

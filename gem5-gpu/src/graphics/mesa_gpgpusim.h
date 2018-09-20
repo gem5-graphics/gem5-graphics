@@ -500,6 +500,7 @@ public:
       unsigned count, enum cudaMemcpyKind kind);
     float* getTexCoords(unsigned utid, void* stream);
     void setTexCoords(unsigned utid, void* stream, float* coords);
+    void setFragLiveStatus(unsigned utid, void* stream, bool status);
 
 private:
     bool useInShaderBlending() const;
