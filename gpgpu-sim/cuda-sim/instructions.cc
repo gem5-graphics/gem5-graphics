@@ -4151,7 +4151,6 @@ void tex_impl( const ptx_instruction *pI, ptx_thread_info *thread){
      } else {
        assert(texAttr->m_readmode == cudaReadModeElementType);
      }
-
      thread->set_vector_operand_values(dst,dataX,dataY,dataZ,dataW);
    } else {
      assert(coords_type==F32_TYPE);
@@ -4168,6 +4167,7 @@ void tex_impl( const ptx_instruction *pI, ptx_thread_info *thread){
         unsigned startFrag =  hwtid - (hwtid%TGSI_QUAD_SIZE);
         unsigned endFrag = startFrag + TGSI_QUAD_SIZE - 1;
         for(unsigned qf=startFrag; qf <= endFrag; qf++){
+           //assert(!thread->get_core()->get_thread(qf)->is_done());
            thread->get_core()->get_thread(qf)->get_vector_operand_values(
                  src2, ptx_tex_regs[qf-startFrag], src_elems);
            for(unsigned c=0; c<4; c++){
@@ -4659,6 +4659,7 @@ void ztest_impl( const ptx_instruction *pI, ptx_thread_info *thread )
       reg.u32 = 1;
    } else {
       reg.u32 = 0;
+      g_renderData.setFragLiveStatus(uniqueThreadId, stream, false);
    }
    thread->set_operand_value(dst,reg, type, thread, pI);
    thread->get_gpu()->gem5CudaGPU->getCudaCore(thread->get_hw_sid())->record_ld(z_space);
