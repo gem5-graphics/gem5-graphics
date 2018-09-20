@@ -1587,6 +1587,7 @@ unsigned int renderData_t::doFragmentShading() {
    unsigned numClusters = gpu->get_config().num_cluster();
    simt_core_cluster* simt_clusters = gpu->getSIMTCluster();
    for(unsigned prim=0; prim < drawPrimitives.size(); prim++){
+      if(drawPrimitives[prim].size() == 0) break;
       drawPrimitives[prim].sortFragmentsInTiles(
             m_bufferHeight, m_bufferWidth, 
             m_tile_H, m_tile_W, 
