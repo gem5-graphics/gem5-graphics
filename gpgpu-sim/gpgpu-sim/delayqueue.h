@@ -164,6 +164,21 @@ public:
    unsigned get_length() const { return m_length; }
    unsigned get_max_len() const { return m_max_len; }
 
+   T* get_elm(unsigned elm){
+      assert(elm < m_n_element);
+      fifo_data<T>* cur = m_head;
+      unsigned pos = 0;
+      while(true){
+         if(elm == pos)
+            break;
+         pos++;
+         assert(m_head);
+         cur = cur->m_next;
+      }
+      assert(cur);
+      return cur->m_data;
+   }
+
    void print() const
    {
       fifo_data<T>* ddp = m_head;
