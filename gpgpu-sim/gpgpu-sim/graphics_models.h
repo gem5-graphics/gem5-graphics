@@ -258,8 +258,9 @@ class tc_engine_t {
          skip_depth_test=true;
       }
    };
-   status_t m_status;
    const unsigned m_wait_threshold;
+   public:
+   status_t m_status;
 };
 
 class tile_assembly_stage_t {
@@ -286,6 +287,14 @@ class tile_assembly_stage_t {
             return true;
          }
       }
+
+      unsigned maxWaitCycles = 0;
+      unsigned maxWaitIndex = 0;
+      for(unsigned i=0; i<tc_engines.size(); i++){
+         if(tc_engines[i].m_status.waiting_cycles > maxWaitCycles)
+            maxWaitIndex = i;
+      }
+      tc_engines[maxWaitIndex].m_status.pending_flush = true;
       return false;
    }
 
