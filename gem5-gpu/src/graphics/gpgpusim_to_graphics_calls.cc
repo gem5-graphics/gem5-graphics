@@ -62,7 +62,3 @@ unsigned getMesaTexelSize(int samplingUnit){
 unsigned getMesaFramebufferFormat(){
   return g_renderData.getFramebufferFormat();
 }
-
-uint64_t getFramebufferFragmentAddr(uint64_t x, uint64_t y, uint64_t size){
-  return g_renderData.getFramebufferFragmentAddr(x, y, size);
-}

@@ -69,6 +69,4 @@ unsigned getMesaTexelSize(int samplingUnit);
 
 unsigned getMesaFramebufferFormat();
 
-uint64_t getFramebufferFragmentAddr(uint64_t x, uint64_t y, uint64_t size);
-
 #endif
