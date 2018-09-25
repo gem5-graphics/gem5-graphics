@@ -145,7 +145,9 @@ class tc_engine_t {
          } else return;
       }
       if(m_status.pending_flush or
-            (m_status.waiting_cycles > m_wait_threshold)){
+            (m_status.waiting_cycles > m_wait_threshold) or 
+            (!m_status.new_quad_added 
+             and (m_input_tiles_bin.size() == m_r_tiles_count))){
          tcTilePtr_t tc_tile = 
             new tcTile_t(m_status.rtile_xstart, m_status.rtile_ystart);
          for(unsigned tileId=0; tileId<m_afragments.size(); tileId++){
@@ -169,6 +171,7 @@ class tc_engine_t {
    void assemble(){
       //check 1 tile per cycle, may make it configurable later
       std::vector<RasterTile*> remove_list;
+      m_status.new_quad_added = false;
       for(std::list<RasterTile*>::iterator it = m_input_tiles_bin.begin(); 
             it!=m_input_tiles_bin.end(); ++it){
          RasterTile* rtile = *it;
@@ -197,8 +200,10 @@ class tc_engine_t {
                         remove_list.push_back(rtile);
                      }
                   }
-                  m_status.skip_depth_test &= rtile->skipFineDepth();
+                  m_status.skip_depth_test = 
+                     m_status.skip_depth_test and rtile->skipFineDepth();
                }
+               m_status.new_quad_added = true;
             }
          }
       }
@@ -246,6 +251,7 @@ class tc_engine_t {
       unsigned rtile_ystart;
       unsigned rtile_yend;
       bool skip_depth_test;
+      bool new_quad_added;
       void reset(){
          pending_flush=false;
          pending_frags=0;
@@ -256,6 +262,7 @@ class tc_engine_t {
          rtile_ystart=-1;
          rtile_yend=-1;
          skip_depth_test=true;
+         new_quad_added=false;
       }
    };
    const unsigned m_wait_threshold;
