@@ -337,7 +337,6 @@ class graphics_simt_pipeline {
             unsigned setup_delay, unsigned setup_q_len,
             unsigned c_tiles_per_cycle,
             unsigned f_tiles_per_cycle,
-            unsigned pre_z_tiles_per_cycle,
             unsigned hiz_tiles_per_cycle,
             unsigned tc_bins,
             unsigned tc_tile_h, unsigned tc_tile_w,
@@ -350,14 +349,12 @@ class graphics_simt_pipeline {
          m_setup_delay(setup_delay),
          m_c_tiles_per_cycle(c_tiles_per_cycle),
          m_f_tiles_per_cycle(f_tiles_per_cycle),
-         m_pre_z_tiles_per_cycle(pre_z_tiles_per_cycle),
          m_hiz_tiles_per_cycle(hiz_tiles_per_cycle)
    { 
       m_setup_pipe = new fifo_pipeline<primitive_data_t>("setup-stage", 0, setup_q_len);
       m_c_raster_pipe = new fifo_pipeline<primitive_data_t>("coarse-raster-stage", 0, 2);
       m_hiz_pipe = new fifo_pipeline<RasterTile>("hiz-stage", 0, 5);
       m_f_raster_pipe = new fifo_pipeline<RasterTile>("fine-raster-stage", 0, 5);
-      m_pre_z_pipe = new fifo_pipeline<RasterTile>("pre-z-stage", 0, 5);
       m_ta_pipe = new fifo_pipeline<RasterTile>("tile-assembly-stage", 0, 5);
       m_current_c_tile = 0;
    }
@@ -367,13 +364,11 @@ class graphics_simt_pipeline {
          delete m_c_raster_pipe;
          delete m_hiz_pipe;
          delete m_f_raster_pipe;
-         delete m_pre_z_pipe;
          delete m_ta_pipe;
       }
 
       void cycle(){
          run_ta_stage();
-         run_pre_z();
          run_f_raster();
          run_hiz();
          run_c_raster();
@@ -403,10 +398,10 @@ class graphics_simt_pipeline {
          assert(prim);
          for(unsigned t=m_current_c_tile;
                t< prim->prim->getSimtTiles(m_cluster_id).size(); t++){
-            if(m_hiz_pipe->full()) return;
+            if(m_f_raster_pipe->full()) return;
             RasterTile* tile = prim->prim->getSimtTiles(m_cluster_id)[t];
             if(tile->lastPrimTile or (tile->getActiveCount() > 0)){
-               m_hiz_pipe->push(tile);
+               m_f_raster_pipe->push(tile);
             }
             m_current_c_tile++;
             processed_tiles++;
@@ -420,52 +415,39 @@ class graphics_simt_pipeline {
 
          }
       }
+      
+      void run_f_raster(){
+         for(unsigned processed_tiles=0; processed_tiles < m_f_tiles_per_cycle;
+               processed_tiles++){
+            if(m_f_raster_pipe->empty()) return;
+            if(m_hiz_pipe->full()) return;
+            RasterTile* tile = m_f_raster_pipe->top();
+            assert(tile);
+            assert(tile->lastPrimTile or (tile->getActiveCount() > 0));
+            m_hiz_pipe->push(tile);
+            m_f_raster_pipe->pop();
+         }
+      }
 
       void run_hiz(){
          for(unsigned processed_tiles=0; processed_tiles < m_hiz_tiles_per_cycle;
                processed_tiles++){
             if(m_hiz_pipe->empty()) return;
-            if(m_f_raster_pipe->full()) return;
+            if(m_ta_pipe->full()) return;
             RasterTile* tile = m_hiz_pipe->top();
             assert(tile);
             assert(tile->lastPrimTile or (tile->getActiveCount() > 0));
             if(tile->lastPrimTile or g_renderData.testHiz(tile)){
-               m_f_raster_pipe->push(tile);
+               if(!tile->skipFineDepth() and !tile->lastPrimTile){
+                  tile->testHizThresh();
+               }
+               if(tile->lastPrimTile 
+                     or tile->skipFineDepth()
+                     or (tile->getActiveCount() > 0)){
+                  m_ta_pipe->push(tile);
+               }
             }
             m_hiz_pipe->pop();
-         }
-      }
-
-      void run_f_raster(){
-         for(unsigned processed_tiles=0; processed_tiles < m_f_tiles_per_cycle;
-               processed_tiles++){
-            if(m_f_raster_pipe->empty()) return;
-            if(m_pre_z_pipe->full()) return;
-            RasterTile* tile = m_f_raster_pipe->top();
-            assert(tile);
-            assert(tile->lastPrimTile or (tile->getActiveCount() > 0));
-            m_pre_z_pipe->push(tile);
-            m_f_raster_pipe->pop();
-         }
-      }
-
-      void run_pre_z(){
-         for(unsigned processed_tiles=0; processed_tiles < m_pre_z_tiles_per_cycle;
-               processed_tiles++){
-            if(m_pre_z_pipe->empty()) return;
-            if(m_ta_pipe->full()) return;
-            RasterTile* tile = m_pre_z_pipe->top();
-            assert(tile);
-            assert(tile->lastPrimTile or (tile->getActiveCount() > 0));
-            if(!tile->skipFineDepth() and !tile->lastPrimTile){
-               tile->testHizThresh();
-            }
-            if(tile->lastPrimTile 
-                  or tile->skipFineDepth()
-                  or (tile->getActiveCount() > 0)){
-               m_ta_pipe->push(tile);
-            }
-            m_pre_z_pipe->pop();
          }
       }
 
@@ -503,7 +485,6 @@ class graphics_simt_pipeline {
             m_c_raster_pipe->get_n_element() +
             m_hiz_pipe->get_n_element() +
             m_f_raster_pipe->get_n_element() +
-            m_pre_z_pipe->get_n_element() +
             m_ta_pipe->get_n_element();
          unsigned ret = not_complete + (m_ta_stage.empty()? 0 : 1);
          return ret; 
@@ -515,7 +496,6 @@ class graphics_simt_pipeline {
       fifo_pipeline<primitive_data_t>* m_c_raster_pipe;
       fifo_pipeline<RasterTile>* m_hiz_pipe;
       fifo_pipeline<RasterTile>* m_f_raster_pipe;
-      fifo_pipeline<RasterTile>* m_pre_z_pipe;
       fifo_pipeline<RasterTile>* m_ta_pipe;
       unsigned m_current_c_tile;
       tile_assembly_stage_t m_ta_stage;
@@ -524,7 +504,6 @@ class graphics_simt_pipeline {
       const unsigned m_setup_delay;
       const unsigned m_c_tiles_per_cycle;
       const unsigned m_f_tiles_per_cycle;
-      const unsigned m_pre_z_tiles_per_cycle;
       const unsigned m_hiz_tiles_per_cycle;
 
 };
