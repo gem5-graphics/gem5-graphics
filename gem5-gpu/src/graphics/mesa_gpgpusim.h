@@ -495,6 +495,7 @@ public:
     bool testHiz(RasterTile* tile);
     struct gl_context * getMesaCtx(){return m_mesaCtx;}
     void generateDepthCode(FILE* inst_stream);
+    void generateBlendCode(FILE* inst_stream);
     unsigned getDepthSize(){ return (unsigned)m_depthSize;}
     void modeMemcpy(byte* dst, byte *src, 
       unsigned count, enum cudaMemcpyKind kind);

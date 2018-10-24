@@ -116,3 +116,7 @@ extern "C" void gpgpusimUpdateMachine(struct tgsi_exec_machine* tmachine){
 extern "C" bool gpgpusimGenerateDepthCode(FILE* inst_stream){
    g_renderData.generateDepthCode(inst_stream);
 }
+
+extern "C" bool gpgpusimGenerateBlendCode(FILE* inst_stream){
+   g_renderData.generateBlendCode(inst_stream);
+}

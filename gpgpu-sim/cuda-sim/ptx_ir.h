@@ -947,6 +947,12 @@ public:
    }
 
    memory_space_t get_space() const { return m_space_spec;}
+   void set_z(){m_space_spec.set_z(); }
+   bool is_z() const{return m_space_spec.is_z(); }
+   void set_blend(){m_space_spec.set_blend(); }
+   bool is_blend() const{return m_space_spec.is_blend(); }
+
+
    unsigned get_vector() const { return m_vector_spec;}
 
    int get_type() const 
@@ -1000,7 +1006,9 @@ public:
    int membar_level() const { return m_membar_level; }
 
    bool has_memory_read() const {
-      if( m_opcode == LD_OP || m_opcode == LDU_OP || m_opcode == TEX_OP || m_opcode == ZTEST_OP) 
+      if( m_opcode == LD_OP || m_opcode == LDU_OP 
+            || m_opcode == TEX_OP || m_opcode == ZTEST_OP
+            || m_opcode == BLEND_OP) 
          return true;
       // Check PTXPlus operand type below
       // Source operands are memory operands

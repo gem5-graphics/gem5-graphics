@@ -78,7 +78,7 @@ const struct gpgpu_ptx_sim_kernel_info* ptx_sim_kernel_info(const class function
 void ptx_print_insn( address_type pc, FILE *fp );
 std::string ptx_get_insn_str( address_type pc );
 void set_param_gpgpu_num_shaders(int num_shaders);
-
+C_DATA_TYPE blendU32(C_DATA_TYPE color_src, C_DATA_TYPE color_dst);
 
 /*!
  * This class functionally executes a kernel. It uses the basic data structures and procedures in core_t 

@@ -601,6 +601,7 @@ void ptx_instruction::set_opcode_and_latency()
    case LD_OP: op = LOAD_OP; break;
    case LDU_OP: op = LOAD_OP; break;
    case ZTEST_OP: op = LOAD_OP; break;
+   case BLEND_OP: op = LOAD_OP; break;
    case ST_OP: op = STORE_OP; break;
    case STP_OP: op = STORE_OP; break;
    case ZWRITE_OP: op = STORE_OP; break;
@@ -856,7 +857,7 @@ void ptx_instruction::pre_decode()
    case WT_OPTION: cache_op = CACHE_WRITE_THROUGH; break;
    default: 
       if( m_opcode == LD_OP || m_opcode == LDU_OP 
-            || m_opcode == ZTEST_OP) 
+            || m_opcode == ZTEST_OP || m_opcode == BLEND_OP) 
          cache_op = CACHE_ALL;
       else if( m_opcode == ST_OP || m_opcode == STP_OP 
             || m_opcode == ZWRITE_OP) 
@@ -1297,18 +1298,14 @@ void ptx_thread_info::writeRegister(const warp_inst_t &inst, unsigned lane_id, c
    int bytes = size/8;
 
    //special handling for ztest
-   if(pI->get_space().is_z()){
+   if(pI->is_z()){
       unsigned uniqueThreadId = get_uid_in_kernel();
       void* stream = get_kernel_info()->get_stream();
       addr_t addr = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_DEPTH_ADDR, 1, -1, -1, stream).u64;
       uint64_t posZ = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 2, -1, -1, stream).u64;
       ptx_reg_t oldDepth;
-      ptx_reg_t oldDepth2;
-      g_renderData.modeMemcpy((byte*)&oldDepth2, (byte*)addr, g_renderData.getDepthSize(), graphicsMemcpySimToHost);
       memcpy(&oldDepth, data, bytes);
-      assert(oldDepth.u64 == oldDepth2.u64);
-      bool passedDepth = g_renderData.depthTest(oldDepth2.u64, posZ);
-      ptx_reg_t reg;
+      bool passedDepth = g_renderData.depthTest(oldDepth.u64, posZ);
       if(passedDepth){
          reg.u32 = 1;
       } else {
@@ -1316,6 +1313,18 @@ void ptx_thread_info::writeRegister(const warp_inst_t &inst, unsigned lane_id, c
          g_renderData.setFragLiveStatus(uniqueThreadId, stream, false);
       }
       set_operand_value(dst,reg, type, this, pI);
+      return;
+   } else if(pI->is_blend()){
+      ptx_reg_t src1_data, oldPixel;
+      unsigned i_type = pI->get_type();
+      const operand_info &src1 = pI->src1();
+      memcpy(&oldPixel, data, bytes);
+      assert(i_type == U32_TYPE); //what we use for blending for now
+      assert(bytes == 4);
+
+      src1_data = get_operand_value(src1, dst, i_type, this, 1);
+      reg.u32 = blendU32(src1_data.u32, oldPixel.u32);
+      set_operand_value(dst, reg, i_type, this, pI);
       return;
    }
 

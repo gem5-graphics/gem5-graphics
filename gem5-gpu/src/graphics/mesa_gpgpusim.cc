@@ -540,10 +540,6 @@ void renderData_t::addFragment(fragmentData_t fragmentData) {
 
 void renderData_t::addPrimitive() {
     if(!GPGPUSimSimulationActive()) return;
-    //if the last primitive has not frags use it instead of adding a new one
-    if(drawPrimitives.size() > 0)
-       if(drawPrimitives[drawPrimitives.size()-1].size() == 0) 
-          return;
     primitiveFragmentsData_t prim(drawPrimitives.size());
     DPRINTF(MesaGpgpusim, "adding new primitive, total = %ld\n", drawPrimitives.size()+1);
     drawPrimitives.push_back(prim);
@@ -959,20 +955,14 @@ unsigned renderData_t::getFramebufferFormat(){
 
 uint64_t renderData_t::getFramebufferFragmentAddr(uint64_t x, uint64_t y, uint64_t size){
   uint64_t buffWidthByte = size*m_bufferWidth;
-  //assert((x < m_bufferWidth) and (y < m_bufferHeight)); //FIXME
-
   x = x%m_bufferWidth; //FIXME
   y = y%m_bufferHeight; //FIXME
-  
   int64_t fbAddr = ((uint64_t) m_deviceData);
   fbAddr += (m_bufferHeight - y -1)*buffWidthByte + (x*size);
-  //int64_t fbAddr = ((uint64_t) m_deviceData) + m_colorBufferByteSize;
-  /*fbAddr += ((m_bufferHeight - y) * m_bufferWidth* m_fbPixelSize*-1)
-              + (x * m_fbPixelSize);*/
   assert(fbAddr >= (uint64_t) m_deviceData);
   assert(fbAddr < ((uint64_t) m_deviceData + m_colorBufferByteSize));
   return fbAddr;
-}
+} 
 
 byte* renderData_t::setRenderBuffer(){
     //gl_renderbuffer *rb = m_mesaCtx->DrawBuffer->_ColorDrawBuffers[0];
@@ -1308,6 +1298,7 @@ unsigned renderData_t::getTexelSize(int samplingUnit){
       break;
     case GL_SHORT:
     case GL_UNSIGNED_SHORT:
+    case GL_UNSIGNED_SHORT_1_5_5_5_REV:
     case GL_HALF_FLOAT:
       return 2;
       break;
@@ -1326,7 +1317,6 @@ unsigned renderData_t::getTexelSize(int samplingUnit){
     case GL_UNSIGNED_INT_24_8_MESA:
     case GL_UNSIGNED_INT_5_9_9_9_REV:
     case GL_UNSIGNED_INT_8_24_REV_MESA:
-    case GL_UNSIGNED_SHORT_1_5_5_5_REV:
     case GL_UNSIGNED_SHORT_4_4_4_4:
     case GL_UNSIGNED_SHORT_5_5_5_1:
     case GL_UNSIGNED_SHORT_5_6_5:
@@ -1586,8 +1576,13 @@ unsigned int renderData_t::doFragmentShading() {
    gpgpu_sim* gpu =  cudaGPU->getTheGPU();
    unsigned numClusters = gpu->get_config().num_cluster();
    simt_core_cluster* simt_clusters = gpu->getSIMTCluster();
+   unsigned addedPrims = 0;;
+   //for(int prim=drawPrimitives.size()-1; prim >= 0; prim--){
    for(unsigned prim=0; prim < drawPrimitives.size(); prim++){
-      if(drawPrimitives[prim].size() == 0) break;
+      if(drawPrimitives[prim].size() == 0){
+         continue;
+      }
+      addedPrims++;
       drawPrimitives[prim].sortFragmentsInTiles(
             m_bufferHeight, m_bufferWidth, 
             m_tile_H, m_tile_W, 
@@ -1606,7 +1601,7 @@ unsigned int renderData_t::doFragmentShading() {
    m_sShading_info.completed_threads = 0;
    m_sShading_info.launched_threads = 0;
    assert(m_sShading_info.fragCodeAddr == NULL);
-   m_sShading_info.sent_simt_prims = numClusters * drawPrimitives.size();
+   m_sShading_info.sent_simt_prims = numClusters * addedPrims;
    /*if(m_inShaderDepth or not(isDepthTestEnabled())){
       //now sorting them in raster order
       sortFragmentsInRasterOrder(getTileH(), getTileW(),getBlockH(), getBlockW(), HorizontalRaster); //BlockedHorizontal);
@@ -1926,7 +1921,7 @@ bool renderData_t::isDepthTestEnabled(){
 
 bool renderData_t::isBlendingEnabled() {
     if (m_mesaCtx->Color.BlendEnabled & 1) {
-            return true;
+       return true;
     }
     return false;
 }
@@ -2205,7 +2200,6 @@ void RasterTile::testHizThresh(){
 void renderData_t::generateDepthCode(FILE* inst_stream){
    if(not isDepthTestEnabled()) return;
    const char* depthSize = m_depthSize==DepthSize::Z32? "u32" : "u16";
-   //fprintf(inst_stream, "@!fflag bra skipDepthTest; //skip z test if fragment is dead\n");
    fprintf(inst_stream, ".reg .pred testDepth, passedDepth;\n");
    fprintf(inst_stream, ".reg .u32 depthTestRes;\n");
    fprintf(inst_stream, "setp.eq.u32 passedDepth, !fflag, 0;\n");
@@ -2219,6 +2213,14 @@ void renderData_t::generateDepthCode(FILE* inst_stream){
    fprintf(inst_stream, "@passedDepth zwrite.global.%s;\n", depthSize);
 }
 
+void renderData_t::generateBlendCode(FILE* inst_stream){
+   fprintf(inst_stream, "setp.ne.u32 fflag, 0, %%fragment_active;\n");
+   fprintf(inst_stream, "@fflag mov.u32 %%color, COLOR0;\n");
+   if(isBlendingEnabled()){
+      fprintf(inst_stream, "@fflag blend.global.u32 %%color, %%color;\n");
+   }
+      fprintf(inst_stream, "@fflag stp.global.u32 %%color, %%color;\n");
+}
 
 void renderData_t::modeMemcpy(byte* dst, byte *src, 
       unsigned count, enum cudaMemcpyKind kind){
