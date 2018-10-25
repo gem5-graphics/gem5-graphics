@@ -1260,9 +1260,8 @@ std::vector<uint64_t> renderData_t::fetchTexels(
   std::vector<uint64_t> texelFetches;
   //fetches for all quad fragments are included, filter out relevant ones based
   //on the quadIdx
-  assert(m_texelFetches.size() >= TGSI_QUAD_SIZE); //we should get at least 1 texel per fragment
-  assert(m_texelFetches.size()% TGSI_QUAD_SIZE == 0);
-  int texelsPerFragment = m_texelFetches.size()/TGSI_QUAD_SIZE;
+  assert(m_texelFetches.size() >= TGSI_QUAD_SIZE); //at least 1 texel per fragment
+  int texelsPerFragment = (m_texelFetches.size()+TGSI_QUAD_SIZE-1)/TGSI_QUAD_SIZE;
   int startTexel = texelsPerFragment*quadIdx;
   int endTexel = (texelsPerFragment*(quadIdx +1)) - 1;
   int curTexel = 0;
