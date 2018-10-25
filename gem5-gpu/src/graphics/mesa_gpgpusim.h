@@ -617,13 +617,47 @@ private:
     struct tgsi_exec_machine* m_tmachine;
     void* m_sp;
     void* m_mapped_indices;
-    struct texelInfo_t {
-      texelInfo_t(uint64_t ba, const struct pipe_resource* t){
-        baseAddr = ba;
+    class texelInfo_t {
+      public:
+      struct mipmapInfo_t {
+         mipmapInfo_t(uint64_t off, uint64_t w, uint64_t h){
+            offset=off;
+            width = w;
+            height = h;
+         }
+         uint64_t offset;
+         uint64_t width;
+         uint64_t height;
+      };
+
+      texelInfo_t(uint64_t ba, uint64_t tsize, 
+            std::vector<mipmapInfo_t> offsets,
+            const struct pipe_resource* t){
+        baseAddrs = ba;
+        texelSize = tsize;
+        mmOffsets = offsets;
         tex = t;
       }
-      uint64_t baseAddr;
+
+      uint64_t getBaseAddr(){
+         return baseAddrs;
+      }
+
+      uint64_t getTexelAddr(unsigned x, unsigned y, int level){
+         uint64_t width = mmOffsets[level].width;
+         uint64_t height = mmOffsets[level].height;
+         uint64_t levelBaseAddr = baseAddrs + (mmOffsets[level].offset*texelSize);
+         uint64_t texelAddr = levelBaseAddr + (((y*width) + x) * texelSize);
+         assert(texelAddr >= levelBaseAddr
+               and (texelAddr < (levelBaseAddr+(width*height* texelSize))));
+         return texelAddr;
+      }
+
       const struct pipe_resource* tex;
+      private:
+      uint64_t baseAddrs;
+      uint64_t texelSize;
+      std::vector<mipmapInfo_t> mmOffsets;
     };
     std::vector<texelInfo_t> m_textureInfo;
     int m_currSamplingUnit;

@@ -574,7 +574,7 @@ void renderData_t::endDrawCall() {
     //free textures
     for(int tex=0; tex < m_textureInfo.size(); tex++){
       texelInfo_t* ti = &m_textureInfo[tex];
-      graphicsFree((void*)ti->baseAddr);
+      graphicsFree((void*)ti->getBaseAddr());
     }
 
     lastFatCubin = NULL;
@@ -1230,11 +1230,9 @@ void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, voi
 }
 
 void renderData_t::addTexelFetch(int x, int y, int level){
-  texelInfo_t* ti = &m_textureInfo[m_currSamplingUnit];
-  uint64_t texelSize = getTexelSize(m_currSamplingUnit);
-  uint64_t texelAddr = ti->baseAddr + (((y*ti->tex->width0) + x) * texelSize);
-  assert(texelAddr >= ti->baseAddr and texelAddr < (ti->baseAddr + (ti->tex->width0 * ti->tex->height0 * texelSize)));
-  m_texelFetches.push_back(texelAddr);
+   texelInfo_t* ti = &m_textureInfo[m_currSamplingUnit];
+   uint64_t texelAddr = ti->getTexelAddr(x, y, level);
+   m_texelFetches.push_back(texelAddr);
 }
 
 std::vector<uint64_t> renderData_t::fetchTexels(
@@ -1337,12 +1335,38 @@ void renderData_t::setAllTextures(void ** fatCubinHandle){
       if(sp_view->base.format == PIPE_FORMAT_NONE)
         break;
       const struct pipe_resource* tex = sp_view->base.texture;
-      printf("texture %d, format = %d, size= %dx%d, last_level=%d\n", tidx, tex->format, tex->width0, tex->height0, tex->last_level);
-      unsigned textureSize = getTexelSize(tidx) * tex->width0 * tex->height0;
-      void* textureBuffer;
-      graphicsMalloc((void**) &textureBuffer, textureSize);
-      m_textureInfo.push_back(texelInfo_t((uint64_t)textureBuffer, tex));
-      printf("adding texture to buff %lx\n", (uint64_t)textureBuffer);
+      printf("texture %d, format = %d, size= %dx%d, last_level=%d\n", 
+            tidx, tex->format, tex->width0, tex->height0, tex->last_level);
+      /*
+      TODO: support array formats
+      check sp_texture.c:softpipe_transfer_map
+      check sp_tex_tile_cache.c:sp_find_cached_tile_tex
+       */
+      assert(tex->target != PIPE_TEXTURE_CUBE
+            and tex->target != PIPE_TEXTURE_1D_ARRAY 
+            and tex->target != PIPE_TEXTURE_2D_ARRAY 
+            and tex->target != PIPE_TEXTURE_CUBE_ARRAY);
+      unsigned curLevel = 0;
+      std::vector<texelInfo_t::mipmapInfo_t> mmOffsets;
+      unsigned width, height;
+      uint64_t mmTexels = 0;
+      while(true){
+         width = u_minify(tex->width0, curLevel);
+         height = u_minify(tex->height0, curLevel);
+         mmOffsets.push_back(texelInfo_t::mipmapInfo_t(mmTexels, width, height));
+         mmTexels+= width*height;
+         if(tex->last_level == curLevel)
+            break;
+         curLevel++;
+      }
+      unsigned texelSize = getTexelSize(tidx);
+      unsigned texturesSize =  texelSize * mmTexels;
+      void* texturesBuffer;
+      graphicsMalloc((void**) &texturesBuffer, texturesSize);
+      m_textureInfo.push_back(
+            texelInfo_t((uint64_t)texturesBuffer, texelSize, 
+               mmOffsets, tex));
+      printf("adding textures to buff %lx\n", (uint64_t)texturesBuffer);
       tidx++;
     }
 }
