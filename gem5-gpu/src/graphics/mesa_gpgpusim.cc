@@ -1937,16 +1937,18 @@ void renderData_t::copyStateData(void** fatCubinHandle) {
 }
 
 bool renderData_t::isDepthTestEnabled(){
+   if(isBlendingEnabled())
+      return false;
     if (g_renderData.m_mesaCtx->Depth.Test != 0)
         return true;
     return false;
 }
 
 bool renderData_t::isBlendingEnabled() {
-    if (m_mesaCtx->Color.BlendEnabled & 1) {
-       return true;
-    }
-    return false;
+   if (m_mesaCtx->Color.BlendEnabled & 1) {
+      return true;
+   }
+   return false;
 }
 
 void renderData_t::getBlendingMode(GLenum * src, GLenum * dst, GLenum* srcAlpha, GLenum * dstAlpha, GLenum* eqnRGB, GLenum* eqnAlpha, GLfloat * blendColor){
@@ -2238,11 +2240,12 @@ void renderData_t::generateDepthCode(FILE* inst_stream){
 
 void renderData_t::generateBlendCode(FILE* inst_stream){
    fprintf(inst_stream, "setp.ne.u32 fflag, 0, %%fragment_active;\n");
-   fprintf(inst_stream, "@fflag mov.u32 %%color, COLOR0;\n");
    if(isBlendingEnabled()){
-      fprintf(inst_stream, "@fflag blend.global.u32 %%color, %%color;\n");
-   }
+      fprintf(inst_stream, "@fflag blend.global.u32 %%color, COLOR0;\n");
       fprintf(inst_stream, "@fflag stp.global.u32 %%color, %%color;\n");
+   } else {
+      fprintf(inst_stream, "@fflag stp.global.u32 COLOR0, COLOR0;\n");
+   }
 }
 
 void renderData_t::modeMemcpy(byte* dst, byte *src, 

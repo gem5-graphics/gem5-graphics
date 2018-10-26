@@ -1316,15 +1316,14 @@ void ptx_thread_info::writeRegister(const warp_inst_t &inst, unsigned lane_id, c
       return;
    } else if(pI->is_blend()){
       ptx_reg_t src1_data, oldPixel;
-      unsigned i_type = pI->get_type();
       const operand_info &src1 = pI->src1();
       memcpy(&oldPixel, data, bytes);
-      assert(i_type == U32_TYPE); //what we use for blending for now
+      assert(type == U32_TYPE); //what we use for blending for now
       assert(bytes == 4);
 
-      src1_data = get_operand_value(src1, dst, i_type, this, 1);
+      src1_data = get_operand_value(src1, dst, type, this, 1);
       reg.u32 = blendU32(src1_data.u32, oldPixel.u32);
-      set_operand_value(dst, reg, i_type, this, pI);
+      set_operand_value(dst, reg, type, this, pI);
       return;
    }
 
