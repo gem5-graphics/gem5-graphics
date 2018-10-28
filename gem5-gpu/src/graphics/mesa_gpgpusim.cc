@@ -354,7 +354,7 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(
 
     assert(fragmentTiles.size() == tilesCount);
     assert((frameWidth%tileW) == 0);
-    assert((frameHeight%tileH) == 0);
+    //assert((frameHeight%tileH) == 0);
             
     //unsigned const numberOfHorizontalTiles = frameWidth / tileW;
     
@@ -953,6 +953,25 @@ unsigned renderData_t::getFramebufferFormat(){
     return m_mesaColorBuffer->InternalFormat;
 }
 
+unsigned renderData_t::getPixelSize(){
+   unsigned fbFormat = getFramebufferFormat();
+   assert(fbFormat==GL_RGBA
+         or fbFormat==GL_RGBA8
+         or fbFormat==GL_RGB8
+         or fbFormat==GL_RGB
+         or fbFormat==GL_SRGB8_ALPHA8
+         );
+   unsigned size = -1;
+
+   if(fbFormat==GL_RGBA or fbFormat==GL_RGBA8 
+         or fbFormat==GL_SRGB8_ALPHA8){
+      size = 4;
+   } else if(fbFormat==GL_RGB8 or fbFormat==GL_RGB){
+      size = 3;
+   } else assert(0);
+   return size;
+}
+
 uint64_t renderData_t::getFramebufferFragmentAddr(uint64_t x, uint64_t y, uint64_t size){
   uint64_t buffWidthByte = size*m_bufferWidth;
   x = x%m_bufferWidth; //FIXME
@@ -979,7 +998,6 @@ byte* renderData_t::setRenderBuffer(){
     unsigned baseFormat = rb->_BaseFormat;
     unsigned internalFormat = rb->InternalFormat;
 
-    //unsigned bufferFormat = GL_RGBA; 
     unsigned bufferFormat = rb->_BaseFormat;
     
 
@@ -1009,7 +1027,7 @@ byte* renderData_t::setRenderBuffer(){
     byte * tempBuffer2 = new byte [m_colorBufferByteSize];
 
     ///
-    m_fbPixelSize = 4;
+    //m_fbPixelSize = 4;
     byte* renderBuf;
     int rbStride;
     m_mesaCtx->Driver.MapRenderbuffer_base(m_mesaCtx, m_mesaColorBuffer,
@@ -1027,7 +1045,10 @@ byte* renderData_t::setRenderBuffer(){
           tempBufferEnd[dstPixel + 0] = renderBuf[srcPixel + 0];
           tempBufferEnd[dstPixel + 1] = renderBuf[srcPixel + 1];
           tempBufferEnd[dstPixel + 2] = renderBuf[srcPixel + 2];
-          tempBufferEnd[dstPixel + 3] = renderBuf[srcPixel + 3];
+          if(m_fbPixelSize > 3)
+             tempBufferEnd[dstPixel + 3] = renderBuf[srcPixel + 3];
+          else 
+             tempBufferEnd[dstPixel + 3] = 0xff;
         }
 
       m_mesaCtx->Driver.UnmapRenderbuffer_base(m_mesaCtx, m_mesaColorBuffer);
@@ -1035,19 +1056,40 @@ byte* renderData_t::setRenderBuffer(){
 }
 
 
-byte* renderData_t::setDepthBuffer(DepthSize activeDepthSize, DepthSize actualDepthSize){
+byte* renderData_t::setDepthBuffer(){
+    DepthSize activeDepthSize;
+    DepthSize trueDepthSize;
     //gl_renderbuffer *rb = m_mesaCtx->DrawBuffer->_DepthBuffer;
     gl_renderbuffer *rb = m_mesaCtx->ReadBuffer->Attachment[BUFFER_DEPTH].Renderbuffer;
 
-    uint32_t dbSize = (uint32_t) activeDepthSize; 
-    uint32_t mesaDbSize = (uint32_t) actualDepthSize; 
+    if(isDepthTestEnabled()){
+       if(rb->Format==MESA_FORMAT_Z_UNORM32
+             or rb->Format==MESA_FORMAT_Z24_UNORM_S8_UINT 
+             or rb->Format==MESA_FORMAT_Z24_UNORM_X8_UINT){
+          activeDepthSize = trueDepthSize = DepthSize::Z32;
+       } else if(rb->Format==MESA_FORMAT_Z_UNORM16){
+          if(m_inShaderDepth){
+             //in-shader depth test uses atomics that only support 32 bit 
+             activeDepthSize = DepthSize::Z32;
+             trueDepthSize = DepthSize::Z16;
+          } else {
+             activeDepthSize = trueDepthSize = DepthSize::Z16;
+          }
+       } else {
+          printf("GPGPUSIM: Unsupported depth format %x \n", rb->Format);
+          abort();
+       }
+    }
+
     unsigned buffSize = rb->Height * rb->Width;
-    m_depthBufferSize = buffSize * sizeof (byte)* dbSize;
+    m_depthBufferSize = buffSize * sizeof (byte)* ((uint32_t) activeDepthSize);
     m_depthBufferWidth = rb->Width;
     m_depthBufferHeight = rb->Height;
     m_depthSize = activeDepthSize;
-    m_mesaDepthSize = actualDepthSize;
+    m_mesaDepthSize = trueDepthSize;
     m_mesaDepthBuffer = rb;
+    unsigned depthSize = (unsigned) m_depthSize;
+    uint32_t mesaDepthBufferSize = buffSize * depthSize;
 
     assert(m_depthBufferWidth  == m_bufferWidth);
     assert(m_depthBufferHeight == m_bufferHeight);
@@ -1055,13 +1097,12 @@ byte* renderData_t::setDepthBuffer(DepthSize activeDepthSize, DepthSize actualDe
     //assert our assumptions
     assert(DepthSize::Z32==m_depthSize);
     assert(DepthSize::Z32==m_mesaDepthSize);
-    assert(rb->Format == MESA_FORMAT_Z24_UNORM_S8_UINT);
-    assert(rb->InternalFormat == GL_DEPTH24_STENCIL8);
-    assert(rb->_BaseFormat == GL_DEPTH_STENCIL);
+    assert(rb->Format==MESA_FORMAT_Z24_UNORM_S8_UINT
+          or rb->Format==MESA_FORMAT_Z24_UNORM_X8_UINT);
+    //assert(rb->InternalFormat == GL_DEPTH24_STENCIL8);
+    //assert(rb->_BaseFormat == GL_DEPTH_STENCIL);
     DPRINTF(MesaGpgpusim, 
           "gpgpusim-graphics: fb height=%d width=%d\n",m_bufferHeight, m_bufferWidth);
-    const unsigned depthSize = 4;
-    uint32_t mesaDepthBufferSize = buffSize * depthSize;
     byte *tempBuffer  = new byte [mesaDepthBufferSize];
     //std::memset(tempBuffer, 0, mesaDepthBufferSize);
     byte* renderBuf;
@@ -1084,8 +1125,10 @@ byte* renderData_t::setDepthBuffer(DepthSize activeDepthSize, DepthSize actualDe
 
           tempBufferEnd[dstPixel + 0] = renderBuf[srcPixel + 0];
           tempBufferEnd[dstPixel + 1] = renderBuf[srcPixel + 1];
-          tempBufferEnd[dstPixel + 2] = renderBuf[srcPixel + 2];
-          tempBufferEnd[dstPixel + 3] = 0;
+          if(depthSize > 2)
+             tempBufferEnd[dstPixel + 2] = renderBuf[srcPixel + 2];
+          if(depthSize > 3)
+             tempBufferEnd[dstPixel + 3] = 0;
 
        }
     return tempBuffer;
@@ -1114,28 +1157,6 @@ void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, voi
     byte* currentBuffer = setRenderBuffer();
 
     setAllTextures(lastFatCubinHandle);
-
-    DepthSize activeDepthSize;
-    DepthSize trueDepthSize;
-
-    gl_renderbuffer *rb = m_mesaCtx->ReadBuffer->Attachment[BUFFER_DEPTH].Renderbuffer;
-    if(isDepthTestEnabled()){
-       if(rb->Format==MESA_FORMAT_Z_UNORM32 or
-             rb->Format==MESA_FORMAT_Z24_UNORM_S8_UINT){
-          activeDepthSize = trueDepthSize = DepthSize::Z32;
-       } else if(rb->Format==MESA_FORMAT_Z_UNORM16){
-          if(m_inShaderDepth){
-             //in-shader depth test uses atomics that only support 32 bit 
-             activeDepthSize = DepthSize::Z32;
-             trueDepthSize = DepthSize::Z16;
-          } else {
-             activeDepthSize = trueDepthSize = DepthSize::Z16;
-          }
-       } else {
-          printf("GPGPUSIM: Unsupported depth format %x \n", rb->Format);
-          abort();
-       }
-    }
 
     struct softpipe_context *softpipe = (struct softpipe_context *) m_sp;
     const void** constBufs = softpipe->mapped_constants[PIPE_SHADER_FRAGMENT];
@@ -1203,7 +1224,7 @@ void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, voi
 
     m_depthBuffer = NULL;
     if(isDepthTestEnabled()){
-        m_depthBuffer = setDepthBuffer(activeDepthSize, trueDepthSize);
+        m_depthBuffer = setDepthBuffer();
         graphicsMalloc((void**) &m_deviceData, m_colorBufferByteSize + m_depthBufferSize); 
         modeMemcpy(m_deviceData + m_colorBufferByteSize,
                  m_depthBuffer, m_depthBufferSize, graphicsMemcpyHostToSim);
@@ -1214,7 +1235,8 @@ void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, voi
 
     modeMemcpy(m_deviceData, currentBuffer, getColorBufferByteSize(), graphicsMemcpyHostToSim);
     std::string bufferFormat = m_fbPixelSize == 4? "bgra" : "rgb";
-    writeDrawBuffer("pre", currentBuffer,  m_colorBufferByteSize, m_bufferWidth, m_bufferHeight, bufferFormat.c_str(), 8);
+    writeDrawBuffer("pre", currentBuffer,  m_colorBufferByteSize,
+          m_bufferWidth, m_bufferHeight, bufferFormat.c_str(), 8);
 
     delete [] currentBuffer;
 
@@ -1510,9 +1532,9 @@ void renderData_t::setHizTiles(RasterDirection rasterDir) {
 
    std::vector<bool> touchedTiles(m_tilesCount, false);
    m_hizBuff.setSize(m_tilesCount);
-   assert((m_bufferWidth%m_tile_W) == 0);
-   assert((m_bufferHeight%m_tile_H) == 0);
-   const unsigned tileRow = m_bufferWidth / m_tile_W;
+   //assert((m_bufferWidth%m_tile_W) == 0);
+   //assert((m_bufferHeight%m_tile_H) == 0);
+   const unsigned tileRow = (m_bufferWidth+m_tile_W-1) / m_tile_W;
    for(unsigned i=0; i < depthValues.size(); i++){
       unsigned tileIdx = -1;
       unsigned xPos = i%m_bufferWidth;
@@ -1714,7 +1736,8 @@ void renderData_t::putDataOnColorBuffer() {
           renderBuf[srcPixel + 0] = tempBufferEnd[dstPixel + 0];
           renderBuf[srcPixel + 1] = tempBufferEnd[dstPixel + 1];
           renderBuf[srcPixel + 2] = tempBufferEnd[dstPixel + 2];
-          renderBuf[srcPixel + 3] = tempBufferEnd[dstPixel + 3];
+          if(m_fbPixelSize > 3)
+             renderBuf[srcPixel + 3] = tempBufferEnd[dstPixel + 3];
         }
 
       m_mesaCtx->Driver.UnmapRenderbuffer_base(m_mesaCtx, m_mesaColorBuffer);
@@ -1939,7 +1962,7 @@ void renderData_t::copyStateData(void** fatCubinHandle) {
 bool renderData_t::isDepthTestEnabled(){
    if(isBlendingEnabled())
       return false;
-    if (g_renderData.m_mesaCtx->Depth.Test != 0)
+    if(g_renderData.m_mesaCtx->Depth.Test != 0)
         return true;
     return false;
 }
@@ -2244,7 +2267,8 @@ void renderData_t::generateBlendCode(FILE* inst_stream){
       fprintf(inst_stream, "@fflag blend.global.u32 %%color, COLOR0;\n");
       fprintf(inst_stream, "@fflag stp.global.u32 %%color, %%color;\n");
    } else {
-      fprintf(inst_stream, "@fflag stp.global.u32 COLOR0, COLOR0;\n");
+      fprintf(inst_stream, "@fflag mov.u32 %%color, COLOR0;\n");
+      fprintf(inst_stream, "@fflag stp.global.u32 %%color, %%color;\n");
    }
 }
 

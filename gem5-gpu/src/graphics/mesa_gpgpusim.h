@@ -478,6 +478,7 @@ public:
     void addTexelFetch(int x, int y, int level);
 
     unsigned getFramebufferFormat();
+    unsigned getPixelSize();
     uint64_t getFramebufferFragmentAddr(uint64_t x, uint64_t y, uint64_t size);
 
     bool isBusy(){
@@ -517,7 +518,7 @@ private:
     void putDataOnDepthBuffer();
     void writeDrawBuffer(std::string time, byte * frame, int size, unsigned w, unsigned h, std::string extOrder, int depth);
     byte* setRenderBuffer();
-    byte* setDepthBuffer(DepthSize activeDbSize, DepthSize actualDbSize);
+    byte* setDepthBuffer();
     void writeTexture(byte* data, unsigned size, unsigned texNum, unsigned h, unsigned w, std::string typeEx);
     void copyStateData(void** fatCubinHandle);
 
