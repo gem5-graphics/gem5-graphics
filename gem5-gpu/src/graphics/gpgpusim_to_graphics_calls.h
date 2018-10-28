@@ -67,6 +67,4 @@ std::vector<uint64_t> fetchMesaTexels(int modifier, int unit, int dim,
 
 unsigned getMesaTexelSize(int samplingUnit);
 
-unsigned getMesaFramebufferFormat();
-
 #endif

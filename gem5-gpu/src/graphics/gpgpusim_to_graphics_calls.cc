@@ -58,7 +58,3 @@ void checkGraphicsThreadExit(void* kernelPtr, unsigned tid, void* stream){
 unsigned getMesaTexelSize(int samplingUnit){
   return g_renderData.getTexelSize(samplingUnit);
 }
-
-unsigned getMesaFramebufferFormat(){
-  return g_renderData.getFramebufferFormat();
-}
