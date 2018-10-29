@@ -467,7 +467,7 @@ public:
       *frameNum = m_currentFrame;
       *drawcallNum = m_drawcall_num;
     }
-    void setMesaCtx(struct gl_context * ctx){m_mesaCtx=ctx;}
+    void setMesaCtx(struct gl_context * ctx);
     std::vector<uint64_t> fetchTexels(int modifier, int unit, int dim,
                                       float* coords,
                                       int num_coords,
@@ -478,7 +478,8 @@ public:
     void addTexelFetch(int x, int y, int level);
 
     unsigned getFramebufferFormat();
-    unsigned getPixelSize();
+    void setPixelSize();
+    unsigned getPixelSizeSim();
     uint64_t getFramebufferFragmentAddr(uint64_t x, uint64_t y, uint64_t size);
 
     bool isBusy(){
@@ -550,7 +551,6 @@ private:
     inline GLuint getBufferWidth(){return m_bufferWidth;}
     inline GLuint getBufferHeight(){return m_bufferHeight;}
     inline GLuint getPixelBufferSize(){ return m_bufferWidth*m_bufferHeight;}
-    inline unsigned getFBPixelSize(){ return m_fbPixelSize; }
     struct gl_renderbuffer * getMesaBuffer(){return m_mesaColorBuffer;}
     std::string getIntFolder(){return m_intFolder;}
     std::string getFbFolder(){return m_fbFolder;}
@@ -664,7 +664,8 @@ private:
     int m_currSamplingUnit;
     std::vector<uint64_t> m_texelFetches;
     std::vector< std::vector<ch4_t> > consts;
-    unsigned m_fbPixelSize;
+    unsigned m_fbPixelSizeSim;
+    byte* m_currentRenderBufferBytes;
 
     struct hizBuffer_t {
        hizBuffer_t(renderData_t *rd){

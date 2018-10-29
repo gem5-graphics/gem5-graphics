@@ -426,6 +426,8 @@ renderData_t::renderData_t():
 
     m_usedVertShaderRegs = -1;
     m_usedFragShaderRegs = -1;
+
+    m_currentRenderBufferBytes = NULL;
 }
 
 renderData_t::~renderData_t() {
@@ -953,23 +955,40 @@ unsigned renderData_t::getFramebufferFormat(){
     return m_mesaColorBuffer->InternalFormat;
 }
 
-unsigned renderData_t::getPixelSize(){
-   unsigned fbFormat = getFramebufferFormat();
-   assert(fbFormat==GL_RGBA
-         or fbFormat==GL_RGBA8
-         or fbFormat==GL_RGB8
-         or fbFormat==GL_RGB
-         or fbFormat==GL_SRGB8_ALPHA8
-         );
-   unsigned size = -1;
+void renderData_t::setPixelSize(){
+    /*unsigned justFormat = rb->Format;
+    unsigned baseFormat = rb->_BaseFormat;
+    unsigned internalFormat = rb->InternalFormat;
+    unsigned bufferFormat = rb->_BaseFormat;
+    m_fbPixelSize = -1;
+    unsigned bf = 0;
+    switch(bufferFormat){
+      case GL_RGBA:
+      case GL_RGBA8:
+        m_fbPixelSize = 4;
+        bf = GL_RGBA;
+        break;
+      case GL_RGB8:
+      case GL_RGB:
+        m_fbPixelSize = 3;
+        bf = GL_RGB;
+        break;
+      default:
+        printf("Error: unsupported buffer format %x \n", bufferFormat);
+        abort();
+    }*/
 
+   unsigned fbFormat = getFramebufferFormat();
    if(fbFormat==GL_RGBA or fbFormat==GL_RGBA8 
          or fbFormat==GL_SRGB8_ALPHA8){
-      size = 4;
+      m_fbPixelSizeSim = 4;
    } else if(fbFormat==GL_RGB8 or fbFormat==GL_RGB){
-      size = 3;
+      m_fbPixelSizeSim = 4;
    } else assert(0);
-   return size;
+}
+
+unsigned renderData_t::getPixelSizeSim(){
+   return m_fbPixelSizeSim;
 }
 
 uint64_t renderData_t::getFramebufferFragmentAddr(uint64_t x, uint64_t y, uint64_t size){
@@ -991,43 +1010,11 @@ byte* renderData_t::setRenderBuffer(){
     m_bufferHeight = rb->Height;
     m_bufferWidth = m_mesaCtx->DrawBuffer->Width;
     m_bufferHeight = m_mesaCtx->DrawBuffer->Height;
-
-    m_colorBufferByteSize = m_bufferHeight * m_bufferWidth * 4;
-
-    unsigned justFormat = rb->Format;
-    unsigned baseFormat = rb->_BaseFormat;
-    unsigned internalFormat = rb->InternalFormat;
-
-    unsigned bufferFormat = rb->_BaseFormat;
-    
-
-    m_fbPixelSize = -1;
-    unsigned bf = 0;
-
-    switch(bufferFormat){
-      case GL_RGBA:
-      case GL_RGBA8:
-        m_fbPixelSize = 4;
-        bf = GL_RGBA;
-        break;
-      case GL_RGB8:
-      case GL_RGB:
-        m_fbPixelSize = 3;
-        bf = GL_RGB;
-        break;
-      default:
-        printf("Error: unsupported buffer format %x \n", bufferFormat);
-        abort();
-    }
-
-    assert(m_fbPixelSize != -1);
-
+    setPixelSize();
+    m_colorBufferByteSize = m_bufferHeight * m_bufferWidth * m_fbPixelSizeSim;
     DPRINTF(MesaGpgpusim, "gpgpusim-graphics: fb height=%d width=%d\n", m_bufferHeight, m_bufferWidth);
 
     byte * tempBuffer2 = new byte [m_colorBufferByteSize];
-
-    ///
-    //m_fbPixelSize = 4;
     byte* renderBuf;
     int rbStride;
     m_mesaCtx->Driver.MapRenderbuffer_base(m_mesaCtx, m_mesaColorBuffer,
@@ -1035,20 +1022,23 @@ byte* renderData_t::setRenderBuffer(){
                                       GL_MAP_READ_BIT,
                                       &renderBuf, &rbStride);
 
+      unsigned pixelSizeMesa = std::abs(rbStride)/m_bufferWidth;
       byte* tempBufferEnd = tempBuffer2 + m_colorBufferByteSize;
       for(int h=0; h < m_bufferHeight; h++)
         for(int w=0; w< m_bufferWidth; w++){
           int srcPixel = ((m_bufferHeight - h - 1) * rbStride)
-              + (w * m_fbPixelSize);
-          int dstPixel = ((m_bufferHeight - h) * m_bufferWidth * m_fbPixelSize*-1)
-              + (w * m_fbPixelSize);
+              + (w * pixelSizeMesa);
+          int dstPixel = ((m_bufferHeight - h) * m_bufferWidth * m_fbPixelSizeSim*-1)
+              + (w * m_fbPixelSizeSim);
           tempBufferEnd[dstPixel + 0] = renderBuf[srcPixel + 0];
           tempBufferEnd[dstPixel + 1] = renderBuf[srcPixel + 1];
           tempBufferEnd[dstPixel + 2] = renderBuf[srcPixel + 2];
-          if(m_fbPixelSize > 3)
+          if(pixelSizeMesa > 3){
              tempBufferEnd[dstPixel + 3] = renderBuf[srcPixel + 3];
-          else 
+          } else {
+             assert(m_fbPixelSizeSim > 3);
              tempBufferEnd[dstPixel + 3] = 0xff;
+          }
         }
 
       m_mesaCtx->Driver.UnmapRenderbuffer_base(m_mesaCtx, m_mesaColorBuffer);
@@ -1134,6 +1124,12 @@ byte* renderData_t::setDepthBuffer(){
     return tempBuffer;
 }
 
+void renderData_t::setMesaCtx(struct gl_context * ctx){
+   m_mesaCtx=ctx;
+   assert(m_currentRenderBufferBytes == NULL);
+   m_currentRenderBufferBytes = setRenderBuffer();
+}
+
 void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, void* sp, void* mapped_indices) {
     g_gpuMutex.lock();
     assert(getDeviceData() == NULL);
@@ -1154,7 +1150,6 @@ void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, voi
 
     DPRINTF(MesaGpgpusim, "initializing a draw call \n");
 
-    byte* currentBuffer = setRenderBuffer();
 
     setAllTextures(lastFatCubinHandle);
 
@@ -1178,9 +1173,6 @@ void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, voi
       }
       ci++;
     }
-
-    //TODO
-    //generateFragmentCode(activeDepthSize);
 
     std::string frame_drawcall = std::to_string(m_currentFrame) + "_" + std::to_string(m_drawcall_num);
     std::string vertexPTXFile = vPTXPrfx +frame_drawcall+".ptx";
@@ -1233,12 +1225,14 @@ void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, voi
         graphicsMalloc((void**) &m_deviceData, m_colorBufferByteSize);
     }
 
-    modeMemcpy(m_deviceData, currentBuffer, getColorBufferByteSize(), graphicsMemcpyHostToSim);
-    std::string bufferFormat = m_fbPixelSize == 4? "bgra" : "rgb";
-    writeDrawBuffer("pre", currentBuffer,  m_colorBufferByteSize,
-          m_bufferWidth, m_bufferHeight, bufferFormat.c_str(), 8);
+    modeMemcpy(m_deviceData, m_currentRenderBufferBytes, 
+          getColorBufferByteSize(), graphicsMemcpyHostToSim);
+    assert(m_fbPixelSizeSim == 4);
+    writeDrawBuffer("pre", m_currentRenderBufferBytes,  m_colorBufferByteSize,
+          m_bufferWidth, m_bufferHeight, "bgra", 8);
 
-    delete [] currentBuffer;
+    delete [] m_currentRenderBufferBytes;
+    m_currentRenderBufferBytes = NULL;
 
     if(m_depthBuffer!=NULL) {
        writeDrawBuffer("pre_depth", m_depthBuffer,  m_depthBufferSize, m_bufferWidth, m_bufferHeight, "gray", 8*(int)m_mesaDepthSize);
@@ -1715,6 +1709,8 @@ void renderData_t::putDataOnColorBuffer() {
     //copying the result render buffer to mesa
     byte * tempBuffer = new byte [getColorBufferByteSize()];
     modeMemcpy(tempBuffer, m_deviceData, getColorBufferByteSize(), graphicsMemcpySimToHost);
+
+    assert(m_fbPixelSizeSim == 4);
     writeDrawBuffer("post", (byte*)tempBuffer, getColorBufferByteSize(), m_bufferWidth, m_bufferHeight, "bgra", 8);
 
     byte* renderBuf;
@@ -1725,19 +1721,21 @@ void renderData_t::putDataOnColorBuffer() {
                                       | GL_MAP_INVALIDATE_RANGE_BIT,
                                       //| GL_MAP_INVALIDATE_BUFFER_BIT
                                       &renderBuf, &rbStride);
-
+      assert(rbStride%m_bufferWidth == 0);
+      unsigned pixelSizeMesa = std::abs(rbStride)/m_bufferWidth;
       byte* tempBufferEnd = tempBuffer + m_colorBufferByteSize;
       for(int h=0; h < m_bufferHeight; h++)
         for(int w=0; w< m_bufferWidth; w++){
-          int srcPixel = ((m_bufferHeight - h - 1) * rbStride) + (w * m_fbPixelSize);
-          //int dstPixel = ((m_bufferHeight - h) * m_bufferWidth * m_fbPixelSize*-1)
-          int dstPixel = (h * m_bufferWidth * m_fbPixelSize*-1)
-              + (w * m_fbPixelSize);
+          int srcPixel = ((m_bufferHeight - h - 1) * rbStride) + (w * pixelSizeMesa);
+          int dstPixel = ((m_bufferHeight - h) * m_bufferWidth * m_fbPixelSizeSim*-1)
+              + (w * m_fbPixelSizeSim);
           renderBuf[srcPixel + 0] = tempBufferEnd[dstPixel + 0];
           renderBuf[srcPixel + 1] = tempBufferEnd[dstPixel + 1];
           renderBuf[srcPixel + 2] = tempBufferEnd[dstPixel + 2];
-          if(m_fbPixelSize > 3)
+          if(pixelSizeMesa > 3){
+             assert(m_fbPixelSizeSim > 3);
              renderBuf[srcPixel + 3] = tempBufferEnd[dstPixel + 3];
+          }
         }
 
       m_mesaCtx->Driver.UnmapRenderbuffer_base(m_mesaCtx, m_mesaColorBuffer);
@@ -2262,6 +2260,7 @@ void renderData_t::generateDepthCode(FILE* inst_stream){
 }
 
 void renderData_t::generateBlendCode(FILE* inst_stream){
+   assert(m_fbPixelSizeSim == 4);
    fprintf(inst_stream, "setp.ne.u32 fflag, 0, %%fragment_active;\n");
    if(isBlendingEnabled()){
       fprintf(inst_stream, "@fflag blend.global.u32 %%color, COLOR0;\n");

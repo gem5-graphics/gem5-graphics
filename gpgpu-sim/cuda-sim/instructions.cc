@@ -140,32 +140,22 @@ shaderAttrib_t readFragmentInputData(ptx_thread_info *thread,int builtin_id, uns
         break;
       }
       case SHADER_COLOR0: {
-          unsigned fbFormat = getMesaFramebufferFormat();
-          assert(fbFormat==GL_RGBA
-          or fbFormat==GL_RGBA8
-          or fbFormat==GL_RGB8
-          or fbFormat==GL_SRGB8_ALPHA8
-          );
-          unsigned size = -1;
-          if(fbFormat==GL_RGBA or fbFormat==GL_RGBA8 
-                or fbFormat==GL_SRGB8_ALPHA8){
-             size = 4;
-          } else if(fbFormat==GL_RGB8){
-             //size = 3;
-             size = 4;
-          } else assert(0);
-
+          unsigned pixelSize = g_renderData.getPixelSizeSim();
           //convert 0.0-1.0 colors to RGBA8
           uint32_t r = round(CLAMP(thread->get_builtin_storage(SHADER_COLOR0, 0).f32, 0.0, 1.0) * 255);
           uint32_t g = round(CLAMP(thread->get_builtin_storage(SHADER_COLOR0, 1).f32, 0.0, 1.0) * 255);
           uint32_t b = round(CLAMP(thread->get_builtin_storage(SHADER_COLOR0, 2).f32, 0.0, 1.0) * 255);
           uint32_t a = round(CLAMP(thread->get_builtin_storage(SHADER_COLOR0, 3).f32, 0.0, 1.0) * 255);
 
-          if(size == 4){
+          if(pixelSize == 4){
              a = round(CLAMP(thread->get_builtin_storage(SHADER_COLOR0, 3).f32, 0.0, 1.0) * 255);
-          } else if(size ==3) {
+          } else if(pixelSize ==3) {
+             printf("Unexpected pixel size\n");
+             assert(0);
              a = 255;
-             size = 4;
+          } else {
+             printf("Unexpected pixel size\n");
+             assert(0);
           }
           shaderAttrib_t color;
           color.u32 = (a << 24) + (r << 16) + (g << 8) + b;
@@ -4608,38 +4598,14 @@ void st_impl( const ptx_instruction *pI, ptx_thread_info *thread )
 
 void stp_impl( const ptx_instruction *pI, ptx_thread_info *thread ) 
 {
-   const operand_info &src1 = pI->src1();
-   const operand_info &dst = pI->dst();
-   ptx_reg_t color;
-   unsigned i_type = pI->get_type();
-   color = thread->get_operand_value(src1, dst, i_type, thread, 1);
-
-
-   unsigned fbFormat = getMesaFramebufferFormat();
-   assert(fbFormat==GL_RGBA
-          or fbFormat==GL_RGBA8
-          or fbFormat==GL_RGB8
-          or fbFormat==GL_SRGB8_ALPHA8
-          );
-   unsigned size = -1;
-
-   if(fbFormat==GL_RGBA or fbFormat==GL_RGBA8 
-         or fbFormat==GL_SRGB8_ALPHA8){
-     size = 4;
-   } else if(fbFormat==GL_RGB8){
-     //size = 3;
-     size = 4;
-   } else assert(0);
-
+   unsigned pixelSize = g_renderData.getPixelSizeSim();
    //const operand_info &src1 = pI->src1(); //may be scalar or vector of regs
    memory_space_t space = pI->get_space();
-   memory_space *mem = NULL;
-
    unsigned uniqueThreadId = thread->get_uid_in_kernel();
    void* stream = thread->get_kernel_info()->get_stream();
    uint64_t posX = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 0, -1, -1, stream).u64;
    uint64_t posY = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 1, -1, -1, stream).u64;
-   addr_t addr = g_renderData.getFramebufferFragmentAddr(posX, posY, size);
+   addr_t addr = g_renderData.getFramebufferFragmentAddr(posX, posY, pixelSize);
 
    thread->get_gpu()->gem5CudaGPU->getCudaCore(thread->get_hw_sid())->record_st(space);
    thread->m_last_effective_address.set(addr);
@@ -4709,29 +4675,13 @@ void frc_impl( const ptx_instruction *pI, ptx_thread_info *thread )
 }
 
 void blend_impl(const ptx_instruction *pI, ptx_thread_info *thread) {
-    memory_space_t space = pI->get_space();
-    const operand_info &dst = pI->dst();
-    unsigned fbFormat = getMesaFramebufferFormat();
-    assert(fbFormat==GL_RGBA
-          or fbFormat==GL_RGBA8
-          or fbFormat==GL_RGB8
-          or fbFormat==GL_SRGB8_ALPHA8
-          );
-    unsigned size = -1;
-
-   if(fbFormat==GL_RGBA or fbFormat==GL_RGBA8 
-         or fbFormat==GL_SRGB8_ALPHA8){
-     size = 4;
-   } else if(fbFormat==GL_RGB8){
-     //size = 3;
-     size = 4;
-   } else assert(0);
-
+    unsigned pixelSize = g_renderData.getPixelSizeSim();
     unsigned uniqueThreadId = thread->get_uid_in_kernel();
     void* stream = thread->get_kernel_info()->get_stream();
     uint64_t posX = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 0, -1, -1, stream).u64;
     uint64_t posY = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 1, -1, -1, stream).u64;
-    addr_t addr = g_renderData.getFramebufferFragmentAddr(posX, posY, size);
+    addr_t addr = g_renderData.getFramebufferFragmentAddr(posX, posY, pixelSize);
+    memory_space_t space = pI->get_space();
 
     thread->get_gpu()->gem5CudaGPU->getCudaCore(thread->get_hw_sid())->record_ld(space);
     thread->m_last_effective_address.set(addr);
