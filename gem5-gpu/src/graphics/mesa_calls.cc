@@ -91,6 +91,7 @@ extern "C" void gpgpusimGetOutputDir(const char** outputDir){
 }
 
 extern "C" void gpgpusimSetContext(struct gl_context *ctx){
+  if(!gpgpusimSimulationActive()) return;
   g_renderData.setMesaCtx(ctx);
 }
 
