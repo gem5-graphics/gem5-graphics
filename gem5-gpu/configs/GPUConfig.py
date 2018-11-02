@@ -320,7 +320,6 @@ def createGPU(options, gpu_mem_range):
                             for i in xrange(options.num_sc)]
     gpu.ce = GPUCopyEngine(driver_delay = 5000000,
                            buffering = options.ce_buffering)
-    gpu.zunit = ZUnit()
 
     for sc in gpu.shader_cores:
         sc.lsq = ShaderLSQ()
@@ -392,8 +391,6 @@ def connectGPUPorts_ruby(system, gpu, ruby, options):
     if(buildEnv['PROTOCOL'].lower().count("vi") and (not options.split)):
       mp = 2
       idx = options.num_cpus+len(gpu.shader_cores)*mp+2
-      print "connecting zunit to ", idx
-      gpu.zunit.z_port = ruby._cpu_ports[idx].slave
     else:
       #if not VI assert the g_depth_shader option is used
       assert(options.g_depth_shader==1), "No z-cache, g_depth_shader has to be enabled"
@@ -480,8 +477,6 @@ def connectGPUPorts_classic(system, gpu, options):
     gpu.l2NetToL2.master = gpu.l2cache.cpu_side
     gpu.l2cache.mem_side = system.membus.slave
 
-    gpu.zunit.z_port = gpu.l2NetToL2.slave
-
     for i,sc in enumerate(gpu.shader_cores):
         #readonly cache
         sc.icache = L1_ICache(size=options.sc_il1_size,
@@ -494,13 +489,16 @@ def connectGPUPorts_classic(system, gpu, options):
                              assoc=options.sc_l1_assoc)
         sc.dcache.mem_side = gpu.l2NetToL2.slave 
         sc.lsq.cache_port = sc.dcache.cpu_side'''
-        sc.lsq.cache_port = gpu.l2NetToL2.slave
+        #sc.lsq.cache_port = gpu.l2NetToL2.slave
+        sc.lsq.cache_port = system.membus.slave
 
         #readonly tex cache
-        sc.tcache = L1_ICache(size=options.sc_tl1_size,
+        '''sc.tcache = L1_ICache(size=options.sc_tl1_size,
                                 assoc=options.sc_tl1_assoc)
         sc.tcache.mem_side = gpu.l2NetToL2.slave
-        sc.tex_lq.cache_port = sc.tcache.cpu_side
+        sc.tex_lq.cache_port = sc.tcache.cpu_side'''
+        sc.tex_lq.cache_port = gpu.l2NetToL2.slave
+        #sc.tex_lq.cache_port = system.membus.slave
 
         #z cache
         '''sc.zcache = L1_DCache(size=options.sc_zl1_size,
@@ -508,6 +506,7 @@ def connectGPUPorts_classic(system, gpu, options):
         sc.zcache.mem_side = gpu.l2NetToL2.slave
         sc.z_lsq.cache_port = sc.zcache.cpu_side'''
         sc.z_lsq.cache_port = gpu.l2NetToL2.slave
+        #sc.z_lsq.cache_port = system.membus.slave
 
         for j in xrange(options.gpu_warp_size):
             sc.lsq_port[j] = sc.lsq.lane_port[j]
