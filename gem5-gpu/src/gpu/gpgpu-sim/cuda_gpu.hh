@@ -51,9 +51,6 @@
 #include "sim/system.hh"
 #include "stream_manager.h"
 
-
-class ZUnit;
-
 class StreamList : public std::vector<struct CUstream_st*> {
 public:
     bool find(struct CUstream_st* stream) 
@@ -321,9 +318,6 @@ class CudaGPU : public ClockedObject
     /// Pointer to the copy engine for this device
     GPUCopyEngine *copyEngine;
 
-    ///Pointer to the Z-Unit
-    ZUnit * zunit;
-
     //Pointer to standalone graphics object
     GraphicsStandalone* graphicsStandalone;
 
@@ -564,7 +558,6 @@ class CudaGPU : public ClockedObject
     /// Register devices callbacks
     void registerCudaCore(CudaCore *sc);
     void registerCopyEngine(GPUCopyEngine *ce);
-    void registerZUnit(ZUnit * zu);
     void registerGraphicsStandalone(GraphicsStandalone* gs);
 
 
@@ -610,12 +603,6 @@ class CudaGPU : public ClockedObject
 
     /// Returns CUDA core with id coreId
     CudaCore *getCudaCore(int coreId);
-
-    /// Returns the Z-Unit of this GPU
-    ZUnit * getZUnit(){ 
-       //printf("zunit ptr in gpu =%x\n", zunit);
-       return zunit;
-    }
 
     GraphicsStandalone* getGraphicsStandalone(){
        return graphicsStandalone;

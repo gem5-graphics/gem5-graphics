@@ -274,7 +274,7 @@ void primitiveFragmentsData_t::sortFragmentsInRasterOrder(unsigned frameHeight, 
 
 
 void renderData_t::runEarlyZ(CudaGPU * cudaGPU, unsigned tileH, unsigned tileW, unsigned blockH, unsigned blockW, RasterDirection dir, unsigned clusterCount) {
-
+/*
    RasterTiles * allTiles = new RasterTiles();
    for(int prim=0; prim < drawPrimitives.size(); prim++){
       drawPrimitives[prim].sortFragmentsInTiles(
@@ -302,7 +302,7 @@ void renderData_t::runEarlyZ(CudaGPU * cudaGPU, unsigned tileH, unsigned tileW, 
    assert(m_sShading_info.fragCodeAddr == NULL);
 
    startEarlyZ(cudaGPU, depthBuffStartAddr, depthBuffEndAddr, m_bufferWidth, allTiles, m_depthSize, m_mesaCtx->Depth.Func, 
-         m_depthBuffer, m_bufferWidth, m_bufferHeight, tileH, tileW, blockH, blockW, dir);
+         m_depthBuffer, m_bufferWidth, m_bufferHeight, tileH, tileW, blockH, blockW, dir);*/
 }
 
 void primitiveFragmentsData_t::sortFragmentsInTiles(
