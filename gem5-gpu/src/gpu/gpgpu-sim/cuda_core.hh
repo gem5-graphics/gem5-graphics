@@ -199,7 +199,7 @@ class CudaCore : public MemObject
 
     // Port that is blocked. If -1 then no port is blocked.
     struct LSQCntrlPortType_enum {
-       enum LSQCntrlPortType {LSQ, TEX, SIZE, Z };
+       enum LSQCntrlPortType {LSQ, TEX, Z, SIZE };
     };
     typedef LSQCntrlPortType_enum::LSQCntrlPortType LSQCntrlPortType;
     int writebackBlocked[LSQCntrlPortType::SIZE];
