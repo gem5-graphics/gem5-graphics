@@ -1805,6 +1805,7 @@ void ldst_unit::writeback()
             break;
         case 1: // texture response
             if( m_L1T->access_ready() ) {
+                panic("This should never execute in gem5-gpu! Writebacks from CudaCore must occur with writebackInst()!");
                 mem_fetch *mf = m_L1T->next_access();
                 m_next_wb = mf->get_inst();
                 delete mf;
@@ -3218,8 +3219,8 @@ simt_core_cluster::simt_core_cluster( class gpgpu_sim *gpu,
     m_stats = stats;
     m_memory_stats = mstats;
     m_core = new shader_core_ctx*[ config->n_simt_cores_per_cluster ];
-    m_graphics_pipe = new graphics_simt_pipeline(cluster_id, 10, 100, 2, 2, 2, 2,
-          /*tc_bins*/1, 1, 1, 16, 16, 20);
+    m_graphics_pipe = new graphics_simt_pipeline(cluster_id, 10, 1000, 2, 2, 2,
+          /*tc_bins*/1, 1, 1, 16, 16, 10);
     for( unsigned i=0; i < config->n_simt_cores_per_cluster; i++) {
         unsigned sid = m_config->cid_to_sid(i,m_cluster_id);
         m_core[i] = new shader_core_ctx(gpu,this,sid,m_cluster_id,config,mem_config,stats);
