@@ -415,6 +415,8 @@ renderData_t::renderData_t():
 {
     m_deviceData = NULL;
     m_currentFrame = 0;
+    m_startFrame = -1;
+    m_endFrame = -1;
     //callsCount = 0;
     m_drawcall_num = 0;
     m_tcPid = -1;
