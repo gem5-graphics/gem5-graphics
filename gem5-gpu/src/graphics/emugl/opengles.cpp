@@ -152,7 +152,8 @@ android_startOpenglesRenderer(int width, int height, bool guestPhoneApi, int gue
     //android_init_opengl_logger();
 
     //sRenderLib->setRenderer(emuglConfig_get_current_renderer());
-    sRenderLib->setRenderer(SELECTED_RENDERER_HOST); 
+    //sRenderLib->setRenderer(SELECTED_RENDERER_HOST);
+    sRenderLib->setRenderer(SELECTED_RENDERER_MESA);
     sRenderLib->setAvdInfo(guestPhoneApi, guestApiLevel);
     //sRenderLib->setCrashReporter(&crashhandler_die_format);
     //sRenderLib->setFeatureController(&android::featurecontrol::isEnabled);
