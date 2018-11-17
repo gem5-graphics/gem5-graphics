@@ -114,6 +114,17 @@ def addGPUOptions(parser):
     parser.add_option("--g_cp_period", type = "int", default=5, help="Graphics checkpoint period")
     parser.add_option("--g_skip_cp_frames", type = "int", default=0,  help="Graphics skip rendering checkpoint loading frames")
     parser.add_option("--ce_buffering", type="int", default=128, help="Maximum cache lines buffered in the GPU CE. 0 implies infinite")
+    #fixed pipeline configs
+    parser.add_option("--g_setup_delay", type="int", default=10, help="Setup unit delay")
+    parser.add_option("--g_setup_q", type="int", default=32, help="Setup queue length")
+    parser.add_option("--g_coarse_tiles", type="int", default=2, help="Coarse tiles processed per cycle per cluster")
+    parser.add_option("--g_fine_tiles", type="int", default=2, help="Fine tiles processed per cycle per cluster")
+    parser.add_option("--g_hiz_tiles", type="int", default=2, help="Hiz tiles processed per cycle per cluster")
+    parser.add_option("--g_tc_bins", type="int", default=8, help="Number of TC bins per cluster")
+    parser.add_option("--g_tc_h", type="int", default=4, help="TC tile height (in raster tiles)")
+    parser.add_option("--g_tc_w", type="int", default=4, help="TC tile width (in raster tiles)")
+    parser.add_option("--g_tc_thresh", type="int", default=20, help="TC wait threshold in cycles")
+
 
 def configureMemorySpaces(options):
     total_mem_range = AddrRange(options.total_mem_size)
@@ -183,6 +194,17 @@ def parseGpgpusimConfig(options):
     config = config.replace("%gCpEnd%",        str(options.g_cp_end) +"\n")
     config = config.replace("%gCpPeriod%",     str(options.g_cp_period) +"\n")
     config = config.replace("%gSkipCpFrames%", str(options.g_skip_cp_frames) +"\n")
+
+    #fixed pipeline configs
+    config = config.replace("%gSetupDelay%",      str(options.g_setup_delay) +"\n")
+    config = config.replace("%gSetupQ%",      str(options.g_setup_q) +"\n")
+    config = config.replace("%gCoarseTilesPerCycle%",      str(options.g_coarse_tiles) +"\n")
+    config = config.replace("%gFineTilesPerCycle%",      str(options.g_fine_tiles) +"\n")
+    config = config.replace("%gHizTilesPerCycle%",      str(options.g_hiz_tiles) +"\n")
+    config = config.replace("%gTcBins%",      str(options.g_tc_bins) +"\n")
+    config = config.replace("%gTcH%",      str(options.g_tc_h) +"\n")
+    config = config.replace("%gTcW%",      str(options.g_tc_w) +"\n")
+    config = config.replace("%gTcThresh%",      str(options.g_tc_thresh) +"\n")
 
     if usingTemplate:
         print "Using template and command line options for gpgpusim.config"
