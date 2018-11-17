@@ -312,6 +312,7 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(
       const unsigned tilesCount,
       const unsigned blockH, const unsigned blockW, 
       const RasterDirection rasterDir,
+      unsigned tcSize,
       unsigned simtCount) {
    
     assert(m_rasterTiles.size() == 0);
@@ -392,7 +393,8 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(
           fragmentTiles[tile]->xCoord <= maxX and 
           fragmentTiles[tile]->yCoord >= minY and 
           fragmentTiles[tile]->yCoord <= maxY){
-          m_simtRasterTiles[tile%simtCount].push_back(fragmentTiles[tile]);
+          unsigned tcTileId = tile/tcSize;
+          m_simtRasterTiles[tcTileId%simtCount].push_back(fragmentTiles[tile]);
           m_rasterTiles.push_back(fragmentTiles[tile]);
        } else {
           assert(fragmentTiles[tile]->getActiveCount() == 0);
@@ -618,7 +620,7 @@ void renderData_t::endDrawCall() {
 }
 
 void renderData_t::initParams(bool standaloneMode, unsigned int startFrame, unsigned int endFrame, int startDrawcall, unsigned int endDrawcall,
-        unsigned int tile_H, unsigned int tile_W, unsigned int block_H, unsigned int block_W,
+        unsigned int tile_H, unsigned int tile_W, unsigned int block_H, unsigned int block_W, unsigned int tc_h, unsigned int tc_w,
         unsigned blendingMode, unsigned depthMode, unsigned cptStartFrame, unsigned cptEndFrame, unsigned cptPeroid, bool skipCpFrames, char* outdir) {
     m_standaloneMode = standaloneMode;
     m_startFrame = startFrame;
@@ -629,6 +631,8 @@ void renderData_t::initParams(bool standaloneMode, unsigned int startFrame, unsi
     m_tile_W = tile_W;
     m_block_H = block_H;
     m_block_W = block_W;
+    m_tc_h = tc_h;
+    m_tc_w = tc_w;
     m_inShaderBlending = (blendingMode != 0);
     m_inShaderDepth = (depthMode != 0);
     printf("inshader depth = %d\n", m_inShaderDepth);
@@ -1631,6 +1635,7 @@ unsigned int renderData_t::doFragmentShading() {
             m_tilesCount,
             m_block_H, m_block_W, 
             RasterDirection::HorizontalRaster, 
+            m_tc_h*m_tc_w,
             numClusters);
       for(unsigned clusterId=0; clusterId < numClusters; clusterId++){
          bool res = simt_clusters[clusterId].getGraphicsPipeline()->add_primitive(&drawPrimitives[prim], 0);
