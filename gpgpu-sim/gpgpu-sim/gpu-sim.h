@@ -285,12 +285,19 @@ extern unsigned long long  gpu_sim_cycle;
 extern unsigned long long  gpu_tot_sim_cycle;
 extern bool g_interactive_debugger_enabled;
 
-class gpu_graphics_config{
+class gpu_graphics_config {
 public:
     void reg_options(OptionParser * opp);
     void init() const {
         graphics_gpgpusim_init_options(graphics_standalone_mode, start_frame, end_frame, start_call, end_call, raster_tile_H, raster_tile_W, raster_block_H, raster_block_W,
               use_shader_blending, use_shader_depth_test, cpt_start_frame, cpt_end_frame, cpt_period, skip_cpt_frames, output_dir);
+    }
+    
+    unsigned int get_rtile_h() const {
+       return raster_tile_H;
+    }
+    unsigned int get_rtile_w() const { 
+       return raster_tile_W;
     }
 private:
     //the start and the end frames for simulation
@@ -351,6 +358,7 @@ public:
     unsigned num_shader() const { return m_shader_config.num_shader(); }
     unsigned num_cluster() const { return m_shader_config.n_simt_clusters; }
     unsigned get_max_concurrent_kernel() const { return max_concurrent_kernel; }
+    gpu_graphics_config gpu_graphics_configs;
 
 private:
     void init_clock_domains(void ); 
@@ -394,7 +402,6 @@ private:
 
     unsigned long long liveness_message_freq; 
 
-    gpu_graphics_config gpu_graphics_configs;
 
     friend class gpgpu_sim;
 };
