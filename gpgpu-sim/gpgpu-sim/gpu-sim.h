@@ -293,13 +293,6 @@ public:
               use_shader_blending, use_shader_depth_test, cpt_start_frame, cpt_end_frame, cpt_period, skip_cpt_frames, output_dir);
     }
     
-    unsigned int get_rtile_h() const {
-       return raster_tile_H;
-    }
-    unsigned int get_rtile_w() const { 
-       return raster_tile_W;
-    }
-private:
     //the start and the end frames for simulation
     bool graphics_standalone_mode;
     unsigned int start_frame;
@@ -315,6 +308,16 @@ private:
     unsigned int cpt_start_frame;
     unsigned int cpt_end_frame;
     unsigned int cpt_period;
+    unsigned int setup_delay;
+    unsigned int setup_q_len;
+    unsigned int coarse_tiles;
+    unsigned int fine_tiles;
+    unsigned int hiz_tiles;
+    unsigned int tc_bins;
+    unsigned int tc_h;
+    unsigned int tc_w;
+    unsigned int tc_thresh;
+
     bool skip_cpt_frames;
     char* output_dir;
 };

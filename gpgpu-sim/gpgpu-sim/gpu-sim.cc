@@ -433,7 +433,15 @@ void gpu_graphics_config::reg_options(OptionParser* opp)
     option_parser_register(opp, "-graphics_raster_block_W", OPT_UINT32, &raster_block_W, 
                "graphics: the width of the rasterization block (default 16)",
                "16");
-    
+    option_parser_register(opp, "-graphics_setup_delay", OPT_UINT32, &setup_delay, "graphics: setup queue delay", "10");
+    option_parser_register(opp, "-graphics_setup_q_len", OPT_UINT32, &setup_q_len, "setup queue length", "16");
+    option_parser_register(opp, "-graphics_coarse_tiles", OPT_UINT32, &coarse_tiles, "coarse tiles processed per cycle", "2");
+    option_parser_register(opp, "-graphics_fine_tiles", OPT_UINT32, &fine_tiles, "fine tiles processed per cycle", "2");
+    option_parser_register(opp, "-graphics_hiz_tiles", OPT_UINT32, &hiz_tiles, "hiz tiles processed per cycle", "2");
+    option_parser_register(opp, "-graphics_tc_bins", OPT_UINT32, &tc_bins, "number of tc bins per cluster", "8");
+    option_parser_register(opp, "-graphics_tc_h", OPT_UINT32, &tc_h, "tc bin height", "4");
+    option_parser_register(opp, "-graphics_tc_w", OPT_UINT32, &tc_w, "tc bin width", "4");
+    option_parser_register(opp, "-graphics_tc_thresh", OPT_UINT32, &tc_thresh, "tc wait threshold", "10");
 }
 
 void gpgpu_sim_config::reg_options(option_parser_t opp)
