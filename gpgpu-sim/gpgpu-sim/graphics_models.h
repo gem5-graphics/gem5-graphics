@@ -66,7 +66,8 @@ class tc_engine_t {
    };
 
    public:
-   tc_engine_t(unsigned tc_tile_h, unsigned tc_tile_w,
+   tc_engine_t(
+         unsigned tc_tile_h, unsigned tc_tile_w,
          unsigned r_tile_h, unsigned r_tile_w, 
          unsigned wait_threshold): 
       m_tc_tile_h(tc_tile_h), m_tc_tile_w(tc_tile_w),
@@ -92,10 +93,17 @@ class tc_engine_t {
       m_status.rtile_xend = x + m_tc_tile_w*m_r_tile_w - 1;
       m_status.rtile_ystart = y;
       m_status.rtile_yend = y + m_tc_tile_h*m_r_tile_h - 1;
+      /*printf("setting tc%d tile coords (%d,%d) to (%d,%d)\n", 
+            m_tc_engine_id,
+            m_status.rtile_xstart,
+            m_status.rtile_ystart ,
+            m_status.rtile_xend,
+            m_status.rtile_yend);*/
    }
 
    //check if raster tile is mapped to this bin
    bool has_tile(unsigned x, unsigned y){
+      if(empty()) return false;
       if(       x >= m_status.rtile_xstart 
             and x <= m_status.rtile_xend
             and y >= m_status.rtile_ystart
@@ -105,9 +113,12 @@ class tc_engine_t {
    }
 
    bool empty(){
-      return ((m_input_tiles_bin.size() == 0) and
-         (m_status.pending_frags == 0));
+      if(m_input_tiles_bin.size() == 0 
+            and m_status.pending_frags==0)
+         return true;
+      return false;
    }
+
 
    bool append_tile(RasterTile* tile){
       assert(has_tile(tile->xCoord, tile->yCoord));
@@ -120,7 +131,7 @@ class tc_engine_t {
    }
 
    bool insert_first_tile(RasterTile* tile){
-      if(m_input_tiles_bin.size() == 0 and m_status.pending_frags==0){
+      if(empty()){
          m_status.reset();
          set_current_coords(tile->xCoord, tile->yCoord);
          m_input_tiles_bin.push_back(tile);
@@ -165,7 +176,9 @@ class tc_engine_t {
          m_pending_tiles.insert(
                std::make_pair(std::make_pair(tc_tile->x, tc_tile->y), tc_tile));
          g_renderData.launchTCTile(tc_tile, m_status.done_prims);
-         m_status.reset();
+         //reset if no tiles left
+         if(m_input_tiles_bin.size() == 0)
+            m_status.reset();
       }
    }
    void assemble(){
@@ -223,7 +236,6 @@ class tc_engine_t {
       flush();
       assemble();
    }
-
    private:
    //3d vector tiles, quads, fragments
    std::vector<std::vector <tc_fragment_quad_t>> m_afragments;
@@ -236,6 +248,9 @@ class tc_engine_t {
    const unsigned m_r_tile_h;
    const unsigned m_r_tile_w;
    const unsigned m_r_tile_size;
+   //hash table that enforces atomic execution of tiles on the same screen 
+   //space coord, it performs a similar job to what Nvidia calls 
+   //"ticket dispenser"
    typedef std::map<std::pair<unsigned, unsigned>, tcTilePtr_t> pending_tiles_t;
    pending_tiles_t m_pending_tiles;
 
@@ -283,14 +298,23 @@ class tile_assembly_stage_t {
 
    bool insert(RasterTile* tile){
       for(unsigned i=0; i<tc_engines.size(); i++){
+         //printf("checking tc_engine %d\n", i);
          if(tc_engines[i].has_tile(tile->xCoord, tile->yCoord)){
+            /*printf("tc_engine %d has tile (%d,%d)\n", 
+                  i, tile->xCoord, tile->yCoord);*/
             if(tc_engines[i].append_tile(tile)){
+               /*printf("appending tile(%d,%d) to engine %d)\n", 
+                     tile->xCoord, tile->yCoord, i);*/
                return true;
             }
+            //tc engine has the tile but full
+            return false;
          }
       }
       for(unsigned i=0; i<tc_engines.size(); i++){
          if(tc_engines[i].insert_first_tile(tile)){
+            /*printf("inserting tile(%d,%d) to engine %d)\n", 
+                  tile->xCoord, tile->yCoord, i);*/
             return true;
          }
       }
@@ -396,6 +420,7 @@ class graphics_simt_pipeline {
          unsigned processed_tiles = 0;    
          primitive_data_t* prim = m_c_raster_pipe->top();
          assert(prim);
+         //this will iterate empty as well as filled or partially filled raster tiles
          for(unsigned t=m_current_c_tile;
                t< prim->prim->getSimtTiles(m_cluster_id).size(); t++){
             if(m_f_raster_pipe->full()) return;
