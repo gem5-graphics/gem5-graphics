@@ -231,7 +231,6 @@ ptx_reg_t ptx_thread_info::get_operand_value( const operand_info &op, operand_in
             result = get_reg( op.get_symbol() );
          } else if ( op.is_builtin()) {
              //start here
-             bool isFloat; float floatValue;
              unsigned unsignedValue = get_builtin( op.get_int(), op.get_addr_offset());
              result.u32 = unsignedValue;
          } else  if(op.is_immediate_address()){
