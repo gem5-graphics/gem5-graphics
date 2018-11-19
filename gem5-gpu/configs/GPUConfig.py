@@ -208,6 +208,11 @@ def parseGpgpusimConfig(options):
     config = config.replace("%gTcThresh%",      str(options.g_tc_thresh) +"\n")
     config = config.replace("%gWgSize%",      str(options.g_wg_size) +"\n")
 
+    maxWgSize = options.g_tc_w*options.g_tc_h*options.g_raster_tw*options.g_raster_th
+    if(options.g_wg_size > maxWgSize):
+       print "Error: g_wg_size has to be <= max workgroup size (i.e., TC tile size)"
+       exit(1)
+
     if usingTemplate:
         print "Using template and command line options for gpgpusim.config"
 
