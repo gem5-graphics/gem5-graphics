@@ -285,6 +285,18 @@ class tcTile_t {
    RasterTile::rasterFragment_t*& at(unsigned idx){
       return m_frags.at(idx);
    }
+
+   unsigned getActiveFrags(){
+      unsigned res = 0;
+      for(auto &frag: m_frags){
+         if(frag!= NULL 
+               and frag->frag != NULL
+               and frag->frag->isLive)
+            res++;
+      }
+      return res;
+   }
+
    const unsigned x;
    const unsigned y;
    bool done;
