@@ -87,6 +87,7 @@ CudaGPU::CudaGPU(const Params *p) :
     clearTick(0),
     dumpKernelStats(p->dump_kernel_stats),
     dumpGpgpusimStats(p->dump_gpgpusim_stats), 
+    dumpDrawCallStats(p->dump_drawcall_stats),
     pageTable(),
     manageGPUMemory(p->manage_gpu_memory),
     perfectTlb(p->perfect_tlb),

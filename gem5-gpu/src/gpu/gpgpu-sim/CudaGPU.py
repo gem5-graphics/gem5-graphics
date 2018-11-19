@@ -53,6 +53,7 @@ class CudaGPU(ClockedObject):
     config_path = Param.String('gpgpusim.config', "File from which to configure GPGPU-Sim")
     dump_kernel_stats = Param.Bool(False, "Dump and reset simulator statistics at the beginning and end of kernels")
     dump_gpgpusim_stats = Param.Bool(False, "Dump and reset gpgpusim statistics at the beginning and end of kernels")
+    dump_drawcall_stats = Param.Bool(False, "Dump and reset gpgpusim statistics at the beginning and end of draw calls")
 
     # When using a segmented physical address space, the SPA can manage memory
     manage_gpu_memory = Param.Bool(False, "Handle all GPU memory allocations in this SPA")

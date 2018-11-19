@@ -42,6 +42,7 @@ def addGPUOptions(parser):
     parser.add_option("--split", default=False, action="store_true", help="Use split CPU and GPU cache hierarchies instead of fusion")
     parser.add_option("--kernel_stats", default=False, action="store_true", help="Dump statistics on GPU kernel boundaries")
     parser.add_option("--gpgpusim_stats", default=False, action="store_true", help="Dump statistics of GPGPU-Sim on GPU kernel boundaries")
+    parser.add_option("--drawcall_stats", default=False, action="store_true", help="Dump statistics of GPGPU-Sim on draw call boundaries")
     parser.add_option("--gpgpusim_config", default="gpu_soc.config", help="gpgpusim config file")
     parser.add_option("--icnt_config", default="config_soc.icnt", help="gpgpusim icnt config file")
   
@@ -410,6 +411,7 @@ def createGPU(options, gpu_mem_range):
     gpu.config_path = gpgpusimOptions
     gpu.dump_kernel_stats = options.kernel_stats
     gpu.dump_gpgpusim_stats = options.gpgpusim_stats
+    gpu.dump_drawcall_stats = options.drawcall_stats
 
     return gpu
 

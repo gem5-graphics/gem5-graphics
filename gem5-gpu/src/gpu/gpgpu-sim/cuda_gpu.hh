@@ -454,6 +454,7 @@ class CudaGPU : public ClockedObject
     Tick clearTick;
     bool dumpKernelStats;
     bool dumpGpgpusimStats;
+    bool dumpDrawCallStats;
 
     /// Pointers to GPGPU-Sim objects
     gpgpu_sim *theGPU;
@@ -741,6 +742,14 @@ class CudaGPU : public ClockedObject
     inline Addr addrToLine(Addr a){
        unsigned int maskBits = floorLog2(CudaGPU::gpuCacheLineSize);
        return a & (((uint64_t)-1) << maskBits);
+    }
+
+    /// Receive a singal at end of draw call
+    void endDrawCall(){
+       if(dumpDrawCallStats){
+          theGPU->print_stats();
+          theGPU->update_stats();
+       }
     }
 };
 

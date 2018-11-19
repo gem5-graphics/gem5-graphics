@@ -585,6 +585,8 @@ void renderData_t::endDrawCall() {
    uint64_t ticks = curTick() - g_startTick;
    g_totalTicks+= ticks;
    printf("totalTicks = %ld, frags = %ld\n", g_totalTicks, g_totalFrags);
+   CudaGPU* cudaGPU = CudaGPU::getCudaGPU(g_active_device);
+   cudaGPU->endDrawCall();
    putDataOnColorBuffer();
    if(isDepthTestEnabled())
        putDataOnDepthBuffer();
@@ -2188,7 +2190,8 @@ void renderData_t::launchTCTile(
    }
 
    assert(tcTile->size() > 0);
-
+   DPRINTF(MesaGpgpusim, "launching a TC tile with %d fragments\n", tcTile->size());
+   //printf("launching a TC tile with %d fragments\n", tcTile->getActiveFrags());
    unsigned threadsPerBlock = m_wg_size; 
    unsigned numberOfBlocks = (tcTile->size() + threadsPerBlock -1 ) / threadsPerBlock;
 
