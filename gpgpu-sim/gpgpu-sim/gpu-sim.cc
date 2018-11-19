@@ -1049,6 +1049,10 @@ void gpgpu_sim::gpu_print_stat()
        }
    }
 
+   for(unsigned i=0; i<m_config.num_cluster(); i++){
+       m_cluster[i]->print_graphics_stats(stdout);
+   }
+
    if (m_config.gpgpu_cflog_interval != 0) {
       spill_log_to_file (stdout, 1, gpu_sim_cycle);
       insn_warp_occ_print(stdout);

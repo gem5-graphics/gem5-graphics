@@ -1917,6 +1917,8 @@ public:
 
     void get_icnt_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
 
+    void print_graphics_stats(FILE* ofile);
+
 
     shader_core_ctx *get_core(int id_in_cluster) { return m_core[id_in_cluster]; }
     void print_cache_stats( FILE *fp, unsigned& dl1_accesses, unsigned& dl1_misses, unsigned& l1c_accesses, unsigned& l1c_misses, unsigned& l1t_accesses, unsigned& l1t_misses ) const;

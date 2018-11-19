@@ -82,6 +82,8 @@ class tc_engine_t {
       m_afragments.resize(m_r_tiles_count, 
             std::vector <tc_fragment_quad_t>(m_r_tile_size/QUAD_SIZE));
       m_status.reset();
+
+      m_total_bin_size = 0;
    }
 
    void set_current_coords(unsigned x, unsigned y){
@@ -235,7 +237,12 @@ class tc_engine_t {
    void cycle(){
       flush();
       assemble();
+      m_total_bin_size+= m_input_tiles_bin.size();
    }
+
+   //performance counters
+   unsigned m_total_bin_size;
+
    private:
    //3d vector tiles, quads, fragments
    std::vector<std::vector <tc_fragment_quad_t>> m_afragments;
@@ -342,6 +349,14 @@ class tile_assembly_stage_t {
          tc_engines[te].cycle();
       }
    }
+
+   double get_bin_occupancy(){
+      double total = 0;
+      for(unsigned te=0; te<tc_engines.size(); te++)
+         total+=tc_engines[te].m_total_bin_size;
+      return total/tc_engines.size();
+   }
+
    private:
    std::vector<tc_engine_t> tc_engines;
    const unsigned tc_bins;
@@ -381,6 +396,7 @@ class graphics_simt_pipeline {
       m_f_raster_pipe = new fifo_pipeline<RasterTile>("fine-raster-stage", 0, 5);
       m_ta_pipe = new fifo_pipeline<RasterTile>("tile-assembly-stage", 0, 5);
       m_current_c_tile = 0;
+      m_cycles = 0;
    }
 
       ~graphics_simt_pipeline(){
@@ -392,6 +408,7 @@ class graphics_simt_pipeline {
       }
 
       void cycle(){
+         m_cycles++;
          run_ta_stage();
          run_f_raster();
          run_hiz();
@@ -515,6 +532,12 @@ class graphics_simt_pipeline {
          return ret; 
       }
 
+      void print_stats(FILE* ofile){
+         double bin_occupancy = m_ta_stage.get_bin_occupancy();
+         bin_occupancy/=m_cycles;
+         fprintf(ofile, "graphics: average TC bin occupancy %f\n", bin_occupancy);
+      }
+
    private:
       const unsigned m_cluster_id;
       fifo_pipeline<primitive_data_t>* m_setup_pipe;
@@ -531,6 +554,8 @@ class graphics_simt_pipeline {
       const unsigned m_f_tiles_per_cycle;
       const unsigned m_hiz_tiles_per_cycle;
 
+      //performance counters
+      unsigned m_cycles;
 };
 
 

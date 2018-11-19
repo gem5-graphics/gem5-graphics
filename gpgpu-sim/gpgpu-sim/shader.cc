@@ -3450,6 +3450,10 @@ void simt_core_cluster::get_icnt_stats(long &n_simt_to_mem, long &n_mem_to_simt)
 	n_mem_to_simt = mem_to_simt;
 }
 
+void simt_core_cluster::print_graphics_stats(FILE* ofile){
+   m_graphics_pipe->print_stats(ofile);
+}
+
 void simt_core_cluster::get_cache_stats(cache_stats &cs) const{
     for ( unsigned i = 0; i < m_config->n_simt_cores_per_cluster; ++i ) {
         m_core[i]->get_cache_stats(cs);
