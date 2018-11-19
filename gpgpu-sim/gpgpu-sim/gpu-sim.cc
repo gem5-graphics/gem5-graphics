@@ -442,6 +442,7 @@ void gpu_graphics_config::reg_options(OptionParser* opp)
     option_parser_register(opp, "-graphics_tc_h", OPT_UINT32, &tc_h, "tc bin height", "4");
     option_parser_register(opp, "-graphics_tc_w", OPT_UINT32, &tc_w, "tc bin width", "4");
     option_parser_register(opp, "-graphics_tc_thresh", OPT_UINT32, &tc_thresh, "tc wait threshold", "10");
+    option_parser_register(opp, "-graphics_wg_size", OPT_UINT32, &wg_size, "graphics workgroup size", "256");
 }
 
 void gpgpu_sim_config::reg_options(option_parser_t opp)

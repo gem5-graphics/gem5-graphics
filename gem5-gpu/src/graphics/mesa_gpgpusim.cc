@@ -620,7 +620,7 @@ void renderData_t::endDrawCall() {
 }
 
 void renderData_t::initParams(bool standaloneMode, unsigned int startFrame, unsigned int endFrame, int startDrawcall, unsigned int endDrawcall,
-        unsigned int tile_H, unsigned int tile_W, unsigned int block_H, unsigned int block_W, unsigned int tc_h, unsigned int tc_w,
+        unsigned int tile_H, unsigned int tile_W, unsigned int block_H, unsigned int block_W, unsigned int tc_h, unsigned int tc_w, unsigned int wg_size,
         unsigned blendingMode, unsigned depthMode, unsigned cptStartFrame, unsigned cptEndFrame, unsigned cptPeroid, bool skipCpFrames, char* outdir) {
     m_standaloneMode = standaloneMode;
     m_startFrame = startFrame;
@@ -633,6 +633,7 @@ void renderData_t::initParams(bool standaloneMode, unsigned int startFrame, unsi
     m_block_W = block_W;
     m_tc_h = tc_h;
     m_tc_w = tc_w;
+    m_wg_size = wg_size;
     m_inShaderBlending = (blendingMode != 0);
     m_inShaderDepth = (depthMode != 0);
     printf("inshader depth = %d\n", m_inShaderDepth);
@@ -1486,7 +1487,7 @@ GLboolean renderData_t::doVertexShading(GLvector4f ** inputParams, vp_stage_data
     m_sShading_info.render_init = false;
     assert(m_sShading_info.vertCodeAddr == NULL);
 
-    unsigned threadsPerBlock = 256; //TODO: add it to options,
+    unsigned threadsPerBlock = m_wg_size; 
     unsigned numberOfBlocks = (vertsCount + threadsPerBlock -1) / threadsPerBlock;
     assert(graphicsConfigureCall(numberOfBlocks, threadsPerBlock, 0, 0) == cudaSuccess);
     assert(graphicsSetupArgument((void*)&m_sShading_info.deviceVertsAttribs, sizeof(float*), 0) == cudaSuccess);
@@ -2121,7 +2122,7 @@ void renderData_t::launchFragmentTile(RasterTile * rasterTile, unsigned tileId){
    printf("Launching a tile of fragments, active count=%d of of %d\n", fragsCount, rasterTile->size());
 
 
-   unsigned threadsPerBlock = 256; //TODO: add it to options, chunks used to distribute work
+   unsigned threadsPerBlock = m_wg_size; 
    unsigned numberOfBlocks = (rasterTile->size() + threadsPerBlock -1 ) / threadsPerBlock;
 
    m_sShading_info.cudaStreams.push_back(cudaStream_t());
@@ -2166,7 +2167,7 @@ void renderData_t::launchTCTile(
 
    assert(tcTile->size() > 0);
 
-   unsigned threadsPerBlock = 256; //TODO: add it to options, chunks used to distribute work
+   unsigned threadsPerBlock = m_wg_size; 
    unsigned numberOfBlocks = (tcTile->size() + threadsPerBlock -1 ) / threadsPerBlock;
 
    m_sShading_info.cudaStreams.push_back(cudaStream_t());
@@ -2253,6 +2254,7 @@ void RasterTile::testHizThresh(){
 void renderData_t::generateDepthCode(FILE* inst_stream){
    if(not isDepthTestEnabled()) return;
    const char* depthSize = m_depthSize==DepthSize::Z32? "u32" : "u16";
+   //const char* depthSize = "u32";
    fprintf(inst_stream, ".reg .pred testDepth, passedDepth;\n");
    fprintf(inst_stream, ".reg .u32 depthTestRes;\n");
    fprintf(inst_stream, "setp.eq.u32 passedDepth, !fflag, 0;\n");

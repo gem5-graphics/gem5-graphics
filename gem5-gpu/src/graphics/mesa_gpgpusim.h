@@ -441,7 +441,7 @@ public:
     bool isBlendingEnabled();
     void getBlendingMode(GLenum * src, GLenum * dst, GLenum* srcAlpha, GLenum * dstAlpha, GLenum* eqnRGB, GLenum* eqnAlpha, GLfloat * blendColor);
     void initParams(bool standalone_mode, unsigned int startFrame, unsigned int endFrame, int startDrawcall, unsigned int endDrawcall, unsigned int tile_H, unsigned int tile_W,
-          unsigned int block_H, unsigned int block_W, unsigned int tc_h, unsigned int tc_w, unsigned blendingMode, unsigned depthMode, unsigned cptStartFrame, unsigned cptEndFrame, unsigned cptPeroid, bool skipCpFrames, char* outdir);
+          unsigned int block_H, unsigned int block_W, unsigned int tc_h, unsigned int tc_w, unsigned wg_size, unsigned blendingMode, unsigned depthMode, unsigned cptStartFrame, unsigned cptEndFrame, unsigned cptPeroid, bool skipCpFrames, char* outdir);
     GLuint getScreenWidth(){return m_bufferWidth;}
     GLuint getRBSize(){return m_bufferWidth*m_bufferHeight;}
     shaderAttrib_t getFragmentData(unsigned utid, unsigned tid, unsigned attribID, 
@@ -603,6 +603,7 @@ private:
     unsigned int m_block_W;
     unsigned int m_tc_h;
     unsigned int m_tc_w;
+    unsigned int m_wg_size;
     long long unsigned m_drawcall_num;
     bool currentFrameHasShader;
     bool m_inShaderBlending; //1 in shader, 0 in z-unit

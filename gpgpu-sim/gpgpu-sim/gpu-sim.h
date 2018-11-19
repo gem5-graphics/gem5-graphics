@@ -290,7 +290,8 @@ public:
     void reg_options(OptionParser * opp);
     void init() const {
         g_renderData.initParams(graphics_standalone_mode, start_frame, end_frame, start_call, end_call, raster_tile_H, raster_tile_W, raster_block_H, raster_block_W, tc_h, tc_w,
-              use_shader_blending, use_shader_depth_test, cpt_start_frame, cpt_end_frame, cpt_period, skip_cpt_frames, output_dir);
+              wg_size, use_shader_blending, use_shader_depth_test,
+              cpt_start_frame, cpt_end_frame, cpt_period, skip_cpt_frames, output_dir);
     }
     
     //the start and the end frames for simulation
@@ -317,6 +318,7 @@ public:
     unsigned int tc_h;
     unsigned int tc_w;
     unsigned int tc_thresh;
+    unsigned int wg_size;
 
     bool skip_cpt_frames;
     char* output_dir;

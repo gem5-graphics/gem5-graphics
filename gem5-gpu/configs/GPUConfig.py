@@ -124,6 +124,7 @@ def addGPUOptions(parser):
     parser.add_option("--g_tc_h", type="int", default=4, help="TC tile height (in raster tiles)")
     parser.add_option("--g_tc_w", type="int", default=4, help="TC tile width (in raster tiles)")
     parser.add_option("--g_tc_thresh", type="int", default=20, help="TC wait threshold in cycles")
+    parser.add_option("--g_wg_size", type="int", default=20, help="Graphics workgroup size")
 
 
 def configureMemorySpaces(options):
@@ -205,6 +206,7 @@ def parseGpgpusimConfig(options):
     config = config.replace("%gTcH%",      str(options.g_tc_h) +"\n")
     config = config.replace("%gTcW%",      str(options.g_tc_w) +"\n")
     config = config.replace("%gTcThresh%",      str(options.g_tc_thresh) +"\n")
+    config = config.replace("%gWgSize%",      str(options.g_wg_size) +"\n")
 
     if usingTemplate:
         print "Using template and command line options for gpgpusim.config"
