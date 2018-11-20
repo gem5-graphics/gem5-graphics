@@ -1244,7 +1244,7 @@ cudaLaunch(ThreadContext *tc, gpusyscall_t *call_params)
 }
 
 cudaError_t
-graphicsLaunch(const char *hostFun, void** pCodeAddr) {
+graphicsLaunch(const char *hostFun, void** pCodeAddr, kernel_info_t** kernel ) {
     CudaGPU *cudaGPU = CudaGPU::getCudaGPU(g_active_device);
     char *mode = getenv("PTX_SIM_MODE_FUNC");
     if (mode)
@@ -1254,7 +1254,8 @@ graphicsLaunch(const char *hostFun, void** pCodeAddr) {
     struct CUstream_st *stream = config.get_stream();
     ThreadContext* tc = cudaGPU->getGraphicsTC();
     DPRINTF(GPUSyscalls, "gem5 GPU Syscall: cudaLaunch(hostFun* = %x, stream = %x)\n", (uint64_t)hostFun, (uint64_t)stream);
-    kernel_info_t *grid = gpgpu_cuda_ptx_sim_init_grid(config.get_args(), config.grid_dim(), config.block_dim(), cudaGPU->get_kernel((const char*) hostFun), stream, tc);
+    kernel_info_t* grid= gpgpu_cuda_ptx_sim_init_grid(config.get_args(), config.grid_dim(), config.block_dim(), cudaGPU->get_kernel((const char*) hostFun), stream, tc);
+    *kernel = grid;
     
     Addr codeAddr;
     if((*pCodeAddr)==NULL){

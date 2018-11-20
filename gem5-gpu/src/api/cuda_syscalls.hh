@@ -369,6 +369,7 @@ typedef void (*cudaFunc_t)(ThreadContext *, gpusyscall_t *);
 /*******************************
  GRAPHICS SUPPORT
 ********************************/
+class kernel_info_t;
 cudaError_t graphicsMalloc(void **devPtr, size_t size);
 cudaError_t graphicsMemcpy(void* sim_dst, const void *sim_src, size_t sim_count, enum cudaMemcpyKind sim_kind);
 cudaError_t graphicsMemcpyToSymbol(const char *sim_symbol, const void *sim_src, size_t sim_count, size_t sim_offset, enum cudaMemcpyKind sim_kind);
@@ -410,7 +411,7 @@ void graphicsRegisterVar(
 cudaError_t graphicsBindTextureToArray(const struct textureReference *texref, const struct cudaArray *array, const struct cudaChannelFormatDesc *desc);
 cudaError_t graphicsConfigureCall(dim3 gridDim, dim3 blockDim, size_t sharedMem, cudaStream_t stream);
 cudaError_t graphicsSetupArgument(const void *arg, size_t size, size_t offset);
-cudaError_t  graphicsLaunch( const char *hostFun, void** pCodeAddr);
+cudaError_t  graphicsLaunch( const char *hostFun, void** pCodeAddr, kernel_info_t** kernel);
 void* getLastKernelPtr();
 #endif
 

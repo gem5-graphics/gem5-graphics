@@ -553,10 +553,6 @@ void gpgpu_sim::launch( kernel_info_t *kinfo )
            return;
        }
    }
-   //special case, graphics shaders are redundant
-   if(kinfo->isGraphicsKernel()){
-      m_running_kernels.push_back(kinfo);
-   }
 }
 
 bool gpgpu_sim::can_start_kernel()
@@ -575,7 +571,10 @@ bool gpgpu_sim::get_more_cta_left() const
           return false;
    }
    for(unsigned n=0; n < m_running_kernels.size(); n++ ) {
-       if( m_running_kernels[n] && !m_running_kernels[n]->no_more_ctas_to_run() ) 
+       if( m_running_kernels[n] && 
+                (!m_running_kernels[n]->no_more_ctas_to_run() 
+                 || !m_running_kernels[n]->isDrawCallDone()
+                ))
            return true;
    }
    return false;

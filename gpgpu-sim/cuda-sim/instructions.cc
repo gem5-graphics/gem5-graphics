@@ -4180,7 +4180,7 @@ void tex_impl( const ptx_instruction *pI, ptx_thread_info *thread){
         del_fcoords = true;
         for(unsigned qf=0; qf<TGSI_QUAD_SIZE; qf++)
            ptx_tex_regs[qf] = new ptx_reg_t[4];
-        unsigned startFrag =  hwtid - (hwtid%TGSI_QUAD_SIZE);
+        unsigned startFrag = (hwtid/TGSI_QUAD_SIZE)*TGSI_QUAD_SIZE;
         unsigned endFrag = startFrag + TGSI_QUAD_SIZE - 1;
         for(unsigned qf=startFrag; qf <= endFrag; qf++){
            //assert(!thread->get_core()->get_thread(qf)->is_done());

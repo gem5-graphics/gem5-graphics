@@ -599,6 +599,7 @@ kernel_info_t::kernel_info_t( dim3 gridDim, dim3 blockDim, class function_info *
     m_stream = stream;
     m_tc = tc;
     m_isGraphicsKernel = false;
+    m_drawCallDone = false;
 }
 
 kernel_info_t::~kernel_info_t()

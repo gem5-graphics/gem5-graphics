@@ -114,6 +114,7 @@ shaderAttrib_t primitiveFragmentsData_t::getFragmentData(unsigned utid, unsigned
                                                    unsigned attribIndex, unsigned fileIdx, 
                                                    unsigned idx2D, void * stream,
                                                    stage_shading_info_t* si, bool z_unit_disabled) {
+   /*
   shaderAttrib_t retVal;
   bool isRetVal = false;
   fragmentData_t* frag = NULL;
@@ -167,6 +168,7 @@ shaderAttrib_t primitiveFragmentsData_t::getFragmentData(unsigned utid, unsigned
 
   retVal.f32 = frag->attribs[attribID][attribIndex];
   return retVal;
+  */
 }
 
 void primitiveFragmentsData_t::addFragment(fragmentData_t fd) {
@@ -474,19 +476,20 @@ shaderAttrib_t renderData_t::getFragmentData(unsigned utid, unsigned tid, unsign
       }
       return retVal;
    }
-   assert(m_sShading_info.cudaStreamTiles.find((uint64_t)stream) != 
-         m_sShading_info.cudaStreamTiles.end());
-   tcTilePtr_t tcTilePtr = m_sShading_info.cudaStreamTiles[(uint64_t)stream].tcTilePtr;
+   unsigned tcSize = 0;
+   tileStream_t* tcTile = m_sShading_info.getTCTile(utid, &tcSize);
+   tcTilePtr_t tcTilePtr = tcTile->tcTilePtr;
 
    shaderAttrib_t retVal;
    bool isRetVal = false;
-   assert(utid < tcTilePtr->size());
-   fragmentData_t* frag = tcTilePtr->at(utid) == NULL? NULL: tcTilePtr->at(utid)->frag;
+   assert((utid%tcSize) < tcTilePtr->size());
+   fragmentData_t* frag = tcTilePtr->at(utid%tcSize) == NULL? 
+      NULL: tcTilePtr->at(utid%tcSize)->frag;
 
    switch(attribID){
       case QUAD_ACTIVE: {
          //retVal.u32 = frag->hasLiveQuad()? 1 : 0;
-         unsigned startFrag = utid - (utid%TGSI_QUAD_SIZE);
+         unsigned startFrag = (utid/TGSI_QUAD_SIZE) * TGSI_QUAD_SIZE;
          unsigned endFrag = startFrag + TGSI_QUAD_SIZE - 1;
          retVal.u32 = 0;
          for(unsigned qf=startFrag; qf <= endFrag; qf++){
@@ -1684,7 +1687,7 @@ unsigned int renderData_t::doFragmentShading() {
 }
 
 unsigned int renderData_t::noDepthFragmentShading() {
-    if(!GPGPUSimSimulationActive()){
+    /*if(!GPGPUSimSimulationActive()){
         std::cerr<<"Error: noDepthFragmentShading called when simulation is not active "<<std::endl;
         exit(-1);
     }
@@ -1717,7 +1720,7 @@ unsigned int renderData_t::noDepthFragmentShading() {
        DPRINTF(MesaGpgpusim, "starting fragment shader, fragments = %d on stream 0x%lx\n", fragmentsCount,  m_sShading_info.cudaStreams.back());
        printf("starting fragment shader, fragments = %d, total=%d\n", fragmentsCount, m_sShading_info.launched_threads);
 
-       mapTileStream_t map;
+       tileStream_t map;
        map.primId =  prim;
        map.pendingFrags = numberOfBlocks*threadsPerBlock;
        m_sShading_info.cudaStreamTiles[(uint64_t)(m_sShading_info.cudaStreams.back())] = map;
@@ -1727,14 +1730,14 @@ unsigned int renderData_t::noDepthFragmentShading() {
 
        assert( graphicsConfigureCall(numberOfBlocks, threadsPerBlock, 0, m_sShading_info.cudaStreams.back())
           == cudaSuccess);
-       assert(graphicsSetupArgument((void*) &arg, sizeof (byte*), 0/*offset*/) == cudaSuccess);
+       assert(graphicsSetupArgument((void*) &arg, sizeof (byte*), 0) == cudaSuccess);
        assert(graphicsLaunch(getCurrentShaderId(FRAGMENT_PROGRAM), &m_sShading_info.fragCodeAddr) == cudaSuccess);
     }
 
     assert(m_sShading_info.fragCodeAddr != NULL);
 
     m_sShading_info.currentPass = stage_shading_info_t::GraphicsPass::Fragment;
-    return m_sShading_info.launched_threads;
+    return m_sShading_info.launched_threads;*/
 }
 
 void renderData_t::putDataOnColorBuffer() {
@@ -2075,12 +2078,13 @@ void renderData_t::checkGraphicsThreadExit(void * kernelPtr, unsigned tid, void*
    } else  if(m_sShading_info.currentPass == stage_shading_info_t::GraphicsPass::Fragment){
       m_sShading_info.completed_threads++;
       assert(m_sShading_info.completed_threads <= m_sShading_info.launched_threads);
-      assert(m_sShading_info.cudaStreamTiles[(uint64_t)stream].pendingFrags>0);
-      m_sShading_info.cudaStreamTiles[(uint64_t)stream].pendingFrags--;
-      if(m_sShading_info.cudaStreamTiles[(uint64_t)stream].pendingFrags==0){
-         assert(!m_sShading_info.cudaStreamTiles[(uint64_t)stream].tcTilePtr->done);
-         m_sShading_info.cudaStreamTiles[(uint64_t)stream].tcTilePtr->done = true;
-         m_sShading_info.cudaStreamTiles.erase((uint64_t)stream);
+      tileStream_t* tst = m_sShading_info.getTCTile(tid);
+      assert(tst->pendingFrags>0);
+      tst->pendingFrags--;
+      if(tst->pendingFrags==0){
+         assert(!tst->tcTilePtr->done);
+         tst->tcTilePtr->done = true;
+         //m_sShading_info.cudaStreamTiles.erase((uint64_t)stream);
       }
 
        if(m_sShading_info.completed_threads%10000 == 0)
@@ -2133,6 +2137,7 @@ void renderData_t::doneEarlyZ(){
 
 
 void renderData_t::launchFragmentTile(RasterTile * rasterTile, unsigned tileId){
+   /*
    unsigned fragsCount = rasterTile->setActiveFragmentsIndices();
 
    DPRINTF(MesaGpgpusim, "Launching tile %d of fragments, active count=%d of of %d\n", tileId, fragsCount, rasterTile->size());
@@ -2154,7 +2159,7 @@ void renderData_t::launchFragmentTile(RasterTile * rasterTile, unsigned tileId){
 
 
    byte* arg= getDeviceData() + getColorBufferByteSize();
-   mapTileStream_t map;
+   tileStream_t map;
    map.tileId = tileId;
    map.primId = rasterTile->primId;
    map.pendingFrags = numberOfBlocks*threadsPerBlock;
@@ -2164,7 +2169,7 @@ void renderData_t::launchFragmentTile(RasterTile * rasterTile, unsigned tileId){
    uint64_t streamId = (uint64_t)m_sShading_info.cudaStreams.back();
    DPRINTF(MesaGpgpusim, "running %d threads for  tile %d with %d fragments on stream %ld\n", rasterTile->size() , tileId, rasterTile->size(), streamId );
    assert( graphicsConfigureCall(numberOfBlocks, threadsPerBlock, 0, m_sShading_info.cudaStreams.back()) == cudaSuccess);
-   assert(graphicsSetupArgument((void*) &arg, sizeof (byte*), 0/*offset*/) == cudaSuccess);
+   assert(graphicsSetupArgument((void*) &arg, sizeof (byte*), 0) == cudaSuccess);
    assert(graphicsLaunch(getCurrentShaderId(FRAGMENT_PROGRAM), &m_sShading_info.fragCodeAddr) == cudaSuccess);
    assert(m_sShading_info.fragCodeAddr != NULL);
 
@@ -2172,6 +2177,7 @@ void renderData_t::launchFragmentTile(RasterTile * rasterTile, unsigned tileId){
    DPRINTF(MesaGpgpusim, "total launched threads = %d\n", m_sShading_info.launched_threads);
 
    m_sShading_info.currentPass = stage_shading_info_t::GraphicsPass::Fragment;
+   */
 }
 
 void renderData_t::launchTCTile(
@@ -2180,6 +2186,12 @@ void renderData_t::launchTCTile(
       assert(donePrims > 0);
       assert(m_sShading_info.sent_simt_prims >= donePrims);
       m_sShading_info.sent_simt_prims-=donePrims;
+
+      if(m_sShading_info.sent_simt_prims == 0){
+         assert(m_sShading_info.fragKernel!=NULL);
+         m_sShading_info.fragKernel->setDrawCallDone();
+      }
+
       if(m_sShading_info.sent_simt_prims == 0 
             and m_sShading_info.completed_threads == m_sShading_info.launched_threads
             and m_sShading_info.pending_kernels==0){
@@ -2191,28 +2203,40 @@ void renderData_t::launchTCTile(
 
    assert(tcTile->size() > 0);
    DPRINTF(MesaGpgpusim, "launching a TC tile with %d fragments\n", tcTile->size());
-   //printf("launching a TC tile with %d fragments\n", tcTile->getActiveFrags());
+   printf("launching a TC tile with %d fragments\n", tcTile->getActiveFrags());
    unsigned threadsPerBlock = m_wg_size; 
    unsigned numberOfBlocks = (tcTile->size() + threadsPerBlock -1 ) / threadsPerBlock;
 
-   m_sShading_info.cudaStreams.push_back(cudaStream_t());
-   graphicsStreamCreate(&m_sShading_info.cudaStreams.back()); 
-   byte* arg= getDeviceData() + getColorBufferByteSize();
-   mapTileStream_t map;
-   map.tcTilePtr = tcTile;
-   map.pendingFrags = numberOfBlocks*threadsPerBlock;
 
-   m_sShading_info.cudaStreamTiles[(uint64_t)(m_sShading_info.cudaStreams.back())] = map;
-
-   uint64_t streamId = (uint64_t)m_sShading_info.cudaStreams.back();
-   DPRINTF(MesaGpgpusim, "running tile %lp with %d fragments on stream %ld\n", tcTile, tcTile->size(), streamId );
-   assert( graphicsConfigureCall(numberOfBlocks, threadsPerBlock, 0, m_sShading_info.cudaStreams.back()) == cudaSuccess);
-   assert(graphicsSetupArgument((void*) &arg, sizeof (byte*), 0) == cudaSuccess);
-   assert(graphicsLaunch(getCurrentShaderId(FRAGMENT_PROGRAM), &m_sShading_info.fragCodeAddr) == cudaSuccess);
-   assert(m_sShading_info.fragCodeAddr != NULL);
+   if(m_sShading_info.launched_threads == 0){
+      m_sShading_info.cudaStreams.push_back(cudaStream_t());
+      graphicsStreamCreate(&m_sShading_info.cudaStreams.back()); 
+      byte* arg= getDeviceData() + getColorBufferByteSize();
+      tileStream_t tst;
+      tst.tcTilePtr = tcTile;
+      tst.pendingFrags = numberOfBlocks*threadsPerBlock;
+      tst.t_start = m_sShading_info.launched_threads;
+      tst.t_end = m_sShading_info.launched_threads + tst.pendingFrags -1;
+      m_sShading_info.cudaStreamTiles.push_back(tst);
+      uint64_t streamId = (uint64_t)m_sShading_info.cudaStreams.back();
+      DPRINTF(MesaGpgpusim, "running tile %lp with %d fragments on stream %ld\n", tcTile, tcTile->size(), streamId );
+      assert( graphicsConfigureCall(numberOfBlocks, threadsPerBlock, 0, m_sShading_info.cudaStreams.back()) == cudaSuccess);
+      assert(graphicsSetupArgument((void*) &arg, sizeof (byte*), 0) == cudaSuccess);
+      assert(graphicsLaunch(getCurrentShaderId(FRAGMENT_PROGRAM), &m_sShading_info.fragCodeAddr, &m_sShading_info.fragKernel) == cudaSuccess);
+      assert(m_sShading_info.fragKernel != NULL);
+      assert(m_sShading_info.fragCodeAddr != NULL);
+      m_sShading_info.pending_kernels++;
+   } else {
+      tileStream_t tst;
+      tst.tcTilePtr = tcTile;
+      tst.pendingFrags = numberOfBlocks*threadsPerBlock;
+      tst.t_start = m_sShading_info.launched_threads;
+      tst.t_end = m_sShading_info.launched_threads + tst.pendingFrags - 1;
+      m_sShading_info.cudaStreamTiles.push_back(tst);
+      m_sShading_info.fragKernel->add_blocks(numberOfBlocks);
+   }
 
    m_sShading_info.launched_threads+= numberOfBlocks*threadsPerBlock;
-   m_sShading_info.pending_kernels++;
    DPRINTF(MesaGpgpusim, "total launched threads = %d\n", m_sShading_info.launched_threads);
 
    m_sShading_info.currentPass = stage_shading_info_t::GraphicsPass::Fragment;
@@ -2323,39 +2347,37 @@ void renderData_t::modeMemcpy(byte* dst, byte *src,
 }
 
 float* renderData_t::getTexCoords(unsigned utid, void* stream){
-   assert(m_sShading_info.cudaStreamTiles.find((uint64_t)stream) != 
-         m_sShading_info.cudaStreamTiles.end());
-   mapTileStream_t& map =  m_sShading_info.cudaStreamTiles[(uint64_t)stream];
+   tileStream_t* tst =  m_sShading_info.getTCTile(utid);
    unsigned qid = utid/TGSI_QUAD_SIZE;
-   if(map.quadCoords.find(qid) == map.quadCoords.end()){
+   if(tst->quadCoords.find(qid) == tst->quadCoords.end()){
       return NULL;
    } else {
-      float* fcoords = map.quadCoords[qid].getCoords();
-      assert(map.quadCoords[qid].remainingAccesses > 0);
-      map.quadCoords[qid].remainingAccesses--;
-      if(map.quadCoords[qid].remainingAccesses == 0)
-         map.quadCoords.erase(qid);
+      float* fcoords = tst->quadCoords[qid].getCoords();
+      assert(tst->quadCoords[qid].remainingAccesses > 0);
+      tst->quadCoords[qid].remainingAccesses--;
+      if(tst->quadCoords[qid].remainingAccesses == 0)
+         tst->quadCoords.erase(qid);
       return fcoords;
    }
 }
 
 void renderData_t::setTexCoords(unsigned utid, void* stream, float* coords){
-   assert(m_sShading_info.cudaStreamTiles.find((uint64_t)stream) != 
-         m_sShading_info.cudaStreamTiles.end());
-   mapTileStream_t& map =  m_sShading_info.cudaStreamTiles[(uint64_t)stream];
-   unsigned qid = utid/TGSI_QUAD_SIZE;
-   assert(map.quadCoords.find(qid) == map.quadCoords.end());
-   map.quadCoords[qid] = quadTexCoords_t();
-   map.quadCoords[qid].setCoords(coords);
+   unsigned tcSize = 0;
+   tileStream_t* tst = m_sShading_info.getTCTile(utid, &tcSize);
+   unsigned qid = (utid%tcSize)/TGSI_QUAD_SIZE;
+   assert(tst->quadCoords.find(qid) == tst->quadCoords.end());
+   tst->quadCoords[qid] = quadTexCoords_t();
+   tst->quadCoords[qid].setCoords(coords);
 }
 
 
 void renderData_t::setFragLiveStatus(unsigned utid, void* stream, bool status){
-   assert(m_sShading_info.cudaStreamTiles.find((uint64_t)stream) != 
-         m_sShading_info.cudaStreamTiles.end());
-   tcTilePtr_t tcTilePtr = m_sShading_info.cudaStreamTiles[(uint64_t)stream].tcTilePtr;
-   assert(utid < tcTilePtr->size());
-   fragmentData_t* frag = tcTilePtr->at(utid) == NULL? NULL: tcTilePtr->at(utid)->frag;
+   unsigned tcSize = 0;
+   tileStream_t* tst = m_sShading_info.getTCTile(utid, &tcSize);
+   tcTilePtr_t tcTilePtr = tst->tcTilePtr;
+   assert(utid%tcSize < tcTilePtr->size());
+   fragmentData_t* frag = tcTilePtr->at(utid%tcSize) == NULL? 
+      NULL: tcTilePtr->at(utid%tcSize)->frag;
    assert(frag);
    frag->isLive = status;
 }

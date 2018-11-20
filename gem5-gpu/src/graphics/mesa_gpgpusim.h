@@ -57,6 +57,7 @@ extern "C" {
 #define SKIP_API_GEM5
 #include "api/cuda_syscalls.hh"
 #include "graphics/gpgpusim_to_graphics_calls.h"
+#include "abstract_hardware_model.h"
 
 
 typedef unsigned char byte;
@@ -283,6 +284,7 @@ class tcTile_t {
       m_frags.push_back(frag);
    }
    RasterTile::rasterFragment_t*& at(unsigned idx){
+      assert(idx < m_frags.size());
       return m_frags.at(idx);
    }
 
@@ -322,15 +324,17 @@ struct quadTexCoords_t {
 
 typedef tcTile_t* tcTilePtr_t;
 
-struct mapTileStream_t{
-   mapTileStream_t():
+struct tileStream_t{
+   tileStream_t():
       tcTilePtr(NULL), pendingFrags(0){}
    unsigned tileId;
    unsigned primId;
    tcTilePtr_t tcTilePtr;
    unsigned pendingFrags;
+   unsigned t_start;
+   unsigned t_end;
    std::unordered_map<unsigned, quadTexCoords_t> quadCoords;
-   ~mapTileStream_t(){
+   ~tileStream_t(){
       assert(quadCoords.size() == 0);
    }
 };
@@ -347,7 +351,6 @@ struct stage_shading_info_t {
     unsigned doneZTiles;
     RasterTiles * earlyZTiles;
     bool render_init;
-    bool initStageKernelPtr;
     unsigned * primMap;
     unsigned * primCountMap;
     bool finishStageShaders;
@@ -358,8 +361,26 @@ struct stage_shading_info_t {
     void* fragCodeAddr;
     //temporarly used with earlyZ util multiple streams are re-enabled
     uint32_t currentEarlyZTile;
-    std::map<uint64_t, mapTileStream_t> cudaStreamTiles;
-    std::map<uint64_t, primitiveFragmentsData_t* > cudaStreamPrims;
+    std::vector<tileStream_t> cudaStreamTiles;
+    kernel_info_t* fragKernel;
+
+    
+    tileStream_t* getTCTile(unsigned tid, unsigned* size){
+       tileStream_t* tile = getTCTile(tid);
+       *size = tile->t_end - tile->t_start + 1;
+       return tile;
+    }
+
+    tileStream_t* getTCTile(unsigned tid){
+       for(auto& tile: cudaStreamTiles){
+          if(tid>=tile.t_start and tid<=tile.t_end){
+             return &tile;
+          }
+       }
+       //should always find a tile
+       assert(0);
+       return NULL;
+    }
 
     stage_shading_info_t() {
         primMap = NULL;
@@ -382,16 +403,18 @@ struct stage_shading_info_t {
         vertCodeAddr = NULL;
         fragCodeAddr = NULL;
         deviceVertsAttribs = NULL;
+        fragKernel = NULL;
         if(primMap!=NULL){ delete [] primMap;  primMap=NULL;}
         if(primCountMap!=NULL) { delete [] primCountMap; primCountMap= NULL;}
         if(earlyZTiles!=NULL) { assert(0); } //should be cleared when earlyZ is done
         //
         currentEarlyZTile = 0;
     
-        for(auto it=cudaStreamTiles.begin(); it!=cudaStreamTiles.end(); ++it){
-           if(it->second.tcTilePtr!=NULL){
-              delete it->second.tcTilePtr;
-           }
+        for(auto &st : cudaStreamTiles){
+           //if(st.tcTilePtr!=NULL){
+           assert(st.tcTilePtr!=NULL);
+           delete st.tcTilePtr;
+          //}
         }
         cudaStreamTiles.clear();
     }

@@ -1971,7 +1971,7 @@ void gpgpu_cuda_ptx_sim_main_func( kernel_info_t &kernel, bool openCL )
     extern gpgpu_sim *g_the_gpu;
 
     //we excute the kernel one CTA (Block) at the time, as synchronization functions work block wise
-    while(!kernel.no_more_ctas_to_run()){
+    while(!kernel.no_more_ctas_to_run() && !kernel.isDrawCallDone()){
         functionalCoreSim cta(
             &kernel,
             g_the_gpu,

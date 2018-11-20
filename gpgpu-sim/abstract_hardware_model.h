@@ -206,7 +206,7 @@ public:
    dim3 get_next_cta_id() const { return m_next_cta; }
    bool no_more_ctas_to_run() const 
    {
-      return (m_next_cta.x >= m_grid_dim.x || m_next_cta.y >= m_grid_dim.y || m_next_cta.z >= m_grid_dim.z );
+         return (m_next_cta.x >= m_grid_dim.x || m_next_cta.y >= m_grid_dim.y || m_next_cta.z >= m_grid_dim.z );
    }
 
    void increment_thread_id() { increment_x_then_y_then_z(m_next_tid,m_block_dim); }
@@ -256,12 +256,33 @@ private:
    ThreadContext *m_tc;
    address_type m_inst_text_base_vaddr;
    bool m_isGraphicsKernel;
+   bool m_drawCallDone;
 
 public:
    address_type get_inst_base_vaddr() { return m_inst_text_base_vaddr; };
    void set_inst_base_vaddr(address_type addr) { m_inst_text_base_vaddr = addr; };
    bool isGraphicsKernel() { return m_isGraphicsKernel;}
    void setGraphicsKernel() { m_isGraphicsKernel = true;}
+   void setDrawCallDone(){
+      m_drawCallDone = true;
+   }
+   bool isDrawCallDone(){
+      if(m_isGraphicsKernel) 
+         return m_drawCallDone;
+      return true;
+   }
+   void add_blocks(unsigned newBlocks){
+      //if we already done existing blocks rewind grid dims
+      if(no_more_ctas_to_run()){
+         //assert(m_next_cta.y > 0);
+         //m_next_cta.y-= 1;
+         assert(m_next_cta.z > 0);
+         m_next_cta.x = m_grid_dim.x;
+         m_next_cta.y = 0;
+         m_next_cta.z = 0;
+      }
+      m_grid_dim.x+= newBlocks;
+   }
 };
 
 struct core_config {
