@@ -3223,7 +3223,8 @@ simt_core_cluster::simt_core_cluster( class gpgpu_sim *gpu,
     m_graphics_pipe = new graphics_simt_pipeline(
                 cluster_id, gconfigs.setup_delay, gconfigs.setup_q_len, 
                 gconfigs.coarse_tiles, gconfigs.fine_tiles, gconfigs.hiz_tiles,
-                gconfigs.tc_bins, gconfigs.tc_h, gconfigs.tc_w,
+                gconfigs.tc_engines, gconfigs.tc_bins, 
+                gconfigs.tc_h, gconfigs.tc_w,
                 gconfigs.raster_tile_H, gconfigs.raster_tile_W,
                 gconfigs.tc_thresh);
     for( unsigned i=0; i < config->n_simt_cores_per_cluster; i++) {

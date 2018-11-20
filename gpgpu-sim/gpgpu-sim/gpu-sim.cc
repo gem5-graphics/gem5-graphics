@@ -438,7 +438,8 @@ void gpu_graphics_config::reg_options(OptionParser* opp)
     option_parser_register(opp, "-graphics_coarse_tiles", OPT_UINT32, &coarse_tiles, "coarse tiles processed per cycle", "2");
     option_parser_register(opp, "-graphics_fine_tiles", OPT_UINT32, &fine_tiles, "fine tiles processed per cycle", "2");
     option_parser_register(opp, "-graphics_hiz_tiles", OPT_UINT32, &hiz_tiles, "hiz tiles processed per cycle", "2");
-    option_parser_register(opp, "-graphics_tc_bins", OPT_UINT32, &tc_bins, "number of tc bins per cluster", "8");
+    option_parser_register(opp, "-graphics_tc_engines", OPT_UINT32, &tc_engines, "number of tc engines per cluster", "4");
+    option_parser_register(opp, "-graphics_tc_bins", OPT_UINT32, &tc_bins, "number of tc bins per engine", "4");
     option_parser_register(opp, "-graphics_tc_h", OPT_UINT32, &tc_h, "tc bin height", "4");
     option_parser_register(opp, "-graphics_tc_w", OPT_UINT32, &tc_w, "tc bin width", "4");
     option_parser_register(opp, "-graphics_tc_thresh", OPT_UINT32, &tc_thresh, "tc wait threshold", "10");

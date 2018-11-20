@@ -66,20 +66,21 @@ class tc_engine_t {
    };
 
    public:
-   tc_engine_t(
+   tc_engine_t(unsigned tc_bins,
          unsigned tc_tile_h, unsigned tc_tile_w,
          unsigned r_tile_h, unsigned r_tile_w, 
          unsigned wait_threshold): 
       m_tc_tile_h(tc_tile_h), m_tc_tile_w(tc_tile_w),
-      m_r_tiles_count(tc_tile_h*tc_tile_w),
       m_r_tile_h(r_tile_h), m_r_tile_w(r_tile_w),
       m_r_tile_size(r_tile_h*r_tile_w),
-      m_wait_threshold(wait_threshold)
+      m_wait_threshold(wait_threshold),
+      m_tc_bins_max(tc_bins)
    {
       m_tc_engine_id=tc_engine_id_count++;
       //raster tiles should be made out of quads
       assert(m_r_tile_h%2 == 0 and m_r_tile_w%2 == 0);
-      m_afragments.resize(m_r_tiles_count, 
+      //tc engine coalesced tiles
+      m_afragments.resize(tc_tile_h*tc_tile_w,
             std::vector <tc_fragment_quad_t>(m_r_tile_size/QUAD_SIZE));
       m_status.reset();
 
@@ -124,7 +125,7 @@ class tc_engine_t {
 
    bool append_tile(RasterTile* tile){
       assert(has_tile(tile->xCoord, tile->yCoord));
-      if(m_input_tiles_bin.size() < m_r_tiles_count){
+      if(m_input_tiles_bin.size() < m_tc_bins_max){
          m_input_tiles_bin.push_back(tile);
          return true;
       }
@@ -160,7 +161,7 @@ class tc_engine_t {
       if(m_status.pending_flush or
             (m_status.waiting_cycles > m_wait_threshold) or 
             (!m_status.new_quad_added 
-             and (m_input_tiles_bin.size() == m_r_tiles_count))){
+             and (m_input_tiles_bin.size() == m_tc_bins_max))){
          tcTilePtr_t tc_tile = 
             new tcTile_t(m_status.rtile_xstart, m_status.rtile_ystart);
          for(unsigned tileId=0; tileId<m_afragments.size(); tileId++){
@@ -250,7 +251,6 @@ class tc_engine_t {
    //tc tile size in raster tiles
    const unsigned m_tc_tile_h;
    const unsigned m_tc_tile_w;
-   const unsigned m_r_tiles_count;
    //raster tile size in fragments
    const unsigned m_r_tile_h;
    const unsigned m_r_tile_w;
@@ -288,28 +288,28 @@ class tc_engine_t {
       }
    };
    const unsigned m_wait_threshold;
+   const unsigned m_tc_bins_max;
    public:
    status_t m_status;
 };
 
 class tile_assembly_stage_t {
    public:
-   tile_assembly_stage_t(unsigned _tc_bins, 
+   tile_assembly_stage_t(unsigned _tc_engines, unsigned _tc_bins, 
          unsigned tc_tile_h, unsigned tc_tile_w,
          unsigned r_tile_h, unsigned r_tile_w,
          unsigned wait_threshold): 
-      tc_engines(_tc_bins, tc_engine_t(tc_tile_h, tc_tile_w, 
-               r_tile_h, r_tile_w, wait_threshold)), 
-      tc_bins(_tc_bins)
+      m_tc_engines(_tc_engines, tc_engine_t(_tc_bins, tc_tile_h, tc_tile_w, 
+               r_tile_h, r_tile_w, wait_threshold))
    {}
 
    bool insert(RasterTile* tile){
-      for(unsigned i=0; i<tc_engines.size(); i++){
+      for(unsigned i=0; i<m_tc_engines.size(); i++){
          //printf("checking tc_engine %d\n", i);
-         if(tc_engines[i].has_tile(tile->xCoord, tile->yCoord)){
+         if(m_tc_engines[i].has_tile(tile->xCoord, tile->yCoord)){
             /*printf("tc_engine %d has tile (%d,%d)\n", 
                   i, tile->xCoord, tile->yCoord);*/
-            if(tc_engines[i].append_tile(tile)){
+            if(m_tc_engines[i].append_tile(tile)){
                /*printf("appending tile(%d,%d) to engine %d)\n", 
                      tile->xCoord, tile->yCoord, i);*/
                return true;
@@ -318,8 +318,8 @@ class tile_assembly_stage_t {
             return false;
          }
       }
-      for(unsigned i=0; i<tc_engines.size(); i++){
-         if(tc_engines[i].insert_first_tile(tile)){
+      for(unsigned i=0; i<m_tc_engines.size(); i++){
+         if(m_tc_engines[i].insert_first_tile(tile)){
             /*printf("inserting tile(%d,%d) to engine %d)\n", 
                   tile->xCoord, tile->yCoord, i);*/
             return true;
@@ -328,38 +328,37 @@ class tile_assembly_stage_t {
 
       unsigned maxWaitCycles = 0;
       unsigned maxWaitIndex = 0;
-      for(unsigned i=0; i<tc_engines.size(); i++){
-         if(tc_engines[i].m_status.waiting_cycles > maxWaitCycles)
+      for(unsigned i=0; i<m_tc_engines.size(); i++){
+         if(m_tc_engines[i].m_status.waiting_cycles > maxWaitCycles)
             maxWaitIndex = i;
       }
-      tc_engines[maxWaitIndex].m_status.pending_flush = true;
+      m_tc_engines[maxWaitIndex].m_status.pending_flush = true;
       return false;
    }
 
    bool empty(){
       bool is_empty = true;
-      for(unsigned te=0; te<tc_engines.size(); te++){
-         is_empty = is_empty and tc_engines[te].empty();
+      for(unsigned te=0; te<m_tc_engines.size(); te++){
+         is_empty = is_empty and m_tc_engines[te].empty();
       }
       return is_empty;
    }
 
    void cycle(){
-      for(unsigned te=0; te<tc_engines.size(); te++){
-         tc_engines[te].cycle();
+      for(unsigned te=0; te<m_tc_engines.size(); te++){
+         m_tc_engines[te].cycle();
       }
    }
 
    double get_bin_occupancy(){
       double total = 0;
-      for(unsigned te=0; te<tc_engines.size(); te++)
-         total+=tc_engines[te].m_total_bin_size;
-      return total/tc_engines.size();
+      for(unsigned te=0; te<m_tc_engines.size(); te++)
+         total+=m_tc_engines[te].m_total_bin_size;
+      return total/m_tc_engines.size();
    }
 
    private:
-   std::vector<tc_engine_t> tc_engines;
-   const unsigned tc_bins;
+   std::vector<tc_engine_t> m_tc_engines;
 };
 
 class graphics_simt_pipeline {
@@ -377,13 +376,13 @@ class graphics_simt_pipeline {
             unsigned c_tiles_per_cycle,
             unsigned f_tiles_per_cycle,
             unsigned hiz_tiles_per_cycle,
-            unsigned tc_bins,
+            unsigned tc_engines, unsigned tc_bins,
             unsigned tc_tile_h, unsigned tc_tile_w,
             unsigned r_tile_h, unsigned r_tile_w,
             unsigned tc_wait_threshold
             ): 
          m_cluster_id(simt_cluster_id),
-         m_ta_stage(tc_bins, tc_tile_h, tc_tile_w, 
+         m_ta_stage(tc_engines, tc_bins, tc_tile_h, tc_tile_w, 
                r_tile_h, r_tile_w, tc_wait_threshold),
          m_setup_delay(setup_delay),
          m_c_tiles_per_cycle(c_tiles_per_cycle),

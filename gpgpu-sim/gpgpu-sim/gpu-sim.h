@@ -314,6 +314,7 @@ public:
     unsigned int coarse_tiles;
     unsigned int fine_tiles;
     unsigned int hiz_tiles;
+    unsigned int tc_engines;
     unsigned int tc_bins;
     unsigned int tc_h;
     unsigned int tc_w;
