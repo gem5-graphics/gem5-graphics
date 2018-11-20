@@ -365,13 +365,13 @@ struct stage_shading_info_t {
     kernel_info_t* fragKernel;
 
     
-    tileStream_t* getTCTile(unsigned tid, unsigned* size){
+    inline tileStream_t* getTCTile(unsigned tid, unsigned* size){
        tileStream_t* tile = getTCTile(tid);
        *size = tile->t_end - tile->t_start + 1;
        return tile;
     }
 
-    tileStream_t* getTCTile(unsigned tid){
+    inline tileStream_t* getTCTile(unsigned tid){
        for(auto& tile: cudaStreamTiles){
           if(tid>=tile.t_start and tid<=tile.t_end){
              return &tile;
@@ -518,7 +518,7 @@ public:
     void checkEndOfShader(CudaGPU * cudaGPU);
     void doneEarlyZ(); 
     void launchFragmentTile(RasterTile * rasterTile, unsigned tileId);
-    void launchTCTile(tcTilePtr_t tcTile, unsigned donePrims);
+    void launchTCTile(unsigned clusterId, tcTilePtr_t tcTile, unsigned donePrims);
     void addPrimitive();
     void setVertShaderUsedRegs(int regs){
       m_usedVertShaderRegs = regs;

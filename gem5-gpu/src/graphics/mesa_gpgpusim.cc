@@ -2181,6 +2181,7 @@ void renderData_t::launchFragmentTile(RasterTile * rasterTile, unsigned tileId){
 }
 
 void renderData_t::launchTCTile(
+      unsigned clusterId,
       tcTilePtr_t tcTile, unsigned donePrims){
    if(tcTile == NULL){
       assert(donePrims > 0);
@@ -2302,8 +2303,9 @@ void RasterTile::testHizThresh(){
 
 void renderData_t::generateDepthCode(FILE* inst_stream){
    if(not isDepthTestEnabled()) return;
-   const char* depthSize = m_depthSize==DepthSize::Z32? "u32" : "u16";
-   //const char* depthSize = "u32";
+   //FIXME set depth size status before code generation
+   //const char* depthSize = m_depthSize==DepthSize::Z32? "u32" : "u16";
+   const char* depthSize = "u32";
    fprintf(inst_stream, ".reg .pred testDepth, passedDepth;\n");
    fprintf(inst_stream, ".reg .u32 depthTestRes;\n");
    fprintf(inst_stream, "setp.eq.u32 passedDepth, !fflag, 0;\n");

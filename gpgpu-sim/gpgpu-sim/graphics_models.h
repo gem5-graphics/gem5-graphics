@@ -69,7 +69,8 @@ class tc_engine_t {
    tc_engine_t(unsigned tc_bins,
          unsigned tc_tile_h, unsigned tc_tile_w,
          unsigned r_tile_h, unsigned r_tile_w, 
-         unsigned wait_threshold): 
+         unsigned wait_threshold, unsigned cluster_id): 
+      m_cluster_id(cluster_id),
       m_tc_tile_h(tc_tile_h), m_tc_tile_w(tc_tile_w),
       m_r_tile_h(r_tile_h), m_r_tile_w(r_tile_w),
       m_r_tile_size(r_tile_h*r_tile_w),
@@ -178,7 +179,7 @@ class tc_engine_t {
                == m_pending_tiles.end());
          m_pending_tiles.insert(
                std::make_pair(std::make_pair(tc_tile->x, tc_tile->y), tc_tile));
-         g_renderData.launchTCTile(tc_tile, m_status.done_prims);
+         g_renderData.launchTCTile(m_cluster_id, tc_tile, m_status.done_prims);
          //reset if no tiles left
          if(m_input_tiles_bin.size() == 0)
             m_status.reset();
@@ -248,6 +249,7 @@ class tc_engine_t {
    //3d vector tiles, quads, fragments
    std::vector<std::vector <tc_fragment_quad_t>> m_afragments;
    std::list<RasterTile*> m_input_tiles_bin;
+   unsigned m_cluster_id;
    //tc tile size in raster tiles
    const unsigned m_tc_tile_h;
    const unsigned m_tc_tile_w;
@@ -298,9 +300,9 @@ class tile_assembly_stage_t {
    tile_assembly_stage_t(unsigned _tc_engines, unsigned _tc_bins, 
          unsigned tc_tile_h, unsigned tc_tile_w,
          unsigned r_tile_h, unsigned r_tile_w,
-         unsigned wait_threshold): 
+         unsigned wait_threshold, unsigned cluster_id): 
       m_tc_engines(_tc_engines, tc_engine_t(_tc_bins, tc_tile_h, tc_tile_w, 
-               r_tile_h, r_tile_w, wait_threshold))
+               r_tile_h, r_tile_w, wait_threshold, cluster_id))
    {}
 
    bool insert(RasterTile* tile){
@@ -383,7 +385,7 @@ class graphics_simt_pipeline {
             ): 
          m_cluster_id(simt_cluster_id),
          m_ta_stage(tc_engines, tc_bins, tc_tile_h, tc_tile_w, 
-               r_tile_h, r_tile_w, tc_wait_threshold),
+               r_tile_h, r_tile_w, tc_wait_threshold, simt_cluster_id),
          m_setup_delay(setup_delay),
          m_c_tiles_per_cycle(c_tiles_per_cycle),
          m_f_tiles_per_cycle(f_tiles_per_cycle),
@@ -500,7 +502,7 @@ class graphics_simt_pipeline {
          assert(tile->lastPrimTile or (tile->getActiveCount() > 0));
          if(tile->lastPrimTile){
             if(m_ta_stage.empty()){
-               g_renderData.launchTCTile(NULL, 1);
+               g_renderData.launchTCTile(m_cluster_id, NULL, 1);
                m_ta_pipe->pop();
             }
          } else if(m_ta_stage.insert(tile)){
