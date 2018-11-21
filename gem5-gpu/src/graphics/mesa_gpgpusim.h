@@ -409,13 +409,6 @@ struct stage_shading_info_t {
         if(earlyZTiles!=NULL) { assert(0); } //should be cleared when earlyZ is done
         //
         currentEarlyZTile = 0;
-    
-        for(auto &st : cudaStreamTiles){
-           //if(st.tcTilePtr!=NULL){
-           assert(st.tcTilePtr!=NULL);
-           delete st.tcTilePtr;
-          //}
-        }
         cudaStreamTiles.clear();
     }
 };
