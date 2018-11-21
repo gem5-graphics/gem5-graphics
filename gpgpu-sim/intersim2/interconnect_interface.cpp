@@ -232,7 +232,7 @@ bool InterconnectInterface::Busy() const
     for (int s = 0; s < _subnets; ++s) {
       for (unsigned n = 0; n < _n_shader+_n_mem; ++n) {
         //FIXME: if this cannot make sure _partial_packets is empty
-        assert(_traffic_manager->_input_queue[s][n][0].empty());
+        //assert(_traffic_manager->_input_queue[s][n][0].empty());
       }
     }
   }
