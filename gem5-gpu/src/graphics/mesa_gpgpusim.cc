@@ -1666,7 +1666,7 @@ unsigned int renderData_t::doFragmentShading() {
             m_tc_h*m_tc_w,
             numClusters);
       for(unsigned clusterId=0; clusterId < numClusters; clusterId++){
-         bool res = simt_clusters[clusterId]->getGraphicsPipeline()->add_primitive(&drawPrimitives[prim], 0);
+         bool res = simt_clusters[clusterId]->getGraphicsPipeline()->add_primitive(&drawPrimitives[prim]);
          assert(res);
       }
    }

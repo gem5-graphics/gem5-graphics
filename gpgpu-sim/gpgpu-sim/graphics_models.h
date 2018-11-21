@@ -510,7 +510,7 @@ class graphics_simt_pipeline {
          }
       }
 
-      bool add_primitive(primitiveFragmentsData_t* prim, unsigned ctilesId){
+      bool add_primitive(primitiveFragmentsData_t* prim){
          //this primitive doesn't touch this simt core
          if(prim->getSimtTiles(m_cluster_id).size() == 0)
             return true;
