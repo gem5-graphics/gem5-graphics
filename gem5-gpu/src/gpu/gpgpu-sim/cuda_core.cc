@@ -419,6 +419,7 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
                } else {
                   sendPort = lsqPorts[lane];
                }
+               pkt->req->setGpuFlags(gpuFlags);
 
                std::string ttype = inst.is_load()? "load" : inst.is_store()? "store": "barrier";
                DPRINTF(CudaCoreAccess, "Sent a %s request from lane %d\n", ttype.c_str(), lane);
