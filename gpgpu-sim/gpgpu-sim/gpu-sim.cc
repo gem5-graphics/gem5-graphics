@@ -442,7 +442,7 @@ void gpu_graphics_config::reg_options(OptionParser* opp)
     option_parser_register(opp, "-graphics_tc_bins", OPT_UINT32, &tc_bins, "number of tc bins per engine", "4");
     option_parser_register(opp, "-graphics_tc_h", OPT_UINT32, &tc_h, "tc bin height", "4");
     option_parser_register(opp, "-graphics_tc_w", OPT_UINT32, &tc_w, "tc bin width", "4");
-    option_parser_register(opp, "-graphics_block_dim", OPT_UINT32, &tc_block_dim, "tc tile blocks dim", "2");
+    option_parser_register(opp, "-graphics_tc_block_dim", OPT_UINT32, &tc_block_dim, "tc tile blocks dim", "2");
     option_parser_register(opp, "-graphics_tc_thresh", OPT_UINT32, &tc_thresh, "tc wait threshold", "10");
     option_parser_register(opp, "-graphics_wg_size", OPT_UINT32, &wg_size, "graphics workgroup size", "256");
 }
