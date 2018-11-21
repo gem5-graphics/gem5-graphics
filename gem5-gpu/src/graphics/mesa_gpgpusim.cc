@@ -647,7 +647,7 @@ void renderData_t::endDrawCall() {
 }
 
 void renderData_t::initParams(bool standaloneMode, unsigned int startFrame, unsigned int endFrame, int startDrawcall, unsigned int endDrawcall,
-        unsigned int tile_H, unsigned int tile_W, unsigned int block_H, unsigned int block_W, unsigned int tc_h, unsigned int tc_w, unsigned int wg_size,
+        unsigned int tile_H, unsigned int tile_W, unsigned int block_H, unsigned int block_W, unsigned int tc_h, unsigned int tc_w, unsigned int tc_block_dim, unsigned int wg_size,
         unsigned blendingMode, unsigned depthMode, unsigned cptStartFrame, unsigned cptEndFrame, unsigned cptPeroid, bool skipCpFrames, char* outdir) {
     m_standaloneMode = standaloneMode;
     m_startFrame = startFrame;
@@ -660,6 +660,7 @@ void renderData_t::initParams(bool standaloneMode, unsigned int startFrame, unsi
     m_block_W = block_W;
     m_tc_h = tc_h;
     m_tc_w = tc_w;
+    m_tc_block_dim = tc_block_dim;
     m_wg_size = wg_size;
     m_inShaderBlending = (blendingMode != 0);
     m_inShaderDepth = (depthMode != 0);

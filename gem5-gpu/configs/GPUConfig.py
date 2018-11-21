@@ -125,6 +125,7 @@ def addGPUOptions(parser):
     parser.add_option("--g_tc_bins", type="int", default=8, help="Number of TC bins per engine")
     parser.add_option("--g_tc_h", type="int", default=4, help="TC tile height (in raster tiles)")
     parser.add_option("--g_tc_w", type="int", default=4, help="TC tile width (in raster tiles)")
+    parser.add_option("--g_tc_block_dim", type="int", default=2, help="Dimension of TC tile blocks used for assignment")
     parser.add_option("--g_tc_thresh", type="int", default=20, help="TC wait threshold in cycles")
     parser.add_option("--g_wg_size", type="int", default=20, help="Graphics workgroup size")
 
@@ -208,6 +209,7 @@ def parseGpgpusimConfig(options):
     config = config.replace("%gTcBins%",      str(options.g_tc_bins) +"\n")
     config = config.replace("%gTcH%",      str(options.g_tc_h) +"\n")
     config = config.replace("%gTcW%",      str(options.g_tc_w) +"\n")
+    config = config.replace("%gTcBlockDim%",      str(options.g_tc_block_dim) +"\n")
     config = config.replace("%gTcThresh%",      str(options.g_tc_thresh) +"\n")
     config = config.replace("%gWgSize%",      str(options.g_wg_size) +"\n")
 
@@ -518,27 +520,29 @@ def connectGPUPorts_classic(system, gpu, options):
         sc.inst_port = sc.icache.cpu_side
 
         #data cache
-        '''sc.dcache = L1_DCache(size=options.sc_l1_size,
+        sc.dcache = L1_DCache(size=options.sc_l1_size,
                              assoc=options.sc_l1_assoc)
         sc.dcache.mem_side = gpu.l2NetToL2.slave 
-        sc.lsq.cache_port = sc.dcache.cpu_side'''
+        sc.lsq.cache_port = sc.dcache.cpu_side
         #sc.lsq.cache_port = gpu.l2NetToL2.slave
-        sc.lsq.cache_port = system.membus.slave
+        #sc.lsq.cache_port = system.membus.slave
 
         #readonly tex cache
-        '''sc.tcache = L1_ICache(size=options.sc_tl1_size,
+        sc.tcache = L1_ICache(size=options.sc_tl1_size,
                                 assoc=options.sc_tl1_assoc)
         sc.tcache.mem_side = gpu.l2NetToL2.slave
-        sc.tex_lq.cache_port = sc.tcache.cpu_side'''
-        sc.tex_lq.cache_port = gpu.l2NetToL2.slave
+        sc.tex_lq.cache_port = sc.tcache.cpu_side
+        #sc.tex_lq.cache_port = gpu.l2NetToL2.slave
         #sc.tex_lq.cache_port = system.membus.slave
 
         #z cache
-        '''sc.zcache = L1_DCache(size=options.sc_zl1_size,
+        sc.zcache = L1_DCache(size=options.sc_zl1_size,
                                 assoc=options.sc_zl1_assoc)
+
+        sc.zcache.cpu_side = sc.z_lsq.cache_port 
         sc.zcache.mem_side = gpu.l2NetToL2.slave
-        sc.z_lsq.cache_port = sc.zcache.cpu_side'''
-        sc.z_lsq.cache_port = gpu.l2NetToL2.slave
+        #sc.zcache.mem_side = system.membus.slave
+        #sc.z_lsq.cache_port = gpu.l2NetToL2.slave
         #sc.z_lsq.cache_port = system.membus.slave
 
         for j in xrange(options.gpu_warp_size):
