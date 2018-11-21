@@ -441,8 +441,9 @@ public:
         const unsigned tilesCount,
         const unsigned blockH, const unsigned blockW, 
         const RasterDirection rasterDir,
-        unsigned tcSize,
-        unsigned simtCount);
+        unsigned tcH, unsigned tcW,
+        unsigned tcBlockDim,
+        unsigned clusterCount);
 
     //primitive max and min depth values, used for z-culling
     const int primId; //unique prim id for draw call

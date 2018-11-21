@@ -336,8 +336,10 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(
       const unsigned tilesCount,
       const unsigned blockH, const unsigned blockW, 
       const RasterDirection rasterDir,
-      unsigned tcSize,
-      unsigned simtCount) {
+      unsigned tcH,
+      unsigned tcW,
+      unsigned tcBlockDim,
+      unsigned clusterCount) {
    
     assert(m_rasterTiles.size() == 0);
     assert(rasterDir==RasterDirection::HorizontalRaster);
@@ -410,15 +412,23 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(
 
     assert(fragCount == m_fragments.size());
 
-    m_simtRasterTiles.resize(simtCount);
+    m_simtRasterTiles.resize(clusterCount);
+    unsigned tcSize = tcH*tcW;
+    unsigned tcBlockInTilesH = tcBlockDim*tcH;
+    unsigned tcBlockInTilesW = tcBlockDim*tcW;
+    unsigned tbpw = tcBlockInTilesW * tileW;
+    unsigned xTCBlocks = frameWidth%tbpw>0? 
+       ((frameWidth - (frameWidth % tbpw)) + tbpw)/tbpw : frameWidth/tbpw;
     for(int tile=0; tile < fragmentTiles.size(); tile++){
        //if(fragmentTiles[tile]->size() == 0){
        if(fragmentTiles[tile]->xCoord >= minX and 
           fragmentTiles[tile]->xCoord <= maxX and 
           fragmentTiles[tile]->yCoord >= minY and 
           fragmentTiles[tile]->yCoord <= maxY){
-          unsigned tcTileId = tile/tcSize;
-          m_simtRasterTiles[tcTileId%simtCount].push_back(fragmentTiles[tile]);
+          unsigned tcBlockX = fragmentTiles[tile]->xCoord/tcBlockInTilesW;
+          unsigned tcBlockY = fragmentTiles[tile]->yCoord/tcBlockInTilesH;
+          unsigned tcBlockId = (tcBlockY * xTCBlocks) + tcBlockX;
+          m_simtRasterTiles[tcBlockId%clusterCount].push_back(fragmentTiles[tile]);
           m_rasterTiles.push_back(fragmentTiles[tile]);
        } else {
           assert(fragmentTiles[tile]->getActiveCount() == 0);
@@ -427,7 +437,7 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(
     }
 
     //add terminating tiles
-    for(unsigned s=0; s<simtCount; s++){
+    for(unsigned s=0; s<clusterCount; s++){
        RasterTile* rtile = new RasterTile(NULL, -1, -1, -1, -1, -1, -1);
        m_simtRasterTiles[s].push_back(rtile);
        rtile->lastPrimTile=true;
@@ -1664,7 +1674,8 @@ unsigned int renderData_t::doFragmentShading() {
             m_tilesCount,
             m_block_H, m_block_W, 
             RasterDirection::HorizontalRaster, 
-            m_tc_h*m_tc_w,
+            m_tc_h, m_tc_w,
+            m_tc_block_dim,
             numClusters);
       for(unsigned clusterId=0; clusterId < numClusters; clusterId++){
          bool res = simt_clusters[clusterId]->getGraphicsPipeline()->add_primitive(&drawPrimitives[prim]);
