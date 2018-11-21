@@ -68,6 +68,7 @@ enum FuncCache
 #include <string.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <unordered_map>
 #include "graphics/gpgpusim_to_graphics_calls.h"
 
 typedef unsigned long long new_addr_type;
@@ -257,6 +258,7 @@ private:
    address_type m_inst_text_base_vaddr;
    bool m_isGraphicsKernel;
    bool m_drawCallDone;
+   std::unordered_map<unsigned, unsigned> graphicsCtaToClusterMap;
 
 public:
    address_type get_inst_base_vaddr() { return m_inst_text_base_vaddr; };
@@ -271,7 +273,8 @@ public:
          return m_drawCallDone;
       return true;
    }
-   void add_blocks(unsigned newBlocks){
+   void add_blocks(unsigned newBlocks, unsigned cluster_id,
+         unsigned start_tid){
       //if we already done existing blocks rewind grid dims
       if(no_more_ctas_to_run()){
          //assert(m_next_cta.y > 0);
@@ -282,6 +285,27 @@ public:
          m_next_cta.z = 0;
       }
       m_grid_dim.x+= newBlocks;
+      //assignCtaToCluster(newBlocks, cluster_id, start_tid);
+   }
+
+   void assignCtaToCluster(unsigned count, unsigned cluster_id, 
+         unsigned start_tid){
+      unsigned cta_size =  threads_per_cta();
+      for(unsigned i=0; i<count; i++){
+         unsigned tid = start_tid + i*cta_size;
+         graphicsCtaToClusterMap[tid] = cluster_id;
+      }
+   }
+
+   bool canGetNextGraphicsBlock(unsigned clusterId){
+      if(m_isGraphicsKernel) {
+         unsigned ntid = m_next_cta.x* threads_per_cta();
+         assert(graphicsCtaToClusterMap.find(ntid) != graphicsCtaToClusterMap.end());
+         if(graphicsCtaToClusterMap[ntid] == clusterId)
+            return true;
+         return false;
+      }
+      return true;
    }
 };
 

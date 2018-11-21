@@ -1648,7 +1648,7 @@ unsigned int renderData_t::doFragmentShading() {
    CudaGPU* cudaGPU = CudaGPU::getCudaGPU(g_active_device);
    gpgpu_sim* gpu =  cudaGPU->getTheGPU();
    unsigned numClusters = gpu->get_config().num_cluster();
-   simt_core_cluster* simt_clusters = gpu->getSIMTCluster();
+   simt_core_cluster** simt_clusters = gpu->getSIMTCluster();
    unsigned addedPrims = 0;;
    //for(int prim=drawPrimitives.size()-1; prim >= 0; prim--){
    for(unsigned prim=0; prim < drawPrimitives.size(); prim++){
@@ -1666,7 +1666,7 @@ unsigned int renderData_t::doFragmentShading() {
             m_tc_h*m_tc_w,
             numClusters);
       for(unsigned clusterId=0; clusterId < numClusters; clusterId++){
-         bool res = simt_clusters[clusterId].getGraphicsPipeline()->add_primitive(&drawPrimitives[prim], 0);
+         bool res = simt_clusters[clusterId]->getGraphicsPipeline()->add_primitive(&drawPrimitives[prim], 0);
          assert(res);
       }
    }
@@ -2204,7 +2204,6 @@ void renderData_t::launchTCTile(
 
    assert(tcTile->size() > 0);
    DPRINTF(MesaGpgpusim, "launching a TC tile with %d fragments\n", tcTile->size());
-   printf("launching a TC tile with %d fragments\n", tcTile->getActiveFrags());
    unsigned threadsPerBlock = m_wg_size; 
    unsigned numberOfBlocks = (tcTile->size() + threadsPerBlock -1 ) / threadsPerBlock;
 
@@ -2218,6 +2217,8 @@ void renderData_t::launchTCTile(
       tst.pendingFrags = numberOfBlocks*threadsPerBlock;
       tst.t_start = m_sShading_info.launched_threads;
       tst.t_end = m_sShading_info.launched_threads + tst.pendingFrags -1;
+      //printf("launching a TC tile with (%d to %d) fragments on %d\n", tst.t_start, tst.t_end, clusterId);
+
       m_sShading_info.cudaStreamTiles.push_back(tst);
       uint64_t streamId = (uint64_t)m_sShading_info.cudaStreams.back();
       DPRINTF(MesaGpgpusim, "running tile %lp with %d fragments on stream %ld\n", tcTile, tcTile->size(), streamId );
@@ -2227,14 +2228,20 @@ void renderData_t::launchTCTile(
       assert(m_sShading_info.fragKernel != NULL);
       assert(m_sShading_info.fragCodeAddr != NULL);
       m_sShading_info.pending_kernels++;
+      m_sShading_info.fragKernel->assignCtaToCluster(
+            numberOfBlocks, clusterId, tst.t_start);
    } else {
       tileStream_t tst;
       tst.tcTilePtr = tcTile;
       tst.pendingFrags = numberOfBlocks*threadsPerBlock;
       tst.t_start = m_sShading_info.launched_threads;
       tst.t_end = m_sShading_info.launched_threads + tst.pendingFrags - 1;
+      //printf("launching a TC tile with (%d to %d) fragments on %d\n", tst.t_start, tst.t_end, clusterId);
+
       m_sShading_info.cudaStreamTiles.push_back(tst);
-      m_sShading_info.fragKernel->add_blocks(numberOfBlocks);
+      m_sShading_info.fragKernel->add_blocks(numberOfBlocks, clusterId, tst.t_start);
+      m_sShading_info.fragKernel->assignCtaToCluster(
+            numberOfBlocks, clusterId, tst.t_start);
    }
 
    m_sShading_info.launched_threads+= numberOfBlocks*threadsPerBlock;

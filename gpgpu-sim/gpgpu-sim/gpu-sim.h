@@ -474,7 +474,7 @@ public:
    /*!
     * Returning the cluster of of the shader core, used by the functional simulation so far
     */
-    simt_core_cluster * getSIMTCluster();
+    simt_core_cluster** getSIMTCluster();
 
 
 private:

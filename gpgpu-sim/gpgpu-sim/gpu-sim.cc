@@ -1653,9 +1653,9 @@ const struct memory_config * gpgpu_sim::getMemoryConfig()
    return m_memory_config;
 }
 
-simt_core_cluster * gpgpu_sim::getSIMTCluster()
+simt_core_cluster** gpgpu_sim::getSIMTCluster()
 {
-   return *m_cluster;
+   return m_cluster;
 }
 
 shader_core_ctx* gpgpu_sim::get_shader(int id)

@@ -3305,7 +3305,9 @@ unsigned simt_core_cluster::issue_block2core()
             }
         }
         kernel_info_t *kernel = m_core[core]->get_kernel();
-        if( kernel && !kernel->no_more_ctas_to_run() && (m_core[core]->get_n_active_cta() < m_config->max_cta(*kernel)) ) {
+        if( kernel && !kernel->no_more_ctas_to_run() 
+              && kernel->canGetNextGraphicsBlock(m_cluster_id)
+              && (m_core[core]->get_n_active_cta() < m_config->max_cta(*kernel)) ) {
             m_core[core]->issue_block2core(*kernel);
             num_blocks_issued++;
             m_cta_issue_next_core=core; 
