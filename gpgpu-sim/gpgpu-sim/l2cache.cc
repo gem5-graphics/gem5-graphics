@@ -328,7 +328,6 @@ memory_sub_partition::memory_sub_partition( unsigned sub_partition_id,
     m_dram_L2_queue = new fifo_pipeline<mem_fetch>("dram-to-L2",0,dram_L2);
     m_L2_icnt_queue = new fifo_pipeline<mem_fetch>("L2-to-icnt",0,L2_icnt);
     wb_addr=-1;
-    m_directColorWrites =0;
 }
 
 memory_sub_partition::~memory_sub_partition()
@@ -526,8 +525,6 @@ void memory_sub_partition::print( FILE *fp ) const
     }
     if( !m_config->m_L2_config.disabled() )
        m_L2cache->display_state(fp);
-    
-    fprintf(fp, "Number of global writes for colors = %u\n",m_directColorWrites);
 }
 
 void memory_stats_t::visualizer_print( gzFile visualizer_file )
