@@ -429,6 +429,8 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(
           unsigned tcBlockY = fragmentTiles[tile]->yCoord/tcBlockInTilesH;
           unsigned tcBlockId = (tcBlockY * xTCBlocks) + tcBlockX;
           m_simtRasterTiles[tcBlockId%clusterCount].push_back(fragmentTiles[tile]);
+          /*printf("assigning tile %d to cluster %d\n", tile,
+                tcBlockId%clusterCount);*/
           m_rasterTiles.push_back(fragmentTiles[tile]);
        } else {
           assert(fragmentTiles[tile]->getActiveCount() == 0);
@@ -2086,7 +2088,7 @@ void renderData_t::checkGraphicsThreadExit(void * kernelPtr, unsigned tid, void*
           m_flagEndVertexShader = true;
        }
        if(m_sShading_info.completed_threads%10000 == 0)
-         printf("completed threads = %d out of %d\n", m_sShading_info.completed_threads,  m_sShading_info.launched_threads);
+         DPRINTF(MesaGpgpusim, "completed threads = %d out of %d\n", m_sShading_info.completed_threads,  m_sShading_info.launched_threads);
    } else  if(m_sShading_info.currentPass == stage_shading_info_t::GraphicsPass::Fragment){
       m_sShading_info.completed_threads++;
       assert(m_sShading_info.completed_threads <= m_sShading_info.launched_threads);
@@ -2100,7 +2102,7 @@ void renderData_t::checkGraphicsThreadExit(void * kernelPtr, unsigned tid, void*
       }
 
        if(m_sShading_info.completed_threads%10000 == 0)
-         printf("completed threads = %d out of %d\n", m_sShading_info.completed_threads,  m_sShading_info.launched_threads);
+         DPRINTF(MesaGpgpusim, "completed threads = %d out of %d\n", m_sShading_info.completed_threads,  m_sShading_info.launched_threads);
 
       if (m_sShading_info.completed_threads == m_sShading_info.launched_threads){
          
@@ -2219,6 +2221,8 @@ void renderData_t::launchTCTile(
    unsigned threadsPerBlock = m_wg_size; 
    unsigned numberOfBlocks = (tcTile->size() + threadsPerBlock -1 ) / threadsPerBlock;
 
+      /*printf("launching a TC tile with (%d) active fragments with %d threads on %d\n",
+          tcTile->getActiveFrags(), threadsPerBlock*numberOfBlocks, clusterId);*/
 
    if(m_sShading_info.launched_threads == 0){
       m_sShading_info.cudaStreams.push_back(cudaStream_t());
@@ -2368,8 +2372,9 @@ void renderData_t::modeMemcpy(byte* dst, byte *src,
 }
 
 float* renderData_t::getTexCoords(unsigned utid, void* stream){
-   tileStream_t* tst =  m_sShading_info.getTCTile(utid);
-   unsigned qid = utid/TGSI_QUAD_SIZE;
+   unsigned tcSize = 0;
+   tileStream_t* tst =  m_sShading_info.getTCTile(utid, &tcSize);
+   unsigned qid = (utid%tcSize)/TGSI_QUAD_SIZE;
    if(tst->quadCoords.find(qid) == tst->quadCoords.end()){
       return NULL;
    } else {
