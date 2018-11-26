@@ -307,6 +307,13 @@ public:
       }
       return true;
    }
+
+   unsigned getTidCluster(unsigned tid){
+      assert(m_isGraphicsKernel);
+      unsigned ntid = (tid/threads_per_cta())* threads_per_cta();
+      assert(graphicsCtaToClusterMap.find(ntid) != graphicsCtaToClusterMap.end());
+      return graphicsCtaToClusterMap[ntid];
+   }
 };
 
 struct core_config {
