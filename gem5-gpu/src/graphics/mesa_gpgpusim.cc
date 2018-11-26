@@ -369,7 +369,9 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(
     int minX, maxX, minY, maxY;
     minX = minY = -1;
     maxX = maxY = -1;
-    std::vector<RasterTile* > fragmentTiles;
+
+    std::unordered_map<unsigned, RasterTile* > fragmentTiles;
+    /*std::vector<RasterTile* > fragmentTiles;
     for (unsigned tileId = 0; tileId < tilesCount; tileId++) {
         //std::vector<fragmentData_t>* aSet = new std::vector<fragmentData_t>();
         unsigned xCoord = tileId%wTiles;
@@ -378,8 +380,9 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(
               tileH, tileW, xCoord, yCoord);
         fragmentTiles.push_back(rtile);
     }
-
     assert(fragmentTiles.size() == tilesCount);
+     */
+
     assert((frameWidth%tileW) == 0);
     //assert((frameHeight%tileH) == 0);
             
@@ -397,20 +400,23 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(
         maxY = (maxY == -1)? tileYCoord: std::max(maxY, (int)tileYCoord);
         assert(tileXCoord<wTiles);
         unsigned tileIndex = tileYCoord * wTiles + tileXCoord;
-        assert(tileIndex < fragmentTiles.size());
+        if(fragmentTiles.find(tileIndex) == fragmentTiles.end()){
+           fragmentTiles[tileIndex] = new RasterTile(this, primId, tileIndex,
+              tileH, tileW, tileXCoord, tileYCoord);
+        }
         fragmentTiles[tileIndex]->addFragment(&m_fragments[frag]);
-                
         //make sure that we do not add more fragments in each tile than we should have
         assert(fragmentTiles[tileIndex]->size() <= (tileH * tileW));
     }
 
+#if 0
+    //for debugging only
     unsigned fragCount = 0;
-
     for(int i=0; i< fragmentTiles.size(); i++){
        fragCount += fragmentTiles[i]->resetActiveCount();
     }
-
     assert(fragCount == m_fragments.size());
+#endif
 
     m_simtRasterTiles.resize(clusterCount);
     unsigned tcSize = tcH*tcW;
@@ -420,21 +426,24 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(
     unsigned xTCBlocks = frameWidth%tbpw>0? 
        ((frameWidth - (frameWidth % tbpw)) + tbpw)/tbpw : frameWidth/tbpw;
     for(int tile=0; tile < fragmentTiles.size(); tile++){
-       //if(fragmentTiles[tile]->size() == 0){
-       if(fragmentTiles[tile]->xCoord >= minX and 
-          fragmentTiles[tile]->xCoord <= maxX and 
-          fragmentTiles[tile]->yCoord >= minY and 
-          fragmentTiles[tile]->yCoord <= maxY){
-          unsigned tcBlockX = fragmentTiles[tile]->xCoord/tcBlockInTilesW;
-          unsigned tcBlockY = fragmentTiles[tile]->yCoord/tcBlockInTilesH;
-          unsigned tcBlockId = (tcBlockY * xTCBlocks) + tcBlockX;
-          m_simtRasterTiles[tcBlockId%clusterCount].push_back(fragmentTiles[tile]);
-          /*printf("assigning tile %d to cluster %d\n", tile,
-                tcBlockId%clusterCount);*/
-          m_rasterTiles.push_back(fragmentTiles[tile]);
-       } else {
-          assert(fragmentTiles[tile]->getActiveCount() == 0);
-          delete fragmentTiles[tile];
+       if(fragmentTiles.find(tile)!= fragmentTiles.end()){
+          if(fragmentTiles[tile]->xCoord >= minX and 
+                fragmentTiles[tile]->xCoord <= maxX and 
+                fragmentTiles[tile]->yCoord >= minY and 
+                fragmentTiles[tile]->yCoord <= maxY){
+             unsigned tcBlockX = fragmentTiles[tile]->xCoord/tcBlockInTilesW;
+             unsigned tcBlockY = fragmentTiles[tile]->yCoord/tcBlockInTilesH;
+             unsigned tcBlockId = (tcBlockY * xTCBlocks) + tcBlockX;
+             m_simtRasterTiles[tcBlockId%clusterCount].push_back(fragmentTiles[tile]);
+             /*printf("assigning tile %d to cluster %d\n", tile,
+               tcBlockId%clusterCount);*/
+             m_rasterTiles.push_back(fragmentTiles[tile]);
+          } else {
+             //all tiles should have some frags
+             assert(0);
+             /*assert(fragmentTiles[tile]->getActiveCount() == 0);
+             delete fragmentTiles[tile];*/
+          }
        }
     }
 
@@ -1669,6 +1678,7 @@ unsigned int renderData_t::doFragmentShading() {
          continue;
       }
       addedPrims++;
+      printf("adding prim %d from %d primitives\n", prim, drawPrimitives.size());
       drawPrimitives[prim].sortFragmentsInTiles(
             m_bufferHeight, m_bufferWidth, 
             m_tile_H, m_tile_W, 
