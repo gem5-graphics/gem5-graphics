@@ -66,35 +66,75 @@ if options.gtrace == "":
    print "Error: no trace (--gtrace) specified"
    exit(1)
 
-options.g_standalone_mode = True
-options.mem_size = "1GB"
-options.g_raster_th = 16;
-options.g_raster_tw = 16;
-options.g_raster_bh = 16;
-options.g_raster_bw = 16;
-
-#should be set by the gpgpusim config file anyway
-options.clusters = 2
-options.cores_per_cluster = 2
-options.gpu_core_clock = "1GHz"
+options.gpgpusim_config  = "gpu_config2"
+options.config_icnt  = "config_soc2.icnt"
+options.clusters = 6
+options.cores_per_cluster = 1
 options.ctas_per_shader = 8
 options.gpu_warp_size = 32
 options.gpu_threads_per_core = 2048
-options.sc_l1_assoc = 4
+options.gpu_core_clock = "1000MHz"
+options.gpu_core_config = "Maxwell"
+#options.sys_clock = "1200MHz" #from the file above
+options.gpu_dram_clock = "800Mhz"
+options.mem_type = "LPDDR3_1600_1x32"
+options.mem_channels = 4
+
+options.g_standalone_mode = True
+options.mem_size = "1GB"
+options.g_raster_tw = 4 #1024;
+options.g_raster_th = 4 #768;
+options.g_raster_bw = 4 #1024;
+options.g_raster_bh = 4 #768;
+
+options.g_setup_delay = 8
+options.g_setup_q = 1000
+options.g_coarse_tiles = 1
+options.g_fine_tiles = 1
+options.g_hiz_tiles = 1
+options.g_tc_engines = 2
+options.g_tc_bins = 4
+options.g_tc_h = 2
+options.g_tc_w = 2
+#options.g_tc_block_dim = 2
+options.g_tc_thresh = 20
+options.g_wg_size = 64
+#options.gpgpusim_stats = True
+options.drawcall_stats = True
+
+#should be set by the gpgpusim config file anyway
+
+#icache
+options.sc_il1_size = "32kB"
+options.sc_il1_assoc = 4
+#color (dl1)
+options.sc_l1_size = "32kB"
+options.sc_l1_assoc = 8
 options.sc_l1_buf_depth = 24
-options.sc_tl1_assoc = 4
-options.sc_tl1_buf_depth = 24
+#texture
+options.sc_tl1_size = "48kB"
+options.sc_tl1_assoc = 24
+options.sc_tl1_buf_depth = 32
+#zcache
+options.sc_zl1_size = "32kB"
+options.sc_zl1_assoc= 8
+options.gpu_zl1_buf_depth = 96
+#l2 cache
+options.sc_l2_size = "2048kB"
+options.sc_l2_assoc = 32
+
+#options.flush_kernel_end = True
+options.shMemDelay = 1
+options.cacheline_size = 128
+
+#for fs mode
 options.gpu_l1_pagewalkers = 1
 options.gpu_tlb_entries = 8
 options.gpu_tlb_assoc = 8
 options.gpu_ttlb_entries = 8
 options.gpu_ttlb_assoc = 8
-options.sc_l2_assoc = 8
-options.pwc_size = "1kB"
+options.pwc_size = "128kB"
 options.pwc_assoc = 4
-options.flush_kernel_end = True
-options.shMemDelay = 1
-options.cacheline_size = 128
 
 
 
@@ -143,6 +183,15 @@ gpu_mem_range = AddrRange(options.mem_size)
 system.gpu = GPUConfig.createGPU(options, gpu_mem_range)
 GPUConfig.connectGPUPorts_classic(system, system.gpu, options)
 
+system.gpu.l2cache.write_buffers = 128
+system.gpu.l2cache.mshrs = 128
+system.gpu.l2cache.tgts_per_mshr = 20
+system.membus.width = 128
+system.gpu.l2NetToL2.width = 128
+system.membus.clk_domain = SrcClockDomain(clock = "2GHz",
+                                   voltage_domain = system.voltage_domain)
+system.gpu.l2NetToL2.clk_domain = SrcClockDomain(clock = "2GHz",
+                                   voltage_domain = system.voltage_domain)
 
 # -----------------------
 # run simulation
