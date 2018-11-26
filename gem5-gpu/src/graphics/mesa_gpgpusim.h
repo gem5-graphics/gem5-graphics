@@ -361,8 +361,9 @@ struct stage_shading_info_t {
     void* fragCodeAddr;
     //temporarly used with earlyZ util multiple streams are re-enabled
     uint32_t currentEarlyZTile;
-    std::vector<tileStream_t> cudaStreamTiles;
+    std::vector<tileStream_t*> cudaStreamTiles;
     kernel_info_t* fragKernel;
+    std::unordered_map<unsigned, tileStream_t*> threadTileMap;
 
     
     inline tileStream_t* getTCTile(unsigned tid, unsigned* size){
@@ -372,14 +373,16 @@ struct stage_shading_info_t {
     }
 
     inline tileStream_t* getTCTile(unsigned tid){
-       for(auto& tile: cudaStreamTiles){
-          if(tid>=tile.t_start and tid<=tile.t_end){
-             return &tile;
+       assert(threadTileMap.find(tid)!=threadTileMap.end());
+       return threadTileMap[tid];
+       /*for(auto& tile: cudaStreamTiles){
+          if(tid>=tile->t_start and tid<=tile->t_end){
+             return tile;
           }
        }
        //should always find a tile
        assert(0);
-       return NULL;
+       return NULL;*/
     }
 
     stage_shading_info_t() {
@@ -409,7 +412,10 @@ struct stage_shading_info_t {
         if(earlyZTiles!=NULL) { assert(0); } //should be cleared when earlyZ is done
         //
         currentEarlyZTile = 0;
+        for(auto& t: cudaStreamTiles)
+           delete t;
         cudaStreamTiles.clear();
+        threadTileMap.clear();
     }
 };
 
