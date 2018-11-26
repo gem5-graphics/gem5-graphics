@@ -88,7 +88,7 @@ options.g_raster_bw = 4 #1024;
 options.g_raster_bh = 4 #768;
 
 options.g_setup_delay = 8
-options.g_setup_q = 1000
+options.g_setup_q = 100000
 options.g_coarse_tiles = 1
 options.g_fine_tiles = 1
 options.g_hiz_tiles = 1
