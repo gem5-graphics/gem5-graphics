@@ -514,10 +514,11 @@ def connectGPUPorts_classic(system, gpu, options):
 
     for i,sc in enumerate(gpu.shader_cores):
         #readonly cache
-        sc.icache = L1_ICache(size=options.sc_il1_size,
+        '''sc.icache = L1_ICache(size=options.sc_il1_size,
                                 assoc=options.sc_il1_assoc)
         sc.icache.mem_side = gpu.l2NetToL2.slave
-        sc.inst_port = sc.icache.cpu_side
+        sc.inst_port = sc.icache.cpu_side'''
+        sc.inst_port = gpu.l2NetToL2.slave
 
         #data cache
         sc.dcache = L1_DCache(size=options.sc_l1_size,
