@@ -472,6 +472,9 @@ private:
     bool m_validTiles;
 };
 
+enum class texModifier {
+   NONE, PROJECTED, LOD_BIAS
+};
 
 class renderData_t {
 public:
@@ -531,7 +534,7 @@ public:
                                       int num_coords,
                                       float* dst, int num_dst,
                                       unsigned tid, void* stream,
-                                      bool isTxf, bool isTxb);
+                                      texModifier tmodifier);
     unsigned  getTexelSize(int samplingUnit);
     void addTexelFetch(int x, int y, int level);
 

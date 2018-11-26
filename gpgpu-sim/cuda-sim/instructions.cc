@@ -4048,6 +4048,7 @@ void getTexelData(ptx_thread_info *thread, addr_t offset, ptx_reg_t * data, floa
 
 void tex_impl( const ptx_instruction *pI, ptx_thread_info *thread){
    bool isTxf = (pI->to_string().find("txf") != std::string::npos);
+   bool isTxp = (pI->to_string().find("txp") != std::string::npos);
    bool isTxb = (pI->to_string().find("txb") != std::string::npos);
    unsigned dimension = pI->dimension();
    const operand_info &dst = pI->dst(); //the registers to which fetched texel will be placed
@@ -4055,7 +4056,7 @@ void tex_impl( const ptx_instruction *pI, ptx_thread_info *thread){
    const operand_info &src2 = pI->src2(); //the vector registers containing coordinates of the texel to be fetched
    std::string textureName = src1.name();
 
-   if(isTxf)
+   if(isTxf or isTxb or isTxp)
      assert(textureName.find("TGSI_SAMP") != std::string::npos);
    //using the texture name to distinguish between graphics and gpgpu textures
    //which would change where the texture data are fetched from and how their
@@ -4211,8 +4212,12 @@ void tex_impl( const ptx_instruction *pI, ptx_thread_info *thread){
      float* fdst = new float[dst_elems]; //should only use elems
 
      std::vector<uint64_t> texelAddrs;
+     texModifier modifier = texModifier::NONE;
+     if(isTxp) modifier = texModifier::PROJECTED;
+     else if(isTxb) modifier = texModifier::LOD_BIAS;
+
      texelAddrs = g_renderData.fetchTexels(0, samplingUnit, dim, fcoords,
-           src_elems, fdst, dst_elems, uniqueThreadId, stream, isTxf, isTxb);
+           src_elems, fdst, dst_elems, uniqueThreadId, stream, modifier);
 
      uint64_t posX = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 0, -1, -1, stream).u64;
      uint64_t posY = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 1, -1, -1, stream).u64;

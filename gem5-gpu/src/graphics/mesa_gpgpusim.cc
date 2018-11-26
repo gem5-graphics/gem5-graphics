@@ -1312,17 +1312,20 @@ std::vector<uint64_t> renderData_t::fetchTexels(
       float* coords,
       int num_coords, float* dst, int num_dst, 
       unsigned utid, void* stream,
-      bool isTxf, bool isTxb){
+      texModifier tmodifier){
   m_currSamplingUnit = unit;
   texelInfo_t* ti = &m_textureInfo[m_currSamplingUnit];
 
   unsigned  quadIdx = getFragmentData(utid, utid, QUAD_INDEX, -1, -1, -1, stream).u32;
-  if(isTxf) {
+  if(tmodifier==texModifier::NONE) {
     //FIXME: use txf
     //mesaFetchTxf(m_tmachine, modifier, unit, dim, coords, num_coords , dst, num_dst, quadIdx);
     modifier = 0;
     mesaFetchTexture(m_tmachine, modifier, unit, 1 /*sampler*/, dim, coords, num_coords , dst, num_dst, quadIdx);
-  } else if(isTxb) {
+  } else if(tmodifier==texModifier::PROJECTED){
+    modifier = 1; //TEX_MODIFIER_PROJECTED
+    mesaFetchTexture(m_tmachine, modifier, unit, 1/*sampler*/, dim, coords, num_coords , dst, num_dst, quadIdx);
+  } else if(tmodifier==texModifier::LOD_BIAS){
     modifier = 2; //TEX_MODIFIER_LOD_BIAS
     mesaFetchTexture(m_tmachine, modifier, unit, 1/*sampler*/, dim, coords, num_coords , dst, num_dst, quadIdx);
   } else {
@@ -2017,6 +2020,7 @@ void renderData_t::copyStateData(void** fatCubinHandle) {
 }
 
 bool renderData_t::isDepthTestEnabled(){
+   return false;
    if(isBlendingEnabled())
       return false;
     if(g_renderData.m_mesaCtx->Depth.Test != 0)
@@ -2213,8 +2217,9 @@ void renderData_t::launchTCTile(
       m_sShading_info.sent_simt_prims-=donePrims;
 
       if(m_sShading_info.sent_simt_prims == 0){
-         assert(m_sShading_info.fragKernel!=NULL);
-         m_sShading_info.fragKernel->setDrawCallDone();
+         //assert(m_sShading_info.fragKernel!=NULL);
+         if(m_sShading_info.fragKernel!=NULL)
+            m_sShading_info.fragKernel->setDrawCallDone();
       }
 
       if(m_sShading_info.sent_simt_prims == 0 

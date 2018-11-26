@@ -138,6 +138,7 @@ suq	TC; ptx_lval.int_value = SUQ_OP; return OPCODE;
 tex	TC; BEGIN(NOT_OPCODE); ptx_lval.int_value = TEX_OP; return OPCODE;
 txb	TC; BEGIN(NOT_OPCODE); ptx_lval.int_value = TEX_OP; return OPCODE;
 txf	TC; BEGIN(NOT_OPCODE); ptx_lval.int_value = TEX_OP; return OPCODE;
+txp	TC; BEGIN(NOT_OPCODE); ptx_lval.int_value = TEX_OP; return OPCODE;
 txq	TC; ptx_lval.int_value = TEX_OP; return OPCODE;
 trap	TC; ptx_lval.int_value = TRAP_OP; return OPCODE;
 vabsdiff TC; ptx_lval.int_value = VABSDIFF_OP; return OPCODE;
