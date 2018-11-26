@@ -420,13 +420,17 @@ class graphics_simt_pipeline {
       void run_setup(){
          unsigned elms = m_setup_pipe->get_n_element();
          if(elms == 0) return;
-         for(unsigned p=0; p < elms; p++){
-            primitive_data_t* prim =  m_setup_pipe->get_elm(p);
-            if(prim->delay > 0){
-               prim->delay--;
+         //if last element is ready no need to go through all elems in the front
+         if(m_setup_pipe->get_elm(elms-1)->delay != 0){
+            for(unsigned p=0; p < elms; p++){
+               primitive_data_t* prim =  m_setup_pipe->get_elm(p);
+               if(prim->delay > 0){
+                  prim->delay--;
+               }
             }
          }
          primitive_data_t* prim = m_setup_pipe->top();
+         if(prim->delay > 0) return;
          assert(prim);
          if(m_c_raster_pipe->full()) return;
          m_c_raster_pipe->push(prim);
