@@ -337,7 +337,7 @@ Cache::access(PacketPtr pkt, CacheBlk *&blk, Cycles &lat,
         if (wb_entry) {
             assert(wb_entry->getNumTargets() == 1);
             PacketPtr wbPkt = wb_entry->getTarget()->pkt;
-            assert(wbPkt->isWriteback());
+            //assert(wbPkt->isWriteback());
 
             if (pkt->isCleanEviction()) {
                 // The CleanEvict and WritebackClean snoops into other
@@ -933,7 +933,7 @@ Cache::createMissPacket(PacketPtr cpu_pkt, CacheBlk *blk,
         // only reason to be here is that blk is read only and we need
         // it to be writable
         assert(needsWritable);
-        assert(!blk->isWritable());
+        //assert(!blk->isWritable());
         cmd = cpu_pkt->isLLSC() ? MemCmd::SCUpgradeReq : MemCmd::UpgradeReq;
     } else if (cpu_pkt->cmd == MemCmd::SCUpgradeFailReq ||
                cpu_pkt->cmd == MemCmd::StoreCondFailReq) {

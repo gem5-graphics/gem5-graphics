@@ -1,13 +1,18 @@
 #!/bin/bash
 
 echo Using MESA+GPGPUSIM!
-#PLEASE CONFIG
-export CUDAHOME= #FIXME
-export M5_PATH=  #FIXME
-export NVIDIA_CUDA_SDK_LOCATION= #FIXME
+#alias g++="/usr/bin/g++-5"
+#alias gcc="/usr/bin/gcc-5"
 
+#PLEASE CONFIG
+export CUDAHOME=~/nvcuda/3.2/cuda
+export M5_PATH=/extra/hd1/extra/ayub/google_code/disk_image
+export NVIDIA_CUDA_SDK_LOCATION=/extra/hd1/extra/ayub/NVIDIA_GPU_Computing_SDK/3.2/C
+export LD_LIBRARY_PATH=/extrahd1/extra/ayub/google_code/emulator-2.4/external/qemu/objs/lib64
+export APITRACE_LIB_PATH=/extra/hd1/extra/ayub/google_code/apitrace/build/retrace/libglretrace.so
+
+export LD_LIBRARY_PATH=$PWD/mesa/lib
 export LD_LIBRARY_PATH=$PWD/mesa/lib/gallium
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$PWD/android_libs
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$CUDAHOME/lib
 export GPGPUSIM_MESA_ROOT=$PWD
 

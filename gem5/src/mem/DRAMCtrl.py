@@ -989,6 +989,11 @@ class GDDR5_4000_2x32(DRAMCtrl):
     # assume single rank
     ranks_per_channel = 1
 
+    # single rank device, set to 0
+    tCS = '0ns'
+    
+    tREFI = '3.9us'
+
     # GDDR5 has 4 bank groups
     bank_groups_per_rank = 4
 
