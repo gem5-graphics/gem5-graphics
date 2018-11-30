@@ -2143,11 +2143,11 @@ void renderData_t::checkEndOfShader(CudaGPU * cudaGPU){
    assert(m_sShading_info.pending_kernels > 0);
    m_sShading_info.pending_kernels--;
    if(m_flagEndFragmentShader and (m_sShading_info.pending_kernels==0)){
-      if(m_sShading_info.earlyZTiles==NULL or
-            m_sShading_info.earlyZTiles->size()==m_sShading_info.doneZTiles){
+      /*if(m_sShading_info.earlyZTiles==NULL or
+            m_sShading_info.earlyZTiles->size()==m_sShading_info.doneZTiles){*/
          endFragmentShading();
          m_flagEndFragmentShader = false;
-      }
+      //}
    }
 
 }
@@ -2218,13 +2218,9 @@ void renderData_t::launchTCTile(
       if(m_sShading_info.sent_simt_prims == 0){
          assert(m_sShading_info.fragKernel!=NULL);
          m_sShading_info.fragKernel->setDrawCallDone();
-      }
-
-      if(m_sShading_info.sent_simt_prims == 0 
-            and m_sShading_info.completed_threads == m_sShading_info.launched_threads
-            and m_sShading_info.pending_kernels==0){
-         m_flagEndFragmentShader = false;
-         endFragmentShading();
+         if(m_sShading_info.completed_threads == m_sShading_info.launched_threads){
+            m_flagEndFragmentShader = true;
+         }
       }
       return;
    }
