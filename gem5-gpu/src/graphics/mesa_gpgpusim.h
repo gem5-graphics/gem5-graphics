@@ -108,6 +108,14 @@ struct ch4_t {
   }
 };
 
+struct vertexData_t {
+   vertexData_t(unsigned inSize, unsigned outSize):
+   inputs(inSize), outputs(outSize){
+   }
+   std::vector<ch4_t> inputs;
+   std::vector<ch4_t> outputs;
+};
+
 struct fragmentData_t {
    fragmentData_t(): passedDepth(false) {}
    GLfloat attribs[PIPE_MAX_SHADER_INPUTS][4];
@@ -343,9 +351,14 @@ struct tileStream_t{
 struct stage_shading_info_t {
     enum class GraphicsPass { NONE , Vertex, Fragment};
     GraphicsPass currentPass;
+    unsigned vertInputAttribs;
+    unsigned vertOutputAttribs;
+    std::vector<vertexData_t> vertex_data;
     unsigned sent_simt_prims;
-    unsigned launched_threads;
-    unsigned completed_threads;
+    unsigned launched_threads_verts;
+    unsigned completed_threads_verts;
+    unsigned launched_threads_frags;
+    unsigned completed_threads_frags;
     unsigned pending_kernels;
     bool doneEarlyZ;
     unsigned doneZTiles;
@@ -364,7 +377,6 @@ struct stage_shading_info_t {
     std::vector<tileStream_t*> cudaStreamTiles;
     kernel_info_t* fragKernel;
     std::unordered_map<unsigned, tileStream_t*> threadTileMap;
-
     
     inline tileStream_t* getTCTile(unsigned tid, unsigned* size){
        tileStream_t* tile = getTCTile(tid);
@@ -396,8 +408,13 @@ struct stage_shading_info_t {
     void clear() {
         currentPass = GraphicsPass::NONE;
         sent_simt_prims = 0;
-        launched_threads = 0;
-        completed_threads = 0;
+        vertInputAttribs = 0;
+        vertOutputAttribs = 0;
+        vertex_data.clear();
+        launched_threads_verts = 0;
+        completed_threads_verts = 0;
+        launched_threads_frags = 0;
+        completed_threads_frags = 0;
         pending_kernels = 0;
         doneEarlyZ = true;
         doneZTiles = 0;
@@ -500,6 +517,8 @@ public:
     unsigned int noDepthFragmentShading();
     bool m_flagEndFragmentShader;
     void endFragmentShading();
+    void setVertexAttribsCount(int inputAttribsCount, int outputAttribsCount);
+    void addVertex(struct tgsi_exec_machine* mach, int pos);
     void addFragmentsQuad(std::vector<fragmentData_t>& quad);
 
     //gpgpusim calls

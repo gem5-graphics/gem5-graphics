@@ -32,6 +32,15 @@ extern "C" void gpgpusimFinalizeCurrentDraw() {
     return g_renderData.doVertexShading(inputParams, stage);
 }*/
 
+extern "C" void gpgpusimSetVertAttribsCount(int inputAttribsCount, 
+      int outputAttribsCount){
+   g_renderData.setVertexAttribsCount(inputAttribsCount, outputAttribsCount);
+}
+
+extern "C" void gpgpusimAddVertex(struct tgsi_exec_machine* mach, int pos){
+    g_renderData.addVertex(mach, pos);
+}
+
 //adding the data of each span fragment so we can render them in the order we want
 //instead of restricting ourselves in rendering each span one at the time
 extern "C" void gpgpusimAddFragQuad(struct  tgsi_exec_machine *mach,
