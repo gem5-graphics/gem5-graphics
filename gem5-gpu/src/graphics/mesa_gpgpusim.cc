@@ -576,7 +576,7 @@ shaderAttrib_t renderData_t::getFragmentData(unsigned utid, unsigned tid, unsign
 uint32_t renderData_t::getVertexData(unsigned utid, unsigned attribID, unsigned attribIndex, void * stream) {
    switch(attribID){
       case VERT_ACTIVE: 
-         if(utid >= m_sShading_info.launched_threads_frags)  return 0;
+         if(utid >= m_sShading_info.launched_threads_verts)  return 0;
          return 1;
          break;
       default: printf("Invalid attribID: %d \n", attribID);
@@ -2122,13 +2122,13 @@ void renderData_t::checkGraphicsThreadExit(void * kernelPtr, unsigned tid, void*
       //nothing to do
       return;
    } else if(m_sShading_info.currentPass == stage_shading_info_t::GraphicsPass::Vertex){
-       m_sShading_info.completed_threads_frags++;
-       assert(m_sShading_info.completed_threads_frags <= m_sShading_info.launched_threads_frags);
-       if(m_sShading_info.completed_threads_frags == m_sShading_info.launched_threads_frags){
+       m_sShading_info.completed_threads_verts++;
+       assert(m_sShading_info.completed_threads_verts <= m_sShading_info.launched_threads_verts);
+       if(m_sShading_info.completed_threads_verts == m_sShading_info.launched_threads_verts){
           m_flagEndVertexShader = true;
        }
-       if(m_sShading_info.completed_threads_frags%10000 == 0)
-         DPRINTF(MesaGpgpusim, "completed threads = %d out of %d\n", m_sShading_info.completed_threads_frags,  m_sShading_info.launched_threads_frags);
+       if(m_sShading_info.completed_threads_verts%10000 == 0)
+         DPRINTF(MesaGpgpusim, "completed threads = %d out of %d\n", m_sShading_info.completed_threads_frags,  m_sShading_info.launched_threads_verts);
    } else  if(m_sShading_info.currentPass == stage_shading_info_t::GraphicsPass::Fragment){
       m_sShading_info.completed_threads_frags++;
       assert(m_sShading_info.completed_threads_frags <= m_sShading_info.launched_threads_frags);
@@ -2144,10 +2144,12 @@ void renderData_t::checkGraphicsThreadExit(void * kernelPtr, unsigned tid, void*
        if(m_sShading_info.completed_threads_frags%10000 == 0)
          DPRINTF(MesaGpgpusim, "completed threads = %d out of %d\n", m_sShading_info.completed_threads_frags,  m_sShading_info.launched_threads_frags);
 
-      if (m_sShading_info.completed_threads_frags == m_sShading_info.launched_threads_frags){
+      if (m_sShading_info.completed_threads_frags == m_sShading_info.launched_threads_frags
+            and m_sShading_info.completed_threads_verts == m_sShading_info.launched_threads_verts){
          
          m_flagEndFragmentShader = (m_sShading_info.sent_simt_prims == 0);
-         printf("done threads = %d\n", m_sShading_info.completed_threads_frags);
+         printf("done verts = %d\n", m_sShading_info.completed_threads_verts);
+         printf("done frags = %d\n", m_sShading_info.completed_threads_frags);
          /*if(m_inShaderDepth or !isDepthTestEnabled())
          {
             m_flagEndFragmentShader = true;
