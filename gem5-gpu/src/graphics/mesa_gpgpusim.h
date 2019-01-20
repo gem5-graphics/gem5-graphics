@@ -805,6 +805,8 @@ private:
     };
 
     hizBuffer_t m_hizBuff;
+    unsigned m_numClusters;
+    unsigned m_coresPerCluster;
 };
 
 extern renderData_t g_renderData;

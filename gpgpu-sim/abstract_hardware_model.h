@@ -258,7 +258,7 @@ private:
    address_type m_inst_text_base_vaddr;
    bool m_isGraphicsKernel;
    bool m_drawCallDone;
-   std::unordered_map<unsigned, unsigned> graphicsCtaToClusterMap;
+   std::unordered_map<unsigned, unsigned> graphicsCtaToCoreMap;
 
 public:
    address_type get_inst_base_vaddr() { return m_inst_text_base_vaddr; };
@@ -285,34 +285,34 @@ public:
          m_next_cta.z = 0;
       }
       m_grid_dim.x+= newBlocks;
-      //assignCtaToCluster(newBlocks, cluster_id, start_tid);
+      //assignCtaToCore(newBlocks, cluster_id, start_tid);
    }
 
-   void assignCtaToCluster(unsigned count, unsigned cluster_id, 
+   void assignCtaToCore(unsigned count, unsigned sid,
          unsigned start_tid){
       unsigned cta_size =  threads_per_cta();
       for(unsigned i=0; i<count; i++){
          unsigned tid = start_tid + i*cta_size;
-         graphicsCtaToClusterMap[tid] = cluster_id;
+         graphicsCtaToCoreMap[tid] = sid;
       }
    }
 
-   bool canGetNextGraphicsBlock(unsigned clusterId){
+   bool canGetNextGraphicsBlock(unsigned sid){
       if(m_isGraphicsKernel) {
          unsigned ntid = m_next_cta.x* threads_per_cta();
-         assert(graphicsCtaToClusterMap.find(ntid) != graphicsCtaToClusterMap.end());
-         if(graphicsCtaToClusterMap[ntid] == clusterId)
+         assert(graphicsCtaToCoreMap.find(ntid) != graphicsCtaToCoreMap.end());
+         if(graphicsCtaToCoreMap[ntid] == sid)
             return true;
          return false;
       }
       return true;
    }
 
-   unsigned getTidCluster(unsigned tid){
+   unsigned getTidCore(unsigned tid){
       assert(m_isGraphicsKernel);
       unsigned ntid = (tid/threads_per_cta())* threads_per_cta();
-      assert(graphicsCtaToClusterMap.find(ntid) != graphicsCtaToClusterMap.end());
-      return graphicsCtaToClusterMap[ntid];
+      assert(graphicsCtaToCoreMap.find(ntid) != graphicsCtaToCoreMap.end());
+      return graphicsCtaToCoreMap[ntid];
    }
 };
 

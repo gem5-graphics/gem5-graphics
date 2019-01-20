@@ -1699,7 +1699,8 @@ bool renderData_t::depthTest(uint64_t oldDepthVal, uint64_t newDepthVal){
 unsigned int renderData_t::doFragmentShading() {
    CudaGPU* cudaGPU = CudaGPU::getCudaGPU(g_active_device);
    gpgpu_sim* gpu =  cudaGPU->getTheGPU();
-   unsigned numClusters = gpu->get_config().num_cluster();
+   m_numClusters = gpu->get_config().num_cluster(); // TODO: move me
+   m_coresPerCluster= gpu->get_config().num_cores_per_cluster(); //TODO: move me
    simt_core_cluster** simt_clusters = gpu->getSIMTCluster();
    unsigned addedPrims = 0;;
    //for(int prim=drawPrimitives.size()-1; prim >= 0; prim--){
@@ -1718,8 +1719,8 @@ unsigned int renderData_t::doFragmentShading() {
             RasterDirection::HorizontalRaster, 
             m_tc_h, m_tc_w,
             m_tc_block_dim,
-            numClusters);
-      for(unsigned clusterId=0; clusterId < numClusters; clusterId++){
+            m_numClusters);
+      for(unsigned clusterId=0; clusterId < m_numClusters; clusterId++){
          bool res = simt_clusters[clusterId]->getGraphicsPipeline()->add_primitive(&drawPrimitives[prim]);
          assert(res);
       }
@@ -1729,7 +1730,7 @@ unsigned int renderData_t::doFragmentShading() {
    m_sShading_info.completed_threads_frags = 0;
    m_sShading_info.launched_threads_frags = 0;
    assert(m_sShading_info.fragCodeAddr == NULL);
-   m_sShading_info.sent_simt_prims = numClusters * addedPrims;
+   m_sShading_info.sent_simt_prims = m_numClusters * addedPrims;
    /*if(m_inShaderDepth or not(isDepthTestEnabled())){
       //now sorting them in raster order
       sortFragmentsInRasterOrder(getTileH(), getTileW(),getBlockH(), getBlockW(), HorizontalRaster); //BlockedHorizontal);
@@ -2284,8 +2285,12 @@ void renderData_t::launchTCTile(
       assert(m_sShading_info.fragKernel != NULL);
       assert(m_sShading_info.fragCodeAddr != NULL);
       m_sShading_info.pending_kernels++;
-      m_sShading_info.fragKernel->assignCtaToCluster(
-            numberOfBlocks, clusterId, tst->t_start);
+      unsigned tcId = m_sShading_info.cudaStreamTiles.size();
+      unsigned sid = (clusterId*m_coresPerCluster) + ((tcId/m_numClusters)%m_coresPerCluster);
+      m_sShading_info.fragKernel->assignCtaToCore(
+            numberOfBlocks, 
+            sid,
+            tst->t_start);
    } else {
       tileStream_t* tst = new tileStream_t();
       tst->tcTilePtr = tcTile;
@@ -2298,8 +2303,12 @@ void renderData_t::launchTCTile(
          m_sShading_info.threadTileMap[tid] = tst;
       }
       m_sShading_info.fragKernel->add_blocks(numberOfBlocks, clusterId, tst->t_start);
-      m_sShading_info.fragKernel->assignCtaToCluster(
-            numberOfBlocks, clusterId, tst->t_start);
+      unsigned tcId = m_sShading_info.cudaStreamTiles.size(); 
+      unsigned sid = (clusterId*m_coresPerCluster) + ((tcId/m_numClusters)%m_coresPerCluster);
+      m_sShading_info.fragKernel->assignCtaToCore(
+            numberOfBlocks, 
+            sid,
+            tst->t_start);
    }
 
    m_sShading_info.launched_threads_frags+= numberOfBlocks*threadsPerBlock;
