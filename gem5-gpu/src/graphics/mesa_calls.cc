@@ -106,7 +106,7 @@ extern "C" void gpgpusimSetContext(struct gl_context *ctx){
 
 extern "C" void gpgpusimDoFragmentShading(){
   if(!gpgpusimSimulationActive()) return;
-  g_renderData.doFragmentShading();
+  g_renderData.startShading();
 }
 
 extern "C" void gpgpusimAddTexelFetch(int x, int y, int level){

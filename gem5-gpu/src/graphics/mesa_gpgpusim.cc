@@ -1696,41 +1696,56 @@ bool renderData_t::depthTest(uint64_t oldDepthVal, uint64_t newDepthVal){
    return returnVal;
 }
 
-unsigned int renderData_t::doFragmentShading() {
+bool renderData_t::runNextPrim(bool* empty){
+   CudaGPU* cudaGPU = CudaGPU::getCudaGPU(g_active_device);
+   gpgpu_sim* gpu =  cudaGPU->getTheGPU();
+   simt_core_cluster** simt_clusters = gpu->getSIMTCluster();
+
+   if(m_sShading_info.current_prim == drawPrimitives.size()) 
+      return false;
+
+   unsigned prim = m_sShading_info.current_prim++;
+   if(drawPrimitives[prim].size() == 0){
+      *empty = true;
+      return true;
+   }
+   printf("adding prim %d from %d primitives\n", prim, drawPrimitives.size());
+   drawPrimitives[prim].sortFragmentsInTiles(
+         m_bufferHeight, m_bufferWidth, 
+         m_tile_H, m_tile_W, 
+         m_hTiles, m_wTiles,
+         m_tilesCount,
+         m_block_H, m_block_W, 
+         RasterDirection::HorizontalRaster, 
+         m_tc_h, m_tc_w,
+         m_tc_block_dim,
+         m_numClusters);
+   for(unsigned clusterId=0; clusterId < m_numClusters; clusterId++){
+      bool res = simt_clusters[clusterId]->getGraphicsPipeline()->add_primitive(&drawPrimitives[prim]);
+      assert(res);
+   }
+   *empty = false;
+   return true;
+}
+
+unsigned int renderData_t::startShading() {
    CudaGPU* cudaGPU = CudaGPU::getCudaGPU(g_active_device);
    gpgpu_sim* gpu =  cudaGPU->getTheGPU();
    m_numClusters = gpu->get_config().num_cluster(); // TODO: move me
    m_coresPerCluster= gpu->get_config().num_cores_per_cluster(); //TODO: move me
    simt_core_cluster** simt_clusters = gpu->getSIMTCluster();
    unsigned addedPrims = 0;;
-   //for(int prim=drawPrimitives.size()-1; prim >= 0; prim--){
-   for(unsigned prim=0; prim < drawPrimitives.size(); prim++){
-      if(drawPrimitives[prim].size() == 0){
-         continue;
-      }
-      addedPrims++;
-      printf("adding prim %d from %d primitives\n", prim, drawPrimitives.size());
-      drawPrimitives[prim].sortFragmentsInTiles(
-            m_bufferHeight, m_bufferWidth, 
-            m_tile_H, m_tile_W, 
-            m_hTiles, m_wTiles,
-            m_tilesCount,
-            m_block_H, m_block_W, 
-            RasterDirection::HorizontalRaster, 
-            m_tc_h, m_tc_w,
-            m_tc_block_dim,
-            m_numClusters);
-      for(unsigned clusterId=0; clusterId < m_numClusters; clusterId++){
-         bool res = simt_clusters[clusterId]->getGraphicsPipeline()->add_primitive(&drawPrimitives[prim]);
-         assert(res);
-      }
+   bool empty = false;
+   while(runNextPrim(&empty)){
+      if(not empty)
+         addedPrims++;
    }
    cudaGPU->activateGPU();
 
    m_sShading_info.completed_threads_frags = 0;
    m_sShading_info.launched_threads_frags = 0;
+   m_sShading_info.sent_simt_prims = addedPrims * m_numClusters;
    assert(m_sShading_info.fragCodeAddr == NULL);
-   m_sShading_info.sent_simt_prims = m_numClusters * addedPrims;
    /*if(m_inShaderDepth or not(isDepthTestEnabled())){
       //now sorting them in raster order
       sortFragmentsInRasterOrder(getTileH(), getTileW(),getBlockH(), getBlockW(), HorizontalRaster); //BlockedHorizontal);

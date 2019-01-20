@@ -354,6 +354,7 @@ struct stage_shading_info_t {
     unsigned vertInputAttribs;
     unsigned vertOutputAttribs;
     std::vector<vertexData_t> vertex_data;
+    unsigned current_prim;
     unsigned sent_simt_prims;
     unsigned launched_threads_verts;
     unsigned completed_threads_verts;
@@ -407,6 +408,7 @@ struct stage_shading_info_t {
 
     void clear() {
         currentPass = GraphicsPass::NONE;
+        current_prim = 0;
         sent_simt_prims = 0;
         vertInputAttribs = 0;
         vertOutputAttribs = 0;
@@ -513,7 +515,8 @@ public:
     void finalizeCurrentDraw();
     bool m_flagEndVertexShader;
     void endVertexShading(CudaGPU * cudaGPU);
-    unsigned int doFragmentShading();
+    bool runNextPrim(bool* empty);
+    unsigned int startShading();
     unsigned int noDepthFragmentShading();
     bool m_flagEndFragmentShader;
     void endFragmentShading();
