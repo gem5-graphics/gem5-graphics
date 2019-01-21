@@ -510,6 +510,7 @@ public:
     bool GPGPUSimSimulationActive();
     bool GPGPUSimSkipCpFrames();
     void endOfFrame();
+    void registerPtxCode();
     void initializeCurrentDraw (struct tgsi_exec_machine* tmachine, void* sp, void* mapped_indices);
     void finalizeCurrentDraw();
     bool m_flagEndVertexShader;

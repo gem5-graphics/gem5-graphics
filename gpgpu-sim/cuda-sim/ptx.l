@@ -219,19 +219,9 @@ printf     TC; ptx_lval.int_value = PRINTF_OP; return OPCODE;
 "WARP_SZ"  TC; ptx_lval.int_value = WARPSZ_REG; return SPECIAL_REGISTER;
 
 "%utid"  TC; ptx_lval.int_value = UTID_REG; return SPECIAL_REGISTER;
-
-"%vertex_position"  TC; ptx_lval.int_value = VERTEX_POSITION; return SPECIAL_REGISTER;
-"%vertex_color0"  TC; ptx_lval.int_value = VERTEX_COLOR0; return SPECIAL_REGISTER;
-"%vertex_color1"  TC; ptx_lval.int_value = VERTEX_COLOR1; return SPECIAL_REGISTER;
-"%vertex_texcoord0"  TC; ptx_lval.int_value = VERTEX_TEXCOORD0; return SPECIAL_REGISTER;
-"%vertex_texcoord1"  TC; ptx_lval.int_value = VERTEX_TEXCOORD1; return SPECIAL_REGISTER;
-"%vertex_texcoord2"  TC; ptx_lval.int_value = VERTEX_TEXCOORD2; return SPECIAL_REGISTER;
-"%vertex_texcoord3"  TC; ptx_lval.int_value = VERTEX_TEXCOORD3; return SPECIAL_REGISTER;
-"%vertex_texcoord4"  TC; ptx_lval.int_value = VERTEX_TEXCOORD4; return SPECIAL_REGISTER;
-"%vertex_texcoord5"  TC; ptx_lval.int_value = VERTEX_TEXCOORD5; return SPECIAL_REGISTER;
-"%vertex_texcoord6"  TC; ptx_lval.int_value = VERTEX_TEXCOORD6; return SPECIAL_REGISTER;
-"%vertex_texcoord7"  TC; ptx_lval.int_value = VERTEX_TEXCOORD7; return SPECIAL_REGISTER;
 "%vertex_active"     TC; ptx_lval.int_value = VERTEX_ACTIVE;    return SPECIAL_REGISTER;
+"OUT0"     TC; ptx_lval.int_value = VERT_OUT0; return SPECIAL_REGISTER;
+"OUT1"     TC; ptx_lval.int_value = VERT_OUT1; return SPECIAL_REGISTER;
 
 "IN0"  TC; ptx_lval.int_value = SHADER_IN0; return SPECIAL_REGISTER;
 "IN1"  TC; ptx_lval.int_value = SHADER_IN1; return SPECIAL_REGISTER;

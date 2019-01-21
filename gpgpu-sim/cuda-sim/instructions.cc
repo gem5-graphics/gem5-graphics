@@ -68,21 +68,12 @@ void writeVertexResultData(const operand_info &dst, const ptx_reg_t &data, unsig
     unsigned uniqueThreadId = thread->get_uid_in_kernel();
     unsigned attribIndex = dst.get_addr_offset();
     unsigned resAttribID;
-    assert(0);
-    /*switch(dst.get_int()){//&0xFFFF){
-        case VERTEX_POSITION:  resAttribID = VERT_RESULT_HPOS;break;
-        case VERTEX_COLOR0:    resAttribID = VERT_RESULT_COL0;break;
-        case VERTEX_COLOR1:    resAttribID = VERT_RESULT_COL1;break;
-        case VERTEX_TEXCOORD0: resAttribID = VERT_RESULT_TEX0;break;
-        case VERTEX_TEXCOORD1: resAttribID = VERT_RESULT_TEX1;break;
-        case VERTEX_TEXCOORD2: resAttribID = VERT_RESULT_TEX2;break;
-        case VERTEX_TEXCOORD3: resAttribID = VERT_RESULT_TEX3;break;
-        case VERTEX_TEXCOORD4: resAttribID = VERT_RESULT_TEX4;break;
-        case VERTEX_TEXCOORD5: resAttribID = VERT_RESULT_TEX5;break;
-        case VERTEX_TEXCOORD6: resAttribID = VERT_RESULT_TEX6;break;
-        case VERTEX_TEXCOORD7: resAttribID = VERT_RESULT_TEX7;break;
+
+    switch(dst.get_int()){//&0xFFFF){
+        case VERT_OUT0:  resAttribID = 0; break;
+        case VERT_OUT1:  resAttribID = 1; break;
         default: printf("Undefined vertex result register \n"); abort();
-    }*/
+    }
     writeVertexResult(uniqueThreadId, resAttribID, attribIndex, data.f32);
 }
 
@@ -162,6 +153,7 @@ shaderAttrib_t readFragmentInputData(ptx_thread_info *thread,int builtin_id, uns
           return color;
         break;
       }
+
       default: printf("Undefined fragment input register \n"); abort();
     }
     return readFragmentAttribs(uniqueThreadId, uniqueThreadId, attribID, attribIndex, fileIdx, idx2D, stream);

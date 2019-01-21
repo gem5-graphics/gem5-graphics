@@ -61,17 +61,8 @@ enum special_regs {
    UTID_REG,
 
    //PART1: Vertex Result Registers: Used to write the vertex shading stage results
-   VERTEX_POSITION,
-   VERTEX_COLOR0,
-   VERTEX_COLOR1,
-   VERTEX_TEXCOORD0,
-   VERTEX_TEXCOORD1,
-   VERTEX_TEXCOORD2,
-   VERTEX_TEXCOORD3,
-   VERTEX_TEXCOORD4,
-   VERTEX_TEXCOORD5,
-   VERTEX_TEXCOORD6,
-   VERTEX_TEXCOORD7,
+   VERT_OUT0,
+   VERT_OUT1,
    VERTEX_ACTIVE,
            
    //PART2: Fragment Input Registers: Used to read the fragment input attribs

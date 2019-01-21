@@ -950,9 +950,7 @@ std::string getFile(const char *filename)
 void* renderData_t::getShaderFatBin(std::string vertexShaderFile,
                                     std::string fragmentShaderFile){
     const unsigned charArraySize = 200;
-    //std::string vcode = getFile(vertexShaderFile.c_str());
-    //TODO: vcode
-    std::string vcode = "";
+    std::string vcode = getFile(vertexShaderFile.c_str());
     std::string fcode = getFile(fragmentShaderFile.c_str());
 
     std::string vfCode = vcode + "\n\n" + fcode;
@@ -1211,6 +1209,42 @@ void renderData_t::setMesaCtx(struct gl_context * ctx){
    m_currentRenderBufferBytes = setRenderBuffer();
 }
 
+
+void renderData_t::registerPtxCode(){
+    std::string frame_drawcall = std::to_string(m_currentFrame) + "_" + std::to_string(m_drawcall_num);
+    std::string vertexPTXFile = vPTXPrfx +frame_drawcall+".ptx";
+    std::string fragmentPTXFile = fPTXPrfx +frame_drawcall+".ptx"; 
+    void* cudaFatBin = getShaderFatBin(vertexPTXFile, fragmentPTXFile);
+
+    std::string vertexPtxInfo = getShaderPTXInfo(m_usedVertShaderRegs, getCurrentShaderName(VERTEX_PROGRAM));
+    std::string fragmentPtxInfo = getShaderPTXInfo(m_usedFragShaderRegs, getCurrentShaderName(FRAGMENT_PROGRAM));
+
+    std::string ptxInfoFileName = fPtxInfoPrfx +
+        std::to_string(m_currentFrame) + "_" + std::to_string(getDrawcallNum());
+    std::ofstream ptxInfoFile(ptxInfoFileName.c_str());
+    assert(ptxInfoFile.is_open());
+    ptxInfoFile<< vertexPtxInfo + fragmentPtxInfo; 
+    ptxInfoFile.close();
+
+    void ** fatCubinHandle = graphicsRegisterFatBinary(cudaFatBin, ptxInfoFileName.c_str(), &m_sShading_info.allocAddr);
+
+    //assert(m_sShading_info.allocAddr != NULL); //we always have some constants in the shaders
+    lastFatCubin = (__cudaFatCudaBinary*)cudaFatBin;
+    lastFatCubinHandle = fatCubinHandle;
+
+    graphicsRegisterFunction(fatCubinHandle,
+            getCurrentShaderId(VERTEX_PROGRAM),
+            (char*)getCurrentShaderName(VERTEX_PROGRAM).c_str(),
+            getCurrentShaderName(VERTEX_PROGRAM).c_str(),
+            -1, (uint3*)0, (uint3*)0, (dim3*)0, (dim3*)0, (int*)0);
+
+    graphicsRegisterFunction(fatCubinHandle,
+            getCurrentShaderId(FRAGMENT_PROGRAM),
+            (char*)getCurrentShaderName(FRAGMENT_PROGRAM).c_str(),
+            getCurrentShaderName(FRAGMENT_PROGRAM).c_str(),
+            -1, (uint3*)0, (uint3*)0, (dim3*)0, (dim3*)0, (int*)0);
+}
+
 void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, void* sp, void* mapped_indices) {
     g_gpuMutex.lock();
     assert(getDeviceData() == NULL);
@@ -1255,39 +1289,7 @@ void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, voi
       ci++;
     }
 
-    std::string frame_drawcall = std::to_string(m_currentFrame) + "_" + std::to_string(m_drawcall_num);
-    std::string vertexPTXFile = vPTXPrfx +frame_drawcall+".ptx";
-    std::string fragmentPTXFile = fPTXPrfx +frame_drawcall+".ptx"; 
-    void* cudaFatBin = getShaderFatBin(vertexPTXFile, fragmentPTXFile);
 
-    std::string vertexPtxInfo = "";
-    //std::string vertexPtxInfo = getShaderPTXInfo(m_usedVertShaderRegs, getCurrentShaderName(VERTEX_PROGRAM));
-    std::string fragmentPtxInfo = getShaderPTXInfo(m_usedFragShaderRegs, getCurrentShaderName(FRAGMENT_PROGRAM));
-
-    std::string ptxInfoFileName = fPtxInfoPrfx +
-        std::to_string(m_currentFrame) + "_" + std::to_string(getDrawcallNum());
-    std::ofstream ptxInfoFile(ptxInfoFileName.c_str());
-    assert(ptxInfoFile.is_open());
-    ptxInfoFile<< vertexPtxInfo + fragmentPtxInfo; 
-    ptxInfoFile.close();
-
-    void ** fatCubinHandle = graphicsRegisterFatBinary(cudaFatBin, ptxInfoFileName.c_str(), &m_sShading_info.allocAddr);
-
-    //assert(m_sShading_info.allocAddr != NULL); //we always have some constants in the shaders
-    lastFatCubin = (__cudaFatCudaBinary*)cudaFatBin;
-    lastFatCubinHandle = fatCubinHandle;
-
-    /*graphicsRegisterFunction(fatCubinHandle,
-            getCurrentShaderId(VERTEX_PROGRAM),
-            (char*)getCurrentShaderName(VERTEX_PROGRAM).c_str(),
-            getCurrentShaderName(VERTEX_PROGRAM).c_str(),
-            -1, (uint3*)0, (uint3*)0, (dim3*)0, (dim3*)0, (int*)0);*/
-
-    graphicsRegisterFunction(fatCubinHandle,
-            getCurrentShaderId(FRAGMENT_PROGRAM),
-            (char*)getCurrentShaderName(FRAGMENT_PROGRAM).c_str(),
-            getCurrentShaderName(FRAGMENT_PROGRAM).c_str(),
-            -1, (uint3*)0, (uint3*)0, (dim3*)0, (dim3*)0, (int*)0);
 
     unsigned fragmentsPerTile = m_tile_H * m_tile_W;
     m_wTiles = (m_bufferWidth + m_tile_W -1)/ m_tile_W;
@@ -1727,10 +1729,13 @@ bool renderData_t::runNextPrim(){
 }
 
 unsigned int renderData_t::startShading() {
+   registerPtxCode();
+
    m_sShading_info.completed_threads_verts = 0;
    m_sShading_info.launched_threads_verts = 0;
    m_sShading_info.completed_threads_frags = 0;
    m_sShading_info.launched_threads_frags = 0;
+
    CudaGPU* cudaGPU = CudaGPU::getCudaGPU(g_active_device);
    gpgpu_sim* gpu =  cudaGPU->getTheGPU();
    m_numClusters = gpu->get_config().num_cluster(); // TODO: move me
@@ -2137,7 +2142,7 @@ void renderData_t::checkGraphicsThreadExit(void * kernelPtr, unsigned tid, void*
 void renderData_t::checkEndOfShader(CudaGPU * cudaGPU){
    assert(m_sShading_info.pending_kernels > 0);
    m_sShading_info.pending_kernels--;
-   if(m_flagEndFragmentShader //and m_flagEndVertexShader 
+   if(m_flagEndFragmentShader and m_flagEndVertexShader 
          and (m_sShading_info.pending_kernels==0)){
          endFragmentShading();
          m_flagEndVertexShader = false;
