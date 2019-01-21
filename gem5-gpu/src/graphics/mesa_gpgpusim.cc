@@ -1694,7 +1694,7 @@ bool renderData_t::depthTest(uint64_t oldDepthVal, uint64_t newDepthVal){
    return returnVal;
 }
 
-bool renderData_t::runNextPrim(bool* empty){
+bool renderData_t::runNextPrim(){
    CudaGPU* cudaGPU = CudaGPU::getCudaGPU(g_active_device);
    gpgpu_sim* gpu =  cudaGPU->getTheGPU();
    simt_core_cluster** simt_clusters = gpu->getSIMTCluster();
@@ -1704,7 +1704,6 @@ bool renderData_t::runNextPrim(bool* empty){
 
    unsigned prim = m_sShading_info.current_prim++;
    if(drawPrimitives[prim].size() == 0){
-      *empty = true;
       return true;
    }
    printf("adding prim %d from %d primitives\n", prim, drawPrimitives.size());
@@ -1722,28 +1721,25 @@ bool renderData_t::runNextPrim(bool* empty){
       bool res = simt_clusters[clusterId]->getGraphicsPipeline()->add_primitive(&drawPrimitives[prim]);
       assert(res);
    }
-   *empty = false;
+
+   m_sShading_info.sent_simt_prims += m_numClusters;
    return true;
 }
 
 unsigned int renderData_t::startShading() {
+   m_sShading_info.completed_threads_verts = 0;
+   m_sShading_info.launched_threads_verts = 0;
+   m_sShading_info.completed_threads_frags = 0;
+   m_sShading_info.launched_threads_frags = 0;
    CudaGPU* cudaGPU = CudaGPU::getCudaGPU(g_active_device);
    gpgpu_sim* gpu =  cudaGPU->getTheGPU();
    m_numClusters = gpu->get_config().num_cluster(); // TODO: move me
    m_coresPerCluster= gpu->get_config().num_cores_per_cluster(); //TODO: move me
-   simt_core_cluster** simt_clusters = gpu->getSIMTCluster();
-   unsigned addedPrims = 0;;
-   bool empty = false;
-   while(runNextPrim(&empty)){
-      if(not empty)
-         addedPrims++;
-   }
+   assert(m_sShading_info.fragCodeAddr == NULL);
+
+   while(runNextPrim()){}
    cudaGPU->activateGPU();
 
-   m_sShading_info.completed_threads_frags = 0;
-   m_sShading_info.launched_threads_frags = 0;
-   m_sShading_info.sent_simt_prims = addedPrims * m_numClusters;
-   assert(m_sShading_info.fragCodeAddr == NULL);
    /*if(m_inShaderDepth or not(isDepthTestEnabled())){
       //now sorting them in raster order
       sortFragmentsInRasterOrder(getTileH(), getTileW(),getBlockH(), getBlockW(), HorizontalRaster); //BlockedHorizontal);
@@ -2216,8 +2212,6 @@ void renderData_t::launchVRTile(){
       return;
    const unsigned remainingVerts = 
       vertsCount - m_sShading_info.launched_threads_verts;
-   const unsigned inProgressVerts = 
-      m_sShading_info.launched_threads_verts - m_sShading_info.completed_threads_verts;
    /*if(tcTile == NULL){
       assert(donePrims > 0);
       assert(m_sShading_info.sent_simt_prims >= donePrims);

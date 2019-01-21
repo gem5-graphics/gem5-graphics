@@ -514,7 +514,7 @@ public:
     void finalizeCurrentDraw();
     bool m_flagEndVertexShader;
     bool m_flagEndFragmentShader;
-    bool runNextPrim(bool* empty);
+    bool runNextPrim();
     unsigned int startShading();
     unsigned int noDepthFragmentShading();
     void endFragmentShading();
