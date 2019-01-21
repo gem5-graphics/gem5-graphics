@@ -667,10 +667,8 @@ void renderData_t::endDrawCall() {
        }
        delete tiles;
     }
-    for(int st=0; st < m_sShading_info.cudaStreams.size(); st++){
-       graphicsStreamDestroy(m_sShading_info.cudaStreams[st]);
-    }
-    m_sShading_info.cudaStreams.clear();
+    graphicsStreamDestroy(m_sShading_info.cudaStreamVert);
+    graphicsStreamDestroy(m_sShading_info.cudaStreamFrag);
     m_sShading_info.clear();
     for(auto tr: textureRefs)
        delete tr;
@@ -2093,51 +2091,12 @@ void renderData_t::writeVertexResult(unsigned threadID, unsigned resAttribID, un
    //vertexStageData->results[resAttribID].data[threadID][attribIndex] = data;
 }
 
-void renderData_t::endVertexShading(CudaGPU * cudaGPU){
-    assert(0);
-    /*
-    //DPRINTF(MesaGpgpusim, "gpgpusim-graphics: starting prim %d\n", 0);
-    TNLcontext *tnl = TNL_CONTEXT(m_mesaCtx);
-    vertex_buffer *VB = &tnl->vb;
-    copy_vp_results(m_mesaCtx, VB, vertexStageData, m_mesaCtx->VertexProgram._Current);
-
-    for (GLuint primId = 0; primId < VB->PrimitiveCount; primId++)
-        do_ndc_cliptest(m_mesaCtx, vertexStageData, primId);
-   
-    m_sShading_info.renderFunc = init_run_render(m_mesaCtx);
-
-    //get fragments of the current batch of vertices
-    for (GLuint primId = 0; primId < VB->PrimitiveCount; primId++)
-       run_render_prim(m_mesaCtx, m_sShading_info.renderFunc, VB, primId);
-   
-    //this will add current prim fragments
-    finalize_run_render(m_mesaCtx);
-
-    if(m_inShaderDepth or not(isDepthTestEnabled())){
-       //now sorting them in raster order
-       sortFragmentsInRasterOrder(getTileH(), getTileW(),getBlockH(), getBlockW(), HorizontalRaster); //BlockedHorizontal);
-
-       if(0 == noDepthFragmentShading()){
-          //no fragment shader
-          endFragmentShading();
-       }
-    } else {
-       runEarlyZ(cudaGPU, getTileH(), getTileW(),getBlockH(), getBlockW(), HorizontalRaster); // BlockedHorizontal);
-    }
-   */
-}
-
 void renderData_t::endFragmentShading() {
-    printf("end fragment shading\n");
-    m_sShading_info.currentPass = stage_shading_info_t::GraphicsPass::NONE;
     endDrawCall(); 
 }
 
 void renderData_t::checkGraphicsThreadExit(void * kernelPtr, unsigned tid, void* stream){
-   if(m_sShading_info.currentPass == stage_shading_info_t::GraphicsPass::NONE){
-      //nothing to do
-      return;
-   } else if(m_sShading_info.currentPass == stage_shading_info_t::GraphicsPass::Vertex){
+   if(stream == m_sShading_info.cudaStreamVert){
        m_sShading_info.completed_threads_verts++;
        assert(m_sShading_info.completed_threads_verts <= m_sShading_info.launched_threads_verts);
        if(m_sShading_info.completed_threads_verts == m_sShading_info.launched_threads_verts){
@@ -2145,7 +2104,7 @@ void renderData_t::checkGraphicsThreadExit(void * kernelPtr, unsigned tid, void*
        }
        if(m_sShading_info.completed_threads_verts%10000 == 0)
          DPRINTF(MesaGpgpusim, "completed threads = %d out of %d\n", m_sShading_info.completed_threads_frags,  m_sShading_info.launched_threads_verts);
-   } else  if(m_sShading_info.currentPass == stage_shading_info_t::GraphicsPass::Fragment){
+   } else  if(stream == m_sShading_info.cudaStreamFrag){
       m_sShading_info.completed_threads_frags++;
       assert(m_sShading_info.completed_threads_frags <= m_sShading_info.launched_threads_frags);
       tileStream_t* tst = m_sShading_info.getTCTile(tid);
@@ -2174,25 +2133,19 @@ void renderData_t::checkGraphicsThreadExit(void * kernelPtr, unsigned tid, void*
             m_flagEndFragmentShader = m_sShading_info.doneEarlyZ;
          }*/
       }
+   } else {
+      //non graphics kernel
    }
 }
 
 void renderData_t::checkEndOfShader(CudaGPU * cudaGPU){
-   if(m_flagEndVertexShader){ 
-      m_sShading_info.launched_threads_frags = 0; //reset
-      endVertexShading(cudaGPU);
-      m_flagEndVertexShader = false;
-   }
-   if(m_sShading_info.earlyZTiles!=NULL) 
-      m_sShading_info.doneZTiles++;
    assert(m_sShading_info.pending_kernels > 0);
    m_sShading_info.pending_kernels--;
-   if(m_flagEndFragmentShader and (m_sShading_info.pending_kernels==0)){
-      /*if(m_sShading_info.earlyZTiles==NULL or
-            m_sShading_info.earlyZTiles->size()==m_sShading_info.doneZTiles){*/
+   if(m_flagEndFragmentShader //and m_flagEndVertexShader 
+         and (m_sShading_info.pending_kernels==0)){
          endFragmentShading();
+         m_flagEndVertexShader = false;
          m_flagEndFragmentShader = false;
-      //}
    }
 
 }
@@ -2252,6 +2205,72 @@ void renderData_t::launchFragmentTile(RasterTile * rasterTile, unsigned tileId){
    */
 }
 
+void renderData_t::launchVRTile(){
+   const unsigned vertsCount = m_sShading_info.vertex_data.size();
+   assert(m_sShading_info.launched_threads_verts <= vertsCount);
+   //all vertices have been launched done here
+   if(m_sShading_info.launched_threads_verts == vertsCount)
+      return;
+   //all cores running vert shaders, try next cycle
+   if(m_busyVertsCores.size() == (m_coresPerCluster*m_numClusters))
+      return;
+   const unsigned remainingVerts = 
+      vertsCount - m_sShading_info.launched_threads_verts;
+   const unsigned inProgressVerts = 
+      m_sShading_info.launched_threads_verts - m_sShading_info.completed_threads_verts;
+   /*if(tcTile == NULL){
+      assert(donePrims > 0);
+      assert(m_sShading_info.sent_simt_prims >= donePrims);
+      m_sShading_info.sent_simt_prims-=donePrims;
+
+      if(m_sShading_info.sent_simt_prims == 0){
+         assert(m_sShading_info.fragKernel!=NULL);
+         m_sShading_info.fragKernel->setDrawCallDone();
+         if(m_sShading_info.completed_threads_frags == m_sShading_info.launched_threads_frags){
+            m_flagEndFragmentShader = true;
+         }
+      }
+      return;
+   }*/
+
+   //gather how many verts shaders we are going to launch 
+   unsigned selectedCoreSid = (unsigned)-1;
+   for(unsigned c=0; c<(m_numClusters*m_coresPerCluster); c++){
+      if(m_busyVertsCores.count(c) == 0){
+         m_busyVertsCores.insert(c);
+         selectedCoreSid = c;
+         break;
+      }
+   }
+   assert(selectedCoreSid != (unsigned) -1);
+  
+   unsigned threadsPerBlock = std::max(remainingVerts, (unsigned)256); //TODO: make size configurable
+   unsigned numberOfBlocks = 1;
+
+
+   if(m_sShading_info.launched_threads_verts == 0){
+      graphicsStreamCreate(&m_sShading_info.cudaStreamVert); 
+      byte* arg= getDeviceData() + getColorBufferByteSize();
+
+      DPRINTF(MesaGpgpusim, "running tile %d vertices on stream %ld\n", threadsPerBlock, (unsigned long) m_sShading_info.cudaStreamVert);
+      assert( graphicsConfigureCall(numberOfBlocks, threadsPerBlock, 0, m_sShading_info.cudaStreamVert) == cudaSuccess);
+      assert(graphicsSetupArgument((void*) &arg, sizeof (byte*), 0) == cudaSuccess);
+      assert(graphicsLaunch(getCurrentShaderId(VERTEX_PROGRAM), &m_sShading_info.vertCodeAddr, &m_sShading_info.vertKernel) == cudaSuccess);
+      assert(m_sShading_info.vertKernel != NULL);
+      assert(m_sShading_info.vertCodeAddr != NULL);
+      m_sShading_info.pending_kernels++;
+   } else {
+      m_sShading_info.vertKernel->add_blocks(numberOfBlocks, m_sShading_info.launched_threads_verts);
+   }
+
+   m_sShading_info.vertKernel->assignCtaToCore(
+         numberOfBlocks, 
+         selectedCoreSid,
+         m_sShading_info.launched_threads_verts);
+   m_sShading_info.launched_threads_verts+= threadsPerBlock;
+   DPRINTF(MesaGpgpusim, "total launched threads = %d\n", m_sShading_info.launched_threads_verts);
+}
+
 void renderData_t::launchTCTile(
       unsigned clusterId,
       tcTilePtr_t tcTile, unsigned donePrims){
@@ -2279,8 +2298,7 @@ void renderData_t::launchTCTile(
           tcTile->getActiveFrags(), threadsPerBlock*numberOfBlocks, clusterId);*/
 
    if(m_sShading_info.launched_threads_frags == 0){
-      m_sShading_info.cudaStreams.push_back(cudaStream_t());
-      graphicsStreamCreate(&m_sShading_info.cudaStreams.back()); 
+      graphicsStreamCreate(&m_sShading_info.cudaStreamFrag);
       byte* arg= getDeviceData() + getColorBufferByteSize();
       tileStream_t* tst = new tileStream_t();
       tst->tcTilePtr = tcTile;
@@ -2292,9 +2310,8 @@ void renderData_t::launchTCTile(
       for(unsigned tid =tst->t_start; tid <= tst->t_end; tid++){
          m_sShading_info.threadTileMap[tid] = tst;
       }
-      uint64_t streamId = (uint64_t)m_sShading_info.cudaStreams.back();
-      DPRINTF(MesaGpgpusim, "running tile %lp with %d fragments on stream %ld\n", tcTile, tcTile->size(), streamId );
-      assert( graphicsConfigureCall(numberOfBlocks, threadsPerBlock, 0, m_sShading_info.cudaStreams.back()) == cudaSuccess);
+      DPRINTF(MesaGpgpusim, "running tile %lp with %d fragments on stream %ld\n", tcTile, tcTile->size(), (unsigned long)m_sShading_info.cudaStreamFrag);
+      assert( graphicsConfigureCall(numberOfBlocks, threadsPerBlock, 0, m_sShading_info.cudaStreamFrag) == cudaSuccess);
       assert(graphicsSetupArgument((void*) &arg, sizeof (byte*), 0) == cudaSuccess);
       assert(graphicsLaunch(getCurrentShaderId(FRAGMENT_PROGRAM), &m_sShading_info.fragCodeAddr, &m_sShading_info.fragKernel) == cudaSuccess);
       assert(m_sShading_info.fragKernel != NULL);
@@ -2317,7 +2334,7 @@ void renderData_t::launchTCTile(
       for(unsigned tid =tst->t_start; tid <= tst->t_end; tid++){
          m_sShading_info.threadTileMap[tid] = tst;
       }
-      m_sShading_info.fragKernel->add_blocks(numberOfBlocks, clusterId, tst->t_start);
+      m_sShading_info.fragKernel->add_blocks(numberOfBlocks, tst->t_start);
       unsigned tcId = m_sShading_info.cudaStreamTiles.size(); 
       unsigned sid = (clusterId*m_coresPerCluster) + ((tcId/m_numClusters)%m_coresPerCluster);
       m_sShading_info.fragKernel->assignCtaToCore(
@@ -2328,8 +2345,6 @@ void renderData_t::launchTCTile(
 
    m_sShading_info.launched_threads_frags+= numberOfBlocks*threadsPerBlock;
    DPRINTF(MesaGpgpusim, "total launched threads = %d\n", m_sShading_info.launched_threads_frags);
-
-   m_sShading_info.currentPass = stage_shading_info_t::GraphicsPass::Fragment;
 }
 
 byte* Utils::RGB888_to_RGBA888(byte* rgb, int size, byte alpha){

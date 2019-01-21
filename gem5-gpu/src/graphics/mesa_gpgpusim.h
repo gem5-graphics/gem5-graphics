@@ -349,8 +349,6 @@ struct tileStream_t{
 
 
 struct stage_shading_info_t {
-    enum class GraphicsPass { NONE , Vertex, Fragment};
-    GraphicsPass currentPass;
     unsigned vertInputAttribs;
     unsigned vertOutputAttribs;
     std::vector<vertexData_t> vertex_data;
@@ -369,13 +367,15 @@ struct stage_shading_info_t {
     unsigned * primCountMap;
     bool finishStageShaders;
     float * deviceVertsAttribs;
-    std::vector<cudaStream_t> cudaStreams;
+    cudaStream_t cudaStreamVert;
+    cudaStream_t cudaStreamFrag;
     void* allocAddr;
     void* vertCodeAddr;
     void* fragCodeAddr;
     //temporarly used with earlyZ util multiple streams are re-enabled
     uint32_t currentEarlyZTile;
     std::vector<tileStream_t*> cudaStreamTiles;
+    kernel_info_t* vertKernel;
     kernel_info_t* fragKernel;
     std::unordered_map<unsigned, tileStream_t*> threadTileMap;
     
@@ -407,7 +407,6 @@ struct stage_shading_info_t {
     }
 
     void clear() {
-        currentPass = GraphicsPass::NONE;
         current_prim = 0;
         sent_simt_prims = 0;
         vertInputAttribs = 0;
@@ -514,11 +513,10 @@ public:
     void initializeCurrentDraw (struct tgsi_exec_machine* tmachine, void* sp, void* mapped_indices);
     void finalizeCurrentDraw();
     bool m_flagEndVertexShader;
-    void endVertexShading(CudaGPU * cudaGPU);
+    bool m_flagEndFragmentShader;
     bool runNextPrim(bool* empty);
     unsigned int startShading();
     unsigned int noDepthFragmentShading();
-    bool m_flagEndFragmentShader;
     void endFragmentShading();
     void setVertexAttribsCount(int inputAttribsCount, int outputAttribsCount);
     void addVertex(struct tgsi_exec_machine* mach, int pos);
@@ -543,6 +541,7 @@ public:
     void checkEndOfShader(CudaGPU * cudaGPU);
     void doneEarlyZ(); 
     void launchFragmentTile(RasterTile * rasterTile, unsigned tileId);
+    void launchVRTile();
     void launchTCTile(unsigned clusterId, tcTilePtr_t tcTile, unsigned donePrims);
     void addPrimitive();
     void setVertShaderUsedRegs(int regs){
@@ -810,6 +809,9 @@ private:
     hizBuffer_t m_hizBuff;
     unsigned m_numClusters;
     unsigned m_coresPerCluster;
+
+    //tracks cores that currently running vertex shading
+    std::set<unsigned> m_busyVertsCores;
 };
 
 extern renderData_t g_renderData;

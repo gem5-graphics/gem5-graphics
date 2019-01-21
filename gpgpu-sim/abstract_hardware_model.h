@@ -273,8 +273,7 @@ public:
          return m_drawCallDone;
       return true;
    }
-   void add_blocks(unsigned newBlocks, unsigned cluster_id,
-         unsigned start_tid){
+   void add_blocks(unsigned newBlocks, unsigned start_tid){
       //if we already done existing blocks rewind grid dims
       if(no_more_ctas_to_run()){
          //assert(m_next_cta.y > 0);
@@ -288,10 +287,10 @@ public:
       //assignCtaToCore(newBlocks, cluster_id, start_tid);
    }
 
-   void assignCtaToCore(unsigned count, unsigned sid,
+   void assignCtaToCore(unsigned numBlocks, unsigned sid,
          unsigned start_tid){
       unsigned cta_size =  threads_per_cta();
-      for(unsigned i=0; i<count; i++){
+      for(unsigned i=0; i<numBlocks; i++){
          unsigned tid = start_tid + i*cta_size;
          graphicsCtaToCoreMap[tid] = sid;
       }
