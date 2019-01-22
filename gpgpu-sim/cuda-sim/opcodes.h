@@ -61,6 +61,10 @@ enum special_regs {
    UTID_REG,
 
    //PART1: Vertex Result Registers: Used to write the vertex shading stage results
+   VERT_ATTRIB0,
+   VERT_ATTRIB1,
+   VERT_ATTRIB2,
+   VERT_ATTRIB3,
    VERT_OUT0,
    VERT_OUT1,
    VERTEX_ACTIVE,

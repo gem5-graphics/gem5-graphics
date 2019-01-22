@@ -187,7 +187,7 @@ void ptx_thread_info::set_done()
    m_cycle_done = gpu_sim_cycle; 
 }
 
-unsigned ptx_thread_info::get_builtin( int builtin_id, unsigned dim_mod)
+uint64_t ptx_thread_info::get_builtin( int builtin_id, unsigned dim_mod)
 {
    assert( m_valid );
    switch ((builtin_id&0xFFFF)) {
@@ -278,7 +278,12 @@ unsigned ptx_thread_info::get_builtin( int builtin_id, unsigned dim_mod)
    case FRAGMENT_ACTIVE: return readFragmentInputData(this,builtin_id, dim_mod).u32;
    case FQUAD_ACTIVE: return readFragmentInputData(this,builtin_id, dim_mod).u32;
    case SKIP_DEPTH_TEST: return readFragmentInputData(this,builtin_id, dim_mod).u32;
-   case VERTEX_ACTIVE: return readVertexInputData(this,builtin_id, dim_mod);
+   case VERTEX_ACTIVE: 
+   case VERT_ATTRIB0:
+   case VERT_ATTRIB1:
+   case VERT_ATTRIB2:
+   case VERT_ATTRIB3:
+      return readVertexInputData(this,builtin_id, dim_mod);
    default: return readFragmentInputData(this,builtin_id, dim_mod).u32;
    }
    return 0;

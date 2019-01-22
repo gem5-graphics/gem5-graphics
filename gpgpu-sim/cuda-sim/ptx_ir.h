@@ -1006,7 +1006,7 @@ public:
    int membar_level() const { return m_membar_level; }
 
    bool has_memory_read() const {
-      if( m_opcode == LD_OP || m_opcode == LDU_OP 
+      if( m_opcode == LD_OP || m_opcode == LDU_OP  || m_opcode == LDV_OP
             || m_opcode == TEX_OP || m_opcode == ZTEST_OP
             || m_opcode == BLEND_OP) 
          return true;

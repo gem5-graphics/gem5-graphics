@@ -159,14 +159,20 @@ shaderAttrib_t readFragmentInputData(ptx_thread_info *thread,int builtin_id, uns
     return readFragmentAttribs(uniqueThreadId, uniqueThreadId, attribID, attribIndex, fileIdx, idx2D, stream);
 }
 
-uint32_t readVertexInputData(ptx_thread_info *thread,int builtin_id, unsigned dim_mod){
+uint64_t readVertexInputData(ptx_thread_info *thread,int builtin_id, unsigned dim_mod){
     unsigned uniqueThreadId = thread->get_uid_in_kernel();
     unsigned attribIndex = dim_mod;
-    unsigned attribID;
     void* stream = thread->get_kernel_info()->get_stream();
-    assert(builtin_id == VERTEX_ACTIVE); // the only one for now
-    attribID = VERT_ACTIVE;
-    return readVertexAttribs(uniqueThreadId, attribID, attribIndex, stream);
+    unsigned attribType = builtin_id == VERTEX_ACTIVE ? VERT_ACTIVE : VERT_ATTRIB_ADDR;
+    unsigned attribID;
+    switch (builtin_id){
+       case VERT_ATTRIB0: attribID = 0; break;
+       case VERT_ATTRIB1: attribID = 1; break;
+       case VERT_ATTRIB2: attribID = 2; break;
+       case VERT_ATTRIB3: attribID = 3; break;
+       default: assert(0);
+    }
+    return g_renderData.getVertexData(uniqueThreadId, attribType, attribID, attribIndex, stream);
 }
 
 unsigned readBufferWidth(){
@@ -2374,6 +2380,11 @@ void ld_impl( const ptx_instruction *pI, ptx_thread_info *thread )
 }
 void ldu_impl( const ptx_instruction *pI, ptx_thread_info *thread ) 
 { 
+   ld_exec(pI,thread);
+}
+void ldv_impl( const ptx_instruction *pI, ptx_thread_info *thread ) 
+{ 
+   assert(0);
    ld_exec(pI,thread);
 }
 

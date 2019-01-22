@@ -363,7 +363,7 @@ public:
    void set_ntid( dim3 tid ) { m_ntid = tid; }
    void set_nctaid( dim3 cta_size ) { m_nctaid = cta_size; }
 
-   unsigned get_builtin( int builtin_id, unsigned dim_mod); 
+   uint64_t get_builtin( int builtin_id, unsigned dim_mod); 
    void set_builtin_storage(int builtin_id, int builtin_idx, ptx_reg_t value){
      m_builtin_storage[builtin_id][builtin_idx] = value;
    }
@@ -556,5 +556,5 @@ memory_space_t whichspace( addr_t addr );
 
 extern unsigned g_ptx_thread_info_uid_next;
 shaderAttrib_t readFragmentInputData(ptx_thread_info *thread,int builtin_id, unsigned dim_mod);
-uint32_t readVertexInputData(ptx_thread_info *thread,int builtin_id, unsigned dim_mod);
+uint64_t readVertexInputData(ptx_thread_info *thread,int builtin_id, unsigned dim_mod);
 #endif

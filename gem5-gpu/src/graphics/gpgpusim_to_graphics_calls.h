@@ -16,6 +16,7 @@ enum shaderAttribs_t {
      FRAG_DEPTH_ADDR = PIPE_MAX_SHADER_INPUTS+5,
      QUAD_ACTIVE = PIPE_MAX_SHADER_INPUTS+6,
      VERT_ACTIVE = VERT_ATTRIB_MAX+1,
+     VERT_ATTRIB_ADDR = VERT_ACTIVE+1
 };
 
 union shaderAttrib_t {

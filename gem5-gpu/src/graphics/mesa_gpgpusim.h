@@ -351,7 +351,7 @@ struct tileStream_t{
 struct stage_shading_info_t {
     unsigned vertInputAttribs;
     unsigned vertOutputAttribs;
-    std::vector<vertexData_t> vertex_data;
+    std::vector<vertexData_t> vertexData;
     unsigned current_prim;
     unsigned sent_simt_prims;
     unsigned launched_threads_verts;
@@ -366,7 +366,7 @@ struct stage_shading_info_t {
     unsigned * primMap;
     unsigned * primCountMap;
     bool finishStageShaders;
-    float * deviceVertsAttribs;
+    byte* deviceVertsAttribs;
     cudaStream_t cudaStreamVert;
     cudaStream_t cudaStreamFrag;
     void* allocAddr;
@@ -411,7 +411,7 @@ struct stage_shading_info_t {
         sent_simt_prims = 0;
         vertInputAttribs = 0;
         vertOutputAttribs = 0;
-        vertex_data.clear();
+        vertexData.clear();
         launched_threads_verts = 0;
         completed_threads_verts = 0;
         launched_threads_frags = 0;
@@ -516,6 +516,7 @@ public:
     bool m_flagEndVertexShader;
     bool m_flagEndFragmentShader;
     bool runNextPrim();
+    void allocateVertBuffers();
     unsigned int startShading();
     unsigned int noDepthFragmentShading();
     void endFragmentShading();
@@ -533,7 +534,7 @@ public:
     GLuint getRBSize(){return m_bufferWidth*m_bufferHeight;}
     shaderAttrib_t getFragmentData(unsigned utid, unsigned tid, unsigned attribID, 
           unsigned attribIndex, unsigned fileIdx, unsigned idx2D, void * stream);
-    uint32_t getVertexData(unsigned threadID, unsigned attribID, unsigned attribIndex, void * stream);
+    uint64_t getVertexData(unsigned threadID, unsigned attribType, unsigned attribID, unsigned attribIndex, void * stream);
     void writeVertexResult(unsigned threadID, unsigned resAttribID, unsigned attribIndex, float data);
     void checkGraphicsThreadExit(void * kernelPtr, unsigned tid, void* stream);
     void setTcInfo(int pid, int tid){m_tcPid = pid; m_tcTid=tid;}

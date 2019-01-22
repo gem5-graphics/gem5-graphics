@@ -600,6 +600,7 @@ void ptx_instruction::set_opcode_and_latency()
        break;
    case LD_OP: op = LOAD_OP; break;
    case LDU_OP: op = LOAD_OP; break;
+   case LDV_OP: op = LOAD_OP; break;
    case ZTEST_OP: op = LOAD_OP; break;
    case BLEND_OP: op = LOAD_OP; break;
    case ST_OP: op = STORE_OP; break;
@@ -856,7 +857,7 @@ void ptx_instruction::pre_decode()
    case WB_OPTION: cache_op = CACHE_WRITE_BACK; break;
    case WT_OPTION: cache_op = CACHE_WRITE_THROUGH; break;
    default: 
-      if( m_opcode == LD_OP || m_opcode == LDU_OP 
+      if( m_opcode == LD_OP || m_opcode == LDU_OP  || m_opcode == LDV_OP
             || m_opcode == ZTEST_OP || m_opcode == BLEND_OP) 
          cache_op = CACHE_ALL;
       else if( m_opcode == ST_OP || m_opcode == STP_OP 

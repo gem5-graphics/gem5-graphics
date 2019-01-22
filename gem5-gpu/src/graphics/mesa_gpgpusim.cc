@@ -573,15 +573,18 @@ shaderAttrib_t renderData_t::getFragmentData(unsigned utid, unsigned tid, unsign
    return retVal;
 }
 
-uint32_t renderData_t::getVertexData(unsigned utid, unsigned attribID, unsigned attribIndex, void * stream) {
-   switch(attribID){
-      case VERT_ACTIVE: 
-         if(utid >= m_sShading_info.launched_threads_verts)  return 0;
-         return 1;
-         break;
-      default: printf("Invalid attribID: %d \n", attribID);
-               abort();
+uint64_t renderData_t::getVertexData(unsigned utid, unsigned attribType,
+      unsigned attribID, unsigned attribIndex, void * stream) {
+   if(attribType == VERT_ACTIVE){
+      if(utid >= m_sShading_info.launched_threads_verts)  
+         return 0;
+      return 1;
    }
+   //otherwise should be VERT_ATTRIB_ADDR address
+   assert(attribType == VERT_ATTRIB_ADDR);
+   unsigned attribStride = m_sShading_info.vertexData.size()*TGSI_NUM_CHANNELS*sizeof(GLfloat); 
+   unsigned vertStride = TGSI_NUM_CHANNELS*sizeof(GLfloat); 
+   byte* addr = m_sShading_info.deviceVertsAttribs + attribID*attribStride + utid*vertStride + attribIndex*sizeof(GLfloat);
 }
 
 void renderData_t::setVertexAttribsCount(int inputAttribsCount, int outputAttribsCount){
@@ -608,7 +611,7 @@ void renderData_t::addVertex(struct tgsi_exec_machine* mach, int pos) {
       c4[3] = mach->Outputs[i].xyzw[3].f[pos];
       vd.outputs.push_back(c4);
    }
-   m_sShading_info.vertex_data.push_back(vd);
+   m_sShading_info.vertexData.push_back(vd);
 }
 
 void renderData_t::addFragment(fragmentData_t fragmentData) {
@@ -1728,8 +1731,24 @@ bool renderData_t::runNextPrim(){
    return true;
 }
 
+void renderData_t::allocateVertBuffers(){
+   unsigned bufferSize = m_sShading_info.vertInputAttribs*m_sShading_info.vertexData.size()*TGSI_NUM_CHANNELS*sizeof(GLfloat);
+   graphicsMalloc((void**) &m_sShading_info.deviceVertsAttribs, bufferSize);
+
+   unsigned attribStride = m_sShading_info.vertexData.size()*TGSI_NUM_CHANNELS*sizeof(GLfloat); 
+   unsigned vertStride = TGSI_NUM_CHANNELS*sizeof(GLfloat); 
+   for(unsigned att=0; att<m_sShading_info.vertInputAttribs; att++){
+      for(unsigned vert=0; vert<m_sShading_info.vertexData.size(); vert++){
+         byte* addr = m_sShading_info.deviceVertsAttribs + att*attribStride + vert*vertStride;
+         modeMemcpy(addr, (byte*) m_sShading_info.vertexData[vert].inputs[att].channels, 
+               sizeof(GLfloat)*TGSI_NUM_CHANNELS, graphicsMemcpyHostToSim);
+      }
+   }
+}
+
 unsigned int renderData_t::startShading() {
    registerPtxCode();
+   allocateVertBuffers();
 
    m_sShading_info.completed_threads_verts = 0;
    m_sShading_info.launched_threads_verts = 0;
@@ -2207,7 +2226,7 @@ void renderData_t::launchFragmentTile(RasterTile * rasterTile, unsigned tileId){
 }
 
 void renderData_t::launchVRTile(){
-   const unsigned vertsCount = m_sShading_info.vertex_data.size();
+   const unsigned vertsCount = m_sShading_info.vertexData.size();
    assert(m_sShading_info.launched_threads_verts <= vertsCount);
    //all vertices have been launched done here
    if(m_sShading_info.launched_threads_verts == vertsCount)

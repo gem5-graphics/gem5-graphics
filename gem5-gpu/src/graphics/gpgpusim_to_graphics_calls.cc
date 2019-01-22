@@ -33,10 +33,6 @@ shaderAttrib_t readFragmentAttribs(unsigned uniqueThreadID, unsigned tid, unsign
     return g_renderData.getFragmentData(uniqueThreadID, tid, attribID, attribIndex, fileIdx, idx2D, stream);
 }
 
-uint32_t readVertexAttribs(unsigned threadID, unsigned attribID, unsigned attribIndex, void* stream) {
-    return g_renderData.getVertexData(threadID, attribID, attribIndex, stream);
-}
-
 //copy the result data to the store object, this store object will be used by the rest of the pipeline in MESA (rasterization and fragment shading)
 void writeVertexResult(unsigned threadID, unsigned resAttribID, unsigned attribIndex, float data) {
     g_renderData.writeVertexResult(threadID, resAttribID, attribIndex, data);
