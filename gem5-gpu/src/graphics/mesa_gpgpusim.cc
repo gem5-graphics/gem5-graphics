@@ -482,21 +482,22 @@ renderData_t::renderData_t():
 renderData_t::~renderData_t() {
 }
 
-shaderAttrib_t renderData_t::getFragmentData(unsigned utid, unsigned tid, unsigned attribID, unsigned attribIndex,
+shaderAttrib_t renderData_t::getShaderData(unsigned utid, unsigned tid, unsigned attribID, unsigned attribIndex,
       unsigned fileIdx, unsigned idx2D, void * stream) {
    //bool z_unit_disabled = m_inShaderDepth or !isDepthTestEnabled(); 
 
    assert(utid == tid);
    if( attribID == TGSI_FILE_CONSTANT){
       shaderAttrib_t retVal;
-      if((fileIdx > consts.size()) or (idx2D > consts[fileIdx].size())){
+      if((fileIdx > m_sShading_info.fragConsts.size()) or (idx2D > m_sShading_info.fragConsts[fileIdx].size())){
          assert(0);
          retVal.u32 = 0;
       } else {
-         retVal.u32 = consts[fileIdx][idx2D][attribIndex];
+         retVal.u32 = m_sShading_info.fragConsts[fileIdx][idx2D][attribIndex];
       }
       return retVal;
    }
+
    unsigned tcSize = 0;
    tileStream_t* tcTile = m_sShading_info.getTCTile(utid, &tcSize);
    tcTilePtr_t tcTilePtr = tcTile->tcTilePtr;
@@ -514,7 +515,7 @@ shaderAttrib_t renderData_t::getFragmentData(unsigned utid, unsigned tid, unsign
          unsigned endFrag = startFrag + TGSI_QUAD_SIZE - 1;
          retVal.u32 = 0;
          for(unsigned qf=startFrag; qf <= endFrag; qf++){
-            if(getFragmentData(qf, qf, FRAG_ACTIVE, -1, -1, -1, stream).u32 > 0){
+            if(getShaderData(qf, qf, FRAG_ACTIVE, -1, -1, -1, stream).u32 > 0){
                retVal.u32 = 1;
                break;
             }
@@ -681,7 +682,6 @@ void renderData_t::endDrawCall() {
        delete [] m_depthBuffer;
        m_depthBuffer = NULL;
     }
-    consts.clear();
     //Stats::dump();
     //Stats::reset();
     struct softpipe_context *sp = (struct softpipe_context *) m_sp;
@@ -1277,7 +1277,7 @@ void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, voi
 
     int ci = 0;
     while(constBufs[ci]){
-      consts.push_back(std::vector<ch4_t>());
+      m_sShading_info.fragConsts.push_back(std::vector<ch4_t>());
       assert(constBufSizes[ci]%TGSI_QUAD_SIZE ==  0);
       int constCount = constBufSizes[ci]/TGSI_QUAD_SIZE;
       for(int j=0; j < constCount; j++){
@@ -1287,7 +1287,7 @@ void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, voi
           const int pos = j * TGSI_NUM_CHANNELS + ch;
           elm[ch] = buf[pos];
         }
-        consts.back().push_back(elm);
+        m_sShading_info.fragConsts.back().push_back(elm);
       }
       ci++;
     }
@@ -1346,7 +1346,7 @@ std::vector<uint64_t> renderData_t::fetchTexels(
   m_currSamplingUnit = unit;
   texelInfo_t* ti = &m_textureInfo[m_currSamplingUnit];
 
-  unsigned  quadIdx = getFragmentData(utid, utid, QUAD_INDEX, -1, -1, -1, stream).u32;
+  unsigned  quadIdx = getShaderData(utid, utid, QUAD_INDEX, -1, -1, -1, stream).u32;
   if(tmodifier==texModifier::NONE) {
     //FIXME: use txf
     //mesaFetchTxf(m_tmachine, modifier, unit, dim, coords, num_coords , dst, num_dst, quadIdx);
@@ -1697,6 +1697,11 @@ bool renderData_t::depthTest(uint64_t oldDepthVal, uint64_t newDepthVal){
          panic("Unsupported depth function %x\n", m_mesaCtx->Depth.Func);
    }
    return returnVal;
+}
+
+//gpgpusim cycle call
+void renderData_t::gpgpusim_cycle(){
+   launchVRTile();
 }
 
 bool renderData_t::runNextPrim(){
@@ -2262,7 +2267,7 @@ void renderData_t::launchVRTile(){
    }
    assert(selectedCoreSid != (unsigned) -1);
   
-   unsigned threadsPerBlock = std::max(remainingVerts, (unsigned)256); //TODO: make size configurable
+   unsigned threadsPerBlock = std::min(remainingVerts, (unsigned)256); //TODO: make size configurable
    unsigned numberOfBlocks = 1;
 
 

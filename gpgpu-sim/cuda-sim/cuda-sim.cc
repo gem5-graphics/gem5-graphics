@@ -1302,8 +1302,8 @@ void ptx_thread_info::writeRegister(const warp_inst_t &inst, unsigned lane_id, c
    if(pI->is_z()){
       unsigned uniqueThreadId = get_uid_in_kernel();
       void* stream = get_kernel_info()->get_stream();
-      addr_t addr = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_DEPTH_ADDR, 1, -1, -1, stream).u64;
-      uint64_t posZ = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 2, -1, -1, stream).u64;
+      addr_t addr = g_renderData.getShaderData(uniqueThreadId, uniqueThreadId, FRAG_DEPTH_ADDR, 1, -1, -1, stream).u64;
+      uint64_t posZ =  g_renderData.getShaderData(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 2, -1, -1, stream).u64;
       ptx_reg_t oldDepth;
       memcpy(&oldDepth, data, bytes);
       bool passedDepth = g_renderData.depthTest(oldDepth.u64, posZ);

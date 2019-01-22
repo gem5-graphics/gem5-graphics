@@ -275,16 +275,16 @@ uint64_t ptx_thread_info::get_builtin( int builtin_id, unsigned dim_mod)
    case UTID_REG: return get_uid_in_kernel();
    case RB_WIDTH: return readMESABufferWidth();
    case RB_SIZE: return readMESABufferSize();
-   case FRAGMENT_ACTIVE: return readFragmentInputData(this,builtin_id, dim_mod).u32;
-   case FQUAD_ACTIVE: return readFragmentInputData(this,builtin_id, dim_mod).u32;
-   case SKIP_DEPTH_TEST: return readFragmentInputData(this,builtin_id, dim_mod).u32;
+   case FRAGMENT_ACTIVE: return readShaderInputData(this,builtin_id, dim_mod).u32;
+   case FQUAD_ACTIVE: return readShaderInputData(this,builtin_id, dim_mod).u32;
+   case SKIP_DEPTH_TEST: return readShaderInputData(this,builtin_id, dim_mod).u32;
    case VERTEX_ACTIVE: 
    case VERT_ATTRIB0:
    case VERT_ATTRIB1:
    case VERT_ATTRIB2:
    case VERT_ATTRIB3:
       return readVertexInputData(this,builtin_id, dim_mod);
-   default: return readFragmentInputData(this,builtin_id, dim_mod).u32;
+   default: return readShaderInputData(this,builtin_id, dim_mod).u32;
    }
    return 0;
 }

@@ -77,7 +77,7 @@ void writeVertexResultData(const operand_info &dst, const ptx_reg_t &data, unsig
     writeVertexResult(uniqueThreadId, resAttribID, attribIndex, data.f32);
 }
 
-shaderAttrib_t readFragmentInputData(ptx_thread_info *thread,int builtin_id, unsigned dim_mod){
+shaderAttrib_t readShaderInputData(ptx_thread_info *thread,int builtin_id, unsigned dim_mod){
     unsigned uniqueThreadId = thread->get_uid_in_kernel();
     unsigned attribIndex = dim_mod;
     unsigned attribID;
@@ -156,7 +156,7 @@ shaderAttrib_t readFragmentInputData(ptx_thread_info *thread,int builtin_id, uns
 
       default: printf("Undefined fragment input register \n"); abort();
     }
-    return readFragmentAttribs(uniqueThreadId, uniqueThreadId, attribID, attribIndex, fileIdx, idx2D, stream);
+    return g_renderData.getShaderData(uniqueThreadId, uniqueThreadId, attribID, attribIndex, fileIdx, idx2D, stream);
 }
 
 uint64_t readVertexInputData(ptx_thread_info *thread,int builtin_id, unsigned dim_mod){
@@ -2384,7 +2384,7 @@ void ldu_impl( const ptx_instruction *pI, ptx_thread_info *thread )
 }
 void ldv_impl( const ptx_instruction *pI, ptx_thread_info *thread ) 
 { 
-   assert(0);
+   //assert(0);
    ld_exec(pI,thread);
 }
 
@@ -4222,8 +4222,8 @@ void tex_impl( const ptx_instruction *pI, ptx_thread_info *thread){
      texelAddrs = g_renderData.fetchTexels(0, samplingUnit, dim, fcoords,
            src_elems, fdst, dst_elems, uniqueThreadId, stream, modifier);
 
-     uint64_t posX = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 0, -1, -1, stream).u64;
-     uint64_t posY = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 1, -1, -1, stream).u64;
+     uint64_t posX = g_renderData.getShaderData(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 0, -1, -1, stream).u64;
+     uint64_t posY = g_renderData.getShaderData(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 1, -1, -1, stream).u64;
 
 
      dataX.f32 = fdst[0];
@@ -4610,8 +4610,8 @@ void stp_impl( const ptx_instruction *pI, ptx_thread_info *thread )
    memory_space_t space = pI->get_space();
    unsigned uniqueThreadId = thread->get_uid_in_kernel();
    void* stream = thread->get_kernel_info()->get_stream();
-   uint64_t posX = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 0, -1, -1, stream).u64;
-   uint64_t posY = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 1, -1, -1, stream).u64;
+   uint64_t posX = g_renderData.getShaderData(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 0, -1, -1, stream).u64;
+   uint64_t posY = g_renderData.getShaderData(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 1, -1, -1, stream).u64;
    addr_t addr = g_renderData.getFramebufferFragmentAddr(posX, posY, pixelSize);
 
    thread->get_gpu()->gem5CudaGPU->getCudaCore(thread->get_hw_sid())->record_st(space);
@@ -4627,7 +4627,7 @@ void ztest_impl( const ptx_instruction *pI, ptx_thread_info *thread )
    ptx_reg_t data;
    unsigned uniqueThreadId = thread->get_uid_in_kernel();
    void* stream = thread->get_kernel_info()->get_stream();
-   addr_t addr = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_DEPTH_ADDR, 1, -1, -1, stream).u64;
+   addr_t addr = g_renderData.getShaderData(uniqueThreadId, uniqueThreadId, FRAG_DEPTH_ADDR, 1, -1, -1, stream).u64;
 
    thread->get_gpu()->gem5CudaGPU->getCudaCore(thread->get_hw_sid())->record_ld(z_space);
    thread->m_last_effective_address.set(addr);
@@ -4641,8 +4641,8 @@ void zwrite_impl( const ptx_instruction *pI, ptx_thread_info *thread )
    ptx_reg_t data;
    unsigned uniqueThreadId = thread->get_uid_in_kernel();
    void* stream = thread->get_kernel_info()->get_stream();
-   addr_t addr = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_DEPTH_ADDR, 1, -1, -1, stream).u64;
-   uint64_t posZ = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 2, -1, -1, stream).u64;
+   addr_t addr = g_renderData.getShaderData(uniqueThreadId, uniqueThreadId, FRAG_DEPTH_ADDR, 1, -1, -1, stream).u64;
+   uint64_t posZ = g_renderData.getShaderData(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 2, -1, -1, stream).u64;
    unsigned size = g_renderData.getDepthSize();
    ptx_reg_t dst;
    dst.u32 = 0;
@@ -4685,8 +4685,8 @@ void blend_impl(const ptx_instruction *pI, ptx_thread_info *thread) {
     unsigned pixelSize = g_renderData.getPixelSizeSim();
     unsigned uniqueThreadId = thread->get_uid_in_kernel();
     void* stream = thread->get_kernel_info()->get_stream();
-    uint64_t posX = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 0, -1, -1, stream).u64;
-    uint64_t posY = readFragmentAttribs(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 1, -1, -1, stream).u64;
+    uint64_t posX = g_renderData.getShaderData(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 0, -1, -1, stream).u64;
+    uint64_t posY = g_renderData.getShaderData(uniqueThreadId, uniqueThreadId, FRAG_UINT_POS, 1, -1, -1, stream).u64;
     addr_t addr = g_renderData.getFramebufferFragmentAddr(posX, posY, pixelSize);
     memory_space_t space = pI->get_space();
 

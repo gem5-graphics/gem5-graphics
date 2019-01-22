@@ -1259,6 +1259,8 @@ gpgpu_sim::core_cycle_start()
 #endif
 
     issue_block2core();
+
+    g_renderData.gpgpusim_cycle();
      
     // Depending on configuration, flush the caches once all of threads are completed.
     int all_threads_complete = 1;
