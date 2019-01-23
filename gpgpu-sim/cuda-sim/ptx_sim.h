@@ -556,5 +556,5 @@ memory_space_t whichspace( addr_t addr );
 
 extern unsigned g_ptx_thread_info_uid_next;
 shaderAttrib_t readShaderInputData(ptx_thread_info *thread,int builtin_id, unsigned dim_mod);
-uint64_t readVertexInputData(ptx_thread_info *thread,int builtin_id, unsigned dim_mod);
+//uint64_t readVertexInputData(ptx_thread_info *thread,int builtin_id, unsigned dim_mod);
 #endif

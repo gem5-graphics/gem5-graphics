@@ -279,11 +279,12 @@ uint64_t ptx_thread_info::get_builtin( int builtin_id, unsigned dim_mod)
    case FQUAD_ACTIVE: return readShaderInputData(this,builtin_id, dim_mod).u32;
    case SKIP_DEPTH_TEST: return readShaderInputData(this,builtin_id, dim_mod).u32;
    case VERTEX_ACTIVE: 
+      return readShaderInputData(this,builtin_id, dim_mod).u32;
    case VERT_ATTRIB0:
    case VERT_ATTRIB1:
    case VERT_ATTRIB2:
    case VERT_ATTRIB3:
-      return readVertexInputData(this,builtin_id, dim_mod);
+      return readShaderInputData(this,builtin_id, dim_mod).u32;
    default: return readShaderInputData(this,builtin_id, dim_mod).u32;
    }
    return 0;

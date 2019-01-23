@@ -152,6 +152,29 @@ shaderAttrib_t readShaderInputData(ptx_thread_info *thread,int builtin_id, unsig
           color.u32 = (a << 24) + (r << 16) + (g << 8) + b;
           return color;
         break;
+      } case VERTEX_ACTIVE: {
+         attribID = VERT_ACTIVE;
+         break;
+      } case VERT_ATTRIB0: {
+         attribID = VERT_ATTRIB_ADDR;
+         idx2D = attribIndex;
+         attribIndex = 0;
+         break;
+      } case VERT_ATTRIB1: {
+         attribID = VERT_ATTRIB_ADDR;
+         idx2D = attribIndex;
+         attribIndex = 1;
+         break;
+      } case VERT_ATTRIB2: {
+         attribID = VERT_ATTRIB_ADDR;
+         idx2D = attribIndex;
+         attribIndex = 2;
+         break;
+      } case VERT_ATTRIB3: {
+         attribID = VERT_ATTRIB_ADDR;
+         idx2D = attribIndex;
+         attribIndex = 3;
+         break;
       }
 
       default: printf("Undefined fragment input register \n"); abort();
@@ -159,7 +182,7 @@ shaderAttrib_t readShaderInputData(ptx_thread_info *thread,int builtin_id, unsig
     return g_renderData.getShaderData(uniqueThreadId, uniqueThreadId, attribID, attribIndex, fileIdx, idx2D, stream);
 }
 
-uint64_t readVertexInputData(ptx_thread_info *thread,int builtin_id, unsigned dim_mod){
+/*uint64_t readVertexInputData(ptx_thread_info *thread,int builtin_id, unsigned dim_mod){
     unsigned uniqueThreadId = thread->get_uid_in_kernel();
     unsigned attribIndex = dim_mod;
     void* stream = thread->get_kernel_info()->get_stream();
@@ -173,7 +196,7 @@ uint64_t readVertexInputData(ptx_thread_info *thread,int builtin_id, unsigned di
        default: assert(0);
     }
     return g_renderData.getVertexData(uniqueThreadId, attribType, attribID, attribIndex, stream);
-}
+}*/
 
 unsigned readBufferWidth(){
     return readMESABufferWidth();

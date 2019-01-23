@@ -378,6 +378,7 @@ struct stage_shading_info_t {
     kernel_info_t* vertKernel;
     kernel_info_t* fragKernel;
     std::unordered_map<unsigned, tileStream_t*> threadTileMap;
+    std::vector< std::vector<ch4_t> > vertConsts;
     std::vector< std::vector<ch4_t> > fragConsts;
     
     inline tileStream_t* getTCTile(unsigned tid, unsigned* size){
@@ -435,6 +436,7 @@ struct stage_shading_info_t {
            delete t;
         cudaStreamTiles.clear();
         threadTileMap.clear();
+        vertConsts.clear();
         fragConsts.clear();
     }
 };
@@ -451,6 +453,7 @@ public:
           delete m_rasterTiles[t];
        }
     }
+
     shaderAttrib_t getFragmentData(unsigned utid, unsigned tid, unsigned attribID, unsigned attribIndex, 
           unsigned fileIdx, unsigned idx2D, void * stream, stage_shading_info_t* shadingData, bool z_unit_disabled);
 
@@ -535,9 +538,15 @@ public:
           unsigned int block_H, unsigned int block_W, unsigned int tc_h, unsigned int tc_w, unsigned tc_block_dim, unsigned wg_size, unsigned blendingMode, unsigned depthMode, unsigned cptStartFrame, unsigned cptEndFrame, unsigned cptPeroid, bool skipCpFrames, char* outdir);
     GLuint getScreenWidth(){return m_bufferWidth;}
     GLuint getRBSize(){return m_bufferWidth*m_bufferHeight;}
+    shaderAttrib_t getVertexData(unsigned utid, unsigned tid, unsigned attribID, 
+          unsigned attribIndex, unsigned fileIdx, unsigned idx2D, void * stream);
+    shaderAttrib_t getFragmentData(unsigned utid, unsigned tid, unsigned attribID, 
+          unsigned attribIndex, unsigned fileIdx, unsigned idx2D, void * stream);
     shaderAttrib_t getShaderData(unsigned utid, unsigned tid, unsigned attribID, 
           unsigned attribIndex, unsigned fileIdx, unsigned idx2D, void * stream);
-    uint64_t getVertexData(unsigned threadID, unsigned attribType, unsigned attribID, unsigned attribIndex, void * stream);
+    shaderAttrib_t getFileConst(std::vector<std::vector<ch4_t> >& file,
+          unsigned utid, unsigned tid, unsigned attribID, 
+          unsigned attribIndex, unsigned fileIdx, unsigned idx2D, void * stream);
     void writeVertexResult(unsigned threadID, unsigned resAttribID, unsigned attribIndex, float data);
     void checkGraphicsThreadExit(void * kernelPtr, unsigned tid, void* stream);
     void setTcInfo(int pid, int tid){m_tcPid = pid; m_tcTid=tid;}

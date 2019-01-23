@@ -482,20 +482,23 @@ renderData_t::renderData_t():
 renderData_t::~renderData_t() {
 }
 
-shaderAttrib_t renderData_t::getShaderData(unsigned utid, unsigned tid, unsigned attribID, unsigned attribIndex,
+shaderAttrib_t renderData_t::getFileConst(std::vector<std::vector<ch4_t> >& file, unsigned utid, unsigned tid, unsigned attribID, unsigned attribIndex,
       unsigned fileIdx, unsigned idx2D, void * stream) {
-   //bool z_unit_disabled = m_inShaderDepth or !isDepthTestEnabled(); 
+   shaderAttrib_t retVal;
+   if((fileIdx > file.size()) or (idx2D > file[fileIdx].size())){
+      assert(0);
+      retVal.f32 = 0;
+   } else {
+      retVal.f32 = file[fileIdx][idx2D][attribIndex];
+   }
+   return retVal;
+}
 
+shaderAttrib_t renderData_t::getFragmentData(unsigned utid, unsigned tid, unsigned attribID, unsigned attribIndex,
+      unsigned fileIdx, unsigned idx2D, void * stream) {
    assert(utid == tid);
    if( attribID == TGSI_FILE_CONSTANT){
-      shaderAttrib_t retVal;
-      if((fileIdx > m_sShading_info.fragConsts.size()) or (idx2D > m_sShading_info.fragConsts[fileIdx].size())){
-         assert(0);
-         retVal.u32 = 0;
-      } else {
-         retVal.u32 = m_sShading_info.fragConsts[fileIdx][idx2D][attribIndex];
-      }
-      return retVal;
+      return getFileConst(m_sShading_info.fragConsts, utid, tid, attribID, attribIndex, fileIdx, idx2D, stream);
    }
 
    unsigned tcSize = 0;
@@ -574,18 +577,37 @@ shaderAttrib_t renderData_t::getShaderData(unsigned utid, unsigned tid, unsigned
    return retVal;
 }
 
-uint64_t renderData_t::getVertexData(unsigned utid, unsigned attribType,
-      unsigned attribID, unsigned attribIndex, void * stream) {
-   if(attribType == VERT_ACTIVE){
-      if(utid >= m_sShading_info.launched_threads_verts)  
-         return 0;
-      return 1;
+shaderAttrib_t renderData_t::getShaderData(unsigned utid, unsigned tid, unsigned attribID, unsigned attribIndex,
+      unsigned fileIdx, unsigned idx2D, void * stream) {
+   if(stream == m_sShading_info.cudaStreamVert){
+      return getVertexData(utid, tid, attribID, attribIndex, fileIdx, idx2D, stream);
+   } else if (stream == m_sShading_info.cudaStreamFrag){
+      return getFragmentData(utid, tid, attribID, attribIndex, fileIdx, idx2D, stream);
+   } else {
+      printf("Graphics stream should be for vertex or fragment kernel");
+      assert(0);
    }
-   //otherwise should be VERT_ATTRIB_ADDR address
-   assert(attribType == VERT_ATTRIB_ADDR);
-   unsigned attribStride = m_sShading_info.vertexData.size()*TGSI_NUM_CHANNELS*sizeof(GLfloat); 
-   unsigned vertStride = TGSI_NUM_CHANNELS*sizeof(GLfloat); 
-   byte* addr = m_sShading_info.deviceVertsAttribs + attribID*attribStride + utid*vertStride + attribIndex*sizeof(GLfloat);
+}
+
+shaderAttrib_t renderData_t::getVertexData(unsigned utid, unsigned tid, unsigned attribID, unsigned attribIndex,
+      unsigned fileIdx, unsigned idx2D, void * stream) {
+   shaderAttrib_t ret;
+   if(attribID == VERT_ACTIVE){
+      if(utid >= m_sShading_info.launched_threads_verts)  
+         ret.u64 = 0;
+      else 
+         ret.u64 = 1;
+      return ret;
+   } else if (attribID == VERT_ATTRIB_ADDR) {
+      unsigned attribStride = m_sShading_info.vertexData.size()*TGSI_NUM_CHANNELS*sizeof(GLfloat); 
+      unsigned vertStride = TGSI_NUM_CHANNELS*sizeof(GLfloat); 
+      byte* addr = m_sShading_info.deviceVertsAttribs + attribIndex*attribStride + utid*vertStride + idx2D*sizeof(GLfloat);
+      ret.u64 = (uint64_t) addr;
+      return ret;
+   } else {
+      assert(0); //should not happen
+      return ret;
+   }
 }
 
 void renderData_t::setVertexAttribsCount(int inputAttribsCount, int outputAttribsCount){
@@ -1272,18 +1294,37 @@ void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, voi
     setAllTextures(lastFatCubinHandle);
 
     struct softpipe_context *softpipe = (struct softpipe_context *) m_sp;
-    const void** constBufs = softpipe->mapped_constants[PIPE_SHADER_FRAGMENT];
-    const unsigned* constBufSizes = softpipe->const_buffer_size[PIPE_SHADER_FRAGMENT];
-
+    const void** constBufsVert = softpipe->mapped_constants[PIPE_SHADER_VERTEX];
+    const unsigned* constBufVertSizes = softpipe->const_buffer_size[PIPE_SHADER_FRAGMENT];
     int ci = 0;
-    while(constBufs[ci]){
-      m_sShading_info.fragConsts.push_back(std::vector<ch4_t>());
-      assert(constBufSizes[ci]%TGSI_QUAD_SIZE ==  0);
-      int constCount = constBufSizes[ci]/TGSI_QUAD_SIZE;
+    while(constBufsVert[ci]){
+      m_sShading_info.vertConsts.push_back(std::vector<ch4_t>());
+      assert(constBufVertSizes[ci]%TGSI_QUAD_SIZE ==  0);
+      int constCount = constBufVertSizes[ci]/TGSI_QUAD_SIZE;
       for(int j=0; j < constCount; j++){
         ch4_t elm;
         for(int ch=0; ch < TGSI_NUM_CHANNELS; ch++){
-          const uint *buf = (const uint*) constBufs[ci];
+          const uint *buf = (const uint*) constBufsVert[ci];
+          const int pos = j * TGSI_NUM_CHANNELS + ch;
+          elm[ch] = buf[pos];
+        }
+        m_sShading_info.vertConsts.back().push_back(elm);
+      }
+      ci++;
+    }
+
+
+    const void** constBufsFrag = softpipe->mapped_constants[PIPE_SHADER_FRAGMENT];
+    const unsigned* constBufFragSizes = softpipe->const_buffer_size[PIPE_SHADER_FRAGMENT];
+    ci = 0;
+    while(constBufsFrag[ci]){
+      m_sShading_info.fragConsts.push_back(std::vector<ch4_t>());
+      assert(constBufFragSizes[ci]%TGSI_QUAD_SIZE ==  0);
+      int constCount = constBufFragSizes[ci]/TGSI_QUAD_SIZE;
+      for(int j=0; j < constCount; j++){
+        ch4_t elm;
+        for(int ch=0; ch < TGSI_NUM_CHANNELS; ch++){
+          const uint *buf = (const uint*) constBufsFrag[ci];
           const int pos = j * TGSI_NUM_CHANNELS + ch;
           elm[ch] = buf[pos];
         }
