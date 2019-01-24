@@ -45,6 +45,9 @@ class CudaCore(MemObject):
     tex_lq_port = VectorMasterPort("texture load queue coalescer ports")
     tex_ctrl_port = MasterPort("texture load queue control port")
 
+    const_lsq_port = VectorMasterPort("const load/store queue coalescer ports")
+    const_ctrl_port = MasterPort("const load/store queue control port")
+
     z_lsq_port = VectorMasterPort("z load/store queue coalescer ports")
     z_ctrl_port = MasterPort("z load/store queue control port")
 

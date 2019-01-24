@@ -47,10 +47,12 @@ CudaCore::CudaCore(const Params *p) :
     texPort(name()+ ".tex_port", this, CorePortType::Tex),
     lsqControlPort(name() + ".lsq_ctrl_port", this),
     texControlPort(name() + ".tex_ctrl_port", this), 
+    constControlPort(name() + ".const_ctrl_port", this),
     zControlPort(name() + ".z_ctrl_port", this), _params(p),
     dataMasterId(p->sys->getMasterId(name() + ".data")),
     instMasterId(p->sys->getMasterId(name() + ".inst")),
     texMasterId(p->sys->getMasterId(name() +  ".tex")), 
+    constMasterId(p->sys->getMasterId(name() +  ".const")), 
     zMasterId(p->sys->getMasterId(name() +  ".z")), 
     id(p->id),
     itb(p->itb), ttb(p->ttb),
@@ -58,6 +60,7 @@ CudaCore::CudaCore(const Params *p) :
 {
     writebackBlocked[LSQCntrlPortType::LSQ] = -1; // Writeback is not blocked
     writebackBlocked[LSQCntrlPortType::TEX] = -1;
+    writebackBlocked[LSQCntrlPortType::CONST] = -1;
     writebackBlocked[LSQCntrlPortType::Z] = -1;
 
     stallOnICacheRetry = false;
@@ -77,15 +80,19 @@ CudaCore::CudaCore(const Params *p) :
         panic("Shader core tex_lq_port size != to warp size\n");
     }
 
+    if (p->port_const_lsq_port_connection_count != warpSize) {
+        panic("Shader core const_lsq_port size != to warp size\n");
+    }
+
     if (p->port_z_lsq_port_connection_count != warpSize) {
         panic("Shader core z_lsq_port size != to warp size\n");
     }
-
 
     // create the ports
     for (int i = 0; i < warpSize; ++i) {
         lsqPorts.push_back(new LSQPort(csprintf("%s-lsqPort%d", name(), i), this, i));
         texPorts.push_back(new LSQPort(csprintf("%s-texPort%d", name(), i), this, i));
+        constPorts.push_back(new LSQPort(csprintf("%s-constPort%d", name(), i), this, i));
         zPorts.push_back(new LSQPort(csprintf("%s-zPort%d", name(), i), this, i));
     }
 
@@ -104,10 +111,12 @@ CudaCore::~CudaCore()
     for (int i = 0; i < warpSize; ++i) {
         delete lsqPorts[i];
         delete texPorts[i];
+        delete constPorts[i];
         delete zPorts[i];
     }
     lsqPorts.clear();
     texPorts.clear();
+    constPorts.clear();
     zPorts.clear();
 }
 
@@ -128,6 +137,12 @@ CudaCore::getMasterPort(const std::string &if_name, PortID idx)
             panic("CudaCore::getMasterPort: unknown index %d\n", idx);
         }
         return * texPorts[idx];
+
+    } else if (if_name == "const_lsq_port") {
+        if (idx >= static_cast<PortID>(constPorts.size())) {
+            panic("CudaCore::getMasterPort: unknown index %d\n", idx);
+        }
+        return * constPorts[idx];
     } else if (if_name == "z_lsq_port") {
         if (idx >= static_cast<PortID>(zPorts.size())) {
             panic("CudaCore::getMasterPort: unknown index %d\n", idx);
@@ -137,6 +152,8 @@ CudaCore::getMasterPort(const std::string &if_name, PortID idx)
         return lsqControlPort;
     } else if (if_name == "tex_ctrl_port") {
         return texControlPort;
+    } else if (if_name == "const_ctrl_port") {
+        return constControlPort;
     } else if (if_name == "z_ctrl_port") {
         return zControlPort;
     } else{
@@ -345,6 +362,8 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
                    MasterID reqMasterId = dataMasterId;
                    if(inst.space.get_type() == tex_space)
                       reqMasterId = texMasterId;
+                   if(inst.space.get_type() == const_space)
+                      reqMasterId = constMasterId;
                    if(inst.space.is_z())
                       reqMasterId = zMasterId;
                    RequestPtr req = new Request(asid, addr, size, flags,
@@ -414,6 +433,8 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
                LSQPort * sendPort;
                if(inst.space.get_type() == tex_space){
                   sendPort = texPorts[lane];
+               } else if(inst.space.get_type() == const_space){
+                  sendPort = constPorts[lane];
                } else if(inst.space.is_z()) {
                   sendPort = zPorts[lane];
                } else {
@@ -557,6 +578,11 @@ CudaCore::writebackClear()
        writebackBlocked[LSQCntrlPortType::TEX] = -1;
     }
 
+    if (writebackBlocked[LSQCntrlPortType::CONST] >= 0){
+       constPorts[writebackBlocked[LSQCntrlPortType::CONST]]->sendRetryResp();
+       writebackBlocked[LSQCntrlPortType::CONST] = -1;
+    }
+
     if (writebackBlocked[LSQCntrlPortType::Z] >= 0){
        zPorts[writebackBlocked[LSQCntrlPortType::Z]]->sendRetryResp();
        writebackBlocked[LSQCntrlPortType::Z] = -1;
@@ -582,6 +608,12 @@ CudaCore::flush()
     RequestPtr texReq = new Request(asid, addr, flags, texMasterId);
     PacketPtr texPkt = new Packet(texReq, MemCmd::FlushReq);
     if (!texControlPort.sendTimingReq(texPkt)){
+        panic("Flush requests should never fail");
+    }
+
+    RequestPtr constReq = new Request(asid, addr, flags, constMasterId);
+    PacketPtr constPkt = new Packet(constReq, MemCmd::FlushReq);
+    if (!constControlPort.sendTimingReq(constPkt)){
         panic("Flush requests should never fail");
     }
 

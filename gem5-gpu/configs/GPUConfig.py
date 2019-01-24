@@ -358,14 +358,17 @@ def createGPU(options, gpu_mem_range):
     for sc in gpu.shader_cores:
         sc.lsq = ShaderLSQ()
         sc.tex_lq = ShaderLSQ()
+        sc.const_lsq = ShaderLSQ()
         sc.z_lsq = ShaderLSQ()
 
         sc.lsq.data_tlb.entries = options.gpu_tlb_entries
         sc.tex_lq.data_tlb.entries = options.gpu_ttlb_entries
+        sc.const_lsq.data_tlb.entries = options.gpu_ttlb_entries
         sc.z_lsq.data_tlb.entries = options.gpu_ttlb_entries
 
         sc.lsq.forward_flush = (buildEnv['PROTOCOL'] == 'VI_hammer_fusion' and options.flush_kernel_end)
         sc.tex_lq.forward_flush = (buildEnv['PROTOCOL'] == 'VI_hammer_fusion' and options.flush_kernel_end)
+        sc.const_lsq.forward_flush = (buildEnv['PROTOCOL'] == 'VI_hammer_fusion' and options.flush_kernel_end)
         sc.z_lsq.forward_flush = (buildEnv['PROTOCOL'] == 'VI_hammer_fusion' and options.flush_kernel_end)
 
         sc.lsq.warp_size = options.gpu_warp_size
@@ -374,6 +377,7 @@ def createGPU(options, gpu_mem_range):
 
         sc.lsq.cache_line_size = options.cacheline_size
         sc.tex_lq.cache_line_size = options.cacheline_size
+        sc.const_lsq.cache_line_size = options.cacheline_size
         sc.z_lsq.cache_line_size = options.cacheline_size
 
         #sc.lsq.request_buffer_depth = options.gpu_l1_buf_depth
@@ -382,6 +386,7 @@ def createGPU(options, gpu_mem_range):
             fatal("gpu_warp_size must divide gpu_threads_per_core evenly.")
         sc.lsq.warp_contexts = warps_per_core
         sc.tex_lq.warp_contexts = warps_per_core
+        sc.const_lsq.warp_contexts = warps_per_core
         sc.z_lsq.warp_contexts = warps_per_core
 
         if options.gpu_core_config == 'Fermi':
@@ -391,6 +396,8 @@ def createGPU(options, gpu_mem_range):
             sc.lsq.latency = 14
             sc.tex_lq.l1_tag_cycles = 4
             sc.tex_lq.latency = 14
+            sc.const_lsq.l1_tag_cycles = 4
+            sc.const_lsq.latency = 14
             sc.z_lsq.l1_tag_cycles = 4
             sc.z_lsq.latency = 14
         elif options.gpu_core_config == 'Maxwell':
@@ -400,6 +407,8 @@ def createGPU(options, gpu_mem_range):
             sc.lsq.latency = 6
             sc.tex_lq.l1_tag_cycles = 1
             sc.tex_lq.latency = 6
+            sc.const_lsq.l1_tag_cycles = 4
+            sc.const_lsq.latency = 14
             sc.z_lsq.l1_tag_cycles = 1
             sc.z_lsq.latency = 6
         elif options.gpu_core_config == 'Tegra':
@@ -409,6 +418,8 @@ def createGPU(options, gpu_mem_range):
             sc.lsq.latency = 6
             sc.tex_lq.l1_tag_cycles = 1
             sc.tex_lq.latency = 6
+            sc.const_lsq.l1_tag_cycles = 4
+            sc.const_lsq.latency = 14
             sc.z_lsq.l1_tag_cycles = 1
             sc.z_lsq.latency = 6
 
@@ -521,11 +532,11 @@ def connectGPUPorts_classic(system, gpu, options):
         sc.inst_port = gpu.l2NetToL2.slave
 
         #data cache
-        sc.dcache = L1_DCache(size=options.sc_l1_size,
+        '''sc.dcache = L1_DCache(size=options.sc_l1_size,
                              assoc=options.sc_l1_assoc)
         sc.dcache.mem_side = gpu.l2NetToL2.slave 
-        sc.lsq.cache_port = sc.dcache.cpu_side
-        #sc.lsq.cache_port = gpu.l2NetToL2.slave
+        sc.lsq.cache_port = sc.dcache.cpu_side'''
+        sc.lsq.cache_port = gpu.l2NetToL2.slave
         #sc.lsq.cache_port = system.membus.slave
 
         #readonly tex cache
@@ -535,6 +546,9 @@ def connectGPUPorts_classic(system, gpu, options):
         sc.tex_lq.cache_port = sc.tcache.cpu_side
         #sc.tex_lq.cache_port = gpu.l2NetToL2.slave
         #sc.tex_lq.cache_port = system.membus.slave
+
+        #vertex/constants cache
+        sc.const_lsq.cache_port = gpu.l2NetToL2.slave
 
         #z cache
         sc.zcache = L1_DCache(size=options.sc_zl1_size,
@@ -549,10 +563,12 @@ def connectGPUPorts_classic(system, gpu, options):
         for j in xrange(options.gpu_warp_size):
             sc.lsq_port[j] = sc.lsq.lane_port[j]
             sc.tex_lq_port[j] = sc.tex_lq.lane_port[j]
+            sc.const_lsq_port[j] = sc.const_lsq.lane_port[j]
             sc.z_lsq_port[j] = sc.z_lsq.lane_port[j]
 
         sc.lsq_ctrl_port = sc.lsq.control_port
         sc.tex_ctrl_port = sc.tex_lq.control_port
+        sc.const_ctrl_port = sc.const_lsq.control_port
         sc.z_ctrl_port = sc.z_lsq.control_port
 
     assert(not options.split);
