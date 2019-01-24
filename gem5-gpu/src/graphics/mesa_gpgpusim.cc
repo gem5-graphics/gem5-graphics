@@ -2154,8 +2154,8 @@ void renderData_t::getBlendingMode(GLenum * src, GLenum * dst, GLenum* srcAlpha,
 }
 
 void renderData_t::writeVertexResult(unsigned threadID, unsigned resAttribID, unsigned attribIndex, float data){
-    assert(0);
-    //DPRINTF(MesaGpgpusim, "writing vs result at thread=%d attrib=[%d][%d]=%f\n", threadID, resAttribID, attribIndex, data);
+   DPRINTF(MesaGpgpusim, "writing vs result at thread=%d attrib=[%d][%d]=%f\n", threadID, resAttribID, attribIndex, data);
+
    //vertexStageData->results[resAttribID].data[threadID][attribIndex] = data;
 }
 
@@ -2169,6 +2169,7 @@ void renderData_t::checkGraphicsThreadExit(void * kernelPtr, unsigned tid, void*
        assert(m_sShading_info.completed_threads_verts <= m_sShading_info.launched_threads_verts);
        if(m_sShading_info.completed_threads_verts == m_sShading_info.launched_threads_verts){
           m_flagEndVertexShader = true;
+          m_sShading_info.vertKernel->setDrawCallDone();
        }
        if(m_sShading_info.completed_threads_verts%10000 == 0)
          DPRINTF(MesaGpgpusim, "completed threads = %d out of %d\n", m_sShading_info.completed_threads_frags,  m_sShading_info.launched_threads_verts);
