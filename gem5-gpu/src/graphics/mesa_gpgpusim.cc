@@ -592,7 +592,9 @@ shaderAttrib_t renderData_t::getShaderData(unsigned utid, unsigned tid, unsigned
 shaderAttrib_t renderData_t::getVertexData(unsigned utid, unsigned tid, unsigned attribID, unsigned attribIndex,
       unsigned fileIdx, unsigned idx2D, void * stream) {
    shaderAttrib_t ret;
-   if(attribID == VERT_ACTIVE){
+   if( attribID == TGSI_FILE_CONSTANT){
+      return getFileConst(m_sShading_info.vertConsts, utid, tid, attribID, attribIndex, fileIdx, idx2D, stream);
+   } else if(attribID == VERT_ACTIVE){
       if(utid >= m_sShading_info.launched_threads_verts)  
          ret.u64 = 0;
       else 
@@ -610,9 +612,29 @@ shaderAttrib_t renderData_t::getVertexData(unsigned utid, unsigned tid, unsigned
    }
 }
 
-void renderData_t::setVertexAttribsCount(int inputAttribsCount, int outputAttribsCount){
+void renderData_t::setVertexAttribsCount(struct tgsi_exec_machine *mach, 
+      int inputAttribsCount, int outputAttribsCount){
    m_sShading_info.vertInputAttribs = inputAttribsCount;
    m_sShading_info.vertOutputAttribs = outputAttribsCount;
+   const void** constBufsVert = mach->Consts;
+   const unsigned* constBufVertSizes = mach->ConstsSize;
+
+   int ci = 0;
+   while(constBufsVert[ci]){
+      m_sShading_info.vertConsts.push_back(std::vector<ch4_t>());
+      assert(constBufVertSizes[ci]%TGSI_QUAD_SIZE ==  0);
+      int constCount = constBufVertSizes[ci]/TGSI_QUAD_SIZE;
+      for(int j=0; j < constCount; j++){
+         ch4_t elm;
+         for(int ch=0; ch < TGSI_NUM_CHANNELS; ch++){
+            const uint *buf = (const uint*) constBufsVert[ci];
+            const int pos = j * TGSI_NUM_CHANNELS + ch;
+            elm[ch] = buf[pos];
+         }
+         m_sShading_info.vertConsts.back().push_back(elm);
+      }
+      ci++;
+   }
 }
 
 void renderData_t::addVertex(struct tgsi_exec_machine* mach, int pos) { 
@@ -1294,29 +1316,9 @@ void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, voi
     setAllTextures(lastFatCubinHandle);
 
     struct softpipe_context *softpipe = (struct softpipe_context *) m_sp;
-    const void** constBufsVert = softpipe->mapped_constants[PIPE_SHADER_VERTEX];
-    const unsigned* constBufVertSizes = softpipe->const_buffer_size[PIPE_SHADER_FRAGMENT];
-    int ci = 0;
-    while(constBufsVert[ci]){
-      m_sShading_info.vertConsts.push_back(std::vector<ch4_t>());
-      assert(constBufVertSizes[ci]%TGSI_QUAD_SIZE ==  0);
-      int constCount = constBufVertSizes[ci]/TGSI_QUAD_SIZE;
-      for(int j=0; j < constCount; j++){
-        ch4_t elm;
-        for(int ch=0; ch < TGSI_NUM_CHANNELS; ch++){
-          const uint *buf = (const uint*) constBufsVert[ci];
-          const int pos = j * TGSI_NUM_CHANNELS + ch;
-          elm[ch] = buf[pos];
-        }
-        m_sShading_info.vertConsts.back().push_back(elm);
-      }
-      ci++;
-    }
-
-
     const void** constBufsFrag = softpipe->mapped_constants[PIPE_SHADER_FRAGMENT];
     const unsigned* constBufFragSizes = softpipe->const_buffer_size[PIPE_SHADER_FRAGMENT];
-    ci = 0;
+    int ci = 0;
     while(constBufsFrag[ci]){
       m_sShading_info.fragConsts.push_back(std::vector<ch4_t>());
       assert(constBufFragSizes[ci]%TGSI_QUAD_SIZE ==  0);

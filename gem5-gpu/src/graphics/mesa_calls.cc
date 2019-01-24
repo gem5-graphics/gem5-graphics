@@ -32,9 +32,11 @@ extern "C" void gpgpusimFinalizeCurrentDraw() {
     return g_renderData.doVertexShading(inputParams, stage);
 }*/
 
-extern "C" void gpgpusimSetVertAttribsCount(int inputAttribsCount, 
+extern "C" void gpgpusimSetVertAttribsCount(
+      struct tgsi_exec_machine *mach,
+      int inputAttribsCount, 
       int outputAttribsCount){
-   g_renderData.setVertexAttribsCount(inputAttribsCount, outputAttribsCount);
+   g_renderData.setVertexAttribsCount(mach, inputAttribsCount, outputAttribsCount);
 }
 
 extern "C" void gpgpusimAddVertex(struct tgsi_exec_machine* mach, int pos){

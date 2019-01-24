@@ -526,7 +526,7 @@ public:
     unsigned int startShading();
     unsigned int noDepthFragmentShading();
     void endFragmentShading();
-    void setVertexAttribsCount(int inputAttribsCount, int outputAttribsCount);
+    void setVertexAttribsCount(struct tgsi_exec_machine *mach, int inputAttribsCount, int outputAttribsCount);
     void addVertex(struct tgsi_exec_machine* mach, int pos);
     void addFragmentsQuad(std::vector<fragmentData_t>& quad);
 
