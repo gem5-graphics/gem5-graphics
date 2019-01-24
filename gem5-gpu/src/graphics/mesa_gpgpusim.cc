@@ -627,7 +627,7 @@ void renderData_t::setVertexAttribsCount(struct tgsi_exec_machine *mach,
       for(int j=0; j < constCount; j++){
          ch4_t elm;
          for(int ch=0; ch < TGSI_NUM_CHANNELS; ch++){
-            const uint *buf = (const uint*) constBufsVert[ci];
+            const GLfloat *buf = (const GLfloat*) constBufsVert[ci];
             const int pos = j * TGSI_NUM_CHANNELS + ch;
             elm[ch] = buf[pos];
          }
@@ -645,7 +645,7 @@ void renderData_t::addVertex(struct tgsi_exec_machine* mach, int pos) {
       c4[1] = mach->Inputs[i].xyzw[1].f[pos];
       c4[2] = mach->Inputs[i].xyzw[2].f[pos];
       c4[3] = mach->Inputs[i].xyzw[3].f[pos];
-      vd.inputs.push_back(c4);
+      vd.inputs[i] = c4;
    }
 
    for(unsigned i=0; i<m_sShading_info.vertOutputAttribs; i++){
@@ -654,7 +654,7 @@ void renderData_t::addVertex(struct tgsi_exec_machine* mach, int pos) {
       c4[1] = mach->Outputs[i].xyzw[1].f[pos];
       c4[2] = mach->Outputs[i].xyzw[2].f[pos];
       c4[3] = mach->Outputs[i].xyzw[3].f[pos];
-      vd.outputs.push_back(c4);
+      vd.outputs[i] = c4;
    }
    m_sShading_info.vertexData.push_back(vd);
 }
@@ -1326,7 +1326,7 @@ void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, voi
       for(int j=0; j < constCount; j++){
         ch4_t elm;
         for(int ch=0; ch < TGSI_NUM_CHANNELS; ch++){
-          const uint *buf = (const uint*) constBufsFrag[ci];
+          const GLfloat *buf = (const GLfloat*) constBufsFrag[ci];
           const int pos = j * TGSI_NUM_CHANNELS + ch;
           elm[ch] = buf[pos];
         }
@@ -2155,8 +2155,10 @@ void renderData_t::getBlendingMode(GLenum * src, GLenum * dst, GLenum* srcAlpha,
 
 void renderData_t::writeVertexResult(unsigned threadID, unsigned resAttribID, unsigned attribIndex, float data){
    DPRINTF(MesaGpgpusim, "writing vs result at thread=%d attrib=[%d][%d]=%f\n", threadID, resAttribID, attribIndex, data);
-
-   //vertexStageData->results[resAttribID].data[threadID][attribIndex] = data;
+   /*printf("writing vs result at thread=%d attrib=[%d][%d]=%f\n", threadID, resAttribID, attribIndex, data);
+   printf("actual vs result at thread=%d attrib=[%d][%d]=%f\n", threadID, resAttribID, attribIndex, 
+         m_sShading_info.vertexData[threadID].outputs[resAttribID][attribIndex]);*/
+   assert(round(data*10) == round(m_sShading_info.vertexData[threadID].outputs[resAttribID][attribIndex]*10));
 }
 
 void renderData_t::endFragmentShading() {
