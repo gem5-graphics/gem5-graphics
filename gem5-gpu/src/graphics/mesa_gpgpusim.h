@@ -34,11 +34,13 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <string>
+#include <deque>
 #include <iostream>
 #include <vector>
 #include <mutex>
 #include <map>
+#include <queue>
+#include <string>
 #include <GL/gl.h>
 #include <unordered_map>
 #include <unordered_set>
@@ -347,8 +349,25 @@ struct tileStream_t{
    }
 };
 
+struct vertStats_t {
+   vertStats_t(unsigned id): 
+      vid(id),
+      done(false)
+   {}
+   unsigned vid;
+   bool done;
+};
+
+struct pvbFetch_t {
+   pvbFetch_t(bool pr, unsigned f):
+      primReady(pr),
+      fetch(f){}
+   bool primReady;
+   unsigned fetch;
+};
 
 struct stage_shading_info_t {
+    unsigned currPrimType;
     unsigned vertInputAttribs;
     unsigned vertOutputAttribs;
     std::vector<vertexData_t> vertexData;
@@ -356,6 +375,9 @@ struct stage_shading_info_t {
     unsigned sent_simt_prims;
     unsigned launched_threads_verts;
     unsigned completed_threads_verts;
+    std::deque<vertStats_t*> pvb_queue;
+    std::unordered_map<unsigned, vertStats_t*> launched_vert_loc;
+    unsigned pvb_fetched_verts;
     unsigned launched_threads_frags;
     unsigned completed_threads_frags;
     unsigned pending_kernels;
@@ -409,6 +431,7 @@ struct stage_shading_info_t {
     }
 
     void clear() {
+        currPrimType = PIPE_PRIM_MAX;
         current_prim = 0;
         sent_simt_prims = 0;
         vertInputAttribs = 0;
@@ -416,6 +439,13 @@ struct stage_shading_info_t {
         vertexData.clear();
         launched_threads_verts = 0;
         completed_threads_verts = 0;
+        assert(pvb_queue.size() == 0);
+        for(auto it=launched_vert_loc.begin(); 
+              it!=launched_vert_loc.end(); ++it){
+           delete it->second;
+        }
+        launched_vert_loc.clear();
+        pvb_fetched_verts = 0;
         launched_threads_frags = 0;
         completed_threads_frags = 0;
         pending_kernels = 0;
@@ -520,6 +550,7 @@ public:
     void finalizeCurrentDraw();
     bool m_flagEndVertexShader;
     bool m_flagEndFragmentShader;
+    pvbFetch_t checkVerts(unsigned newVerts, unsigned oldVerts);
     void gpgpusim_cycle();
     bool runNextPrim();
     void allocateVertBuffers();
@@ -666,9 +697,9 @@ private:
     void setHizTiles(RasterDirection rasterDir);
 
 private:
-    std::string vPTXPrfx;
-    std::string fPTXPrfx;
-    std::string fPtxInfoPrfx;
+    std::string m_vPTXPrfx;
+    std::string m_fPTXPrfx;
+    std::string m_fPtxInfoPrfx;
     byte* m_deviceData;
     std::string m_intFolder;
     std::string m_fbFolder;
@@ -823,8 +854,11 @@ private:
     unsigned m_numClusters;
     unsigned m_coresPerCluster;
 
-    //tracks cores that currently running vertex shading
-    std::set<unsigned> m_busyVertsCores;
+    //maximum number of attributes the pvb can store
+    //this determines how many vertices we can render concurrently
+    unsigned m_pvb_max_attribs;
+    //used to round-robin vertex launching
+    unsigned m_last_vert_core;
 };
 
 extern renderData_t g_renderData;

@@ -33,7 +33,6 @@
 #include <iostream>
 #include <math.h>
 #include <map>
-#include <queue>
 #include <sstream>
 #include <stack>
 #include <sys/stat.h>
@@ -472,11 +471,10 @@ renderData_t::renderData_t():
     m_flagEndFragmentShader = false;
     m_inShaderBlending = false;
     m_inShaderDepth = false;
-
     m_usedVertShaderRegs = -1;
     m_usedFragShaderRegs = -1;
-
     m_currentRenderBufferBytes = NULL;
+    m_last_vert_core = 0;
 }
 
 renderData_t::~renderData_t() {
@@ -780,9 +778,12 @@ void renderData_t::initParams(bool standaloneMode, unsigned int startFrame, unsi
     system(std::string("rm -f "+ m_intFolder + "/*").c_str());
     system(std::string("rm -f " + m_fbFolder + "/*").c_str());
 
-    vPTXPrfx = m_intFolder+"/vertex_shader";
-    fPTXPrfx = m_intFolder+"/fragment_shader";
-    fPtxInfoPrfx = m_intFolder+"/shader_ptxinfo";
+    m_vPTXPrfx = m_intFolder+"/vertex_shader";
+    m_fPTXPrfx = m_intFolder+"/fragment_shader";
+    m_fPtxInfoPrfx = m_intFolder+"/shader_ptxinfo";
+
+    unsigned sizeBytes = 64*1024; //64KB 
+    m_pvb_max_attribs = sizeBytes/TGSI_NUM_CHANNELS/sizeof(float); 
 }
 
 bool renderData_t::useInShaderBlending() const {
@@ -1259,14 +1260,14 @@ void renderData_t::setMesaCtx(struct gl_context * ctx){
 
 void renderData_t::registerPtxCode(){
     std::string frame_drawcall = std::to_string(m_currentFrame) + "_" + std::to_string(m_drawcall_num);
-    std::string vertexPTXFile = vPTXPrfx +frame_drawcall+".ptx";
-    std::string fragmentPTXFile = fPTXPrfx +frame_drawcall+".ptx"; 
+    std::string vertexPTXFile = m_vPTXPrfx +frame_drawcall+".ptx";
+    std::string fragmentPTXFile = m_fPTXPrfx +frame_drawcall+".ptx"; 
     void* cudaFatBin = getShaderFatBin(vertexPTXFile, fragmentPTXFile);
 
     std::string vertexPtxInfo = getShaderPTXInfo(m_usedVertShaderRegs, getCurrentShaderName(VERTEX_PROGRAM));
     std::string fragmentPtxInfo = getShaderPTXInfo(m_usedFragShaderRegs, getCurrentShaderName(FRAGMENT_PROGRAM));
 
-    std::string ptxInfoFileName = fPtxInfoPrfx +
+    std::string ptxInfoFileName = m_fPtxInfoPrfx +
         std::to_string(m_currentFrame) + "_" + std::to_string(getDrawcallNum());
     std::ofstream ptxInfoFile(ptxInfoFileName.c_str());
     assert(ptxInfoFile.is_open());
@@ -1318,6 +1319,8 @@ void renderData_t::initializeCurrentDraw(struct tgsi_exec_machine* tmachine, voi
     struct softpipe_context *softpipe = (struct softpipe_context *) m_sp;
     const void** constBufsFrag = softpipe->mapped_constants[PIPE_SHADER_FRAGMENT];
     const unsigned* constBufFragSizes = softpipe->const_buffer_size[PIPE_SHADER_FRAGMENT];
+    m_sShading_info.currPrimType = softpipe->reduced_api_prim;
+
     int ci = 0;
     while(constBufsFrag[ci]){
       m_sShading_info.fragConsts.push_back(std::vector<ch4_t>());
@@ -1742,9 +1745,66 @@ bool renderData_t::depthTest(uint64_t oldDepthVal, uint64_t newDepthVal){
    return returnVal;
 }
 
+pvbFetch_t renderData_t::checkVerts(unsigned newVerts, unsigned oldVerts){
+   bool primReady = false;
+   unsigned fetch;
+   switch (m_sShading_info.currPrimType) {
+   case PIPE_PRIM_TRIANGLES:
+      if(newVerts >= 3)
+         primReady = true;
+      return pvbFetch_t(primReady, 3);
+   case PIPE_PRIM_TRIANGLE_STRIP:
+   case PIPE_PRIM_TRIANGLE_FAN:
+      if(newVerts>= 1 and (newVerts+oldVerts)>=3)
+         primReady = true;
+      fetch = oldVerts >= 1? 1: 2; 
+      return pvbFetch_t(primReady, fetch);
+   case PIPE_PRIM_QUADS:
+      if(newVerts >= 4)
+         primReady = true;
+      return pvbFetch_t(primReady, 4);
+   case PIPE_PRIM_QUAD_STRIP:
+      if(newVerts>= 2 and (newVerts+oldVerts)>=4)
+         primReady = true;
+      return pvbFetch_t(primReady, 2);
+    //unsupported modes
+   /*case PIPE_PRIM_POLYGON:
+      return 2 * nr;
+   case PIPE_PRIM_TRIANGLES_ADJACENCY:
+      return (nr / 6) * 6;
+   case PIPE_PRIM_TRIANGLE_STRIP_ADJACENCY:
+      return ((nr - 4) / 2) * 6;*/
+   default:
+      assert(0);
+      return pvbFetch_t(primReady, 0);
+   }
+}
+
 //gpgpusim cycle call
 void renderData_t::gpgpusim_cycle(){
+   unsigned readyVerts = 0;
+   for(unsigned i=0; i<m_sShading_info.pvb_queue.size(); i++){
+      if(m_sShading_info.pvb_queue[i]->done)
+         readyVerts++;
+      else break;
+      //up to 4 needed by quads, anymore are extra
+      if(readyVerts>=4){
+         break;
+      }
+   }
+   pvbFetch_t pf = checkVerts(readyVerts, m_sShading_info.pvb_fetched_verts);
+   bool primSent = false;
+   if(pf.primReady){
+      primSent = runNextPrim();
+   }
    launchVRTile();
+   if(primSent){
+      m_sShading_info.pvb_fetched_verts+= pf.fetch;
+      unsigned count = pf.fetch;
+      while(count--){
+         m_sShading_info.pvb_queue.pop_front();
+      }
+   }
 }
 
 bool renderData_t::runNextPrim(){
@@ -1756,10 +1816,10 @@ bool renderData_t::runNextPrim(){
       return false;
 
    unsigned prim = m_sShading_info.current_prim++;
+   printf("adding prim %d from %d primitives\n", prim, drawPrimitives.size());
    if(drawPrimitives[prim].size() == 0){
       return true;
    }
-   printf("adding prim %d from %d primitives\n", prim, drawPrimitives.size());
    drawPrimitives[prim].sortFragmentsInTiles(
          m_bufferHeight, m_bufferWidth, 
          m_tile_H, m_tile_W, 
@@ -1802,6 +1862,7 @@ unsigned int renderData_t::startShading() {
    m_sShading_info.launched_threads_verts = 0;
    m_sShading_info.completed_threads_frags = 0;
    m_sShading_info.launched_threads_frags = 0;
+   double verts = m_sShading_info.vertexData.size();
 
    CudaGPU* cudaGPU = CudaGPU::getCudaGPU(g_active_device);
    gpgpu_sim* gpu =  cudaGPU->getTheGPU();
@@ -1809,7 +1870,7 @@ unsigned int renderData_t::startShading() {
    m_coresPerCluster= gpu->get_config().num_cores_per_cluster(); //TODO: move me
    assert(m_sShading_info.fragCodeAddr == NULL);
 
-   while(runNextPrim()){}
+   gpgpusim_cycle();
    cudaGPU->activateGPU();
 
    /*if(m_inShaderDepth or not(isDepthTestEnabled())){
@@ -2158,7 +2219,8 @@ void renderData_t::writeVertexResult(unsigned threadID, unsigned resAttribID, un
    /*printf("writing vs result at thread=%d attrib=[%d][%d]=%f\n", threadID, resAttribID, attribIndex, data);
    printf("actual vs result at thread=%d attrib=[%d][%d]=%f\n", threadID, resAttribID, attribIndex, 
          m_sShading_info.vertexData[threadID].outputs[resAttribID][attribIndex]);*/
-   assert(round(data*10) == round(m_sShading_info.vertexData[threadID].outputs[resAttribID][attribIndex]*10));
+   //check if difference between gpgpusim and mesa is < 5%
+   assert( std::abs((data-m_sShading_info.vertexData[threadID].outputs[resAttribID][attribIndex])/data) < 0.05);
 }
 
 void renderData_t::endFragmentShading() {
@@ -2169,6 +2231,7 @@ void renderData_t::checkGraphicsThreadExit(void * kernelPtr, unsigned tid, void*
    if(stream == m_sShading_info.cudaStreamVert){
        m_sShading_info.completed_threads_verts++;
        assert(m_sShading_info.completed_threads_verts <= m_sShading_info.launched_threads_verts);
+       m_sShading_info.launched_vert_loc[tid]->done = true;
        if(m_sShading_info.completed_threads_verts == m_sShading_info.launched_threads_verts){
           m_flagEndVertexShader = true;
           m_sShading_info.vertKernel->setDrawCallDone();
@@ -2277,14 +2340,18 @@ void renderData_t::launchFragmentTile(RasterTile * rasterTile, unsigned tileId){
 }
 
 void renderData_t::launchVRTile(){
+   const unsigned batchSize = 256; //TODO: make size configurable
    const unsigned vertsCount = m_sShading_info.vertexData.size();
    assert(m_sShading_info.launched_threads_verts <= vertsCount);
    //all vertices have been launched done here
    if(m_sShading_info.launched_threads_verts == vertsCount)
       return;
-   //all cores running vert shaders, try next cycle
-   if(m_busyVertsCores.size() == (m_coresPerCluster*m_numClusters))
+
+   //no space on the pvb buffer, wait until some vertices are done
+   unsigned runningVerts = m_sShading_info.launched_threads_verts-m_sShading_info.completed_threads_verts;
+   if(((m_sShading_info.pvb_queue.size()+batchSize)*m_sShading_info.vertOutputAttribs) > m_pvb_max_attribs)
       return;
+
    const unsigned remainingVerts = 
       vertsCount - m_sShading_info.launched_threads_verts;
    /*if(tcTile == NULL){
@@ -2303,19 +2370,18 @@ void renderData_t::launchVRTile(){
    }*/
 
    //gather how many verts shaders we are going to launch 
-   unsigned selectedCoreSid = (unsigned)-1;
-   for(unsigned c=0; c<(m_numClusters*m_coresPerCluster); c++){
-      if(m_busyVertsCores.count(c) == 0){
-         m_busyVertsCores.insert(c);
-         selectedCoreSid = c;
-         break;
-      }
-   }
-   assert(selectedCoreSid != (unsigned) -1);
+   m_last_vert_core = (m_last_vert_core+1)%(m_numClusters*m_coresPerCluster);
   
-   unsigned threadsPerBlock = std::min(remainingVerts, (unsigned)256); //TODO: make size configurable
+   unsigned threadsPerBlock = std::min(remainingVerts, (unsigned)batchSize);
    unsigned numberOfBlocks = 1;
 
+   for(unsigned v=0; v<threadsPerBlock; v++){
+      unsigned tid = m_sShading_info.launched_threads_verts+v;
+      vertStats_t* vs = new vertStats_t(tid);
+      m_sShading_info.launched_vert_loc[tid] = vs;
+      m_sShading_info.pvb_queue.push_back(vs);
+   }
+   assert((m_sShading_info.pvb_queue.size()*m_sShading_info.vertOutputAttribs) <= m_pvb_max_attribs);
 
    if(m_sShading_info.launched_threads_verts == 0){
       graphicsStreamCreate(&m_sShading_info.cudaStreamVert); 
@@ -2334,7 +2400,7 @@ void renderData_t::launchVRTile(){
 
    m_sShading_info.vertKernel->assignCtaToCore(
          numberOfBlocks, 
-         selectedCoreSid,
+         m_last_vert_core,
          m_sShading_info.launched_threads_verts);
    m_sShading_info.launched_threads_verts+= threadsPerBlock;
    DPRINTF(MesaGpgpusim, "total launched threads = %d\n", m_sShading_info.launched_threads_verts);
