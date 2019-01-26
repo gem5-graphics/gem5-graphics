@@ -1,5 +1,5 @@
-// Copyright (c) 2009-2011, Tor M. Aamodt, Wilson W.L. Fung, Ali Bakhoda,
-// Jimmy Kwa, George L. Yuan
+// Copyright (c) 2009-2019, Tor M. Aamodt, Wilson W.L. Fung, Ali Bakhoda,
+// Jimmy Kwa, George L. Yuan, Ayub Gubran
 // The University of British Columbia
 // All rights reserved.
 //
@@ -72,6 +72,7 @@ void writeVertexResultData(const operand_info &dst, const ptx_reg_t &data, unsig
     switch(dst.get_int()){//&0xFFFF){
         case VERT_OUT0:  resAttribID = 0; break;
         case VERT_OUT1:  resAttribID = 1; break;
+        case VERT_OUT2:  resAttribID = 2; break;
         default: printf("Undefined vertex result register \n"); abort();
     }
     writeVertexResult(uniqueThreadId, resAttribID, attribIndex, data.f32);

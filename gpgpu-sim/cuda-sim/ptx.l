@@ -223,6 +223,7 @@ printf     TC; ptx_lval.int_value = PRINTF_OP; return OPCODE;
 "%vertex_active"     TC; ptx_lval.int_value = VERTEX_ACTIVE;    return SPECIAL_REGISTER;
 "OUT0"     TC; ptx_lval.int_value = VERT_OUT0; return SPECIAL_REGISTER;
 "OUT1"     TC; ptx_lval.int_value = VERT_OUT1; return SPECIAL_REGISTER;
+"OUT2"     TC; ptx_lval.int_value = VERT_OUT2; return SPECIAL_REGISTER;
 "VATTRIB0" TC; ptx_lval.int_value = VERT_ATTRIB0; return SPECIAL_REGISTER;
 "VATTRIB1" TC; ptx_lval.int_value = VERT_ATTRIB1; return SPECIAL_REGISTER;
 "VATTRIB2" TC; ptx_lval.int_value = VERT_ATTRIB2; return SPECIAL_REGISTER;

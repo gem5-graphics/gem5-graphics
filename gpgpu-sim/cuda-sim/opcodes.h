@@ -67,6 +67,7 @@ enum special_regs {
    VERT_ATTRIB3,
    VERT_OUT0,
    VERT_OUT1,
+   VERT_OUT2,
    VERTEX_ACTIVE,
            
    //PART2: Fragment Input Registers: Used to read the fragment input attribs
