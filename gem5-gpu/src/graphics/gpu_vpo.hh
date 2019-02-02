@@ -90,12 +90,13 @@ class GPU_VPO : public MemObject
 
     };
 
-      //ports
-      VPOMasterPort vpoMasterPort;
-      VPOSlavePort vpoSlavePort;
-
-      const unsigned vpoWidth;
+      const unsigned vpoCount;
       const unsigned pvbSize;
+
+      //ports
+      std::vector<VPOMasterPort*> vpoMasterPorts;
+      std::vector<VPOSlavePort*> vpoSlavePorts;
+
       //EventWrapper<GPU_VPO, &GPU_VPO::vpoTick> tickEvent;
 
       //EventWrapper<GPU_VPO, &GPU_VPO::processDepthResponse> depthResponseEvent;
@@ -120,6 +121,7 @@ class GPU_VPO : public MemObject
 
    public:
       GPU_VPO(const Params *p);
+      ~GPU_VPO();
       BaseMasterPort& getMasterPort(const std::string& if_name,
             PortID idx = InvalidPortID) override;
       BaseSlavePort& getSlavePort(const std::string& if_name,

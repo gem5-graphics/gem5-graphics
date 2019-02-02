@@ -38,9 +38,12 @@ class GPU_VPO(MemObject):
     sys = Param.System(Parent.any, "system that we will run on")
     gpu = Param.CudaGPU(Parent.any, "The GPU")
 
-    slave_port = SlavePort("GPU side port")
-    master_port = MasterPort("Cache port")
-    vpo_width = Param.Int(2, "Number of parallel PVB & PDU units")
+    slave_port = SlavePort("VPO slave port")
+    master_port = MasterPort("VPO master port")
+    slave = VectorSlavePort("Vector port for connecting masters")
+    master = VectorMasterPort("Vector port for connecting slaves")
+
+    vpo_count = Param.Int(2, "Number of parallel PVB & PDU units")
     pvb_size = Param.MemorySize('64kB', "PVB buffer size")
     #depth_response_queue_size = Param.Int(1024, "Size of the depth response queue") 
 

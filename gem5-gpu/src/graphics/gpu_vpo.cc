@@ -38,20 +38,33 @@ GPU_VPO::GPU_VPO(const Params *p) :
    MemObject(p),  
    masterId(p->sys->getMasterId(name())),
    cudaGPU(p->gpu), 
-   vpoMasterPort(name() + ".master_port", this),
-   vpoSlavePort(name() + ".slave_port", this),
-   vpoWidth(p->vpo_width),
+   vpoCount(p->vpo_count),
    pvbSize(p->pvb_size)
-   //tickEvent([this]{tick();}, name())
+   //vpoMasterPort(name() + ".master_port", this),
+   //vpoSlavePort(name() + ".slave_port", this),
 {
    DPRINTF(GPU_VPO, "Created a GPU_VPO\n");
+   for(int i=0; i<vpoCount; i++){
+      std::string mName = csprintf("%s.master_port[%d]", name(), i);
+      vpoMasterPorts.push_back(new VPOMasterPort(mName, this));
+      std::string sName = csprintf("%s.slave_port[%d]", name(), i);
+      vpoSlavePorts.push_back(new VPOSlavePort(sName, this));
+   }
+}
+
+GPU_VPO::~GPU_VPO(){
+   for (auto p: vpoMasterPorts)
+      delete p;
+
+   for (auto p: vpoSlavePorts)
+      delete p;
 }
 
 BaseMasterPort&
 GPU_VPO::getMasterPort(const std::string &if_name, PortID idx)
 {
-   if(if_name == "master_port"){
-      return vpoMasterPort;
+   if(if_name == "master_port" and idx<vpoMasterPorts.size()){
+      return *vpoMasterPorts[idx];
    } else {
       return MemObject::getMasterPort(if_name, idx);
    }
@@ -60,8 +73,8 @@ GPU_VPO::getMasterPort(const std::string &if_name, PortID idx)
 BaseSlavePort&
 GPU_VPO::getSlavePort(const std::string& if_name, PortID idx)
 {
-    if (if_name == "slave_port") {
-        return vpoSlavePort;
+    if (if_name == "slave_port" and idx<vpoSlavePorts.size()) {
+        return *vpoSlavePorts[idx];
     } else {
         return MemObject::getSlavePort(if_name, idx);
     }
