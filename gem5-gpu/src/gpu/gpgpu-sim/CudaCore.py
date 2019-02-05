@@ -51,6 +51,11 @@ class CudaCore(MemObject):
     z_lsq_port = VectorMasterPort("z load/store queue coalescer ports")
     z_ctrl_port = MasterPort("z load/store queue control port")
 
+    vpo_write_port = MasterPort("VPO port for sending vertex attributes from lanes to memory")
+    vpo_read_port = MasterPort("VPO port for reading vertex attributes from memory to the rasterization pipeline")
+    vpo_dist_port_master = MasterPort("VPO port for sending coverage data to other cores")
+    vpo_dist_port_slave = SlavePort("VPO port for receiving coverage data from other cores")
+
     sys = Param.System(Parent.any, "system sc will run on")
     gpu = Param.CudaGPU(Parent.any, "The GPU this core is part of")
 
@@ -59,3 +64,4 @@ class CudaCore(MemObject):
 
     id = Param.Int(-1, "ID of the SP")
     warp_contexts = Param.Int(48, "Number of warps possible per GPU core")
+
