@@ -983,23 +983,13 @@ void renderData_t::addFragmentsQuad(std::vector<fragmentData_t>& quad) {
       addFragment(quad[i]);
 }
 
-std::string getFile(const char *filename)
-{
-     std::ifstream in(filename, std::ios::in | std::ios::binary);
-     if (in) {
-        std::ostringstream contents;
-        contents << in.rdbuf();
-        in.close();
-        return(contents.str());
-     }
-    panic("Unable to open file: %s\n", filename);
-}
-
 void* renderData_t::getShaderFatBin(std::string vertexShaderFile,
                                     std::string fragmentShaderFile){
     const unsigned charArraySize = 200;
-    std::string vcode = getFile(vertexShaderFile.c_str());
-    std::string fcode = getFile(fragmentShaderFile.c_str());
+    std::string vcode = Utils::getFile(vertexShaderFile);
+    Utils::replaceStringInFile(fragmentShaderFile, "DEPTH_CODE", getDepthCode());
+    Utils::replaceStringInFile(fragmentShaderFile, "BLEND_CODE", getBlendCode());
+    std::string fcode = Utils::getFile(fragmentShaderFile);
 
     std::string vfCode = vcode + "\n\n" + fcode;
     
@@ -2497,6 +2487,38 @@ byte* Utils::RGB888_to_RGBA888(byte* rgb, int size, byte alpha){
    return rgba;
 }
 
+std::string Utils::getFile(std::string filename)
+{
+   std::ifstream in(filename.c_str(), std::ios::in | std::ios::binary);
+   if (in) {
+      std::ostringstream contents;
+      contents << in.rdbuf();
+      in.close();
+      return(contents.str());
+   }
+   panic("Unable to open file: %s\n", filename.c_str());
+}
+
+void Utils::replaceStringInFile(std::string filename,
+      std::string oldString, std::string newString){
+
+   std::ifstream in(filename.c_str(), 
+         std::ios::in | std::ios::binary);
+   std::ostringstream contents;
+   if (in) {
+      contents << in.rdbuf();
+      in.close();
+   } else panic("Unable to open file: %s\n", filename.c_str());
+   std::string fileStr = contents.str();
+   std::size_t loc = fileStr.find(oldString);
+   if(loc != std::string::npos){
+      fileStr.replace(loc, oldString.size(), newString);
+      std::ofstream out(filename);
+      out << fileStr;
+      out.close();
+   }
+}
+
 void RasterTile::addFragment(fragmentData_t* frag){ 
    unsigned fragX = frag->uintPos(0)%tileW;
    unsigned fragY = frag->uintPos(1)%tileH;
@@ -2540,34 +2562,36 @@ void RasterTile::testHizThresh(){
 }
 
 
-void renderData_t::generateDepthCode(FILE* inst_stream){
-   if(not isDepthTestEnabled()) return;
+std::string renderData_t::getDepthCode(){
+   if(not isDepthTestEnabled()) return "";
    //FIXME set depth size status before code generation
    //const char* depthSize = m_depthSize==DepthSize::Z32? "u32" : "u16";
-   const char* depthSize = "u32";
-   fprintf(inst_stream, ".reg .pred testDepth, passedDepth;\n");
-   fprintf(inst_stream, ".reg .u32 depthTestRes;\n");
-   fprintf(inst_stream, "setp.eq.u32 passedDepth, !fflag, 0;\n");
-   fprintf(inst_stream, "setp.eq.u32 testDepth, 0, %%skip_depth_test;\n");
-   fprintf(inst_stream, "setp.eq.u32 testDepth, !fflag, !testDepth;\n");
-   fprintf(inst_stream, "@testDepth ztest.global.%s depthTestRes;\n", depthSize);
+   std::string depthSize = "u32";
+   std::string depthCode = ".reg .pred testDepth, passedDepth;\n";
+   depthCode+= ".reg .u32 depthTestRes;\n";
+   depthCode+= "setp.eq.u32 passedDepth, !fflag, 0;\n";
+   depthCode+= "setp.eq.u32 testDepth, 0, %skip_depth_test;\n";
+   depthCode+= "setp.eq.u32 testDepth, !fflag, !testDepth;\n";
+   depthCode+= "@testDepth ztest.global."+depthSize+" depthTestRes;\n";
    //after depth testing exit dead quads
-   fprintf(inst_stream, "setp.ne.u32 qflag, 0, %%quad_active;\n");
-   fprintf(inst_stream, "@!qflag exit;\n");
-   fprintf(inst_stream, "@testDepth setp.ne.u32 passedDepth, 0, depthTestRes;\n");
-   fprintf(inst_stream, "@passedDepth zwrite.global.%s;\n", depthSize);
+   depthCode+= "setp.ne.u32 qflag, 0, %quad_active;\n";
+   depthCode+= "@!qflag exit;\n";
+   depthCode+= "@testDepth setp.ne.u32 passedDepth, 0, depthTestRes;\n";
+   depthCode+= "@passedDepth zwrite.global."+depthSize+";\n";
+   return depthCode;
 }
 
-void renderData_t::generateBlendCode(FILE* inst_stream){
+std::string renderData_t::getBlendCode(){
    assert(m_fbPixelSizeSim == 4);
-   fprintf(inst_stream, "setp.ne.u32 fflag, 0, %%fragment_active;\n");
+   std::string blendCode = "setp.ne.u32 fflag, 0, %fragment_active;\n";
    if(isBlendingEnabled()){
-      fprintf(inst_stream, "@fflag blend.global.u32 %%color, COLOR0;\n");
-      fprintf(inst_stream, "@fflag stp.global.u32 %%color, %%color;\n");
+      blendCode+="@fflag blend.global.u32 %color, COLOR0;\n";
+      blendCode+="@fflag stp.global.u32 %color, %color;\n";
    } else {
-      fprintf(inst_stream, "@fflag mov.u32 %%color, COLOR0;\n");
-      fprintf(inst_stream, "@fflag stp.global.u32 %%color, %%color;\n");
+      blendCode+="@fflag mov.u32 %color, COLOR0;\n";
+      blendCode+="@fflag stp.global.u32 %color, %color;\n";
    }
+   return blendCode;
 }
 
 void renderData_t::modeMemcpy(byte* dst, byte *src, 

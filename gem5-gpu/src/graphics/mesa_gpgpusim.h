@@ -629,8 +629,8 @@ public:
     bool depthTest(uint64_t oldDepth, uint64_t newDepth);
     bool testHiz(RasterTile* tile);
     struct gl_context * getMesaCtx(){return m_mesaCtx;}
-    void generateDepthCode(FILE* inst_stream);
-    void generateBlendCode(FILE* inst_stream);
+    std::string getDepthCode();
+    std::string getBlendCode();
     unsigned getDepthSize(){ return (unsigned)m_depthSize;}
     void modeMemcpy(byte* dst, byte *src, 
       unsigned count, enum cudaMemcpyKind kind);
@@ -866,6 +866,9 @@ extern renderData_t g_renderData;
 class Utils {
    public:
       static byte* RGB888_to_RGBA888(byte* rgb, int size, byte alpha=255 /*fully opaque*/);
+      static void replaceStringInFile(std::string fileName, 
+            std::string oldString, std::string newString);
+      static std::string getFile(std::string filename);
 };
 
 #endif //MESA_GPGPUSIM_H
