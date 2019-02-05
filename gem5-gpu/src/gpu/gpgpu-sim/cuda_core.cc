@@ -48,12 +48,19 @@ CudaCore::CudaCore(const Params *p) :
     lsqControlPort(name() + ".lsq_ctrl_port", this),
     texControlPort(name() + ".tex_ctrl_port", this), 
     constControlPort(name() + ".const_ctrl_port", this),
-    zControlPort(name() + ".z_ctrl_port", this), _params(p),
+    zControlPort(name() + ".z_ctrl_port", this), 
+    vpoWritePort(name() + ".vpo_write_port", this),
+    vpoReadPort(name() + ".vpo_read_port", this),
+    vpoDistPortMaster(name() + ".vpo_dist_port", this),
+    vpoDistPortSlave(name() + ".vpo_slave_port", this),
+    _params(p),
     dataMasterId(p->sys->getMasterId(name() + ".data")),
     instMasterId(p->sys->getMasterId(name() + ".inst")),
     texMasterId(p->sys->getMasterId(name() +  ".tex")), 
     constMasterId(p->sys->getMasterId(name() +  ".const")), 
     zMasterId(p->sys->getMasterId(name() +  ".z")), 
+    vpoDataMasterId(p->sys->getMasterId(name() +  ".vpo_data")), 
+    vpoDistMasterId(p->sys->getMasterId(name() +  ".vpo_dist")), 
     id(p->id),
     itb(p->itb), ttb(p->ttb),
     cudaGPU(p->gpu), maxNumWarpsPerCore(p->warp_contexts)
@@ -656,6 +663,56 @@ void
 CudaCore::LSQControlPort::recvReqRetry()
 {
     panic("CudaCore::LSQControlPort::recvReqRetry() not implemented!");
+}
+
+bool
+CudaCore::VPOMasterPort::recvTimingResp(PacketPtr pkt)
+{
+   panic("Not implemented");
+}
+
+void
+CudaCore::VPOMasterPort::recvReqRetry()
+{
+   panic("Not implemented");
+}
+
+Tick
+CudaCore::VPOMasterPort::recvAtomic(PacketPtr pkt)
+{
+   panic("Not sure how to recvAtomic");
+   return 0;
+}
+
+void
+CudaCore::VPOMasterPort::recvFunctional(PacketPtr pkt)
+{
+   panic("Not sure how to recvFunctional");
+}
+
+bool CudaCore::VPOSlavePort::recvTimingReq(PacketPtr pkt){
+   panic("Not implemented");
+}
+
+bool CudaCore::VPOSlavePort::recvTimingSnoopResp(PacketPtr pkt){
+   panic("Not implemented");
+}
+
+Tick CudaCore::VPOSlavePort::recvAtomic(PacketPtr pkt){
+   panic("Not implemented");
+}
+
+void CudaCore::VPOSlavePort::recvFunctional(PacketPtr pkt){
+   panic("Not implemented");
+}
+
+void CudaCore::VPOSlavePort::recvRespRetry(){
+   panic("Not implemented");
+}
+
+AddrRangeList CudaCore::VPOSlavePort::getAddrRanges() const{
+   panic("Not implemented");
+   return AddrRangeList();
 }
 
 bool
