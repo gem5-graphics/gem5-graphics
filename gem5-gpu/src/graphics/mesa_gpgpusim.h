@@ -629,8 +629,10 @@ public:
     bool depthTest(uint64_t oldDepth, uint64_t newDepth);
     bool testHiz(RasterTile* tile);
     struct gl_context * getMesaCtx(){return m_mesaCtx;}
-    std::string getDepthCode();
-    std::string getBlendCode();
+    void modifyCodeForVertexFetch(std::string file);
+    void modifyCodeForVertexWrite(std::string file);
+    void modifyCodeForDepth(std::string file);
+    void modifyCodeForBlend(std::string file);
     unsigned getDepthSize(){ return (unsigned)m_depthSize;}
     void modeMemcpy(byte* dst, byte *src, 
       unsigned count, enum cudaMemcpyKind kind);

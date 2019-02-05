@@ -987,8 +987,8 @@ void* renderData_t::getShaderFatBin(std::string vertexShaderFile,
                                     std::string fragmentShaderFile){
     const unsigned charArraySize = 200;
     std::string vcode = Utils::getFile(vertexShaderFile);
-    Utils::replaceStringInFile(fragmentShaderFile, "DEPTH_CODE", getDepthCode());
-    Utils::replaceStringInFile(fragmentShaderFile, "BLEND_CODE", getBlendCode());
+    modifyCodeForDepth(fragmentShaderFile);
+    modifyCodeForBlend(fragmentShaderFile);
     std::string fcode = Utils::getFile(fragmentShaderFile);
 
     std::string vfCode = vcode + "\n\n" + fcode;
@@ -2561,9 +2561,26 @@ void RasterTile::testHizThresh(){
       }
 }
 
+void renderData_t::modifyCodeForVertexFetch(std::string file){
+   //TODO: add vertex addr calc to the shader
+}
 
-std::string renderData_t::getDepthCode(){
-   if(not isDepthTestEnabled()) return "";
+void renderData_t::modifyCodeForVertexWrite(std::string file){
+   //TODO: to calc vertex shader addr
+   const std::string chanNames [] = {"x", "y", "z", "w"};
+   for(int attrib=0; attrib<m_sShading_info.vertOutputAttribs; attrib++){
+      for(int c=0; c<TGSI_NUM_CHANNELS; c++){
+         std::string o = "mov.f32 OUT" + 
+            std::to_string(attrib) + "." + chanNames[c];
+         std::string n = "stv.f32 [OUT" + 
+            std::to_string(attrib) + "." + chanNames[c] + "]";
+         Utils::replaceStringInFile(file, o, n);
+      }
+   }
+}
+
+void renderData_t::modifyCodeForDepth(std::string file){
+   if(not isDepthTestEnabled()) return;
    //FIXME set depth size status before code generation
    //const char* depthSize = m_depthSize==DepthSize::Z32? "u32" : "u16";
    std::string depthSize = "u32";
@@ -2578,10 +2595,10 @@ std::string renderData_t::getDepthCode(){
    depthCode+= "@!qflag exit;\n";
    depthCode+= "@testDepth setp.ne.u32 passedDepth, 0, depthTestRes;\n";
    depthCode+= "@passedDepth zwrite.global."+depthSize+";\n";
-   return depthCode;
+   Utils::replaceStringInFile(file, "DEPTH_CODE", depthCode);
 }
 
-std::string renderData_t::getBlendCode(){
+void renderData_t::modifyCodeForBlend(std::string file){
    assert(m_fbPixelSizeSim == 4);
    std::string blendCode = "setp.ne.u32 fflag, 0, %fragment_active;\n";
    if(isBlendingEnabled()){
@@ -2591,7 +2608,7 @@ std::string renderData_t::getBlendCode(){
       blendCode+="@fflag mov.u32 %color, COLOR0;\n";
       blendCode+="@fflag stp.global.u32 %color, %color;\n";
    }
-   return blendCode;
+   Utils::replaceStringInFile(file, "BLEND_CODE", blendCode);
 }
 
 void renderData_t::modeMemcpy(byte* dst, byte *src, 
