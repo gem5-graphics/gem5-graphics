@@ -65,6 +65,9 @@ void inst_not_implemented( const ptx_instruction * pI ) ;
 void sign_extend( ptx_reg_t &data, unsigned src_size, const operand_info &dst );
 
 void writeVertexResultData(const operand_info &dst, const ptx_reg_t &data, unsigned type, ptx_thread_info *thread, const ptx_instruction *pI ){
+
+    //TODO: remove this function
+    assert(0);
     unsigned uniqueThreadId = thread->get_uid_in_kernel();
     unsigned attribIndex = dst.get_addr_offset();
     unsigned resAttribID;
@@ -176,8 +179,22 @@ shaderAttrib_t readShaderInputData(ptx_thread_info *thread,int builtin_id, unsig
          idx2D = attribIndex;
          attribIndex = 3;
          break;
+      } case VERT_OUT0:  {
+         attribID = VERT_WRITE_ADDR;
+         idx2D = attribIndex;
+         attribIndex = 0;
+         break;
+      } case VERT_OUT1: {
+         attribID = VERT_WRITE_ADDR;
+         idx2D = attribIndex;
+         attribIndex = 1;
+         break;
+      } case VERT_OUT2: {
+         attribID = VERT_WRITE_ADDR;
+         idx2D = attribIndex;
+         attribIndex = 2;
+         break;
       }
-
       default: printf("Undefined fragment input register \n"); abort();
     }
     return g_renderData.getShaderData(uniqueThreadId, uniqueThreadId, attribID, attribIndex, fileIdx, idx2D, stream);
