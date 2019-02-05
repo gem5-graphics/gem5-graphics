@@ -598,10 +598,14 @@ shaderAttrib_t renderData_t::getVertexData(unsigned utid, unsigned tid, unsigned
       else 
          ret.u64 = 1;
       return ret;
-   } else if (attribID == VERT_ATTRIB_ADDR) {
+   } else if (attribID == VERT_ATTRIB_ADDR or attribID == VERT_WRITE_ADDR) {
       unsigned attribStride = m_sShading_info.vertexData.size()*TGSI_NUM_CHANNELS*sizeof(GLfloat); 
       unsigned vertStride = TGSI_NUM_CHANNELS*sizeof(GLfloat); 
-      byte* addr = m_sShading_info.deviceVertsAttribs + attribIndex*attribStride + utid*vertStride + idx2D*sizeof(GLfloat);
+      byte* baseAddr = attribID == VERT_ATTRIB_ADDR? 
+                        m_sShading_info.deviceVertsInputAttribs: 
+                        m_sShading_info.deviceVertsOutputAttribs;
+      byte* addr = baseAddr + 
+         attribIndex*attribStride + utid*vertStride + idx2D*sizeof(GLfloat);
       ret.u64 = (uint64_t) addr;
       return ret;
    } else {
@@ -693,7 +697,10 @@ void renderData_t::endDrawCall() {
     delete [] lastFatCubin->ptx;
     delete lastFatCubin;
     if(m_sShading_info.allocAddr) graphicsFree(m_sShading_info.allocAddr);
-    if(m_sShading_info.deviceVertsAttribs) graphicsFree(m_sShading_info.deviceVertsAttribs);
+    if(m_sShading_info.deviceVertsInputAttribs) 
+       graphicsFree(m_sShading_info.deviceVertsInputAttribs);
+    if(m_sShading_info.deviceVertsOutputAttribs)
+       graphicsFree(m_sShading_info.deviceVertsOutputAttribs);
     if(m_sShading_info.vertCodeAddr) graphicsFree(m_sShading_info.vertCodeAddr);
     if(m_sShading_info.fragCodeAddr) graphicsFree(m_sShading_info.fragCodeAddr);
     graphicsFree(m_deviceData);
@@ -986,9 +993,11 @@ void renderData_t::addFragmentsQuad(std::vector<fragmentData_t>& quad) {
 void* renderData_t::getShaderFatBin(std::string vertexShaderFile,
                                     std::string fragmentShaderFile){
     const unsigned charArraySize = 200;
-    std::string vcode = Utils::getFile(vertexShaderFile);
+    modifyCodeForVertexFetch(vertexShaderFile);
+    modifyCodeForVertexWrite(vertexShaderFile);
     modifyCodeForDepth(fragmentShaderFile);
     modifyCodeForBlend(fragmentShaderFile);
+    std::string vcode = Utils::getFile(vertexShaderFile);
     std::string fcode = Utils::getFile(fragmentShaderFile);
 
     std::string vfCode = vcode + "\n\n" + fcode;
@@ -1594,9 +1603,9 @@ GLboolean renderData_t::doVertexShading(GLvector4f ** inputParams, vp_stage_data
         //}
     //}
 
-    assert(m_sShading_info.deviceVertsAttribs == NULL);
-    graphicsMalloc((void**) &m_sShading_info.deviceVertsAttribs, verticesAttribsFloatsCount * sizeof (float));
-    graphicsMemcpy(m_sShading_info.deviceVertsAttribs, hostVertsAttribs, verticesAttribsFloatsCount * sizeof (float), graphicsMemcpyHostToSim);
+    assert(m_sShading_info.deviceVertsInputAttribs == NULL);
+    graphicsMalloc((void**) &m_sShading_info.deviceVertsInputAttribs, verticesAttribsFloatsCount * sizeof (float));
+    graphicsMemcpy(m_sShading_info.deviceVertsInputAttribs, hostVertsInputAttribs, verticesAttribsFloatsCount * sizeof (float), graphicsMemcpyHostToSim);
     
     m_sShading_info.primCountMap = new unsigned [VB->PrimitiveCount];
     memset(m_sShading_info.primCountMap, 0, sizeof(unsigned)*VB->PrimitiveCount);
@@ -1608,7 +1617,7 @@ GLboolean renderData_t::doVertexShading(GLvector4f ** inputParams, vp_stage_data
     unsigned threadsPerBlock = m_wg_size; 
     unsigned numberOfBlocks = (vertsCount + threadsPerBlock -1) / threadsPerBlock;
     assert(graphicsConfigureCall(numberOfBlocks, threadsPerBlock, 0, 0) == cudaSuccess);
-    assert(graphicsSetupArgument((void*)&m_sShading_info.deviceVertsAttribs, sizeof(float*), 0) == cudaSuccess);
+    assert(graphicsSetupArgument((void*)&m_sShading_info.deviceVertsInputAttribs, sizeof(float*), 0) == cudaSuccess);
     assert(graphicsLaunch(getCurrentShaderId(VERTEX_PROGRAM), &m_sShading_info.vertCodeAddr) == cudaSuccess); 
     
     m_sShading_info.launched_threads_frags = numberOfBlocks * threadsPerBlock;
@@ -1831,13 +1840,16 @@ bool renderData_t::runNextPrim(){
 
 void renderData_t::allocateVertBuffers(){
    unsigned bufferSize = m_sShading_info.vertInputAttribs*m_sShading_info.vertexData.size()*TGSI_NUM_CHANNELS*sizeof(GLfloat);
-   graphicsMalloc((void**) &m_sShading_info.deviceVertsAttribs, bufferSize);
+   graphicsMalloc((void**) &m_sShading_info.deviceVertsInputAttribs, bufferSize);
+
+   bufferSize = m_sShading_info.vertOutputAttribs*m_sShading_info.vertexData.size()*TGSI_NUM_CHANNELS*sizeof(GLfloat);
+   graphicsMalloc((void**) &m_sShading_info.deviceVertsOutputAttribs, bufferSize);
 
    unsigned attribStride = m_sShading_info.vertexData.size()*TGSI_NUM_CHANNELS*sizeof(GLfloat); 
    unsigned vertStride = TGSI_NUM_CHANNELS*sizeof(GLfloat); 
    for(unsigned att=0; att<m_sShading_info.vertInputAttribs; att++){
       for(unsigned vert=0; vert<m_sShading_info.vertexData.size(); vert++){
-         byte* addr = m_sShading_info.deviceVertsAttribs + att*attribStride + vert*vertStride;
+         byte* addr = m_sShading_info.deviceVertsInputAttribs + att*attribStride + vert*vertStride;
          modeMemcpy(addr, (byte*) m_sShading_info.vertexData[vert].inputs[att].channels, 
                sizeof(GLfloat)*TGSI_NUM_CHANNELS, graphicsMemcpyHostToSim);
       }
@@ -2220,7 +2232,8 @@ void renderData_t::endFragmentShading() {
 void renderData_t::checkGraphicsThreadExit(void * kernelPtr, unsigned tid, void* stream){
    if(stream == m_sShading_info.cudaStreamVert){
        m_sShading_info.completed_threads_verts++;
-       assert(m_sShading_info.completed_threads_verts <= m_sShading_info.launched_threads_verts);
+       assert(m_sShading_info.completed_threads_verts 
+             <= m_sShading_info.launched_threads_verts);
        m_sShading_info.launched_vert_loc[tid]->done = true;
        if(m_sShading_info.completed_threads_verts == m_sShading_info.launched_threads_verts){
           m_flagEndVertexShader = true;
@@ -2230,7 +2243,8 @@ void renderData_t::checkGraphicsThreadExit(void * kernelPtr, unsigned tid, void*
          DPRINTF(MesaGpgpusim, "completed threads = %d out of %d\n", m_sShading_info.completed_threads_frags,  m_sShading_info.launched_threads_verts);
    } else  if(stream == m_sShading_info.cudaStreamFrag){
       m_sShading_info.completed_threads_frags++;
-      assert(m_sShading_info.completed_threads_frags <= m_sShading_info.launched_threads_frags);
+      assert(m_sShading_info.completed_threads_frags 
+            <= m_sShading_info.launched_threads_frags);
       tileStream_t* tst = m_sShading_info.getTCTile(tid);
       assert(tst->pendingFrags>0);
       tst->pendingFrags--;
@@ -2570,10 +2584,8 @@ void renderData_t::modifyCodeForVertexWrite(std::string file){
    const std::string chanNames [] = {"x", "y", "z", "w"};
    for(int attrib=0; attrib<m_sShading_info.vertOutputAttribs; attrib++){
       for(int c=0; c<TGSI_NUM_CHANNELS; c++){
-         std::string o = "mov.f32 OUT" + 
-            std::to_string(attrib) + "." + chanNames[c];
-         std::string n = "stv.f32 [OUT" + 
-            std::to_string(attrib) + "." + chanNames[c] + "]";
+         std::string o = "mov.f32 OUT";
+         std::string n = "st.f32 OUT";
          Utils::replaceStringInFile(file, o, n);
       }
    }

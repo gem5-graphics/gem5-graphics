@@ -388,7 +388,8 @@ struct stage_shading_info_t {
     unsigned * primMap;
     unsigned * primCountMap;
     bool finishStageShaders;
-    byte* deviceVertsAttribs;
+    byte* deviceVertsInputAttribs;
+    byte* deviceVertsOutputAttribs;
     cudaStream_t cudaStreamVert;
     cudaStream_t cudaStreamFrag;
     void* allocAddr;
@@ -455,7 +456,8 @@ struct stage_shading_info_t {
         allocAddr = NULL;
         vertCodeAddr = NULL;
         fragCodeAddr = NULL;
-        deviceVertsAttribs = NULL;
+        deviceVertsInputAttribs = NULL;
+        deviceVertsOutputAttribs = NULL;
         fragKernel = NULL;
         if(primMap!=NULL){ delete [] primMap;  primMap=NULL;}
         if(primCountMap!=NULL) { delete [] primCountMap; primCountMap= NULL;}
