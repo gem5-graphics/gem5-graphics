@@ -1,3 +1,4 @@
+#include <cmath> 
 #include "mesa_gpgpusim.h"
 #include "base/output.hh"
 
@@ -52,9 +53,12 @@ extern "C" void gpgpusimAddFragQuad(struct  tgsi_exec_machine *mach,
     for(int qf=0; qf < TGSI_QUAD_SIZE; qf++){
       frags[qf].isLive = mask & (1 << qf)? true: false;
       frags[qf].quadIdx = qf;
-      frags[qf]._uintPos[0] = (unsigned) mach->QuadPos.xyzw[0].f[qf];
-      frags[qf]._uintPos[1] = (unsigned) mach->QuadPos.xyzw[1].f[qf];
-      assert(mach->QuadPos.xyzw[2].f[qf] < 1.0);
+      frags[qf]._uintPos[0] = (unsigned) std::round(mach->QuadPos.xyzw[0].f[qf]);
+      frags[qf]._uintPos[1] = (unsigned) std::round(mach->QuadPos.xyzw[1].f[qf]);
+      if(mach->QuadPos.xyzw[2].f[qf] > 1.0)
+         mach->QuadPos.xyzw[2].f[qf] = 1.0;
+      if(mach->QuadPos.xyzw[2].f[qf] > 1.0)
+         mach->QuadPos.xyzw[2].f[qf] = 1.0;
       frags[qf]._uintPos[2] = (unsigned) (mach->QuadPos.xyzw[2].f[qf]*
             g_renderData.getMesaCtx()->DrawBuffer->_DepthMaxF);
     }
@@ -123,12 +127,4 @@ extern "C" bool gpgpusimIsBusy(){
 
 extern "C" void gpgpusimUpdateMachine(struct tgsi_exec_machine* tmachine){
   g_renderData.updateMachine(tmachine);
-}
-
-extern "C" bool gpgpusimGenerateDepthCode(FILE* inst_stream){
-   g_renderData.generateDepthCode(inst_stream);
-}
-
-extern "C" bool gpgpusimGenerateBlendCode(FILE* inst_stream){
-   g_renderData.generateBlendCode(inst_stream);
 }
