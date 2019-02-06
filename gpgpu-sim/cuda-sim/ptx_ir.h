@@ -951,7 +951,7 @@ public:
    bool is_z() const{return m_space_spec.is_z(); }
    void set_blend(){m_space_spec.set_blend(); }
    bool is_blend() const{return m_space_spec.is_blend(); }
-
+   void set_vert(){m_space_spec.set_vert(); }
 
    unsigned get_vector() const { return m_vector_spec;}
 
@@ -1020,7 +1020,9 @@ public:
       return false;
    }
    bool has_memory_write() const {
-      if( m_opcode == ST_OP || m_opcode == STP_OP  || m_opcode == ZWRITE_OP
+      if( m_opcode == ST_OP || m_opcode == STP_OP  
+            || m_opcode == STV_OP
+            || m_opcode == ZWRITE_OP
             || m_opcode == ATOM_OP ) return true;
       // Check PTXPlus operand type below
       // Destination operand is a memory operand

@@ -605,6 +605,7 @@ void ptx_instruction::set_opcode_and_latency()
    case BLEND_OP: op = LOAD_OP; break;
    case ST_OP: op = STORE_OP; break;
    case STP_OP: op = STORE_OP; break;
+   case STV_OP: op = STORE_OP; break;
    case ZWRITE_OP: op = STORE_OP; break;
    case BRA_OP: op = BRANCH_OP; break;
    case BREAKADDR_OP: op = BRANCH_OP; break;
@@ -861,6 +862,7 @@ void ptx_instruction::pre_decode()
             || m_opcode == ZTEST_OP || m_opcode == BLEND_OP) 
          cache_op = CACHE_ALL;
       else if( m_opcode == ST_OP || m_opcode == STP_OP 
+            || m_opcode == STV_OP
             || m_opcode == ZWRITE_OP) 
          cache_op = CACHE_WRITE_BACK;
       else if( m_opcode == ATOM_OP ) 

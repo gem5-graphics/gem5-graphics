@@ -127,6 +127,7 @@ sqrt	TC; ptx_lval.int_value = SQRT_OP; return OPCODE;
 ssy     TC; ptx_lval.int_value = SSY_OP; return OPCODE;
 st      TC; ptx_lval.int_value = ST_OP; return OPCODE;
 stp     TC; ptx_lval.int_value = STP_OP; return OPCODE;
+stv     TC; ptx_lval.int_value = STV_OP; return OPCODE;
 ztest   TC; ptx_lval.int_value = ZTEST_OP; return OPCODE;
 zwrite  TC; ptx_lval.int_value = ZWRITE_OP; return OPCODE;
 st.volatile TC; ptx_lval.int_value = ST_OP; return OPCODE;

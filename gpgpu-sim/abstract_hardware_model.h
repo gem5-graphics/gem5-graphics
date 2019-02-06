@@ -614,12 +614,14 @@ public:
       m_bank=0; 
       m_is_z = false;
       m_is_blend = false;
+      m_is_vert_write = false;
    }
    memory_space_t( const enum _memory_space_t &from ){
       m_type = from; 
       m_bank = 0; 
       m_is_z = false;
       m_is_blend = false;
+      m_is_vert_write = false;
    }
    bool operator==( const memory_space_t &x ) const { return (m_bank == x.m_bank) && (m_type == x.m_type); }
    bool operator!=( const memory_space_t &x ) const { return !(*this == x); }
@@ -643,12 +645,15 @@ public:
    bool is_z() const { return m_is_z;}
    void set_blend() { m_is_blend = true; }
    bool is_blend() const { return m_is_blend;}
+   void set_vert() { m_is_vert_write = true; }
+   bool is_vert() const { return m_is_vert_write;}
 
 private:
    enum _memory_space_t m_type;
    unsigned m_bank; // n in ".const[n]"; note .const == .const[0] (see PTX 2.1 manual, sec. 5.1.3)
    bool m_is_z;
    bool m_is_blend;
+   bool m_is_vert_write;
 };
 
 const unsigned MAX_MEMORY_ACCESS_SIZE = 128;

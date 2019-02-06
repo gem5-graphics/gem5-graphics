@@ -4586,7 +4586,7 @@ C_DATA_TYPE get_final_color_result(zrop_callback_t::zrop_input_t color, new_addr
     return color;
 }
 
-void st_impl( const ptx_instruction *pI, ptx_thread_info *thread ) 
+void store_func( const ptx_instruction *pI, ptx_thread_info *thread ) 
 {
    const operand_info &dst = pI->dst();
    const operand_info &src1 = pI->src1(); //may be scalar or vector of regs
@@ -4643,6 +4643,13 @@ void st_impl( const ptx_instruction *pI, ptx_thread_info *thread )
    thread->m_last_memory_space = space; 
 }
 
+void st_impl( const ptx_instruction *pI, ptx_thread_info *thread ) {
+   store_func(pI, thread);
+}
+
+void stv_impl( const ptx_instruction *pI, ptx_thread_info *thread ) {
+   store_func(pI, thread);
+}
 
 void stp_impl( const ptx_instruction *pI, ptx_thread_info *thread ) 
 {
