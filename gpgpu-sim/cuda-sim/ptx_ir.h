@@ -952,6 +952,7 @@ public:
    void set_blend(){m_space_spec.set_blend(); }
    bool is_blend() const{return m_space_spec.is_blend(); }
    void set_vert(){m_space_spec.set_vert(); }
+   bool is_vert() const {return m_space_spec.is_vert(); }
 
    unsigned get_vector() const { return m_vector_spec;}
 
