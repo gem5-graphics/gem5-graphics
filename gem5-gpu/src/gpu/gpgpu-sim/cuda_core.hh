@@ -255,6 +255,8 @@ class CudaCore : public MemObject
     VPOMasterPort vpoDistPortMaster;
     VPOSlavePort vpoDistPortSlave;
 
+    bool recvVpoTimingResp(PacketPtr pkt);
+
     const Params * params() const {
         return dynamic_cast<const Params *>(_params);
     }
@@ -332,7 +334,10 @@ class CudaCore : public MemObject
 
     // Required for implementing MemObject
     virtual BaseMasterPort& getMasterPort(const std::string &if_name,
-                                          PortID idx = -1);
+          PortID idx = InvalidPortID);
+    virtual BaseSlavePort& getSlavePort(const std::string& if_name,
+          PortID idx = InvalidPortID);
+
 
     // For checkpoint restore (empty unserialize)
     virtual void unserialize(CheckpointIn &cp);

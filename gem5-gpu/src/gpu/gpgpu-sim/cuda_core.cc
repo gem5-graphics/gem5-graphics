@@ -163,9 +163,24 @@ CudaCore::getMasterPort(const std::string &if_name, PortID idx)
         return constControlPort;
     } else if (if_name == "z_ctrl_port") {
         return zControlPort;
-    } else{
+    } else if (if_name == "vpo_write_port") {
+        return vpoWritePort;
+    } else if (if_name == "vpo_read_port") {
+        return vpoReadPort;
+    } else if (if_name == "vpo_dist_port_master") {
+        return vpoDistPortMaster;
+    } else {
         return MemObject::getMasterPort(if_name, idx);
     }
+}
+
+BaseSlavePort&
+CudaCore::getSlavePort(const std::string &if_name, PortID idx){
+   if (if_name == "vpo_dist_port_slave"){
+      return vpoDistPortSlave;
+   } else {
+      return MemObject::getSlavePort(if_name, idx);
+   }
 }
 
 void
@@ -324,6 +339,8 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
 
     if(inst.space.is_z()){
        gpuFlags.set(Request::Z_REQUEST);
+    } else if(inst.space.is_vert()){
+       gpuFlags.set(Request::VERT_REQUEST);
     }
 
     if (inst.space.get_type() == const_space) {
@@ -336,35 +353,70 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
         DPRINTF(CudaCoreAccess, "Tex space: %p\n", inst.pc);
     } else if (inst.space.is_z()) {
         DPRINTF(CudaCoreAccess, "Z space: %p\n", inst.pc);
+    } else if (inst.space.is_vert()) {
+        DPRINTF(CudaCoreAccess, "Vertex space: %p\n", inst.pc);
     } else {
         DPRINTF(CudaCoreAccess, "Global space: %p\n", inst.pc);
     }
 
-    for (int lane = 0; lane < warpSize; lane++) {
-        if (inst.active(lane)) {
-           int reqsCount = inst.get_mem_reqs_count(lane);
-           //BARRIER ops may report no requests but we still have to execute them
-           //TODO: find a better way to do it
-           if(reqsCount == 0) {
-              assert(inst.op == BARRIER_OP || inst.op == MEMORY_BARRIER_OP);
-              reqsCount =1; 
-           }
-           for(int reqNum = 0; reqNum < reqsCount; reqNum++){
-               PacketPtr pkt;
-               if (inst.is_load()) {
+    if(inst.space.is_vert()){
+       //vertex ouput uses trivial coalescing
+       assert(inst.is_store());
+       std::vector<Addr> addrs;
+       std::vector<GLfloat> data;
+       for (int lane = 0; lane < warpSize; lane++) {
+          if (inst.active(lane)) {
+             int reqsCount = inst.get_mem_reqs_count(lane);
+             assert(reqsCount == 1); //current format
+             addrs.push_back(inst.get_addr(lane, 0));
+             data.push_back(*(GLfloat*)inst.get_data(lane));
+          }
+       }
+       assert(addrs.size() > 0);
+       for(int a=1; a<addrs.size(); a++){
+          if((addrs[a] - addrs[a-1]) != sizeof(GLfloat))
+             panic("Unexpected vertex attribute addressing!\n");
+       }
+       RequestPtr req = new Request(asid, addrs[0], addrs.size()*size, flags,
+             vpoDataMasterId, inst.pc, inst.warp_id());
+       req->setGpuFlags(gpuFlags);
+       //TODO: update when adding support to vitual translation later
+       req->setPaddr(addrs[0]); 
+       PacketPtr pkt = new Packet(req, MemCmd::WriteReq);
+       pkt->allocate();
+       pkt->setData((uint8_t*)data.data());
+       if (!vpoWritePort.sendTimingReq(pkt)) {
+          delete pkt->req;
+          delete pkt;
+          //return true for pipeline stall
+          return true;
+       }
+    } else {
+       for (int lane = 0; lane < warpSize; lane++) {
+          if (inst.active(lane)) {
+             int reqsCount = inst.get_mem_reqs_count(lane);
+             //BARRIER ops may report no requests but we still have to execute them
+             //TODO: find a better way to do it
+             if(reqsCount == 0) {
+                assert(inst.op == BARRIER_OP || inst.op == MEMORY_BARRIER_OP);
+                reqsCount =1; 
+             }
+             for(int reqNum = 0; reqNum < reqsCount; reqNum++){
+                PacketPtr pkt;
+                if (inst.is_load()) {
                    Addr addr = inst.get_addr(lane, reqNum);
                    // Not all cache operators are currently supported in gem5-gpu.
                    // Verify that a supported cache operator is specified for this
                    // load instruction.
                    if (!inst.isatomic() && inst.cache_op == CACHE_GLOBAL) {
-                       // If this is a load instruction that must access coherent
-                       // global memory, bypass the L1 cache to avoid stale hits
-                       flags.set(Request::BYPASS_L1);
+                      // If this is a load instruction that must access coherent
+                      // global memory, bypass the L1 cache to avoid stale hits
+                      flags.set(Request::BYPASS_L1);
                    } else if (inst.cache_op != CACHE_ALL &&
-                       !(inst.isatomic() && inst.cache_op == CACHE_GLOBAL)
-                       && (inst.space.get_type() != tex_space)) {
-                       panic("Unhandled cache operator (%d) on load\n",
-                             inst.cache_op);
+                         !(inst.isatomic() && inst.cache_op == CACHE_GLOBAL)
+                         && (inst.space.get_type() != tex_space)) {
+                      panic("Unhandled cache operator (%d) on load\n",
+                            inst.cache_op);
                    }
                    MasterID reqMasterId = dataMasterId;
                    if(inst.space.get_type() == tex_space)
@@ -374,42 +426,42 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
                    if(inst.space.is_z())
                       reqMasterId = zMasterId;
                    RequestPtr req = new Request(asid, addr, size, flags,
-                           reqMasterId, inst.pc, inst.warp_id());
+                         reqMasterId, inst.pc, inst.warp_id());
                    pkt = new Packet(req, MemCmd::ReadReq);
                    if (inst.isatomic()) {
-                       assert(0); //should be fixed for classic memory
-                       assert(flags.isSet(Request::MEM_SWAP));
-                       AtomicOpRequest *pkt_data = new AtomicOpRequest();
-                       pkt_data->lastAccess = true;
-                       pkt_data->uniqueId = lane;
-                       pkt_data->dataType = getDataType(inst.data_type);
-                       pkt_data->atomicOp = getAtomOpType(inst.get_atomic());
-                       pkt_data->lineOffset = 0;
-                       pkt_data->setData((uint8_t*)inst.get_data(lane));
+                      assert(0); //should be fixed for classic memory
+                      assert(flags.isSet(Request::MEM_SWAP));
+                      AtomicOpRequest *pkt_data = new AtomicOpRequest();
+                      pkt_data->lastAccess = true;
+                      pkt_data->uniqueId = lane;
+                      pkt_data->dataType = getDataType(inst.data_type);
+                      pkt_data->atomicOp = getAtomOpType(inst.get_atomic());
+                      pkt_data->lineOffset = 0;
+                      pkt_data->setData((uint8_t*)inst.get_data(lane));
 
-                       // TODO: If supporting atomics that require more operands,
-                       // will need to copy that data here also
+                      // TODO: If supporting atomics that require more operands,
+                      // will need to copy that data here also
 
-                       // Create packet data to include the atomic type and
-                       // the register data to be used (e.g. atomicInc requires
-                       // the saturating value up to which to count)
-                       pkt->dataDynamic(pkt_data);
+                      // Create packet data to include the atomic type and
+                      // the register data to be used (e.g. atomicInc requires
+                      // the saturating value up to which to count)
+                      pkt->dataDynamic(pkt_data);
                    } else {
-                       pkt->allocate();
+                      pkt->allocate();
                    }
                    // Since only loads return to the CudaCore
                    pkt->senderState = new SenderState(inst);
-               } else if (inst.is_store()) {
+                } else if (inst.is_store()) {
                    assert(!inst.isatomic());
                    // Not all cache operators are currently supported in gem5-gpu.
                    // Verify that a supported cache operator is specified for this
                    // load instruction.
                    if (inst.cache_op == CACHE_GLOBAL) {
-                       flags.set(Request::BYPASS_L1);
+                      flags.set(Request::BYPASS_L1);
                    } else if (inst.cache_op != CACHE_ALL &&
-                              inst.cache_op != CACHE_WRITE_BACK) {
-                       panic("Unhandled cache operator (%d) on store\n",
-                             inst.cache_op);
+                         inst.cache_op != CACHE_WRITE_BACK) {
+                      panic("Unhandled cache operator (%d) on store\n",
+                            inst.cache_op);
                    }
                    Addr addr = inst.get_addr(lane, reqNum);
                    assert(inst.space.get_type() != tex_space);
@@ -417,62 +469,63 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
                    if(inst.space.is_z())
                       reqMasterId = zMasterId;
                    RequestPtr req = new Request(asid, addr, size, flags,
-                           reqMasterId, inst.pc, inst.warp_id());
+                         reqMasterId, inst.pc, inst.warp_id());
                    pkt = new Packet(req, MemCmd::WriteReq);
                    pkt->allocate();
                    pkt->setData((uint8_t*)inst.get_data(lane));
 
                    DPRINTF(CudaCoreAccess, "Send store from lane %d address 0x%llx: data = %d\n",
-                           lane, pkt->req->getVaddr(), *(int*)inst.get_data(lane));
-               } else if (inst.op == BARRIER_OP || inst.op == MEMORY_BARRIER_OP) {
+                         lane, pkt->req->getVaddr(), *(int*)inst.get_data(lane));
+                } else if (inst.op == BARRIER_OP || inst.op == MEMORY_BARRIER_OP) {
                    assert(!inst.isatomic());
                    // Setup Fence packet
                    // TODO: If adding fencing functionality, specify control data
                    // in packet or request
                    RequestPtr req = new Request(asid, 0x0, 0, flags, dataMasterId,
-                           inst.pc, inst.warp_id());
+                         inst.pc, inst.warp_id());
                    pkt = new Packet(req, MemCmd::FenceReq);
                    pkt->senderState = new SenderState(inst);
-               } else {
+                } else {
                    panic("Unsupported instruction type\n");
-               }
+                }
 
-               LSQPort * sendPort;
-               if(inst.space.get_type() == tex_space){
-                  sendPort = texPorts[lane];
-               } else if(inst.space.get_type() == const_space){
-                  sendPort = constPorts[lane];
-               } else if(inst.space.is_z()) {
-                  sendPort = zPorts[lane];
-               } else {
-                  sendPort = lsqPorts[lane];
-               }
-               pkt->req->setGpuFlags(gpuFlags);
+                LSQPort * sendPort;
+                if(inst.space.get_type() == tex_space){
+                   sendPort = texPorts[lane];
+                } else if(inst.space.get_type() == const_space){
+                   sendPort = constPorts[lane];
+                } else if(inst.space.is_z()) {
+                   sendPort = zPorts[lane];
+                } else {
+                   sendPort = lsqPorts[lane];
+                }
+                pkt->req->setGpuFlags(gpuFlags);
 
-               std::string ttype = inst.is_load()? "load" : inst.is_store()? "store": "barrier";
-               DPRINTF(CudaCoreAccess, "Sent a %s request from lane %d\n", ttype.c_str(), lane);
-               if (!sendPort->sendTimingReq(pkt)) {
+                std::string ttype = inst.is_load()? "load" : inst.is_store()? "store": "barrier";
+                DPRINTF(CudaCoreAccess, "Sent a %s request from lane %d\n", ttype.c_str(), lane);
+                if (!sendPort->sendTimingReq(pkt)) {
                    // NOTE: This should fail early. If executeMemOp fails after
                    // some, but not all, of the requests have been sent the
                    // behavior is undefined.
                    if (completed) {
-                       panic("Should never fail after first accepted lane");
+                      panic("Should never fail after first accepted lane");
                    }
 
                    if (inst.is_load() || inst.op == BARRIER_OP ||
-                       inst.op == MEMORY_BARRIER_OP) {
-                       delete pkt->senderState;
+                         inst.op == MEMORY_BARRIER_OP) {
+                      delete pkt->senderState;
                    }
                    delete pkt->req;
                    delete pkt;
 
                    // Return that there is a pipeline stall
                    return true;
-               } else {
+                } else {
                    completed = true;
-               }
-           }
-        }
+                }
+             }
+          }
+       }
     }
 
     if (inst.op == BARRIER_OP || inst.op == MEMORY_BARRIER_OP) {
@@ -666,15 +719,20 @@ CudaCore::LSQControlPort::recvReqRetry()
 }
 
 bool
+CudaCore::recvVpoTimingResp(PacketPtr pkt){
+   assert(pkt->isWrite());
+   return true;
+}
+
+bool
 CudaCore::VPOMasterPort::recvTimingResp(PacketPtr pkt)
 {
-   panic("Not implemented");
+   return core->recvVpoTimingResp(pkt);
 }
 
 void
 CudaCore::VPOMasterPort::recvReqRetry()
 {
-   panic("Not implemented");
 }
 
 Tick
