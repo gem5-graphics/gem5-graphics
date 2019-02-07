@@ -599,8 +599,11 @@ shaderAttrib_t renderData_t::getVertexData(unsigned utid, unsigned tid, unsigned
          ret.u64 = 1;
       return ret;
    } else if (attribID == VERT_ATTRIB_ADDR or attribID == VERT_WRITE_ADDR) {
-      unsigned attribStride = m_sShading_info.vertexData.size()*TGSI_NUM_CHANNELS*sizeof(GLfloat); 
-      unsigned idxStride = m_sShading_info.vertexData.size()*sizeof(GLfloat); 
+      //align vertex data on 128 byte (cache block size) boundary
+      //TODO: this will depend on the current prim mode
+      unsigned vertNumStride = ((m_sShading_info.vertexData.size() + 31)/32)*32;
+      unsigned attribStride = vertNumStride*TGSI_NUM_CHANNELS*sizeof(GLfloat); 
+      unsigned idxStride = vertNumStride*sizeof(GLfloat); 
       byte* baseAddr = attribID == VERT_ATTRIB_ADDR? 
                         m_sShading_info.deviceVertsInputAttribs: 
                         m_sShading_info.deviceVertsOutputAttribs;
@@ -2585,7 +2588,7 @@ void renderData_t::modifyCodeForVertexWrite(std::string file){
    for(int attrib=0; attrib<m_sShading_info.vertOutputAttribs; attrib++){
       for(int c=0; c<TGSI_NUM_CHANNELS; c++){
          std::string o = "mov.f32 OUT";
-         std::string n = "stv.f32 OUT";
+         std::string n = "stv.global.f32 OUT";
          Utils::replaceStringInFile(file, o, n);
       }
    }

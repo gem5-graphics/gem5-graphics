@@ -560,6 +560,11 @@ def connectGPUPorts_classic(system, gpu, options):
         #sc.z_lsq.cache_port = gpu.l2NetToL2.slave
         #sc.z_lsq.cache_port = system.membus.slave
 
+        sc.vpo_write_port = gpu.l2NetToL2.slave
+        sc.vpo_read_port = gpu.l2NetToL2.slave
+        sc.vpo_dist_port_master = gpu.l2NetToL2.slave
+        #sc.vpo_dist_port_slave = gpu.l2NetToL2.master
+
         for j in xrange(options.gpu_warp_size):
             sc.lsq_port[j] = sc.lsq.lane_port[j]
             sc.tex_lq_port[j] = sc.tex_lq.lane_port[j]
