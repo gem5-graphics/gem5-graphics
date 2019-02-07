@@ -599,16 +599,20 @@ shaderAttrib_t renderData_t::getVertexData(unsigned utid, unsigned tid, unsigned
          ret.u64 = 1;
       return ret;
    } else if (attribID == VERT_ATTRIB_ADDR or attribID == VERT_WRITE_ADDR) {
+      //actual vertex that this thread will work on depends on
+      //the current prim mode
+      unsigned dynamicVertId = getVertFromId(utid);
       //align vertex data on 128 byte (cache block size) boundary
-      //TODO: this will depend on the current prim mode
-      unsigned vertNumStride = ((m_sShading_info.vertexData.size() + 31)/32)*32;
+      unsigned vertNumStride = 
+         ((m_sShading_info.vertexData.size() + MAX_WARP_SIZE-1)/MAX_WARP_SIZE)
+         *MAX_WARP_SIZE;
       unsigned attribStride = vertNumStride*TGSI_NUM_CHANNELS*sizeof(GLfloat); 
       unsigned idxStride = vertNumStride*sizeof(GLfloat); 
       byte* baseAddr = attribID == VERT_ATTRIB_ADDR? 
                         m_sShading_info.deviceVertsInputAttribs: 
                         m_sShading_info.deviceVertsOutputAttribs;
       byte* addr = baseAddr + 
-         attribIndex*attribStride +  idx2D*idxStride + utid*sizeof(GLfloat);
+         attribIndex*attribStride +  idx2D*idxStride + dynamicVertId*sizeof(GLfloat);
       ret.u64 = (uint64_t) addr;
       return ret;
    } else {
@@ -1782,6 +1786,58 @@ pvbFetch_t renderData_t::checkVerts(unsigned newVerts, unsigned oldVerts){
    }
 }
 
+unsigned renderData_t::getVertFromId(unsigned utid){
+   unsigned warpId = utid/MAX_WARP_SIZE; 
+   unsigned inWarpId = utid%MAX_WARP_SIZE;
+   //first one always the same
+   if(utid == 0) return 0;
+   switch (m_sShading_info.currPrimType) {
+      case PIPE_PRIM_POINTS: 
+      case PIPE_PRIM_LINES:
+         return utid;
+      case PIPE_PRIM_LINE_STRIP:
+         return (warpId*(MAX_WARP_SIZE-1)) + inWarpId;
+      case PIPE_PRIM_TRIANGLES:
+      case PIPE_PRIM_TRIANGLE_STRIP:
+         return (warpId*(MAX_WARP_SIZE-2)) + inWarpId;
+      case PIPE_PRIM_TRIANGLE_FAN:
+         if(inWarpId == 0)
+            return 0;
+         return (warpId*(MAX_WARP_SIZE-2)) + inWarpId;
+         //other modes are unsupported for now
+      default:
+         assert(0);
+   }
+   return -1;
+}
+
+unsigned renderData_t::getRemainingVerts(unsigned vertCount, unsigned launched){
+   //first one always the same
+   if(vertCount == 0) return 0;
+   unsigned uniqueThreadsPerWarp;
+   unsigned extraThreads;
+   switch (m_sShading_info.currPrimType) {
+      case PIPE_PRIM_POINTS: 
+      case PIPE_PRIM_LINES:
+         return (vertCount-launched);
+      case PIPE_PRIM_LINE_STRIP:
+         uniqueThreadsPerWarp = 31;
+         extraThreads = 
+            ((vertCount + uniqueThreadsPerWarp - 1)/uniqueThreadsPerWarp) - 1;
+         return (vertCount + extraThreads - launched);
+      case PIPE_PRIM_TRIANGLES:
+      case PIPE_PRIM_TRIANGLE_STRIP:
+      case PIPE_PRIM_TRIANGLE_FAN:
+         uniqueThreadsPerWarp = 30;
+         extraThreads = 
+            ((vertCount + uniqueThreadsPerWarp - 2)/uniqueThreadsPerWarp) - 1;
+         return (vertCount + extraThreads - launched);
+      default:
+         assert(0);
+   }
+   return (vertCount + extraThreads - launched);
+}
+
 //gpgpusim cycle call
 void renderData_t::gpgpusim_cycle(){
    unsigned readyVerts = 0;
@@ -2360,7 +2416,8 @@ void renderData_t::launchVRTile(){
       return;
 
    const unsigned remainingVerts = 
-      vertsCount - m_sShading_info.launched_threads_verts;
+      getRemainingVerts(vertsCount, m_sShading_info.launched_threads_verts);
+
    /*if(tcTile == NULL){
       assert(donePrims > 0);
       assert(m_sShading_info.sent_simt_prims >= donePrims);

@@ -553,6 +553,8 @@ public:
     bool m_flagEndVertexShader;
     bool m_flagEndFragmentShader;
     pvbFetch_t checkVerts(unsigned newVerts, unsigned oldVerts);
+    unsigned getVertFromId(unsigned utid);
+    unsigned getRemainingVerts(unsigned vertCount, unsigned lanuched);
     void gpgpusim_cycle();
     bool runNextPrim();
     void allocateVertBuffers();
