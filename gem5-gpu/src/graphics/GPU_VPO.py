@@ -40,8 +40,6 @@ class GPU_VPO(MemObject):
 
     slave_port = SlavePort("VPO slave port")
     master_port = MasterPort("VPO master port")
-    slave = VectorSlavePort("Vector port for connecting masters")
-    master = VectorMasterPort("Vector port for connecting slaves")
 
     vpo_count = Param.Int(2, "Number of parallel PVB & PDU units")
     pvb_size = Param.MemorySize('64kB', "PVB buffer size")
