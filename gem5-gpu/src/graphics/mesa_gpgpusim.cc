@@ -602,17 +602,28 @@ shaderAttrib_t renderData_t::getVertexData(unsigned utid, unsigned tid, unsigned
       //actual vertex that this thread will work on depends on
       //the current prim mode
       unsigned dynamicVertId = getVertFromId(utid);
+      //TODO: make vertices data aligned for vertex writing?
       //align vertex data on 128 byte (cache block size) boundary
+      /*unsigned utp = getUniqueThreadsPerWarp();
+      unsigned utpSize = utp*sizeof(GLfloat);
+      assert(utpSize <= 128); //should use actual block size instead of 128
+      unsigned padding = 128 - utpSize; 
+      unsigned vertNumStride = 
+         ((m_sShading_info.vertexData.size() + utp-1)/utp)*utp;*/
       unsigned vertNumStride = 
          ((m_sShading_info.vertexData.size() + MAX_WARP_SIZE-1)/MAX_WARP_SIZE)
          *MAX_WARP_SIZE;
-      unsigned attribStride = vertNumStride*TGSI_NUM_CHANNELS*sizeof(GLfloat); 
+      unsigned attribStride = vertNumStride*TGSI_NUM_CHANNELS*sizeof(GLfloat);
+         //+ padding;
       unsigned idxStride = vertNumStride*sizeof(GLfloat); 
       byte* baseAddr = attribID == VERT_ATTRIB_ADDR? 
                         m_sShading_info.deviceVertsInputAttribs: 
                         m_sShading_info.deviceVertsOutputAttribs;
       byte* addr = baseAddr + 
-         attribIndex*attribStride +  idx2D*idxStride + dynamicVertId*sizeof(GLfloat);
+         attribIndex*attribStride +  
+         idx2D*idxStride + 
+         //(dynamicVertId/utp)*padding +
+         dynamicVertId*sizeof(GLfloat);
       ret.u64 = (uint64_t) addr;
       return ret;
    } else {
@@ -1811,31 +1822,47 @@ unsigned renderData_t::getVertFromId(unsigned utid){
    return -1;
 }
 
-unsigned renderData_t::getRemainingVerts(unsigned vertCount, unsigned launched){
+
+unsigned renderData_t::getUniqueThreadsPerWarp(){
+   switch (m_sShading_info.currPrimType) {
+      case PIPE_PRIM_POINTS: 
+      case PIPE_PRIM_LINES:
+         return 32;
+      case PIPE_PRIM_LINE_STRIP:
+         return 31;
+      case PIPE_PRIM_TRIANGLES:
+      case PIPE_PRIM_TRIANGLE_STRIP:
+      case PIPE_PRIM_TRIANGLE_FAN:
+         return 30;
+      default:
+         assert(0);
+   }
+   return 0;
+}
+
+unsigned renderData_t::getExtraVerts(unsigned vertCount){
    //first one always the same
    if(vertCount == 0) return 0;
-   unsigned uniqueThreadsPerWarp;
+   unsigned utpwp = getUniqueThreadsPerWarp();
    unsigned extraThreads;
    switch (m_sShading_info.currPrimType) {
       case PIPE_PRIM_POINTS: 
       case PIPE_PRIM_LINES:
-         return (vertCount-launched);
+         return 0;
       case PIPE_PRIM_LINE_STRIP:
-         uniqueThreadsPerWarp = 31;
          extraThreads = 
-            ((vertCount + uniqueThreadsPerWarp - 1)/uniqueThreadsPerWarp) - 1;
-         return (vertCount + extraThreads - launched);
+            ((vertCount + utpwp - 1)/utpwp) - 1;
+         return extraThreads;
       case PIPE_PRIM_TRIANGLES:
       case PIPE_PRIM_TRIANGLE_STRIP:
       case PIPE_PRIM_TRIANGLE_FAN:
-         uniqueThreadsPerWarp = 30;
          extraThreads = 
-            ((vertCount + uniqueThreadsPerWarp - 2)/uniqueThreadsPerWarp) - 1;
-         return (vertCount + extraThreads - launched);
+            ((vertCount + utpwp - 2)/utpwp) - 1;
+         return extraThreads;
       default:
          assert(0);
    }
-   return (vertCount + extraThreads - launched);
+   return 0;
 }
 
 //gpgpusim cycle call
@@ -1923,7 +1950,6 @@ unsigned int renderData_t::startShading() {
    m_sShading_info.launched_threads_verts = 0;
    m_sShading_info.completed_threads_frags = 0;
    m_sShading_info.launched_threads_frags = 0;
-   double verts = m_sShading_info.vertexData.size();
 
    CudaGPU* cudaGPU = CudaGPU::getCudaGPU(g_active_device);
    gpgpu_sim* gpu =  cudaGPU->getTheGPU();
@@ -2404,7 +2430,8 @@ void renderData_t::launchFragmentTile(RasterTile * rasterTile, unsigned tileId){
 
 void renderData_t::launchVRTile(){
    const unsigned batchSize = 256; //TODO: make size configurable
-   const unsigned vertsCount = m_sShading_info.vertexData.size();
+   const unsigned vertsCount = m_sShading_info.vertexData.size() 
+      + getExtraVerts(m_sShading_info.vertexData.size());
    assert(m_sShading_info.launched_threads_verts <= vertsCount);
    //all vertices have been launched done here
    if(m_sShading_info.launched_threads_verts == vertsCount)
@@ -2415,8 +2442,7 @@ void renderData_t::launchVRTile(){
    if(((m_sShading_info.pvb_queue.size()+batchSize)*m_sShading_info.vertOutputAttribs) > m_pvb_max_attribs)
       return;
 
-   const unsigned remainingVerts = 
-      getRemainingVerts(vertsCount, m_sShading_info.launched_threads_verts);
+   const unsigned remainingVerts = vertsCount - m_sShading_info.launched_threads_verts;
 
    /*if(tcTile == NULL){
       assert(donePrims > 0);
@@ -2640,12 +2666,36 @@ void renderData_t::modifyCodeForVertexFetch(std::string file){
 }
 
 void renderData_t::modifyCodeForVertexWrite(std::string file){
+   std::string predCode = ".reg .pred pVertex;\n";
+   switch (m_sShading_info.currPrimType) {
+      case PIPE_PRIM_POINTS: 
+      case PIPE_PRIM_LINES:
+         //nothing, all vertices are allowed to continue
+         predCode+= "setp.eq.u32 pVertex, 1, 1;\n";
+         break;
+      case PIPE_PRIM_LINE_STRIP:
+         predCode+= "setp.le.u32 pVertex, %laneid, 30;\n";
+         break;
+      case PIPE_PRIM_TRIANGLES:
+      case PIPE_PRIM_TRIANGLE_STRIP:
+         predCode+= "setp.le.u32 pVertex, %laneid, 29;\n";
+         break;
+      case PIPE_PRIM_TRIANGLE_FAN:
+         predCode+= ".reg .pred pV0;\n";
+         predCode+= "setp.ne.u32 pV0, %laneid, 0;\n";
+         predCode+= "setp.le.and.u32 pVertex, %laneid, 30, pV0\n";
+         break;
+         //other modes are unsupported for now
+      default:
+         assert(0);
+   }
+   Utils::replaceStringInFile(file, "VERTEX_CODE", predCode);
    //TODO: to calc vertex shader addr
    const std::string chanNames [] = {"x", "y", "z", "w"};
    for(int attrib=0; attrib<m_sShading_info.vertOutputAttribs; attrib++){
       for(int c=0; c<TGSI_NUM_CHANNELS; c++){
          std::string o = "mov.f32 OUT";
-         std::string n = "stv.global.f32 OUT";
+         std::string n = "@pVertex stv.global.f32 OUT";
          Utils::replaceStringInFile(file, o, n);
       }
    }
