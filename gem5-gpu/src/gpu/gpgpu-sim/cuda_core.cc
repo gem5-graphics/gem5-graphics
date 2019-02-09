@@ -373,8 +373,6 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
              assert(reqsCount == 1); //current format
              addrs.push_back(inst.get_addr(lane, 0));
              data.push_back(*(GLfloat*)inst.get_data(lane));
-             printf("lane %d, writing to addr %llx\n", lane, 
-                   inst.get_addr(lane,0));
           }
        }
        assert(addrs.size() > 0);
