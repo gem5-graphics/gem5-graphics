@@ -254,8 +254,10 @@ class CudaCore : public MemObject
     VPOMasterPort vpoReadPort;
     VPOMasterPort vpoDistPortMaster;
     VPOSlavePort vpoDistPortSlave;
+    std::queue<PacketPtr> vpoWritePkts;
 
     bool recvVpoTimingResp(PacketPtr pkt);
+    void recvVpoReqRetry();
 
     const Params * params() const {
         return dynamic_cast<const Params *>(_params);

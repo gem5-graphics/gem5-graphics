@@ -360,6 +360,9 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
     }
 
     if(inst.space.is_vert()){
+       //if already some packets pending then stall
+       if(vpoWritePkts.size() > 0)
+          return true;
        //vertex ouput uses trivial coalescing
        assert(inst.is_store());
        std::vector<Addr> addrs;
@@ -370,26 +373,56 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
              assert(reqsCount == 1); //current format
              addrs.push_back(inst.get_addr(lane, 0));
              data.push_back(*(GLfloat*)inst.get_data(lane));
+             printf("lane %d, writing to addr %llx\n", lane, 
+                   inst.get_addr(lane,0));
           }
        }
        assert(addrs.size() > 0);
+       std::vector<Addr> addrBlocks;
+       std::vector<unsigned> blockSizes;
+       std::vector<uint8_t*> blockData;
+       Addr currBlock = addrs[0]/cudaGPU->getSystemCachelineSize();
+       addrBlocks.push_back(addrs[0]);
+       blockSizes.push_back(size);
+       blockData.push_back((uint8_t*)&data[0]);
        for(int a=1; a<addrs.size(); a++){
           if((addrs[a] - addrs[a-1]) != sizeof(GLfloat))
              panic("Unexpected vertex attribute addressing!\n");
+          if(((addrs[a]/cudaGPU->getSystemCachelineSize())!=currBlock)){
+             currBlock = addrs[a]/cudaGPU->getSystemCachelineSize();
+             addrBlocks.push_back(addrs[a]);
+             blockSizes.push_back(size);
+             blockData.push_back((uint8_t*)&data[a]);
+          } else {
+             blockSizes.back() += size;
+          }
        }
-       RequestPtr req = new Request(asid, addrs[0], addrs.size()*size, flags,
-             vpoDataMasterId, inst.pc, inst.warp_id());
-       req->setGpuFlags(gpuFlags);
-       //TODO: update when adding support to vitual translation later
-       req->setPaddr(addrs[0]); 
-       PacketPtr pkt = new Packet(req, MemCmd::WriteReq);
-       pkt->allocate();
-       pkt->setData((uint8_t*)data.data());
-       if (!vpoWritePort.sendTimingReq(pkt)) {
-          delete pkt->req;
-          delete pkt;
-          //return true for pipeline stall
-          return true;
+       assert(blockSizes.size() == addrBlocks.size());
+       assert(blockData.size() == addrBlocks.size());
+       bool succeeded = false;
+       for(int i=0; i<addrBlocks.size(); i++){
+          RequestPtr req = new Request(asid, addrBlocks[i], blockSizes[i], flags,
+                vpoDataMasterId, inst.pc, inst.warp_id());
+          req->setGpuFlags(gpuFlags);
+          //TODO: update when adding support to vitual translation later
+          req->setPaddr(addrBlocks[i]); 
+          PacketPtr pkt = new Packet(req, MemCmd::WriteReq);
+          pkt->allocate();
+          pkt->setData(blockData[i]);
+          if (vpoWritePort.sendTimingReq(pkt)) {
+             succeeded = true;
+          } else {
+             if(succeeded){
+                //if one packet was successful then 
+                //we push the rest in a queue to try later
+                vpoWritePkts.push(pkt);
+             } else {
+                delete pkt->req;
+                delete pkt;
+                //return true for pipeline stall
+                return true;
+             }
+          }
        }
     } else {
        for (int lane = 0; lane < warpSize; lane++) {
@@ -731,8 +764,18 @@ CudaCore::VPOMasterPort::recvTimingResp(PacketPtr pkt)
 }
 
 void
+CudaCore::recvVpoReqRetry(){
+   while(vpoWritePkts.size() > 0){
+      if(vpoWritePort.sendTimingReq(vpoWritePkts.front())) {
+         vpoWritePkts.pop();
+      } else break;
+   }
+}
+
+void
 CudaCore::VPOMasterPort::recvReqRetry()
 {
+   core->recvVpoReqRetry();
 }
 
 Tick
