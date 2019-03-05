@@ -72,7 +72,7 @@ unsigned int registerFatBinaryBottom(GPUSyscallHelper *helper, Addr sim_alloc_pt
 void register_var(Addr sim_deviceAddress, const char* deviceName, int sim_size, int sim_constant, int sim_global, int sim_ext, Addr sim_hostVar);
 
 CudaGPU::CudaGPU(const Params *p) :
-    ClockedObject(p), _params(p), streamTickEvent(this),
+    MemObject(p), _params(p), streamTickEvent(this),
     clkDomain((SrcClockDomain*)p->clk_domain),
     coresWrapper(*p->cores_wrapper), icntWrapper(*p->icnt_wrapper),
     l2Wrapper(*p->l2_wrapper), dramWrapper(*p->dram_wrapper),
@@ -173,6 +173,20 @@ CudaGPU::CudaGPU(const Params *p) :
     GPUExitCallback* gpuExitCB = new GPUExitCallback(this, p->stats_filename);
     registerExitCallback(gpuExitCB);
 
+    const unsigned numClusters = theGPU->get_config().num_cluster();
+
+    for(unsigned i=0; i<numClusters; i++){
+       vpoDistPortMaster.emplace_back(
+             csprintf("%s.vpo_dist_port_master%d", name(), i), this);
+       vpoDistPortSlave.emplace_back(
+             csprintf("%s.vpo_dist_port_slave%d", name(), i), this, i, p->vpo_base_addr+i);
+       vpoVertReadPort.emplace_back(
+             csprintf("%s.vpo_vert_read_port%d", name(), i), this, i);
+       gpuClusters.emplace_back(p, this, i, 
+             &vpoVertReadPort.back(),
+             &vpoDistPortMaster.back(),
+             &vpoDistPortSlave.back());
+    }
 }
 
 void CudaGPU::serialize(CheckpointOut &cp) const
@@ -1065,3 +1079,241 @@ void GPUExitCallback::process()
     }
 }
 
+CudaGPU::GPUCluster::GPUCluster(
+      const Params*p, 
+      CudaGPU* gpu,
+      unsigned _clusterId,
+      VpoVertMasterPort* vvrp,
+      VpoDistMasterPort* vdpm,
+      VpoDistSlavePort* vdps):
+    cudaGpu(gpu),
+    clusterId(_clusterId),
+    clusterName(gpu->name() + ".cluster"+std::to_string(_clusterId)),
+    vpoDistMasterId(p->sys->getMasterId(
+             clusterName +  ".vpo_dist")), 
+    vpoVertReadMasterId(p->sys->getMasterId(
+             clusterName +  ".vpo_vert_read")), 
+    vpoBaseAddr(p->vpo_base_addr),
+    vpoVertReadPort(vvrp),
+    vpoDistPortMaster(vdpm),
+    vpoDistPortSlave(vdps),
+    primFetchBufferSize(p->prim_fetch_buffer_size),
+    fetchAttribEvent(this)
+{
+}
+
+bool CudaGPU::GPUCluster::sendPrimMaskBatch(
+      unsigned to_cluster,
+      PrimMaskType mask){
+   unsigned reqSizeBytes = (MAX_WARP_SIZE+7)/8;
+   Request::Flags flags;
+   RequestPtr req = new Request(vpoBaseAddr+to_cluster, 
+         reqSizeBytes, flags, vpoDistMasterId);
+   PacketPtr pkt = new Packet(req, MemCmd::WriteReq);
+   PrimMaskType* maskData = 
+      new PrimMaskType(mask);
+   pkt->dataDynamic(maskData);
+
+   if(vpoDistPortMaster->sendTimingReq(pkt)){
+      return true;
+   } else {
+      delete pkt->req;
+      delete pkt;
+      return false;
+   }
+}
+
+bool CudaGPU::GPUCluster::recvPrimMask(PacketPtr pkt){
+   PrimMaskType* maskData = pkt->getPtr<PrimMaskType>();
+   if(cudaGpu->getTheGPU()->getSIMTCluster()[clusterId]->getGraphicsPipeline()->add_primitives(*maskData)){
+      delete pkt->req;
+      delete pkt;
+      return true;
+   } else return false;
+}
+
+void CudaGPU::GPUCluster::fetchAttribEventHandler(){
+   //we should have penidng attribs to fetch
+   assert(attribFetchAddrs.size() > 0);
+   PrimVaReq pvq = attribFetchAddrs.front();
+   if(vpoVertReadPort->sendTimingReq(pvq.pkt)){
+      attribFetchAddrs.pop_front();
+      if(primPendingPkts.find(pvq.primId) == 
+            primPendingPkts.end()){
+         primPendingPkts[pvq.primId] = 0;
+      }
+      primPendingPkts[pvq.primId]++;
+      assert(pendingAttribFetchPkts.find(pvq.pkt) ==
+            pendingAttribFetchPkts.end());
+      pendingAttribFetchPkts[pvq.pkt] = pvq.primId;
+      if(attribFetchAddrs.size() > 0){
+         cudaGpu->schedule(fetchAttribEvent, cudaGpu->nextCycle());
+      }
+   }
+   //if it failes we should get a retry event
+}
+
+bool CudaGPU::GPUCluster::fetchPrimAttribs(unsigned primId){
+   //TODO: fix me, allow fetching attributes from mutliple primitives 
+   //need to insure primitive render order when (e.g., depth disaled, blending)
+   //when attributes return out-of-order
+   //probably will need to update gpgpu-sim/graphics_models.cc as well
+   if(primPendingPkts.size() > 0) 
+      return false;
+
+   if((pendingAttribFetchPkts.size() 
+            + attribFetchAddrs.size()) >= primFetchBufferSize)
+      return false;
+   std::vector<unsigned> vertIds = g_renderData.getPrimVertices(primId);
+   //creating the requests for the attributes
+   //TODO: find a way to coalesce the accesses, maybe 
+   //adjust the output storage format to be optimized for both reading and writing
+   unsigned attribsNum = g_renderData.getOutAttribsCount();
+   for(auto vid: vertIds){
+      for(unsigned attrib=0; attrib<attribsNum; attrib++){
+         for(unsigned idx=0; idx<TGSI_NUM_CHANNELS; idx++){
+            Addr addr = (Addr) g_renderData.getVertAttribAddr(false, vid, attrib, idx);
+            Request::Flags flags;
+            RequestPtr req = 
+               new Request(addr, sizeof(GLfloat), flags, vpoVertReadMasterId);
+            PacketPtr pkt = new Packet(req, MemCmd::ReadReq);
+            attribFetchAddrs.emplace_back(pkt, primId);
+         }
+      }
+   }
+   if(!fetchAttribEvent.scheduled()){
+      cudaGpu->schedule(fetchAttribEvent, cudaGpu->nextCycle());
+   }
+   return true;
+}
+
+bool CudaGPU::GPUCluster::recvPrimAttribs(PacketPtr pkt){
+      assert(pendingAttribFetchPkts.find(pkt) !=
+            pendingAttribFetchPkts.end());
+      unsigned primId = pendingAttribFetchPkts[pkt];
+      assert(primPendingPkts.find(primId) !=
+            primPendingPkts.end());
+      assert(primPendingPkts[primId] > 0);
+      //special handling when we the prim is almost ready 
+      //for next stage
+      if(primPendingPkts[primId] == 1) {
+         primitiveFragmentsData_t* pd = g_renderData.getPrimData(primId);
+         if(cudaGpu->getTheGPU()->getSIMTCluster()[clusterId]->getGraphicsPipeline()->add_primitive(pd)){
+            pendingAttribFetchPkts.erase(pkt);
+            primPendingPkts.erase(primId);
+            return true;
+         } else {
+            panic("need a retry event to return false upon adding new primitive");
+            return false;
+         }
+      } else {
+         pendingAttribFetchPkts.erase(pkt);
+         primPendingPkts[primId]--;
+         return true;
+      }
+}
+
+BaseMasterPort&
+CudaGPU::getMasterPort(const std::string &if_name, PortID idx){
+   if (if_name == "vpo_dist_port_master") {
+      if (idx >= static_cast<PortID>(vpoDistPortMaster.size())) {
+         panic("CudaGPU::getMasterPort: unknown index %d\n", idx);
+      }
+      return vpoDistPortMaster[idx];
+   } else if (if_name == "vpo_vert_read_port") {
+      if (idx >= static_cast<PortID>(vpoVertReadPort.size())) {
+         panic("CudaGPU::getMasterPort: unknown index %d\n", idx);
+      }
+      return vpoVertReadPort[idx];
+   } else {
+      return MemObject::getMasterPort(if_name, idx);
+   }
+}
+
+BaseSlavePort&
+CudaGPU::getSlavePort(const std::string &if_name, PortID idx){
+   if (if_name == "vpo_dist_port_slave"){
+      if (idx >= static_cast<PortID>(vpoDistPortSlave.size())) {
+         panic("CudaCore::getSlavePort: unknown index %d\n", idx);
+      }
+      return vpoDistPortSlave[idx];
+   } else {
+      return MemObject::getSlavePort(if_name, idx);
+   }
+}
+
+bool CudaGPU::VpoDistSlavePort::recvTimingReq(PacketPtr pkt){
+   return gpu->gpuClusters[clusterId].recvPrimMask(pkt);
+}
+
+bool CudaGPU::VpoDistSlavePort::recvTimingSnoopResp(PacketPtr pkt){
+   panic("Not implemented");
+}
+
+Tick CudaGPU::VpoDistSlavePort::recvAtomic(PacketPtr pkt){
+   panic("Not implemented");
+}
+
+void CudaGPU::VpoDistSlavePort::recvFunctional(PacketPtr pkt){
+   panic("Not implemented");
+}
+
+void CudaGPU::VpoDistSlavePort::recvRespRetry(){
+   panic("Not implemented");
+}
+
+AddrRangeList CudaGPU::VpoDistSlavePort::getAddrRanges() const{
+   return addrRangeList;
+}
+
+bool
+CudaGPU::VpoDistMasterPort::recvTimingResp(PacketPtr pkt)
+{
+   delete pkt->req;
+   delete pkt;
+   return true;
+}
+
+void
+CudaGPU::VpoDistMasterPort::recvReqRetry()
+{
+   //ignore, gpgpusim will retry every cycle
+}
+
+Tick
+CudaGPU::VpoDistMasterPort::recvAtomic(PacketPtr pkt)
+{
+   panic("Not sure how to recvAtomic");
+   return 0;
+}
+
+void
+CudaGPU::VpoDistMasterPort::recvFunctional(PacketPtr pkt)
+{
+   panic("Not sure how to recvFunctional");
+}
+
+bool
+CudaGPU::VpoVertMasterPort::recvTimingResp(PacketPtr pkt)
+{
+   return gpu->gpuClusters[clusterId].recvPrimAttribs(pkt);
+}
+
+void
+CudaGPU::VpoVertMasterPort::recvReqRetry()
+{
+   gpu->gpuClusters[clusterId].fetchAttribEventHandler();
+}
+
+Tick
+CudaGPU::VpoVertMasterPort::recvAtomic(PacketPtr pkt)
+{
+   panic("Not sure how to recvAtomic");
+   return 0;
+}
+
+void
+CudaGPU::VpoVertMasterPort::recvFunctional(PacketPtr pkt)
+{
+   panic("Not sure how to recvFunctional");
+}

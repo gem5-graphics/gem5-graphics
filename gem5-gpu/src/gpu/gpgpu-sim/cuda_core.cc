@@ -50,20 +50,17 @@ CudaCore::CudaCore(const Params *p) :
     constControlPort(name() + ".const_ctrl_port", this),
     zControlPort(name() + ".z_ctrl_port", this), 
     vpoWritePort(name() + ".vpo_write_port", this),
-    vpoReadPort(name() + ".vpo_read_port", this),
-    vpoDistPortMaster(name() + ".vpo_dist_port", this),
-    vpoDistPortSlave(name() + ".vpo_slave_port", this),
     _params(p),
     dataMasterId(p->sys->getMasterId(name() + ".data")),
     instMasterId(p->sys->getMasterId(name() + ".inst")),
     texMasterId(p->sys->getMasterId(name() +  ".tex")), 
     constMasterId(p->sys->getMasterId(name() +  ".const")), 
     zMasterId(p->sys->getMasterId(name() +  ".z")), 
-    vpoDataMasterId(p->sys->getMasterId(name() +  ".vpo_data")), 
-    vpoDistMasterId(p->sys->getMasterId(name() +  ".vpo_dist")), 
+    vpoVertWriteMasterId(p->sys->getMasterId(name() +  ".vpo_vert_write")), 
     id(p->id),
     itb(p->itb), ttb(p->ttb),
-    cudaGPU(p->gpu), maxNumWarpsPerCore(p->warp_contexts)
+    cudaGPU(p->gpu), 
+    maxNumWarpsPerCore(p->warp_contexts)
 {
     writebackBlocked[LSQCntrlPortType::LSQ] = -1; // Writeback is not blocked
     writebackBlocked[LSQCntrlPortType::TEX] = -1;
@@ -165,10 +162,6 @@ CudaCore::getMasterPort(const std::string &if_name, PortID idx)
         return zControlPort;
     } else if (if_name == "vpo_write_port") {
         return vpoWritePort;
-    } else if (if_name == "vpo_read_port") {
-        return vpoReadPort;
-    } else if (if_name == "vpo_dist_port_master") {
-        return vpoDistPortMaster;
     } else {
         return MemObject::getMasterPort(if_name, idx);
     }
@@ -176,11 +169,7 @@ CudaCore::getMasterPort(const std::string &if_name, PortID idx)
 
 BaseSlavePort&
 CudaCore::getSlavePort(const std::string &if_name, PortID idx){
-   if (if_name == "vpo_dist_port_slave"){
-      return vpoDistPortSlave;
-   } else {
-      return MemObject::getSlavePort(if_name, idx);
-   }
+   return MemObject::getSlavePort(if_name, idx);
 }
 
 void
@@ -277,9 +266,6 @@ CudaCore::recvInstResp(PacketPtr pkt)
     delete pkt;
 }
 
-
-
-
 bool
 CudaCore::executeMemOp(const warp_inst_t &inst)
 {
@@ -363,6 +349,8 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
        //if already some packets pending then stall
        if(vpoWritePkts.size() > 0)
           return true;
+       if(!shaderImpl->can_vert_write(inst.warp_id()))
+          return true;
        //vertex ouput uses trivial coalescing
        assert(inst.is_store());
        std::vector<Addr> addrs;
@@ -400,7 +388,7 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
        bool succeeded = false;
        for(int i=0; i<addrBlocks.size(); i++){
           RequestPtr req = new Request(asid, addrBlocks[i], blockSizes[i], flags,
-                vpoDataMasterId, inst.pc, inst.warp_id());
+                vpoVertWriteMasterId, inst.pc, inst.warp_id());
           req->setGpuFlags(gpuFlags);
           //TODO: update when adding support to vitual translation later
           req->setPaddr(addrBlocks[i]); 
@@ -752,11 +740,13 @@ CudaCore::LSQControlPort::recvReqRetry()
 bool
 CudaCore::recvVpoTimingResp(PacketPtr pkt){
    assert(pkt->isWrite());
+   delete pkt->req;
+   delete pkt;
    return true;
 }
 
 bool
-CudaCore::VPOMasterPort::recvTimingResp(PacketPtr pkt)
+CudaCore::VpoMasterPort::recvTimingResp(PacketPtr pkt)
 {
    return core->recvVpoTimingResp(pkt);
 }
@@ -771,47 +761,22 @@ CudaCore::recvVpoReqRetry(){
 }
 
 void
-CudaCore::VPOMasterPort::recvReqRetry()
+CudaCore::VpoMasterPort::recvReqRetry()
 {
    core->recvVpoReqRetry();
 }
 
 Tick
-CudaCore::VPOMasterPort::recvAtomic(PacketPtr pkt)
+CudaCore::VpoMasterPort::recvAtomic(PacketPtr pkt)
 {
    panic("Not sure how to recvAtomic");
    return 0;
 }
 
 void
-CudaCore::VPOMasterPort::recvFunctional(PacketPtr pkt)
+CudaCore::VpoMasterPort::recvFunctional(PacketPtr pkt)
 {
    panic("Not sure how to recvFunctional");
-}
-
-bool CudaCore::VPOSlavePort::recvTimingReq(PacketPtr pkt){
-   panic("Not implemented");
-}
-
-bool CudaCore::VPOSlavePort::recvTimingSnoopResp(PacketPtr pkt){
-   panic("Not implemented");
-}
-
-Tick CudaCore::VPOSlavePort::recvAtomic(PacketPtr pkt){
-   panic("Not implemented");
-}
-
-void CudaCore::VPOSlavePort::recvFunctional(PacketPtr pkt){
-   panic("Not implemented");
-}
-
-void CudaCore::VPOSlavePort::recvRespRetry(){
-   panic("Not implemented");
-}
-
-AddrRangeList CudaCore::VPOSlavePort::getAddrRanges() const{
-   panic("Not implemented");
-   return AddrRangeList();
 }
 
 bool
@@ -1224,7 +1189,6 @@ CudaCore::xCacheFetch(Addr addr, mem_fetch *mf, const char * type,
     (*busyCacheLinesMap)[cudaGPU->addrToLine(req->getVaddr())] = mf;
     tlb->beginTranslateTiming(req, translation, mode);
 }
-
 
 bool
 CudaCore::texCacheResAvailabe(Addr a){

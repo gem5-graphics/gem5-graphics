@@ -31,11 +31,6 @@ void writeVertexResult(unsigned threadID, unsigned resAttribID, unsigned attribI
     g_renderData.writeVertexResult(threadID, resAttribID, attribIndex, data);
 }
 
-//checks if a vertex finishes execution
-void checkGraphicsThreadExit(void* kernelPtr, unsigned tid, void* stream){
-    g_renderData.checkGraphicsThreadExit(kernelPtr, tid, stream);
-}
-
 //get texel size
 unsigned getMesaTexelSize(int samplingUnit){
   return g_renderData.getTexelSize(samplingUnit);

@@ -587,6 +587,32 @@ shaderAttrib_t renderData_t::getShaderData(unsigned utid, unsigned tid, unsigned
    }
 }
 
+byte* renderData_t::getVertAttribAddr(bool isInput, //is input or output vert addr
+      unsigned vertId, unsigned attribId, unsigned index){
+   //TODO: make vertices data aligned for vertex writing?
+   //align vertex data on 128 byte (cache block size) boundary
+   /*unsigned utp = getUniqueThreadsPerWarp();
+     unsigned utpSize = utp*sizeof(GLfloat);
+     assert(utpSize <= 128); //should use actual block size instead of 128
+     unsigned padding = 128 - utpSize; 
+     unsigned vertNumStride = 
+     ((m_sShading_info.vertexData.size() + utp-1)/utp)*utp;*/
+   unsigned vertNumStride = 
+      ((m_sShading_info.vertexData.size() + MAX_WARP_SIZE-1)/MAX_WARP_SIZE)
+      *MAX_WARP_SIZE;
+   unsigned attribStride = vertNumStride*TGSI_NUM_CHANNELS*sizeof(GLfloat);
+   //+ padding;
+   unsigned idxStride = vertNumStride*sizeof(GLfloat); 
+   byte* baseAddr = isInput? 
+      m_sShading_info.deviceVertsInputAttribs: 
+      m_sShading_info.deviceVertsOutputAttribs;
+   byte* addr = baseAddr + 
+      attribId*attribStride +  
+      index*idxStride + 
+      //(dynamicVertId/utp)*padding +
+      vertId*sizeof(GLfloat);
+}
+
 shaderAttrib_t renderData_t::getVertexData(unsigned utid, unsigned tid, unsigned attribID, unsigned attribIndex,
       unsigned fileIdx, unsigned idx2D, void * stream) {
    shaderAttrib_t ret;
@@ -602,29 +628,11 @@ shaderAttrib_t renderData_t::getVertexData(unsigned utid, unsigned tid, unsigned
       //actual vertex that this thread will work on depends on
       //the current prim mode
       unsigned dynamicVertId = getVertFromId(utid);
-      //TODO: make vertices data aligned for vertex writing?
-      //align vertex data on 128 byte (cache block size) boundary
-      /*unsigned utp = getUniqueThreadsPerWarp();
-      unsigned utpSize = utp*sizeof(GLfloat);
-      assert(utpSize <= 128); //should use actual block size instead of 128
-      unsigned padding = 128 - utpSize; 
-      unsigned vertNumStride = 
-         ((m_sShading_info.vertexData.size() + utp-1)/utp)*utp;*/
-      unsigned vertNumStride = 
-         ((m_sShading_info.vertexData.size() + MAX_WARP_SIZE-1)/MAX_WARP_SIZE)
-         *MAX_WARP_SIZE;
-      unsigned attribStride = vertNumStride*TGSI_NUM_CHANNELS*sizeof(GLfloat);
-         //+ padding;
-      unsigned idxStride = vertNumStride*sizeof(GLfloat); 
-      byte* baseAddr = attribID == VERT_ATTRIB_ADDR? 
-                        m_sShading_info.deviceVertsInputAttribs: 
-                        m_sShading_info.deviceVertsOutputAttribs;
-      byte* addr = baseAddr + 
-         attribIndex*attribStride +  
-         idx2D*idxStride + 
-         //(dynamicVertId/utp)*padding +
-         dynamicVertId*sizeof(GLfloat);
-      ret.u64 = (uint64_t) addr;
+
+      bool isInput = (attribID == VERT_ATTRIB_ADDR);
+      
+      ret.u64 = 
+         (uint64_t) getVertAttribAddr(isInput, dynamicVertId, attribIndex, idx2D);
       return ret;
    } else {
       assert(0); //should not happen
@@ -807,8 +815,9 @@ void renderData_t::initParams(bool standaloneMode, unsigned int startFrame, unsi
     m_fPTXPrfx = m_intFolder+"/fragment_shader";
     m_fPtxInfoPrfx = m_intFolder+"/shader_ptxinfo";
 
+    //TODO: add a configuration for pvb size
     unsigned sizeBytes = 64*1024; //64KB 
-    m_pvb_max_attribs = sizeBytes/TGSI_NUM_CHANNELS/sizeof(float); 
+    m_pvb_max_attribs = sizeBytes/TGSI_NUM_CHANNELS/sizeof(float);
 }
 
 bool renderData_t::useInShaderBlending() const {
@@ -1762,7 +1771,7 @@ bool renderData_t::depthTest(uint64_t oldDepthVal, uint64_t newDepthVal){
    return returnVal;
 }
 
-pvbFetch_t renderData_t::checkVerts(unsigned newVerts, unsigned oldVerts){
+/*pvbFetch_t renderData_t::checkVerts(unsigned newVerts, unsigned oldVerts){
    bool primReady = false;
    unsigned fetch;
    switch (m_sShading_info.currPrimType) {
@@ -1784,18 +1793,18 @@ pvbFetch_t renderData_t::checkVerts(unsigned newVerts, unsigned oldVerts){
       if(newVerts>= 2 and (newVerts+oldVerts)>=4)
          primReady = true;
       return pvbFetch_t(primReady, 2);
-    //unsupported modes
-   /*case PIPE_PRIM_POLYGON:
-      return 2 * nr;
-   case PIPE_PRIM_TRIANGLES_ADJACENCY:
-      return (nr / 6) * 6;
-   case PIPE_PRIM_TRIANGLE_STRIP_ADJACENCY:
-      return ((nr - 4) / 2) * 6;*/
+   //unsupported modes
+   //case PIPE_PRIM_POLYGON:
+   //   return 2 * nr;
+   //case PIPE_PRIM_TRIANGLES_ADJACENCY:
+   //   return (nr / 6) * 6;
+   //case PIPE_PRIM_TRIANGLE_STRIP_ADJACENCY:
+   //   return ((nr - 4) / 2) * 6;
    default:
       assert(0);
       return pvbFetch_t(primReady, 0);
    }
-}
+}*/
 
 unsigned renderData_t::getVertFromId(unsigned utid){
    unsigned warpId = utid/MAX_WARP_SIZE; 
@@ -1865,9 +1874,105 @@ unsigned renderData_t::getExtraVerts(unsigned vertCount){
    return 0;
 }
 
+std::vector<unsigned> renderData_t::getPrimVertices(unsigned primId){
+   std::vector<unsigned> vertices;
+   unsigned startVert;
+   unsigned numVerts=0;
+   switch (m_sShading_info.currPrimType) {
+      case PIPE_PRIM_POINTS: 
+         startVert = primId;
+         numVerts = 1;
+         break;
+      case PIPE_PRIM_LINES:
+         startVert = primId*2;
+         numVerts = 2;
+         break;
+      case PIPE_PRIM_LINE_STRIP:
+         startVert = primId;
+         numVerts = 2;
+         break;
+      case PIPE_PRIM_TRIANGLES:
+         startVert = primId*3;
+         numVerts = 3;
+         break;
+      case PIPE_PRIM_TRIANGLE_STRIP:
+         startVert = primId;
+         numVerts = 3;
+         break;
+      case PIPE_PRIM_TRIANGLE_FAN:
+         //always add the first vertex
+         vertices.push_back(0); 
+         startVert = primId+1;
+         numVerts = 2;
+         break;
+      //others unsupported
+      default:
+         assert(0);
+   }
+   for(unsigned v=startVert; v<numVerts; v++)
+      vertices.push_back(v);
+
+   return vertices;
+}
+
+unsigned renderData_t::getPrimId(std::list<unsigned> * primWarpTids, 
+      unsigned warpSize){
+   assert(primWarpTids->size() > 0);
+   unsigned ftid = primWarpTids->front();
+   unsigned vid = getVertFromId(ftid);
+   unsigned primId = -1;
+   unsigned usedVerts = -1;
+   switch (m_sShading_info.currPrimType) {
+      case PIPE_PRIM_POINTS: 
+         //pop one vertex
+         primId = vid;
+         usedVerts = 1;
+         break;
+      case PIPE_PRIM_LINES:
+         primId = vid/2;
+         usedVerts = 2;
+         break;
+      case PIPE_PRIM_LINE_STRIP:
+         primId = vid;
+         //only last prim uses two vertices
+         usedVerts = 
+            ((ftid%warpSize)==(warpSize-2))? 2: 1;
+         break;
+      case PIPE_PRIM_TRIANGLES:
+         primId = vid/3;
+         usedVerts = 3;
+         break;
+      case PIPE_PRIM_TRIANGLE_STRIP:
+         primId = vid;
+         usedVerts = 
+            ((ftid%warpSize)==(warpSize-3))? 3: 1;
+         break;
+      case PIPE_PRIM_TRIANGLE_FAN:
+         if(vid==0) {
+            assert(primWarpTids->size() > 1);
+            primWarpTids->pop_front();
+         }
+         ftid = primWarpTids->front();
+         vid = getVertFromId(ftid);
+         primId = vid -1;
+         usedVerts = 
+            ((ftid%warpSize)==(warpSize-2))? 2: 1;
+         break;
+      //others unsupported
+      default:
+         assert(0);
+   }
+   while(usedVerts !=0){
+      usedVerts--;
+      assert(primWarpTids->size() > 0);
+      primWarpTids->pop_front();
+   }
+   return primId;
+}
+
 //gpgpusim cycle call
 void renderData_t::gpgpusim_cycle(){
-   unsigned readyVerts = 0;
+   /*unsigned readyVerts = 0;
    for(unsigned i=0; i<m_sShading_info.pvb_queue.size(); i++){
       if(m_sShading_info.pvb_queue[i]->done)
          readyVerts++;
@@ -1881,18 +1986,44 @@ void renderData_t::gpgpusim_cycle(){
    bool primSent = false;
    if(pf.primReady){
       primSent = runNextPrim();
-   }
+   }*/
    launchVRTile();
-   if(primSent){
+   /*if(primSent){
       m_sShading_info.pvb_fetched_verts+= pf.fetch;
       unsigned count = pf.fetch;
       while(count--){
          m_sShading_info.pvb_queue.pop_front();
       }
-   }
+   }*/
 }
 
-bool renderData_t::runNextPrim(){
+std::set<unsigned> renderData_t::getClustersCoveredByPrim(unsigned primId){
+   drawPrimitives[primId].sortFragmentsInTiles(
+         m_bufferHeight, m_bufferWidth, 
+         m_tile_H, m_tile_W, 
+         m_hTiles, m_wTiles,
+         m_tilesCount,
+         m_block_H, m_block_W, 
+         RasterDirection::HorizontalRaster, 
+         m_tc_h, m_tc_w,
+         m_tc_block_dim,
+         m_numClusters);
+
+   std::set<unsigned> coveredClusters;
+   for(unsigned clusterId=0; clusterId < m_numClusters; clusterId++){
+      if(drawPrimitives[primId].getSimtTiles(clusterId).size() > 0){
+         coveredClusters.insert(clusterId);
+      }
+   }
+   return coveredClusters;
+}
+
+primitiveFragmentsData_t* renderData_t::getPrimData(unsigned primId){
+   assert(drawPrimitives.size()>=primId);
+   return &drawPrimitives[primId];
+}
+
+/*bool renderData_t::runNextPrim(){
    CudaGPU* cudaGPU = CudaGPU::getCudaGPU(g_active_device);
    gpgpu_sim* gpu =  cudaGPU->getTheGPU();
    simt_core_cluster** simt_clusters = gpu->getSIMTCluster();
@@ -1922,6 +2053,18 @@ bool renderData_t::runNextPrim(){
 
    m_sShading_info.sent_simt_prims += m_numClusters;
    return true;
+}*/
+
+bool renderData_t::isVertWarpDone(unsigned warpId, unsigned vertCount){
+   const unsigned vertsCount = m_sShading_info.vertexData.size() 
+      + getExtraVerts(m_sShading_info.vertexData.size());
+   const unsigned remainingVerts = vertsCount - m_sShading_info.launched_threads_verts;
+   if(remainingVerts > 0){
+      return (vertCount==MAX_WARP_SIZE);
+   } else {
+      unsigned lastWarpId = (m_sShading_info.launched_threads_verts-1)/MAX_WARP_SIZE;
+      return (warpId==lastWarpId);
+   }
 }
 
 void renderData_t::allocateVertBuffers(){
@@ -1956,17 +2099,14 @@ unsigned int renderData_t::startShading() {
    m_numClusters = gpu->get_config().num_cluster(); // TODO: move me
    m_coresPerCluster= gpu->get_config().num_cores_per_cluster(); //TODO: move me
    assert(m_sShading_info.fragCodeAddr == NULL);
+   
+   simt_core_cluster** simt_clusters = gpu->getSIMTCluster();
+   for(unsigned clusterId=0; clusterId < m_numClusters; clusterId++){
+      simt_clusters[clusterId]->getGraphicsPipeline()->reset_prim_counter();
+   }
 
    gpgpusim_cycle();
    cudaGPU->activateGPU();
-
-   /*if(m_inShaderDepth or not(isDepthTestEnabled())){
-      //now sorting them in raster order
-      sortFragmentsInRasterOrder(getTileH(), getTileW(),getBlockH(), getBlockW(), HorizontalRaster); //BlockedHorizontal);
-      noDepthFragmentShading();
-   } else {
-      runEarlyZ(cudaGPU, getTileH(), getTileW(),getBlockH(), getBlockW(), HorizontalRaster, num_clusters); // BlockedHorizontal);
-   }*/
    g_gpuMutex.unlock();
 }
 
@@ -2314,13 +2454,26 @@ void renderData_t::endFragmentShading() {
     endDrawCall(); 
 }
 
-void renderData_t::checkGraphicsThreadExit(void * kernelPtr, unsigned tid, void* stream){
+void renderData_t::checkGraphicsThreadExit(
+      ptx_thread_info* thread){
+      //void * kernelPtr, unsigned tid, void* stream, unsigned coreId){
+   void* kernelPtr = (void*) thread->get_kernel_info();
+   unsigned tid = thread->get_uid_in_kernel();
+   unsigned sid = thread->get_hw_sid();
+   unsigned wid = thread->get_hw_wid();
+   void* stream = (void*) thread->get_kernel_info()->get_stream();
+   CudaGPU* cudaGPU = CudaGPU::getCudaGPU(g_active_device);
+
    if(stream == m_sShading_info.cudaStreamVert){
        m_sShading_info.completed_threads_verts++;
        assert(m_sShading_info.completed_threads_verts 
              <= m_sShading_info.launched_threads_verts);
-       m_sShading_info.launched_vert_loc[tid]->done = true;
-       if(m_sShading_info.completed_threads_verts == m_sShading_info.launched_threads_verts){
+       //m_sShading_info.launched_vert_loc[tid]->done = true;
+       if(m_sShading_info.completed_threads_verts == 
+             m_sShading_info.launched_threads_verts){
+          shader_core_ctx* sc = cudaGPU->getTheGPU()->get_shader(sid);
+          sc->signal_vert_done(wid, tid);
+
           m_flagEndVertexShader = true;
           m_sShading_info.vertKernel->setDrawCallDone();
        }
@@ -2432,6 +2585,7 @@ void renderData_t::launchVRTile(){
    const unsigned batchSize = 256; //TODO: make size configurable
    const unsigned vertsCount = m_sShading_info.vertexData.size() 
       + getExtraVerts(m_sShading_info.vertexData.size());
+   const unsigned remainingVerts = vertsCount - m_sShading_info.launched_threads_verts;
    assert(m_sShading_info.launched_threads_verts <= vertsCount);
    //all vertices have been launched done here
    if(m_sShading_info.launched_threads_verts == vertsCount)
@@ -2439,10 +2593,9 @@ void renderData_t::launchVRTile(){
 
    //no space on the pvb buffer, wait until some vertices are done
    unsigned runningVerts = m_sShading_info.launched_threads_verts-m_sShading_info.completed_threads_verts;
-   if(((m_sShading_info.pvb_queue.size()+batchSize)*m_sShading_info.vertOutputAttribs) > m_pvb_max_attribs)
+   if(((runningVerts+batchSize)*m_sShading_info.vertOutputAttribs) > m_pvb_max_attribs)
       return;
 
-   const unsigned remainingVerts = vertsCount - m_sShading_info.launched_threads_verts;
 
    /*if(tcTile == NULL){
       assert(donePrims > 0);
@@ -2459,19 +2612,20 @@ void renderData_t::launchVRTile(){
       return;
    }*/
 
-   //gather how many verts shaders we are going to launch 
+   //get which core will be used for this set of vertices
    m_last_vert_core = (m_last_vert_core+1)%(m_numClusters*m_coresPerCluster);
   
+   //gather how many verts shaders we are going to launch 
    unsigned threadsPerBlock = std::min(remainingVerts, (unsigned)batchSize);
    unsigned numberOfBlocks = 1;
 
    for(unsigned v=0; v<threadsPerBlock; v++){
       unsigned tid = m_sShading_info.launched_threads_verts+v;
-      vertStats_t* vs = new vertStats_t(tid);
-      m_sShading_info.launched_vert_loc[tid] = vs;
-      m_sShading_info.pvb_queue.push_back(vs);
+      //vertStats_t* vs = new vertStats_t(tid);
+      //m_sShading_info.launched_vert_loc[tid] = vs;
+      //m_sShading_info.pvb_queue.push_back(vs);
    }
-   assert((m_sShading_info.pvb_queue.size()*m_sShading_info.vertOutputAttribs) <= m_pvb_max_attribs);
+   //assert((m_sShading_info.pvb_queue.size()*m_sShading_info.vertOutputAttribs) <= m_pvb_max_attribs);
 
    if(m_sShading_info.launched_threads_verts == 0){
       graphicsStreamCreate(&m_sShading_info.cudaStreamVert); 

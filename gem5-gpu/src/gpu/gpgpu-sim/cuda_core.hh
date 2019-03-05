@@ -212,11 +212,11 @@ class CudaCore : public MemObject
         warp_inst_t inst;
     };
 
-      class VPOMasterPort : public MasterPort
+      class VpoMasterPort : public MasterPort
     {
       public:
       enum class Type {DataPort, DistributionPort};
-      VPOMasterPort(const std::string &_name, CudaCore * _core)
+      VpoMasterPort(const std::string &_name, CudaCore * _core)
          : MasterPort(_name, _core), core(_core) {}
 
 
@@ -230,30 +230,8 @@ class CudaCore : public MemObject
       CudaCore* core;
     };
 
+    VpoMasterPort vpoWritePort;
 
-    class VPOSlavePort : public SlavePort
-    {
-      public:
-        enum class Type {DataPort, DistributionPort};
-        VPOSlavePort(const std::string &_name, CudaCore *_core):
-           SlavePort(_name, _core), core(_core) {}
-
-      protected:
-        virtual bool recvTimingReq(PacketPtr pkt);
-        virtual bool recvTimingSnoopResp(PacketPtr pkt);
-        virtual Tick recvAtomic(PacketPtr pkt);
-        virtual void recvFunctional(PacketPtr pkt);
-        virtual void recvRespRetry();
-        virtual AddrRangeList getAddrRanges() const;
-
-      private:
-         CudaCore* core;
-    };
-
-    VPOMasterPort vpoWritePort;
-    VPOMasterPort vpoReadPort;
-    VPOMasterPort vpoDistPortMaster;
-    VPOSlavePort vpoDistPortSlave;
     std::queue<PacketPtr> vpoWritePkts;
 
     bool recvVpoTimingResp(PacketPtr pkt);
@@ -269,8 +247,7 @@ class CudaCore : public MemObject
     MasterID texMasterId;
     MasterID constMasterId;
     MasterID zMasterId;
-    MasterID vpoDataMasterId;
-    MasterID vpoDistMasterId;
+    MasterID vpoVertWriteMasterId;
 
   private:
 
@@ -394,8 +371,7 @@ class CudaCore : public MemObject
     
     // Receive and complete a texture fetch
     void recvTexResp(PacketPtr pkt);
-    
-    
+     
     /**
      * This function is the main entrypoint from GPGPU-Sim
      * This function parses the instruction from GPGPU-Sim and issues the

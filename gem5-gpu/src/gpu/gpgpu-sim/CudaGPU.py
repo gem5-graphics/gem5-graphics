@@ -26,6 +26,7 @@
 #
 
 from ClockedObject import ClockedObject
+from MemObject import MemObject
 from ShaderMMU import ShaderMMU
 from m5.defines import buildEnv
 from m5.params import *
@@ -36,7 +37,7 @@ class GPGPUSimComponentWrapper(ClockedObject):
     cxx_class = 'GPGPUSimComponentWrapper'
     cxx_header = "gpu/gpgpu-sim/cuda_gpu.hh"
 
-class CudaGPU(ClockedObject):
+class CudaGPU(MemObject):
     type = 'CudaGPU'
     cxx_class = 'CudaGPU'
     cxx_header = "gpu/gpgpu-sim/cuda_gpu.hh"
@@ -77,3 +78,9 @@ class CudaGPU(ClockedObject):
     dram_wrapper = Param.GPGPUSimComponentWrapper("Must define a wrapper to clock the GPGPU-Sim DRAM")
     gpu_cacheline_size = Param.Int(128, "System cache block size")
     standalone_mode = Param.Bool(False, "Run in standalone mode")
+
+    vpo_base_addr = Param.Addr("Address for the VPO distribution port")
+
+    prim_fetch_buffer_size = Param.Int(64, 
+          "The size of primitive attributes fetch buffer")
+

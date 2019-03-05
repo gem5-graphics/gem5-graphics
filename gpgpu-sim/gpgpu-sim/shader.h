@@ -71,6 +71,7 @@
 
 #define WRITE_MASK_SIZE 8
 
+class graphics_simt_pipeline;
 
 class thread_ctx_t {
 public:
@@ -1666,8 +1667,6 @@ public:
     void display_simt_state(FILE *fout, int mask ) const;
     void display_pipeline( FILE *fout, int print_mem, int mask3bit ) const;
 
-    unsigned get_sid() { return m_sid; }
-
     void incload_stat() {m_stats->m_num_loadqueued_insn[m_sid]++;}
     void incstore_stat() {m_stats->m_num_storequeued_insn[m_sid]++;}
     void incialu_stat(unsigned active_count,double latency) {
@@ -1771,6 +1770,8 @@ public:
 
 	 void inc_simt_to_mem(unsigned n_flits){ m_stats->n_simt_to_mem[m_sid] += n_flits; }
 
+    simt_core_cluster* get_cluster(){ return m_cluster;}
+
 	private:
      friend class ldst_unit;
 	 unsigned inactive_lanes_accesses_sfu(unsigned active_count,double latency){
@@ -1804,7 +1805,7 @@ public:
     void execute();
     
     void writeback();
-    
+
     // used in display_pipeline():
     void dump_warp_state( FILE *fout ) const;
     void print_stage(unsigned int stage, FILE *fout) const;
@@ -1868,6 +1869,38 @@ public:
     // is that the dynamic_warp_id is a running number unique to every warp
     // run on this shader, where the warp_id is the static warp slot.
     unsigned m_dynamic_warp_id;
+
+    //graphics components
+    struct vert_warp_t {
+       std::list<unsigned> warpTids;
+       unsigned vert_count;
+       const unsigned warp_id;
+       vert_warp_t(unsigned wid):
+          warp_id(wid)
+       {}
+    };
+
+    //struct to track primitive setup
+    struct primPipe_t {
+       const unsigned prim_id;
+       unsigned cycles;
+       const bool last_in_batch;
+       primPipe_t(unsigned pid, unsigned c, bool lib):
+          prim_id(pid), cycles(c),
+          last_in_batch(lib){}
+    };
+
+    void process_prims();
+    void add_prims();
+
+    std::list<vert_warp_t> m_vert_warps;
+    std::list<primPipe_t> m_prim_pipe;
+    std::vector<unsigned> m_curr_prim_batch;
+    bool m_prim_batch_ready;
+    unsigned m_pending_prim_batches;
+public:
+    bool can_vert_write(unsigned warp_id);
+    void signal_vert_done(unsigned warp_id, unsigned tid);
 };
 
 class simt_core_cluster {
@@ -1885,6 +1918,7 @@ public:
 
     void core_cycle();
     void icnt_cycle();
+    
 
     void reinit();
     unsigned issue_block2core();
@@ -1926,7 +1960,7 @@ public:
     graphics_simt_pipeline* getGraphicsPipeline() {
        return m_graphics_pipe;
     }
-    
+
 private:
     unsigned m_cluster_id;
     gpgpu_sim *m_gpu;
@@ -1939,7 +1973,8 @@ private:
     std::list<unsigned> m_core_sim_order;
     std::list<mem_fetch*> m_response_fifo;
 
-    //graphics components
+    //graphics
+    friend graphics_simt_pipeline;
     graphics_simt_pipeline* m_graphics_pipe;
 };
 

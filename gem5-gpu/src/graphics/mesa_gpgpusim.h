@@ -349,22 +349,22 @@ struct tileStream_t{
    }
 };
 
-struct vertStats_t {
+/*struct vertStats_t {
    vertStats_t(unsigned id): 
       vid(id),
       done(false)
    {}
    unsigned vid;
    bool done;
-};
+};*/
 
-struct pvbFetch_t {
+/*struct pvbFetch_t {
    pvbFetch_t(bool pr, unsigned f):
       primReady(pr),
       fetch(f){}
    bool primReady;
    unsigned fetch;
-};
+};*/
 
 struct stage_shading_info_t {
     unsigned currPrimType;
@@ -375,8 +375,8 @@ struct stage_shading_info_t {
     unsigned sent_simt_prims;
     unsigned launched_threads_verts;
     unsigned completed_threads_verts;
-    std::deque<vertStats_t*> pvb_queue;
-    std::unordered_map<unsigned, vertStats_t*> launched_vert_loc;
+    //std::deque<vertStats_t*> pvb_queue;
+    //std::unordered_map<unsigned, vertStats_t*> launched_vert_loc;
     unsigned pvb_fetched_verts;
     unsigned launched_threads_frags;
     unsigned completed_threads_frags;
@@ -440,13 +440,13 @@ struct stage_shading_info_t {
         vertexData.clear();
         launched_threads_verts = 0;
         completed_threads_verts = 0;
-        assert(pvb_queue.size() == 0);
-        for(auto it=launched_vert_loc.begin(); 
+        //assert(pvb_queue.size() == 0);
+        /*for(auto it=launched_vert_loc.begin(); 
               it!=launched_vert_loc.end(); ++it){
            delete it->second;
         }
         launched_vert_loc.clear();
-        pvb_fetched_verts = 0;
+        pvb_fetched_verts = 0;*/
         launched_threads_frags = 0;
         completed_threads_frags = 0;
         pending_kernels = 0;
@@ -552,12 +552,22 @@ public:
     void finalizeCurrentDraw();
     bool m_flagEndVertexShader;
     bool m_flagEndFragmentShader;
-    pvbFetch_t checkVerts(unsigned newVerts, unsigned oldVerts);
+    //pvbFetch_t checkVerts(unsigned newVerts, unsigned oldVerts);
     unsigned getVertFromId(unsigned utid);
     unsigned getUniqueThreadsPerWarp();
     unsigned getExtraVerts(unsigned vertsCount);
+    std::vector<unsigned> getPrimVertices(unsigned primId);
+    unsigned getPrimId(std::list<unsigned> * primWarpTids, unsigned warpSize);
+    unsigned getOutAttribsCount(){
+      assert(m_sShading_info.vertOutputAttribs > 0);
+      return m_sShading_info.vertOutputAttribs;
+    }
     void gpgpusim_cycle();
-    bool runNextPrim();
+    //bool runNextPrim();
+    primitiveFragmentsData_t* getPrimData(unsigned primId);
+    std::set<unsigned> getClustersCoveredByPrim(unsigned primId);
+    
+    bool isVertWarpDone(unsigned warpId, unsigned vertCount);
     void allocateVertBuffers();
     unsigned int startShading();
     unsigned int noDepthFragmentShading();
@@ -574,6 +584,7 @@ public:
           unsigned int block_H, unsigned int block_W, unsigned int tc_h, unsigned int tc_w, unsigned tc_block_dim, unsigned wg_size, unsigned blendingMode, unsigned depthMode, unsigned cptStartFrame, unsigned cptEndFrame, unsigned cptPeroid, bool skipCpFrames, char* outdir);
     GLuint getScreenWidth(){return m_bufferWidth;}
     GLuint getRBSize(){return m_bufferWidth*m_bufferHeight;}
+    byte* getVertAttribAddr(bool isInput, unsigned vertId, unsigned attribId, unsigned index);
     shaderAttrib_t getVertexData(unsigned utid, unsigned tid, unsigned attribID, 
           unsigned attribIndex, unsigned fileIdx, unsigned idx2D, void * stream);
     shaderAttrib_t getFragmentData(unsigned utid, unsigned tid, unsigned attribID, 
@@ -584,7 +595,7 @@ public:
           unsigned utid, unsigned tid, unsigned attribID, 
           unsigned attribIndex, unsigned fileIdx, unsigned idx2D, void * stream);
     void writeVertexResult(unsigned threadID, unsigned resAttribID, unsigned attribIndex, float data);
-    void checkGraphicsThreadExit(void * kernelPtr, unsigned tid, void* stream);
+    void checkGraphicsThreadExit(ptx_thread_info *thread);
     void setTcInfo(int pid, int tid){m_tcPid = pid; m_tcTid=tid;}
 
     //gem5 calls

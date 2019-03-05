@@ -568,6 +568,11 @@ void ptx_thread_info::set_npc( const function_info *f )
    m_symbol_table = m_func_info->get_symtab();
 }
 
+void ptx_thread_info::exitCore(){
+   //m_core is not used in case of functional simulation mode
+   if(!m_functionalSimulationMode)
+      m_core->warp_exit(m_hw_wid);
+}
 
 void feature_not_implemented( const char *f ) 
 {

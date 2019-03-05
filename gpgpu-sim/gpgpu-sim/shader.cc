@@ -91,6 +91,8 @@ shader_core_ctx::shader_core_ctx( class gpgpu_sim *gpu,
     
     m_sid = shader_id;
     m_tpc = tpc_id;
+    m_pending_prim_batches=0;
+    m_prim_batch_ready = false;
     
     m_pipeline_reg.reserve(N_PIPELINE_STAGES);
     for (int j = 0; j<N_PIPELINE_STAGES; j++) {
@@ -1303,6 +1305,102 @@ void shader_core_ctx::writeback()
         preg = m_pipeline_reg[EX_WB].get_ready();
         pipe_reg = (preg==NULL)? NULL:*preg;
     }
+}
+
+void shader_core_ctx::process_prims(){
+   for(auto& prim: m_prim_pipe){
+      if(prim.cycles > 0)
+         prim.cycles--;
+   }
+   if(m_prim_batch_ready){
+      if(m_cluster->getGraphicsPipeline()->add_prim_batch(m_curr_prim_batch)){
+         m_prim_batch_ready = false;
+         m_curr_prim_batch.clear();
+      } else {
+         //can't process the next batch until 
+         //the current one is processed
+         return;
+      }
+   }
+   if(!m_prim_pipe.empty()){
+      if(m_prim_pipe.front().cycles == 0){
+         //add primitive to current batch
+         m_curr_prim_batch.push_back(m_prim_pipe.front().prim_id);
+         if(m_prim_pipe.front().last_in_batch){
+            assert(m_pending_prim_batches>0);
+            m_pending_prim_batches--;
+            m_prim_batch_ready = true;
+         }
+         m_prim_pipe.pop_front();
+      }
+   }
+}
+
+//checks if primitives can be generated 
+//from done vertex warps
+void shader_core_ctx::add_prims(){
+   //TODO: add an option for these
+   const static unsigned MaxPrimPipeSize = 2; 
+   const static unsigned PrimDelay = 4; 
+
+   if(m_pending_prim_batches >= MaxPrimPipeSize)
+      return;
+   if(!m_vert_warps.empty()){
+      if(m_vert_warps.front().warpTids.empty())
+         return;
+      unsigned primId = 
+         g_renderData.getPrimId(
+               &m_vert_warps.front().warpTids,
+               m_vert_warps.front().vert_count);
+      if(m_vert_warps.front().warpTids.size() == 0){
+         //if last prim in this warp mark it as the last one in 
+         //the batch
+         m_prim_pipe.push_back(primPipe_t(primId, PrimDelay, true));
+         m_pending_prim_batches++;
+         m_vert_warps.pop_front();
+      } else {
+         m_prim_pipe.push_back(primPipe_t(primId, PrimDelay, false));
+      }
+   }
+}
+
+//called upon vertex writback to check
+//if there is a space to hold new set
+//of vertex data for primitive generation
+bool shader_core_ctx::can_vert_write(unsigned warp_id){
+   //TODO: add a configuration for this
+   const int MAX_SIZE = 2;
+   for(auto &vw: m_vert_warps){
+      //we already reserved space for this warp
+      if(vw.warp_id == warp_id)
+         return true;
+   }
+   if(m_vert_warps.size() >= MAX_SIZE)
+      return false;
+   m_vert_warps.push_back(vert_warp_t(warp_id));
+   return true;
+}
+
+void shader_core_ctx::signal_vert_done(unsigned warp_id, unsigned tid){
+   for(auto &vw: m_vert_warps){
+      //we already reserved space for this warp
+      if(vw.warp_id == warp_id){
+         assert(vw.warpTids.size()==0);
+         vw.vert_count++;
+         unsigned warp_num = tid/MAX_WARP_SIZE;
+         if(g_renderData.isVertWarpDone(warp_num, vw.vert_count)){
+            unsigned start_tid = warp_num*MAX_WARP_SIZE;
+            for(unsigned i=start_tid; i<(start_tid+vw.vert_count); i++){
+               //populate the list with tid corresponding to the newly
+               //done warp
+               vw.warpTids.push_back(i);
+            }
+         }
+         return;
+      }
+   }
+   //sholdn't happen
+   assert(0);
 }
 
 bool ldst_unit::shared_cycle( warp_inst_t &inst, mem_stage_stall_type &rc_fail, mem_stage_access_type &fail_type)
@@ -2566,13 +2664,18 @@ unsigned int shader_core_config::max_cta( const kernel_info_t &k ) const
 
 void shader_core_ctx::cycle()
 {
-	m_stats->shader_cycles[m_sid]++;
-    writeback();
-    execute();
-    read_operands();
-    issue();
-    decode();
-    fetch();
+   m_stats->shader_cycles[m_sid]++;
+   writeback();
+   //graphics pipeline calls**
+   //should be invoked after cores writeback
+   process_prims();
+   add_prims();
+   //**
+   execute();
+   read_operands();
+   issue();
+   decode();
+   fetch();
 }
 
 // Flushes all content of the cache to memory
@@ -3221,6 +3324,7 @@ simt_core_cluster::simt_core_cluster( class gpgpu_sim *gpu,
     m_core = new shader_core_ctx*[ config->n_simt_cores_per_cluster ];
     const gpu_graphics_config& gconfigs= gpu->get_config().gpu_graphics_configs;
     m_graphics_pipe = new graphics_simt_pipeline(
+                this,
                 cluster_id, gconfigs.setup_delay, gconfigs.setup_q_len, 
                 gconfigs.coarse_tiles, gconfigs.fine_tiles, gconfigs.hiz_tiles,
                 gconfigs.tc_engines, gconfigs.tc_bins, 
@@ -3236,6 +3340,7 @@ simt_core_cluster::simt_core_cluster( class gpgpu_sim *gpu,
 
 void simt_core_cluster::core_cycle()
 {
+    
     m_graphics_pipe->cycle();
 
     for( std::list<unsigned>::iterator it = m_core_sim_order.begin(); it != m_core_sim_order.end(); ++it ) {

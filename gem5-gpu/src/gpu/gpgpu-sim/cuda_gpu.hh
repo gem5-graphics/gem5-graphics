@@ -188,7 +188,7 @@ class GPGPUSimComponentWrapper : public ClockedObject
  *  Currently this class only supports a single GPU device and does not support
  *  concurrent kernels.
  */
-class CudaGPU : public ClockedObject
+class CudaGPU : public MemObject
 {
   private:
     static std::vector<CudaGPU*> gpuArray;
@@ -751,6 +751,145 @@ class CudaGPU : public ClockedObject
           theGPU->update_stats();
        }
     }
+
+    // Graphics: attribute processing functions
+    bool sendPrimMaskBatch(unsigned from_cluster, unsigned to_cluster, 
+          std::vector<std::pair<unsigned, bool> > mask){
+       return gpuClusters[from_cluster].sendPrimMaskBatch(
+             to_cluster, mask);
+    }
+
+    bool fetchPrimAttribs(unsigned from_cluster, unsigned primId){
+       return gpuClusters[from_cluster].fetchPrimAttribs(primId);
+    }
+
+    // Required for implementing MemObject
+    virtual BaseMasterPort& getMasterPort(const std::string &if_name,
+          PortID idx = InvalidPortID);
+    virtual BaseSlavePort& getSlavePort(const std::string& if_name,
+          PortID idx = InvalidPortID);
+
+  private:
+    class VpoDistMasterPort : public MasterPort
+   {
+      public:
+         VpoDistMasterPort(const std::string &_name, CudaGPU * _gpu)
+            : MasterPort(_name, _gpu), gpu(_gpu) {}
+
+
+      protected:
+         virtual bool recvTimingResp(PacketPtr pkt);
+         virtual void recvReqRetry();
+         virtual Tick recvAtomic(PacketPtr pkt);
+         virtual void recvFunctional(PacketPtr pkt);
+
+      private:
+         CudaGPU* gpu;
+   };
+
+  private:
+    class VpoVertMasterPort : public MasterPort
+   {
+      public:
+         VpoVertMasterPort(const std::string &_name, CudaGPU * _gpu, unsigned cid)
+            : MasterPort(_name, _gpu), gpu(_gpu), clusterId(cid) {}
+
+
+      protected:
+         virtual bool recvTimingResp(PacketPtr pkt);
+         virtual void recvReqRetry();
+         virtual Tick recvAtomic(PacketPtr pkt);
+         virtual void recvFunctional(PacketPtr pkt);
+
+      private:
+         CudaGPU* gpu;
+         unsigned clusterId;
+      friend CudaGPU;
+   };
+
+
+    class VpoDistSlavePort : public SlavePort
+   {
+      public:
+         enum class Type {DataPort, DistributionPort};
+         VpoDistSlavePort(const std::string &_name, CudaGPU *_gpu, 
+               unsigned cid, Addr _addr):
+            SlavePort(_name, _gpu), gpu(_gpu), clusterId(cid), 
+            addrRangeList{AddrRange(RangeSize(_addr,1))} {}
+
+      protected:
+         virtual bool recvTimingReq(PacketPtr pkt);
+         virtual bool recvTimingSnoopResp(PacketPtr pkt);
+         virtual Tick recvAtomic(PacketPtr pkt);
+         virtual void recvFunctional(PacketPtr pkt);
+         virtual void recvRespRetry();
+         virtual AddrRangeList getAddrRanges() const;
+
+      private:
+         CudaGPU* gpu;
+         unsigned clusterId;
+         AddrRangeList addrRangeList;
+      friend CudaGPU;
+   };
+
+    //dist ports
+    std::vector<VpoDistMasterPort> vpoDistPortMaster;
+    std::vector<VpoDistSlavePort> vpoDistPortSlave;
+
+    //vert port
+    std::vector<VpoVertMasterPort> vpoVertReadPort;
+
+    //TODO: re-define clusters as MemObject
+    class GPUCluster {
+       private:
+          struct PrimVaReq {
+                PacketPtr pkt;
+                unsigned primId;
+                PrimVaReq(PacketPtr p, unsigned pid){
+                   pkt = p;
+                   primId = pid;
+                };
+          };
+          CudaGPU* cudaGpu;
+          unsigned clusterId;
+          std::string clusterName;
+          std::list<PrimVaReq> attribFetchAddrs;
+          std::unordered_map<unsigned, unsigned> primPendingPkts;
+          std::unordered_map<PacketPtr, unsigned> pendingAttribFetchPkts;
+
+          //vpo ports
+          MasterID vpoDistMasterId;
+          MasterID vpoVertReadMasterId;
+
+          //The base address of distribution ports
+          Addr vpoBaseAddr;
+
+          VpoVertMasterPort* vpoVertReadPort;
+          VpoDistMasterPort* vpoDistPortMaster;
+          VpoDistSlavePort* vpoDistPortSlave;
+
+          const unsigned primFetchBufferSize;
+       public:
+          GPUCluster(const Params*p, 
+                CudaGPU* gpu,
+                unsigned clusterId, 
+                VpoVertMasterPort* vpoVertReadPort,
+                VpoDistMasterPort* vpoDistPortMaster,
+                VpoDistSlavePort* vpoDistPortSlave);
+          std::string name(){ return clusterName; }
+          void fetchAttribEventHandler();
+          bool sendPrimMaskBatch(unsigned to_cluster,
+                std::vector<std::pair<unsigned, bool> > mask);
+          bool recvPrimMask(PacketPtr pkt);
+          bool fetchPrimAttribs(unsigned primId);
+          bool recvPrimAttribs(PacketPtr pkt);
+       private:
+          EventWrapper<GPUCluster, &GPUCluster::fetchAttribEventHandler> 
+             fetchAttribEvent;
+       typedef std::vector<std::pair<unsigned, bool> > PrimMaskType;
+    };
+
+    std::vector<GPUCluster> gpuClusters;
 };
 
 /**

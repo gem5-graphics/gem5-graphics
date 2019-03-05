@@ -373,7 +373,9 @@ class graphics_simt_pipeline {
          unsigned delay;
       };
    public:
-      graphics_simt_pipeline(unsigned simt_cluster_id,
+      graphics_simt_pipeline(
+            class simt_core_cluster* cluster,
+            unsigned simt_cluster_id,
             unsigned setup_delay, unsigned setup_q_len,
             unsigned c_tiles_per_cycle,
             unsigned f_tiles_per_cycle,
@@ -383,13 +385,15 @@ class graphics_simt_pipeline {
             unsigned r_tile_h, unsigned r_tile_w,
             unsigned tc_wait_threshold
             ): 
+         m_cluster(cluster),
          m_cluster_id(simt_cluster_id),
          m_ta_stage(tc_engines, tc_bins, tc_tile_h, tc_tile_w, 
                r_tile_h, r_tile_w, tc_wait_threshold, simt_cluster_id),
          m_setup_delay(setup_delay),
          m_c_tiles_per_cycle(c_tiles_per_cycle),
          m_f_tiles_per_cycle(f_tiles_per_cycle),
-         m_hiz_tiles_per_cycle(hiz_tiles_per_cycle)
+         m_hiz_tiles_per_cycle(hiz_tiles_per_cycle),
+         m_curr_prim_counter(0)
    { 
       m_setup_pipe = new fifo_pipeline<primitive_data_t>("setup-stage", 0, setup_q_len);
       m_c_raster_pipe = new fifo_pipeline<primitive_data_t>("coarse-raster-stage", 0, 2);
@@ -415,7 +419,12 @@ class graphics_simt_pipeline {
          run_hiz();
          run_c_raster();
          run_setup();
+         run_fetch_prim_attribs();
+         run_out_prim_batch();
       }
+
+      void run_out_prim_batch();
+      void run_fetch_prim_attribs();
 
       void run_setup(){
          unsigned elms = m_setup_pipe->get_n_element();
@@ -514,6 +523,19 @@ class graphics_simt_pipeline {
          }
       }
 
+      bool add_primitives(std::vector<std::pair<unsigned, bool> >primIds);
+
+      bool signal_prim_attrib_fetched(unsigned primId){
+         //this primitive doesn't touch this simt core
+         primitiveFragmentsData_t* prim = g_renderData.getPrimData(primId);
+         assert(prim->getSimtTiles(m_cluster_id).size() > 0);
+         if(m_setup_pipe->full())
+            return false;
+         primitive_data_t* prim_data = new primitive_data_t(prim, m_setup_delay);
+         m_setup_pipe->push(prim_data);
+         return true;
+      }
+
       bool add_primitive(primitiveFragmentsData_t* prim){
          //this primitive doesn't touch this simt core
          if(prim->getSimtTiles(m_cluster_id).size() == 0)
@@ -534,6 +556,8 @@ class graphics_simt_pipeline {
             m_f_raster_pipe->get_n_element() +
             m_ta_pipe->get_n_element();
          unsigned ret = not_complete + (m_ta_stage.empty()? 0 : 1);
+         ret+= m_curr_mapped_prims.size();
+         ret+= m_curr_coverage_masks.size();
          return ret; 
       }
 
@@ -543,7 +567,15 @@ class graphics_simt_pipeline {
          fprintf(ofile, "graphics: average TC bin occupancy %f\n", bin_occupancy);
       }
 
+      //vertex processing
+      bool add_prim_batch(std::vector<unsigned> coverage_batch);
+
+      void reset_prim_counter(){
+         m_curr_prim_counter = 0;
+      }
+
    private:
+      simt_core_cluster* const m_cluster;
       const unsigned m_cluster_id;
       fifo_pipeline<primitive_data_t>* m_setup_pipe;
       fifo_pipeline<primitive_data_t>* m_c_raster_pipe;
@@ -561,6 +593,18 @@ class graphics_simt_pipeline {
 
       //performance counters
       unsigned m_cycles;
+
+      //vertex processing
+      struct c_mask_t{
+         unsigned clusterId;
+         std::vector<std::pair<unsigned, bool> > prims;
+          c_mask_t(unsigned cid, std::vector<std::pair<unsigned, bool> > p):
+            clusterId(cid), prims(p)
+         {}
+      };
+      std::list<c_mask_t> m_curr_coverage_masks;
+      unsigned m_curr_prim_counter;
+      std::unordered_map<unsigned, bool> m_curr_mapped_prims;
 };
 
 

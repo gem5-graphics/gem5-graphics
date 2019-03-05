@@ -2258,8 +2258,7 @@ void exit_impl( const ptx_instruction *pI, ptx_thread_info *thread )
    thread->set_done();
    thread->exitCore();
    thread->registerExit();
-   checkGraphicsThreadExit((void*) thread->get_kernel_info(),thread->get_uid_in_kernel(),
-         (void*) thread->get_kernel_info()->get_stream());
+   g_renderData.checkGraphicsThreadExit(thread);
 }
 
 void mad_def( const ptx_instruction *pI, ptx_thread_info *thread, bool use_carry = false );
