@@ -770,9 +770,26 @@ void renderData_t::endDrawCall() {
     printf("endDrawCall: done\n");
 }
 
-void renderData_t::initParams(bool standaloneMode, unsigned int startFrame, unsigned int endFrame, int startDrawcall, unsigned int endDrawcall,
-        unsigned int tile_H, unsigned int tile_W, unsigned int block_H, unsigned int block_W, unsigned int tc_h, unsigned int tc_w, unsigned int tc_block_dim, unsigned int wg_size,
-        unsigned blendingMode, unsigned depthMode, unsigned cptStartFrame, unsigned cptEndFrame, unsigned cptPeroid, bool skipCpFrames, char* outdir) {
+void renderData_t::initParams(bool standaloneMode, 
+      unsigned int startFrame, 
+      unsigned int endFrame, 
+      int startDrawcall, 
+      unsigned int endDrawcall,
+      unsigned int tile_H, 
+      unsigned int tile_W, 
+      unsigned int block_H, 
+      unsigned int block_W, 
+      unsigned int tc_h, 
+      unsigned int tc_w, 
+      unsigned int tc_block_dim, 
+      unsigned int frag_wg_size,
+      unsigned blendingMode, 
+      unsigned depthMode, 
+      unsigned cptStartFrame, 
+      unsigned cptEndFrame, 
+      unsigned cptPeroid, 
+      bool skipCpFrames, 
+      char* outdir) {
     m_standaloneMode = standaloneMode;
     m_startFrame = startFrame;
     m_endFrame = endFrame;
@@ -785,7 +802,7 @@ void renderData_t::initParams(bool standaloneMode, unsigned int startFrame, unsi
     m_tc_h = tc_h;
     m_tc_w = tc_w;
     m_tc_block_dim = tc_block_dim;
-    m_wg_size = wg_size;
+    m_frag_wg_size = frag_wg_size;
     m_inShaderBlending = (blendingMode != 0);
     m_inShaderDepth = (depthMode != 0);
     printf("inshader depth = %d\n", m_inShaderDepth);
@@ -1641,7 +1658,7 @@ GLboolean renderData_t::doVertexShading(GLvector4f ** inputParams, vp_stage_data
     m_sShading_info.render_init = false;
     assert(m_sShading_info.vertCodeAddr == NULL);
 
-    unsigned threadsPerBlock = m_wg_size; 
+    unsigned threadsPerBlock = m_frag_wg_size; 
     unsigned numberOfBlocks = (vertsCount + threadsPerBlock -1) / threadsPerBlock;
     assert(graphicsConfigureCall(numberOfBlocks, threadsPerBlock, 0, 0) == cudaSuccess);
     assert(graphicsSetupArgument((void*)&m_sShading_info.deviceVertsInputAttribs, sizeof(float*), 0) == cudaSuccess);
@@ -2552,7 +2569,7 @@ void renderData_t::launchFragmentTile(RasterTile * rasterTile, unsigned tileId){
    printf("Launching a tile of fragments, active count=%d of of %d\n", fragsCount, rasterTile->size());
 
 
-   unsigned threadsPerBlock = m_wg_size; 
+   unsigned threadsPerBlock = m_frag_wg_size; 
    unsigned numberOfBlocks = (rasterTile->size() + threadsPerBlock -1 ) / threadsPerBlock;
 
    m_sShading_info.cudaStreams.push_back(cudaStream_t());
@@ -2670,7 +2687,7 @@ void renderData_t::launchTCTile(
 
    assert(tcTile->size() > 0);
    DPRINTF(MesaGpgpusim, "launching a TC tile with %d fragments\n", tcTile->size());
-   unsigned threadsPerBlock = m_wg_size; 
+   unsigned threadsPerBlock = m_frag_wg_size; 
    unsigned numberOfBlocks = (tcTile->size() + threadsPerBlock -1 ) / threadsPerBlock;
 
       /*printf("launching a TC tile with (%d) active fragments with %d threads on %d\n",

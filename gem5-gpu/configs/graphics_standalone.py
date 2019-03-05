@@ -96,9 +96,9 @@ options.g_tc_engines = 2
 options.g_tc_bins = 4
 options.g_tc_h = 2
 options.g_tc_w = 2
-#options.g_tc_block_dim = 2
+options.g_tc_block_dim = 2
 options.g_tc_thresh = 20
-options.g_wg_size = 64
+options.g_frag_wg_size = 64
 #options.gpgpusim_stats = True
 options.drawcall_stats = True
 
