@@ -129,6 +129,7 @@ def addGPUOptions(parser):
     parser.add_option("--g_tc_thresh", type="int", default=20, help="TC wait threshold in cycles")
     parser.add_option("--g_vert_wg_size", type="int", default=256, help="Vertex shading workgroup size")
     parser.add_option("--g_frag_wg_size", type="int", default=256, help="Fragment shading workgroup size")
+    parser.add_option("--g_pvb_size", type="int", default=4096, help="PVB size in bytes")
 
 
 def configureMemorySpaces(options):
@@ -214,11 +215,14 @@ def parseGpgpusimConfig(options):
     config = config.replace("%gTcThresh%",      str(options.g_tc_thresh) +"\n")
     config = config.replace("%gVertWgSize%",      str(options.g_vert_wg_size) +"\n")
     config = config.replace("%gFragWgSize%",      str(options.g_frag_wg_size) +"\n")
+    config = config.replace("%gPvbSize%",      str(options.g_pvb_size) +"\n")
 
     maxWgSize = options.g_tc_w*options.g_tc_h*options.g_raster_tw*options.g_raster_th
-    if(options.g_frag_wg_size > maxWgSize or options.g_vert_wg_size>maWgSize):
+    if(options.g_frag_wg_size > maxWgSize or options.g_vert_wg_size>maxWgSize):
        print "Error: graphics WG size has to be <= max workgroup size (i.e., TC tile size)"
        exit(1)
+    if(options.g_pvb_size > options.sc_l2_size):
+       print "Warning: PVB size is larger than L2 cache size"
 
     if usingTemplate:
         print "Using template and command line options for gpgpusim.config"
