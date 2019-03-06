@@ -82,10 +82,10 @@ options.mem_channels = 4
 
 options.g_standalone_mode = True
 options.mem_size = "1GB"
-options.g_raster_tw = 4 #1024;
-options.g_raster_th = 4 #768;
-options.g_raster_bw = 4 #1024;
-options.g_raster_bh = 4 #768;
+options.g_raster_tw = 8 #1024;
+options.g_raster_th = 8 #768;
+options.g_raster_bw = 8 #1024;
+options.g_raster_bh = 8 #768;
 
 options.g_setup_delay = 8
 options.g_setup_q = 100000
@@ -98,7 +98,12 @@ options.g_tc_h = 2
 options.g_tc_w = 2
 options.g_tc_block_dim = 2
 options.g_tc_thresh = 20
-options.g_frag_wg_size = 64
+options.g_vert_wg_size = 256
+options.g_frag_wg_size = 256
+options.g_pvb_size = 4096
+options.g_core_prim_pipe_size = 2
+options.g_core_prim_delay = 4
+
 #options.gpgpusim_stats = True
 options.drawcall_stats = True
 
