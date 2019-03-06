@@ -331,7 +331,7 @@ def parseGpgpusimConfig(options):
 
     return gpgpusimconfig
 
-def createGPU(options, gpu_mem_range):
+def createGPU(options, gpu_mem_range, vpo_mem_start):
     # DEPRECATED: Set a default GPU DRAM clock to be passed to the wrapper.
     # This must be eliminated when the wrapper can be removed.
     options.gpu_dram_clock = None
@@ -347,7 +347,8 @@ def createGPU(options, gpu_mem_range):
                                               voltage_domain = VoltageDomain()),
                   gpu_memory_range = gpu_mem_range,
                   gpu_cacheline_size = options.cacheline_size, 
-                  standalone_mode=options.g_standalone_mode)
+                  standalone_mode=options.g_standalone_mode,
+                  vpo_base_addr = vpo_mem_start)
 
     gpu.cores_wrapper = GPGPUSimComponentWrapper(clk_domain = gpu.clk_domain)
 
@@ -535,6 +536,11 @@ def connectGPUPorts_classic(system, gpu, options):
     gpu.l2NetToL2.master = gpu.l2cache.cpu_side
     gpu.l2cache.mem_side = system.membus.slave
 
+    for i in range(options.clusters):
+      gpu.vpo_vert_read_port[i] = gpu.l2NetToL2.slave
+      gpu.vpo_dist_port_master[i] = gpu.l2NetToL2.slave
+      gpu.vpo_dist_port_slave[i] = gpu.l2NetToL2.master
+
     for i,sc in enumerate(gpu.shader_cores):
         #readonly cache
         '''sc.icache = L1_ICache(size=options.sc_il1_size,
@@ -573,9 +579,6 @@ def connectGPUPorts_classic(system, gpu, options):
         #sc.z_lsq.cache_port = system.membus.slave
 
         sc.vpo_write_port = gpu.l2NetToL2.slave
-        sc.vpo_read_port = gpu.l2NetToL2.slave
-        sc.vpo_dist_port_master = gpu.l2NetToL2.slave
-        #sc.vpo_dist_port_slave = gpu.l2NetToL2.master
 
         for j in xrange(options.gpu_warp_size):
             sc.lsq_port[j] = sc.lsq.lane_port[j]

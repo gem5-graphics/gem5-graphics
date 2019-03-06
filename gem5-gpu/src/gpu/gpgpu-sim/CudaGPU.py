@@ -84,3 +84,6 @@ class CudaGPU(MemObject):
     prim_fetch_buffer_size = Param.Int(64, 
           "The size of primitive attributes fetch buffer")
 
+    vpo_vert_read_port = VectorMasterPort("VPO port for reading vertex attributes from memory to the rasterization pipeline")
+    vpo_dist_port_master = VectorMasterPort("VPO port for sending coverage data to other cores")
+    vpo_dist_port_slave = VectorSlavePort("VPO port for receiving coverage data from other cores")

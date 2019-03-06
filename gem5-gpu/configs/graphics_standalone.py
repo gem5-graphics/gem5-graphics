@@ -103,6 +103,7 @@ options.g_frag_wg_size = 256
 options.g_pvb_size = 4096
 options.g_core_prim_pipe_size = 2
 options.g_core_prim_delay = 4
+options.g_core_prim_warps = 2
 
 #options.gpgpusim_stats = True
 options.drawcall_stats = True
@@ -185,12 +186,15 @@ MemConfig.config_mem(options, system)
  
 options.access_host_pagetable = True
 gpu_mem_range = AddrRange(options.mem_size)
-system.gpu = GPUConfig.createGPU(options, gpu_mem_range)
+#vpo addr starts from the end of the dynamic gpu range
+vpo_mem_start = options.mem_size 
+system.gpu = GPUConfig.createGPU(options, gpu_mem_range, vpo_mem_start)
 GPUConfig.connectGPUPorts_classic(system, system.gpu, options)
 
 system.gpu.l2cache.write_buffers = 128
 system.gpu.l2cache.mshrs = 128
 system.gpu.l2cache.tgts_per_mshr = 20
+system.gpu.prim_fetch_buffer_size = 64
 system.membus.width = 128
 system.gpu.l2NetToL2.width = 128
 system.membus.clk_domain = SrcClockDomain(clock = "2GHz",
