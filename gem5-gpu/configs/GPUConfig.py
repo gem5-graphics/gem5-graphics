@@ -130,6 +130,8 @@ def addGPUOptions(parser):
     parser.add_option("--g_vert_wg_size", type="int", default=256, help="Vertex shading workgroup size")
     parser.add_option("--g_frag_wg_size", type="int", default=256, help="Fragment shading workgroup size")
     parser.add_option("--g_pvb_size", type="int", default=4096, help="PVB size in bytes")
+    parser.add_option("--g_core_prim_pipe_size", type="int", default=2, help="Core prims buffer size")
+    parser.add_option("--g_core_prim_delay", type="int", default=4, help="Prim bounding box calculation delay")
 
 
 def configureMemorySpaces(options):
@@ -216,6 +218,8 @@ def parseGpgpusimConfig(options):
     config = config.replace("%gVertWgSize%",      str(options.g_vert_wg_size) +"\n")
     config = config.replace("%gFragWgSize%",      str(options.g_frag_wg_size) +"\n")
     config = config.replace("%gPvbSize%",      str(options.g_pvb_size) +"\n")
+    config = config.replace("%gCorePrimPipeSize%", str(options.g_core_prim_pipe_size) +"\n")
+    config = config.replace("%gCorePrimDelay%", str(options.g_core_prim_delay) +"\n")
 
     maxWgSize = options.g_tc_w*options.g_tc_h*options.g_raster_tw*options.g_raster_th
     if(options.g_frag_wg_size > maxWgSize or options.g_vert_wg_size>maxWgSize):

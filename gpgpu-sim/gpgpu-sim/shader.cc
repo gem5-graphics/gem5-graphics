@@ -80,7 +80,9 @@ shader_core_ctx::shader_core_ctx( class gpgpu_sim *gpu,
                                   shader_core_stats *stats )
    : core_t( gpu, NULL, config->warp_size, config->n_thread_per_shader ),
      m_barriers( config->max_warps_per_shader, config->max_cta_per_core ),
-     m_dynamic_warp_id(0)
+     m_dynamic_warp_id(0),
+     m_max_prim_pipe_size(gpu->get_config().gpu_graphics_configs.core_prim_pipe_size),
+     m_prim_delay(gpu->get_config().gpu_graphics_configs.core_prim_delay)
 {
     m_kernel_finishing = false;
     m_cluster = cluster;
@@ -1339,11 +1341,7 @@ void shader_core_ctx::process_prims(){
 //checks if primitives can be generated 
 //from done vertex warps
 void shader_core_ctx::add_prims(){
-   //TODO: add an option for these
-   const static unsigned MaxPrimPipeSize = 2; 
-   const static unsigned PrimDelay = 4; 
-
-   if(m_pending_prim_batches >= MaxPrimPipeSize)
+   if(m_pending_prim_batches >= m_max_prim_pipe_size)
       return;
    if(!m_vert_warps.empty()){
       if(m_vert_warps.front().warpTids.empty())
@@ -1355,11 +1353,11 @@ void shader_core_ctx::add_prims(){
       if(m_vert_warps.front().warpTids.size() == 0){
          //if last prim in this warp mark it as the last one in 
          //the batch
-         m_prim_pipe.push_back(primPipe_t(primId, PrimDelay, true));
+         m_prim_pipe.push_back(primPipe_t(primId, m_prim_delay, true));
          m_pending_prim_batches++;
          m_vert_warps.pop_front();
       } else {
-         m_prim_pipe.push_back(primPipe_t(primId, PrimDelay, false));
+         m_prim_pipe.push_back(primPipe_t(primId, m_prim_delay, false));
       }
    }
 }

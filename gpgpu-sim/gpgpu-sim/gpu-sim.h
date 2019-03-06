@@ -323,6 +323,8 @@ public:
     unsigned int vert_wg_size;
     unsigned int frag_wg_size;
     unsigned int pvb_size;
+    unsigned int core_prim_pipe_size;
+    unsigned int core_prim_delay;
 
     bool skip_cpt_frames;
     char* output_dir;
