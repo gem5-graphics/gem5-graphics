@@ -290,7 +290,7 @@ public:
     void reg_options(OptionParser * opp);
     void init() const {
         g_renderData.initParams(graphics_standalone_mode, start_frame, end_frame, start_call, end_call, raster_tile_H, raster_tile_W, raster_block_H, raster_block_W, tc_h, tc_w,
-              tc_block_dim, vert_wg_size, frag_wg_size, use_shader_blending, use_shader_depth_test,
+              tc_block_dim, vert_wg_size, frag_wg_size, pvb_size, use_shader_blending, use_shader_depth_test,
               cpt_start_frame, cpt_end_frame, cpt_period, skip_cpt_frames, output_dir);
     }
     
@@ -322,6 +322,7 @@ public:
     unsigned int tc_thresh;
     unsigned int vert_wg_size;
     unsigned int frag_wg_size;
+    unsigned int pvb_size;
 
     bool skip_cpt_frames;
     char* output_dir;

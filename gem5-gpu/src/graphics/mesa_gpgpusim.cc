@@ -784,6 +784,7 @@ void renderData_t::initParams(bool standaloneMode,
       unsigned int tc_block_dim, 
       unsigned int vert_wg_size,
       unsigned int frag_wg_size,
+      unsigned int pvb_size,
       unsigned blendingMode, 
       unsigned depthMode, 
       unsigned cptStartFrame, 
@@ -834,9 +835,7 @@ void renderData_t::initParams(bool standaloneMode,
     m_fPTXPrfx = m_intFolder+"/fragment_shader";
     m_fPtxInfoPrfx = m_intFolder+"/shader_ptxinfo";
 
-    //TODO: add a configuration for pvb size
-    unsigned sizeBytes = 64*1024; //64KB 
-    m_pvb_max_attribs = sizeBytes/TGSI_NUM_CHANNELS/sizeof(float);
+    m_pvb_max_attribs = pvb_size/TGSI_NUM_CHANNELS/sizeof(float);
 }
 
 bool renderData_t::useInShaderBlending() const {
