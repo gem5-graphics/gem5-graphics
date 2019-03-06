@@ -581,7 +581,7 @@ public:
     bool isBlendingEnabled();
     void getBlendingMode(GLenum * src, GLenum * dst, GLenum* srcAlpha, GLenum * dstAlpha, GLenum* eqnRGB, GLenum* eqnAlpha, GLfloat * blendColor);
     void initParams(bool standalone_mode, unsigned int startFrame, unsigned int endFrame, int startDrawcall, unsigned int endDrawcall, unsigned int tile_H, unsigned int tile_W,
-          unsigned int block_H, unsigned int block_W, unsigned int tc_h, unsigned int tc_w, unsigned tc_block_dim, unsigned frag_wg_size, unsigned blendingMode, unsigned depthMode, unsigned cptStartFrame, unsigned cptEndFrame, unsigned cptPeroid, bool skipCpFrames, char* outdir);
+          unsigned int block_H, unsigned int block_W, unsigned int tc_h, unsigned int tc_w, unsigned tc_block_dim, unsigned vert_wg_size, unsigned frag_wg_size, unsigned blendingMode, unsigned depthMode, unsigned cptStartFrame, unsigned cptEndFrame, unsigned cptPeroid, bool skipCpFrames, char* outdir);
     GLuint getScreenWidth(){return m_bufferWidth;}
     GLuint getRBSize(){return m_bufferWidth*m_bufferHeight;}
     byte* getVertAttribAddr(bool isInput, unsigned vertId, unsigned attribId, unsigned index);
@@ -754,6 +754,7 @@ private:
     unsigned int m_tc_h;
     unsigned int m_tc_w;
     unsigned int m_tc_block_dim;
+    unsigned int m_vert_wg_size;
     unsigned int m_frag_wg_size;
     long long unsigned m_drawcall_num;
     bool currentFrameHasShader;

@@ -782,6 +782,7 @@ void renderData_t::initParams(bool standaloneMode,
       unsigned int tc_h, 
       unsigned int tc_w, 
       unsigned int tc_block_dim, 
+      unsigned int vert_wg_size,
       unsigned int frag_wg_size,
       unsigned blendingMode, 
       unsigned depthMode, 
@@ -802,6 +803,7 @@ void renderData_t::initParams(bool standaloneMode,
     m_tc_h = tc_h;
     m_tc_w = tc_w;
     m_tc_block_dim = tc_block_dim;
+    m_vert_wg_size = vert_wg_size;
     m_frag_wg_size = frag_wg_size;
     m_inShaderBlending = (blendingMode != 0);
     m_inShaderDepth = (depthMode != 0);
@@ -2599,7 +2601,7 @@ void renderData_t::launchFragmentTile(RasterTile * rasterTile, unsigned tileId){
 }
 
 void renderData_t::launchVRTile(){
-   const unsigned batchSize = 256; //TODO: make size configurable
+   const unsigned batchSize = m_vert_wg_size;
    const unsigned vertsCount = m_sShading_info.vertexData.size() 
       + getExtraVerts(m_sShading_info.vertexData.size());
    const unsigned remainingVerts = vertsCount - m_sShading_info.launched_threads_verts;

@@ -444,7 +444,8 @@ void gpu_graphics_config::reg_options(OptionParser* opp)
     option_parser_register(opp, "-graphics_tc_w", OPT_UINT32, &tc_w, "tc bin width", "4");
     option_parser_register(opp, "-graphics_tc_block_dim", OPT_UINT32, &tc_block_dim, "tc tile blocks dim", "2");
     option_parser_register(opp, "-graphics_tc_thresh", OPT_UINT32, &tc_thresh, "tc wait threshold", "10");
-    option_parser_register(opp, "-graphics_frag_wg_size", OPT_UINT32, &frag_wg_size, "graphics workgroup size", "256");
+    option_parser_register(opp, "-graphics_vert_wg_size", OPT_UINT32, &vert_wg_size, "graphics vertices workgroup size", "256");
+    option_parser_register(opp, "-graphics_frag_wg_size", OPT_UINT32, &frag_wg_size, "graphics fragments workgroup size", "256");
 }
 
 void gpgpu_sim_config::reg_options(option_parser_t opp)
