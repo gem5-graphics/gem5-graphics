@@ -449,6 +449,7 @@ void gpu_graphics_config::reg_options(OptionParser* opp)
     option_parser_register(opp, "-graphics_pvb_size", OPT_UINT32, &pvb_size, "PVB size in bytes", "4096");
     option_parser_register(opp, "-graphics_core_prim_pipe_size", OPT_UINT32, &core_prim_pipe_size, "Depth of core prims buffer in primitives", "2");
     option_parser_register(opp, "-graphics_core_prim_delay", OPT_UINT32, &core_prim_delay, "Core prim bounding-box calculations delay in cycles", "4");
+    option_parser_register(opp, "-graphics_core_prim_warps", OPT_UINT32, &core_prim_warps, "How many prim warps can core hold", "2");
 }
 
 void gpgpu_sim_config::reg_options(option_parser_t opp)

@@ -82,7 +82,8 @@ shader_core_ctx::shader_core_ctx( class gpgpu_sim *gpu,
      m_barriers( config->max_warps_per_shader, config->max_cta_per_core ),
      m_dynamic_warp_id(0),
      m_max_prim_pipe_size(gpu->get_config().gpu_graphics_configs.core_prim_pipe_size),
-     m_prim_delay(gpu->get_config().gpu_graphics_configs.core_prim_delay)
+     m_prim_delay(gpu->get_config().gpu_graphics_configs.core_prim_delay),
+     m_prim_warps(gpu->get_config().gpu_graphics_configs.core_prim_warps)
 {
     m_kernel_finishing = false;
     m_cluster = cluster;
@@ -1366,14 +1367,12 @@ void shader_core_ctx::add_prims(){
 //if there is a space to hold new set
 //of vertex data for primitive generation
 bool shader_core_ctx::can_vert_write(unsigned warp_id){
-   //TODO: add a configuration for this
-   const int MAX_SIZE = 2;
    for(auto &vw: m_vert_warps){
       //we already reserved space for this warp
       if(vw.warp_id == warp_id)
          return true;
    }
-   if(m_vert_warps.size() >= MAX_SIZE)
+   if(m_vert_warps.size() >= m_prim_warps)
       return false;
    m_vert_warps.push_back(vert_warp_t(warp_id));
    return true;

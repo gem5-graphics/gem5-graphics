@@ -1900,6 +1900,7 @@ public:
     unsigned m_pending_prim_batches;
     const unsigned m_max_prim_pipe_size;
     const unsigned m_prim_delay;
+    const unsigned m_prim_warps;
 public:
     bool can_vert_write(unsigned warp_id);
     void signal_vert_done(unsigned warp_id, unsigned tid);

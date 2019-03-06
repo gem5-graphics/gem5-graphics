@@ -325,6 +325,7 @@ public:
     unsigned int pvb_size;
     unsigned int core_prim_pipe_size;
     unsigned int core_prim_delay;
+    unsigned int core_prim_warps;
 
     bool skip_cpt_frames;
     char* output_dir;
