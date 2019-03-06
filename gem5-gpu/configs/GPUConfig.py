@@ -127,7 +127,8 @@ def addGPUOptions(parser):
     parser.add_option("--g_tc_w", type="int", default=4, help="TC tile width (in raster tiles)")
     parser.add_option("--g_tc_block_dim", type="int", default=2, help="Dimension of TC tile blocks used for assignment")
     parser.add_option("--g_tc_thresh", type="int", default=20, help="TC wait threshold in cycles")
-    parser.add_option("--g_frag_wg_size", type="int", default=128, help="Graphics workgroup size")
+    parser.add_option("--g_vert_wg_size", type="int", default=256, help="Vertex shading workgroup size")
+    parser.add_option("--g_frag_wg_size", type="int", default=256, help="Fragment shading workgroup size")
 
 
 def configureMemorySpaces(options):
@@ -211,11 +212,12 @@ def parseGpgpusimConfig(options):
     config = config.replace("%gTcW%",      str(options.g_tc_w) +"\n")
     config = config.replace("%gTcBlockDim%",      str(options.g_tc_block_dim) +"\n")
     config = config.replace("%gTcThresh%",      str(options.g_tc_thresh) +"\n")
+    config = config.replace("%gVertWgSize%",      str(options.g_vert_wg_size) +"\n")
     config = config.replace("%gFragWgSize%",      str(options.g_frag_wg_size) +"\n")
 
     maxWgSize = options.g_tc_w*options.g_tc_h*options.g_raster_tw*options.g_raster_th
-    if(options.g_frag_wg_size > maxWgSize):
-       print "Error: g_frag_wg_size has to be <= max workgroup size (i.e., TC tile size)"
+    if(options.g_frag_wg_size > maxWgSize or options.g_vert_wg_size>maWgSize):
+       print "Error: graphics WG size has to be <= max workgroup size (i.e., TC tile size)"
        exit(1)
 
     if usingTemplate:
