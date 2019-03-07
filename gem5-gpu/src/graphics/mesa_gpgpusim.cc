@@ -2074,14 +2074,14 @@ primitiveFragmentsData_t* renderData_t::getPrimData(unsigned primId){
 }*/
 
 bool renderData_t::isVertWarpDone(unsigned warpId, unsigned vertCount){
-   const unsigned vertsCount = m_sShading_info.vertexData.size() 
+   const unsigned totalVerts = m_sShading_info.vertexData.size() 
       + getExtraVerts(m_sShading_info.vertexData.size());
-   const unsigned remainingVerts = vertsCount - m_sShading_info.launched_threads_verts;
-   if(remainingVerts > 0){
-      return (vertCount==MAX_WARP_SIZE);
+   const unsigned warpsCount = (totalVerts+MAX_WARP_SIZE-1)/MAX_WARP_SIZE;
+   const unsigned lastWarpThreads = totalVerts - ((warpsCount-1)*MAX_WARP_SIZE);
+   if(warpId == (warpsCount-1)){
+      return (vertCount==lastWarpThreads);
    } else {
-      unsigned lastWarpId = (m_sShading_info.launched_threads_verts-1)/MAX_WARP_SIZE;
-      return (warpId==lastWarpId);
+      return (vertCount==MAX_WARP_SIZE);
    }
 }
 
@@ -2486,12 +2486,11 @@ void renderData_t::checkGraphicsThreadExit(
        m_sShading_info.completed_threads_verts++;
        assert(m_sShading_info.completed_threads_verts 
              <= m_sShading_info.launched_threads_verts);
+       shader_core_ctx* sc = cudaGPU->getTheGPU()->get_shader(sid);
+       sc->signal_vert_done(wid, tid);
        //m_sShading_info.launched_vert_loc[tid]->done = true;
        if(m_sShading_info.completed_threads_verts == 
              m_sShading_info.launched_threads_verts){
-          shader_core_ctx* sc = cudaGPU->getTheGPU()->get_shader(sid);
-          sc->signal_vert_done(wid, tid);
-
           m_flagEndVertexShader = true;
           m_sShading_info.vertKernel->setDrawCallDone();
        }

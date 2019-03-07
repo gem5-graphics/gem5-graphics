@@ -1883,7 +1883,7 @@ public:
        unsigned vert_count;
        const unsigned warp_id;
        vert_warp_t(unsigned wid):
-          warp_id(wid)
+          vert_count(0), warp_id(wid)
        {}
     };
 
