@@ -763,6 +763,8 @@ class CudaGPU : public MemObject
        return gpuClusters[from_cluster].fetchPrimAttribs(primId);
     }
 
+    virtual void init();
+
     // Required for implementing MemObject
     virtual BaseMasterPort& getMasterPort(const std::string &if_name,
           PortID idx = InvalidPortID);

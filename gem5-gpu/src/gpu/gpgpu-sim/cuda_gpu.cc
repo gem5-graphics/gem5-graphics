@@ -1230,6 +1230,14 @@ CudaGPU::getMasterPort(const std::string &if_name, PortID idx){
    }
 }
 
+void CudaGPU::init(){
+   for(unsigned idx=0; idx<vpoDistPortSlave.size(); idx++){
+      if (!vpoDistPortSlave[idx].isConnected())
+         panic("vpoDistPortSlave port of %s not connected to anything!", name());
+      vpoDistPortSlave[idx].sendRangeChange();
+   }
+}
+
 BaseSlavePort&
 CudaGPU::getSlavePort(const std::string &if_name, PortID idx){
    if (if_name == "vpo_dist_port_slave"){

@@ -531,7 +531,8 @@ def connectGPUPorts_classic(system, gpu, options):
 
     gpu.l2cache =  L2Cache(clk_domain=system.clk_domain,
                                    size=options.sc_l2_size,
-                                   assoc=options.sc_l2_assoc)
+                                   assoc=options.sc_l2_assoc,
+                                   addr_ranges = gpu.gpu_memory_range)
     gpu.l2NetToL2 = IOXBar(clk_domain = system.clk_domain)
     gpu.l2NetToL2.master = gpu.l2cache.cpu_side
     gpu.l2cache.mem_side = system.membus.slave
