@@ -2874,21 +2874,23 @@ void renderData_t::modifyCodeForVertexWrite(std::string file){
 }
 
 void renderData_t::modifyCodeForDepth(std::string file){
-   if(not isDepthTestEnabled()) return;
-   //FIXME set depth size status before code generation
-   //const char* depthSize = m_depthSize==DepthSize::Z32? "u32" : "u16";
-   std::string depthSize = "u32";
-   std::string depthCode = ".reg .pred testDepth, passedDepth;\n";
-   depthCode+= ".reg .u32 depthTestRes;\n";
-   depthCode+= "setp.eq.u32 passedDepth, !fflag, 0;\n";
-   depthCode+= "setp.eq.u32 testDepth, 0, %skip_depth_test;\n";
-   depthCode+= "setp.eq.u32 testDepth, !fflag, !testDepth;\n";
-   depthCode+= "@testDepth ztest.global."+depthSize+" depthTestRes;\n";
-   //after depth testing exit dead quads
-   depthCode+= "setp.ne.u32 qflag, 0, %quad_active;\n";
-   depthCode+= "@!qflag exit;\n";
-   depthCode+= "@testDepth setp.ne.u32 passedDepth, 0, depthTestRes;\n";
-   depthCode+= "@passedDepth zwrite.global."+depthSize+";\n";
+   std::string depthCode = "";
+   if(isDepthTestEnabled()){
+      //FIXME, TODO set depth size status before code generation
+      //const char* depthSize = m_depthSize==DepthSize::Z32? "u32" : "u16";
+      std::string depthSize = "u32";
+      depthCode+= ".reg .pred testDepth, passedDepth;\n";
+      depthCode+= ".reg .u32 depthTestRes;\n";
+      depthCode+= "setp.eq.u32 passedDepth, !fflag, 0;\n";
+      depthCode+= "setp.eq.u32 testDepth, 0, %skip_depth_test;\n";
+      depthCode+= "setp.eq.u32 testDepth, !fflag, !testDepth;\n";
+      depthCode+= "@testDepth ztest.global."+depthSize+" depthTestRes;\n";
+      //after depth testing exit dead quads
+      depthCode+= "setp.ne.u32 qflag, 0, %quad_active;\n";
+      depthCode+= "@!qflag exit;\n";
+      depthCode+= "@testDepth setp.ne.u32 passedDepth, 0, depthTestRes;\n";
+      depthCode+= "@passedDepth zwrite.global."+depthSize+";\n";
+   }
    Utils::replaceStringInFile(file, "DEPTH_CODE", depthCode);
 }
 
