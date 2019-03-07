@@ -1617,7 +1617,14 @@ public:
     // accessors
     bool fetch_unit_response_buffer_full() const;
     bool ldst_unit_response_buffer_full() const;
-    unsigned get_not_completed() const { return m_not_completed; }
+    unsigned get_not_completed() const { 
+       unsigned res = m_not_completed;
+       res += m_vert_warps.size();
+       res+= m_prim_pipe.size();
+       res+= m_curr_prim_batch.size();
+       res+= m_pending_prim_batches;
+       return res;
+    }
     unsigned get_n_active_cta() const { return m_n_active_cta; }
     unsigned isactive() const {if(m_n_active_cta>0) return 1; else return 0;}
     kernel_info_t *get_kernel() { return m_kernel; }
