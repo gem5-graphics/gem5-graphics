@@ -1108,11 +1108,11 @@ CudaGPU::GPUCluster::GPUCluster(
     cudaGpu(gpu),
     clusterId(_clusterId),
     clusterName(gpu->name() + ".cluster"+std::to_string(_clusterId)),
-    vpoDistMasterId(p->sys->getMasterId(
-             clusterName +  ".vpo_dist")), 
-    vpoVertReadMasterId(p->sys->getMasterId(
-             clusterName +  ".vpo_vert_read")), 
     vpoBaseAddr(p->vpo_base_addr),
+    vpoDistMasterId(p->sys->getMasterId(
+             clusterName+".vpo_dist_port_master")), 
+    vpoVertReadMasterId(p->sys->getMasterId(
+             clusterName+".vpo_vert_read_port")),
     vpoVertReadPort(vvrp),
     vpoDistPortMaster(vdpm),
     vpoDistPortSlave(vdps),
@@ -1195,7 +1195,8 @@ bool CudaGPU::GPUCluster::fetchPrimAttribs(unsigned primId){
             RequestPtr req = 
                new Request(addr, sizeof(GLfloat), flags, vpoVertReadMasterId);
             PacketPtr pkt = new Packet(req, MemCmd::ReadReq);
-            attribFetchAddrs.emplace_back(pkt, primId);
+            pkt->allocate();
+            attribFetchAddrs.push_back(PrimVaReq(pkt, primId));
          }
       }
    }

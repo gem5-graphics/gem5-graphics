@@ -860,13 +860,12 @@ class CudaGPU : public MemObject
           std::unordered_map<unsigned, unsigned> primPendingPkts;
           std::unordered_map<PacketPtr, unsigned> pendingAttribFetchPkts;
 
-          //vpo ports
-          MasterID vpoDistMasterId;
-          MasterID vpoVertReadMasterId;
-
           //The base address of distribution ports
           Addr vpoBaseAddr;
 
+          ///vpo ports
+          MasterID vpoDistMasterId;
+          MasterID vpoVertReadMasterId;
           VpoVertMasterPort* vpoVertReadPort;
           VpoDistMasterPort* vpoDistPortMaster;
           VpoDistSlavePort* vpoDistPortSlave;
