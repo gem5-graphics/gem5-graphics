@@ -548,6 +548,7 @@ class CudaGPU : public MemObject
   public:
     /// Constructor
     CudaGPU(const Params *p);
+    ~CudaGPU();
 
     /// For checkpointing
     virtual void serialize(CheckpointOut &cp) const;
@@ -755,12 +756,12 @@ class CudaGPU : public MemObject
     // Graphics: attribute processing functions
     bool sendPrimMaskBatch(unsigned from_cluster, unsigned to_cluster, 
           std::vector<std::pair<unsigned, bool> > mask){
-       return gpuClusters[from_cluster].sendPrimMaskBatch(
+       return gpuClusters[from_cluster]->sendPrimMaskBatch(
              to_cluster, mask);
     }
 
     bool fetchPrimAttribs(unsigned from_cluster, unsigned primId){
-       return gpuClusters[from_cluster].fetchPrimAttribs(primId);
+       return gpuClusters[from_cluster]->fetchPrimAttribs(primId);
     }
 
     virtual void init();
@@ -886,12 +887,12 @@ class CudaGPU : public MemObject
           bool fetchPrimAttribs(unsigned primId);
           bool recvPrimAttribs(PacketPtr pkt);
        private:
+          typedef std::vector<std::pair<unsigned, bool> > PrimMaskType;
           EventWrapper<GPUCluster, &GPUCluster::fetchAttribEventHandler> 
              fetchAttribEvent;
-       typedef std::vector<std::pair<unsigned, bool> > PrimMaskType;
     };
 
-    std::vector<GPUCluster> gpuClusters;
+    std::vector<GPUCluster*> gpuClusters;
 };
 
 /**

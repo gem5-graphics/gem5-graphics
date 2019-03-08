@@ -174,6 +174,7 @@ CudaGPU::CudaGPU(const Params *p) :
     registerExitCallback(gpuExitCB);
 
     const unsigned numClusters = theGPU->get_config().num_cluster();
+    gpuClusters.resize(numClusters);
 
     for(unsigned i=0; i<numClusters; i++){
        vpoDistPortMaster.emplace_back(
@@ -182,11 +183,17 @@ CudaGPU::CudaGPU(const Params *p) :
              csprintf("%s.vpo_dist_port_slave%d", name(), i), this, i, p->vpo_base_addr+i);
        vpoVertReadPort.emplace_back(
              csprintf("%s.vpo_vert_read_port%d", name(), i), this, i);
-       gpuClusters.emplace_back(p, this, i, 
+       gpuClusters[i] = new GPUCluster(p, this, i, 
              &vpoVertReadPort.back(),
              &vpoDistPortMaster.back(),
              &vpoDistPortSlave.back());
     }
+}
+
+CudaGPU::~CudaGPU(){
+   for(auto &c: gpuClusters){
+      delete c;
+   }
 }
 
 void CudaGPU::serialize(CheckpointOut &cp) const
@@ -1099,8 +1106,7 @@ CudaGPU::GPUCluster::GPUCluster(
     vpoDistPortSlave(vdps),
     primFetchBufferSize(p->prim_fetch_buffer_size),
     fetchAttribEvent(this)
-{
-}
+{}
 
 bool CudaGPU::GPUCluster::sendPrimMaskBatch(
       unsigned to_cluster,
@@ -1251,7 +1257,7 @@ CudaGPU::getSlavePort(const std::string &if_name, PortID idx){
 }
 
 bool CudaGPU::VpoDistSlavePort::recvTimingReq(PacketPtr pkt){
-   return gpu->gpuClusters[clusterId].recvPrimMask(pkt);
+   return gpu->gpuClusters[clusterId]->recvPrimMask(pkt);
 }
 
 bool CudaGPU::VpoDistSlavePort::recvTimingSnoopResp(PacketPtr pkt){
@@ -1304,13 +1310,13 @@ CudaGPU::VpoDistMasterPort::recvFunctional(PacketPtr pkt)
 bool
 CudaGPU::VpoVertMasterPort::recvTimingResp(PacketPtr pkt)
 {
-   return gpu->gpuClusters[clusterId].recvPrimAttribs(pkt);
+   return gpu->gpuClusters[clusterId]->recvPrimAttribs(pkt);
 }
 
 void
 CudaGPU::VpoVertMasterPort::recvReqRetry()
 {
-   gpu->gpuClusters[clusterId].fetchAttribEventHandler();
+   gpu->gpuClusters[clusterId]->fetchAttribEventHandler();
 }
 
 Tick
