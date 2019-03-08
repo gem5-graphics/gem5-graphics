@@ -177,22 +177,34 @@ CudaGPU::CudaGPU(const Params *p) :
     gpuClusters.resize(numClusters);
 
     for(unsigned i=0; i<numClusters; i++){
-       vpoDistPortMaster.emplace_back(
-             csprintf("%s.vpo_dist_port_master%d", name(), i), this);
-       vpoDistPortSlave.emplace_back(
-             csprintf("%s.vpo_dist_port_slave%d", name(), i), this, i, p->vpo_base_addr+i);
-       vpoVertReadPort.emplace_back(
-             csprintf("%s.vpo_vert_read_port%d", name(), i), this, i);
+       vpoDistPortMaster.push_back(
+             new VpoDistMasterPort(csprintf("%s.vpo_dist_port_master%d", name(), i), 
+                this));
+       vpoDistPortSlave.push_back(
+             new VpoDistSlavePort(csprintf("%s.vpo_dist_port_slave%d", name(), i), 
+                this, i, p->vpo_base_addr+i));
+       vpoVertReadPort.push_back(
+             new VpoVertMasterPort(csprintf("%s.vpo_vert_read_port%d", name(), i), 
+                this, i));
        gpuClusters[i] = new GPUCluster(p, this, i, 
-             &vpoVertReadPort.back(),
-             &vpoDistPortMaster.back(),
-             &vpoDistPortSlave.back());
+             vpoVertReadPort.back(),
+             vpoDistPortMaster.back(),
+             vpoDistPortSlave.back());
     }
 }
 
 CudaGPU::~CudaGPU(){
    for(auto &c: gpuClusters){
       delete c;
+   }
+   for(auto &p: vpoDistPortMaster){
+      delete p;
+   }
+   for(auto &p: vpoDistPortSlave){
+      delete p;
+   }
+   for(auto &p: vpoVertReadPort){
+      delete p;
    }
 }
 
@@ -1223,14 +1235,14 @@ BaseMasterPort&
 CudaGPU::getMasterPort(const std::string &if_name, PortID idx){
    if (if_name == "vpo_dist_port_master") {
       if (idx >= static_cast<PortID>(vpoDistPortMaster.size())) {
-         panic("CudaGPU::getMasterPort: unknown index %d\n", idx);
+         panic("CudaGPU::getMasterPort: unknown vpo_dist_port_master index %d\n", idx);
       }
-      return vpoDistPortMaster[idx];
+      return *vpoDistPortMaster[idx];
    } else if (if_name == "vpo_vert_read_port") {
       if (idx >= static_cast<PortID>(vpoVertReadPort.size())) {
-         panic("CudaGPU::getMasterPort: unknown index %d\n", idx);
+         panic("CudaGPU::getMasterPort: unknown vpo_vert_read_port index %d\n", idx);
       }
-      return vpoVertReadPort[idx];
+      return *vpoVertReadPort[idx];
    } else {
       return MemObject::getMasterPort(if_name, idx);
    }
@@ -1238,9 +1250,9 @@ CudaGPU::getMasterPort(const std::string &if_name, PortID idx){
 
 void CudaGPU::init(){
    for(unsigned idx=0; idx<vpoDistPortSlave.size(); idx++){
-      if (!vpoDistPortSlave[idx].isConnected())
+      if (!vpoDistPortSlave[idx]->isConnected())
          panic("vpoDistPortSlave port of %s not connected to anything!", name());
-      vpoDistPortSlave[idx].sendRangeChange();
+      vpoDistPortSlave[idx]->sendRangeChange();
    }
 }
 
@@ -1250,7 +1262,7 @@ CudaGPU::getSlavePort(const std::string &if_name, PortID idx){
       if (idx >= static_cast<PortID>(vpoDistPortSlave.size())) {
          panic("CudaCore::getSlavePort: unknown index %d\n", idx);
       }
-      return vpoDistPortSlave[idx];
+      return *vpoDistPortSlave[idx];
    } else {
       return MemObject::getSlavePort(if_name, idx);
    }

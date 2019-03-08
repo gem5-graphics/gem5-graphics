@@ -836,11 +836,11 @@ class CudaGPU : public MemObject
    };
 
     //dist ports
-    std::vector<VpoDistMasterPort> vpoDistPortMaster;
-    std::vector<VpoDistSlavePort> vpoDistPortSlave;
+    std::vector<VpoDistMasterPort*> vpoDistPortMaster;
+    std::vector<VpoDistSlavePort*> vpoDistPortSlave;
 
     //vert port
-    std::vector<VpoVertMasterPort> vpoVertReadPort;
+    std::vector<VpoVertMasterPort*> vpoVertReadPort;
 
     //TODO: re-define clusters as MemObject
     class GPUCluster {
