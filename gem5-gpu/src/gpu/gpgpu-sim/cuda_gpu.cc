@@ -1155,6 +1155,8 @@ void CudaGPU::GPUCluster::fetchAttribEventHandler(){
    assert(attribFetchAddrs.size() > 0);
    PrimVaReq pvq = attribFetchAddrs.front();
    if(vpoVertReadPort->sendTimingReq(pvq.pkt)){
+      DPRINTF(GpuVpo, "Sending attrib fetch of prim %d to %llx from cluster %d\n",
+            pvq.primId, pvq.pkt->req->getPaddr(), clusterId);
       attribFetchAddrs.pop_front();
       if(primPendingPkts.find(pvq.primId) == 
             primPendingPkts.end()){
@@ -1220,6 +1222,7 @@ bool CudaGPU::GPUCluster::recvPrimAttribs(PacketPtr pkt){
          if(cudaGpu->getTheGPU()->getSIMTCluster()[clusterId]->getGraphicsPipeline()->add_primitive(pd)){
             pendingAttribFetchPkts.erase(pkt);
             primPendingPkts.erase(primId);
+            cudaGpu->activateGPU();
             return true;
          } else {
             panic("need a retry event to return false upon adding new primitive");

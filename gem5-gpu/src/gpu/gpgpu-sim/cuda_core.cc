@@ -347,9 +347,10 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
 
     if(inst.space.is_vert()){
        //if already some packets pending then stall
+       unsigned kwip = (shaderImpl->get_thread(inst.warp_id()*inst.warp_size())->get_uid_in_kernel())/MAX_WARP_SIZE;
        if(vpoWritePkts.size() > 0)
           return true;
-       if(!shaderImpl->can_vert_write(inst.warp_id()))
+       if(!shaderImpl->can_vert_write(kwip, inst))
           return true;
        //vertex ouput uses trivial coalescing
        assert(inst.is_store());
@@ -410,6 +411,7 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
              }
           }
        }
+       shaderImpl->signal_attrib_done(kwip, inst);
     } else {
        for (int lane = 0; lane < warpSize; lane++) {
           if (inst.active(lane)) {

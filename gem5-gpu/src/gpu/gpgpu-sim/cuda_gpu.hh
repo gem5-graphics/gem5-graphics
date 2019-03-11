@@ -38,6 +38,7 @@
 #include "base/callback.hh"
 #include "debug/CudaGPUPageTable.hh"
 #include "debug/GraphicsMemory.hh"
+#include "debug/GpuVpo.hh"
 #include "gpgpu-sim/gpu-sim.h"
 #include "gpu/gpgpu-sim/cuda_core.hh"
 #include "gpu/copy_engine.hh"

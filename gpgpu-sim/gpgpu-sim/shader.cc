@@ -1366,7 +1366,7 @@ void shader_core_ctx::add_prims(){
 //called upon vertex writback to check
 //if there is a space to hold new set
 //of vertex data for primitive generation
-bool shader_core_ctx::can_vert_write(unsigned warp_id){
+bool shader_core_ctx::can_vert_write(unsigned warp_id, const warp_inst_t& inst){
    for(auto &vw: m_vert_warps){
       //we already reserved space for this warp
       if(vw.warp_id == warp_id)
@@ -1374,20 +1374,18 @@ bool shader_core_ctx::can_vert_write(unsigned warp_id){
    }
    if(m_vert_warps.size() >= m_prim_warps)
       return false;
-   m_vert_warps.push_back(vert_warp_t(warp_id));
+   m_vert_warps.push_back(vert_warp_t(warp_id, inst.active_count()));
    return true;
 }
 
-void shader_core_ctx::signal_vert_done(unsigned warp_id, unsigned tid){
+void shader_core_ctx::signal_attrib_done(unsigned warp_id, const warp_inst_t & inst){
    for(auto &vw: m_vert_warps){
       //we already reserved space for this warp
       if(vw.warp_id == warp_id){
-         assert(vw.warpTids.size()==0);
-         vw.vert_count++;
-         unsigned warp_num = tid/MAX_WARP_SIZE;
-         if(g_renderData.isVertWarpDone(warp_num, vw.vert_count)){
-            unsigned start_tid = warp_num*MAX_WARP_SIZE;
-            for(unsigned i=start_tid; i<(start_tid+vw.vert_count); i++){
+         vw.attrib_count++;
+         if(vw.attrib_count == g_renderData.vShaderAttribWrites()){
+            unsigned start_tid = warp_id*MAX_WARP_SIZE;
+            for(unsigned i=start_tid; i<(start_tid+inst.active_count()); i++){
                //populate the list with tid corresponding to the newly
                //done warp
                vw.warpTids.push_back(i);
@@ -1396,8 +1394,8 @@ void shader_core_ctx::signal_vert_done(unsigned warp_id, unsigned tid){
          return;
       }
    }
-   //sholdn't happen
-   assert(0);
+   printf("Error: vert warp %d doesn't exist!\n");
+   abort();
 }
 
 bool ldst_unit::shared_cycle( warp_inst_t &inst, mem_stage_stall_type &rc_fail, mem_stage_access_type &fail_type)

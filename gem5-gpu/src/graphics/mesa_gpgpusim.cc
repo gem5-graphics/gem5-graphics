@@ -2073,6 +2073,11 @@ primitiveFragmentsData_t* renderData_t::getPrimData(unsigned primId){
    return true;
 }*/
 
+unsigned renderData_t::vShaderAttribWrites() const{
+   //TODO: check if we actually need to count how many stv instructions we have
+   return m_sShading_info.vertOutputAttribs*TGSI_NUM_CHANNELS;
+}
+
 bool renderData_t::isVertWarpDone(unsigned warpId, unsigned vertCount){
    const unsigned totalVerts = m_sShading_info.vertexData.size() 
       + getExtraVerts(m_sShading_info.vertexData.size());
@@ -2486,8 +2491,8 @@ void renderData_t::checkGraphicsThreadExit(
        m_sShading_info.completed_threads_verts++;
        assert(m_sShading_info.completed_threads_verts 
              <= m_sShading_info.launched_threads_verts);
-       shader_core_ctx* sc = cudaGPU->getTheGPU()->get_shader(sid);
-       sc->signal_vert_done(wid, tid);
+       /*shader_core_ctx* sc = cudaGPU->getTheGPU()->get_shader(sid);
+       sc->signal_vert_done(wid, tid);*/
        //m_sShading_info.launched_vert_loc[tid]->done = true;
        if(m_sShading_info.completed_threads_verts == 
              m_sShading_info.launched_threads_verts){
@@ -2672,8 +2677,8 @@ void renderData_t::launchTCTile(
       tcTilePtr_t tcTile, unsigned donePrims){
    if(tcTile == NULL){
       assert(donePrims > 0);
-      assert(m_sShading_info.sent_simt_prims >= donePrims);
-      m_sShading_info.sent_simt_prims-=donePrims;
+      //assert(m_sShading_info.sent_simt_prims >= donePrims);
+      //m_sShading_info.sent_simt_prims-=donePrims;
 
       if(m_sShading_info.sent_simt_prims == 0){
          assert(m_sShading_info.fragKernel!=NULL);

@@ -568,6 +568,7 @@ public:
     std::set<unsigned> getClustersCoveredByPrim(unsigned primId);
     
     bool isVertWarpDone(unsigned warpId, unsigned vertCount);
+    unsigned vShaderAttribWrites() const;
     void allocateVertBuffers();
     unsigned int startShading();
     unsigned int noDepthFragmentShading();

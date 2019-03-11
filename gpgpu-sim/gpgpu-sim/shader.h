@@ -1880,10 +1880,12 @@ public:
     //graphics components
     struct vert_warp_t {
        std::list<unsigned> warpTids;
-       unsigned vert_count;
        const unsigned warp_id;
-       vert_warp_t(unsigned wid):
-          vert_count(0), warp_id(wid)
+       unsigned vert_count;
+       unsigned attrib_count;
+       vert_warp_t(unsigned wid, unsigned vc):
+          warp_id(wid),vert_count(vc), 
+          attrib_count(0)
        {}
     };
 
@@ -1909,8 +1911,8 @@ public:
     const unsigned m_prim_delay;
     const unsigned m_prim_warps;
 public:
-    bool can_vert_write(unsigned warp_id);
-    void signal_vert_done(unsigned warp_id, unsigned tid);
+    bool can_vert_write(unsigned warp_id, const warp_inst_t& inst);
+    void signal_attrib_done(unsigned warp_id, const warp_inst_t& inst);
 };
 
 class simt_core_cluster {
