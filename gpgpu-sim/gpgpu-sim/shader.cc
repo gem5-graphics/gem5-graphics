@@ -1378,14 +1378,14 @@ bool shader_core_ctx::can_vert_write(unsigned warp_id, const warp_inst_t& inst){
    return true;
 }
 
-void shader_core_ctx::signal_attrib_done(unsigned warp_id, const warp_inst_t & inst){
+void shader_core_ctx::signal_attrib_done(unsigned warp_id, unsigned activeCount){
    for(auto &vw: m_vert_warps){
       //we already reserved space for this warp
       if(vw.warp_id == warp_id){
          vw.attrib_count++;
          if(vw.attrib_count == g_renderData.vShaderAttribWrites()){
             unsigned start_tid = warp_id*MAX_WARP_SIZE;
-            for(unsigned i=start_tid; i<(start_tid+inst.active_count()); i++){
+            for(unsigned i=start_tid; i<(start_tid+activeCount); i++){
                //populate the list with tid corresponding to the newly
                //done warp
                vw.warpTids.push_back(i);

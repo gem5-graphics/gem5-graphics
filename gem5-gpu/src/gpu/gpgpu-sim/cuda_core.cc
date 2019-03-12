@@ -387,6 +387,7 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
        assert(blockSizes.size() == addrBlocks.size());
        assert(blockData.size() == addrBlocks.size());
        bool succeeded = false;
+       PacketPtr lastPacket = NULL;
        for(int i=0; i<addrBlocks.size(); i++){
           RequestPtr req = new Request(asid, addrBlocks[i], blockSizes[i], flags,
                 vpoVertWriteMasterId, inst.pc, inst.warp_id());
@@ -394,6 +395,7 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
           //TODO: update when adding support to vitual translation later
           req->setPaddr(addrBlocks[i]); 
           PacketPtr pkt = new Packet(req, MemCmd::WriteReq);
+          lastPacket = pkt;
           pkt->allocate();
           pkt->setData(blockData[i]);
           if (vpoWritePort.sendTimingReq(pkt)) {
@@ -411,7 +413,7 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
              }
           }
        }
-       shaderImpl->signal_attrib_done(kwip, inst);
+       lastAttribPkts[lastPacket] = LastAttribPkt(kwip, inst.active_count());
     } else {
        for (int lane = 0; lane < warpSize; lane++) {
           if (inst.active(lane)) {
@@ -741,6 +743,12 @@ CudaCore::LSQControlPort::recvReqRetry()
 
 bool
 CudaCore::recvVpoTimingResp(PacketPtr pkt){
+   if(lastAttribPkts.find(pkt)!=lastAttribPkts.end()){
+      LastAttribPkt& lap = lastAttribPkts[pkt];
+      shaderImpl->signal_attrib_done(lap.warpId, lap.activeCount);
+      lastAttribPkts.erase(pkt);
+   }
+
    assert(pkt->isWrite());
    delete pkt->req;
    delete pkt;

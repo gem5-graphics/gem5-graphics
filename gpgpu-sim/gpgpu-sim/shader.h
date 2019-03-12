@@ -1912,7 +1912,7 @@ public:
     const unsigned m_prim_warps;
 public:
     bool can_vert_write(unsigned warp_id, const warp_inst_t& inst);
-    void signal_attrib_done(unsigned warp_id, const warp_inst_t& inst);
+    void signal_attrib_done(unsigned warp_id, unsigned activeCount);
 };
 
 class simt_core_cluster {

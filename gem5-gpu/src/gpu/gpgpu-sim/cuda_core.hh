@@ -234,6 +234,22 @@ class CudaCore : public MemObject
 
     std::queue<PacketPtr> vpoWritePkts;
 
+    //used to signal when an attrib has been committed to the cache
+    //upon receiving a response 
+    struct LastAttribPkt{
+       unsigned warpId;
+       unsigned activeCount;
+       LastAttribPkt(){
+          warpId = -1;
+          activeCount = -1;
+       }
+       LastAttribPkt(unsigned wid, unsigned at){
+          warpId = wid;
+          activeCount = at;
+       }
+    };
+    std::map<PacketPtr, LastAttribPkt> lastAttribPkts;
+
     bool recvVpoTimingResp(PacketPtr pkt);
     void recvVpoReqRetry();
 
