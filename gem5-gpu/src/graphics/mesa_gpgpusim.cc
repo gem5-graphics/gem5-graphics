@@ -1996,6 +1996,7 @@ bool renderData_t::gpgpusim_active(){
    const unsigned remainingVerts = vertsCount - m_sShading_info.launched_threads_verts;
    if(remainingVerts > 0)
       return true;
+   return false;
 }
 
 void renderData_t::gpgpusim_cycle(){
