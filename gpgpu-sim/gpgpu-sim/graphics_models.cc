@@ -40,9 +40,10 @@ bool graphics_simt_pipeline::add_prim_batch(std::vector<unsigned> coverage_batch
    std::vector<std::vector<std::pair<unsigned, bool> > >
       coverage_masks(clust_count);
 
-   for(unsigned primId=0; primId<coverage_batch.size(); primId++){
+   for(unsigned i=0; i<coverage_batch.size(); i++){
+      unsigned primId = coverage_batch[i];
       std::set<unsigned> coverage = 
-         g_renderData.getClustersCoveredByPrim(coverage_batch[primId]);
+         g_renderData.getClustersCoveredByPrim(primId);
       for(unsigned c=0; c<clust_count; c++){
          coverage_masks[c].push_back(
                {primId, coverage.count(c)>0? true: false});
