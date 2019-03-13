@@ -886,12 +886,16 @@ class CudaGPU : public MemObject
           bool recvPrimMask(PacketPtr pkt);
           bool fetchPrimAttribs(unsigned primId);
           bool recvPrimAttribs(PacketPtr pkt);
+          void sendPrimMaskReply();
        private:
           typedef std::vector<std::pair<unsigned, bool> > PrimMaskType;
           EventWrapper<GPUCluster, &GPUCluster::fetchAttribEventHandler> 
              fetchAttribEvent;
+          //handling prim mask replies
+          std::list<PacketPtr>  primMaskReplies;
+          EventWrapper<GPUCluster, &GPUCluster::sendPrimMaskReply> 
+             primMaskReplyEvent;
     };
-
     std::vector<GPUCluster*> gpuClusters;
 };
 

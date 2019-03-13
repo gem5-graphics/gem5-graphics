@@ -1117,7 +1117,8 @@ CudaGPU::GPUCluster::GPUCluster(
     vpoDistPortMaster(vdpm),
     vpoDistPortSlave(vdps),
     primFetchBufferSize(p->prim_fetch_buffer_size),
-    fetchAttribEvent(this)
+    fetchAttribEvent(this),
+    primMaskReplyEvent(this)
 {}
 
 bool CudaGPU::GPUCluster::sendPrimMaskBatch(
@@ -1141,11 +1142,24 @@ bool CudaGPU::GPUCluster::sendPrimMaskBatch(
    }
 }
 
+void CudaGPU::GPUCluster::sendPrimMaskReply(){
+   assert(primMaskReplies.size() > 0);
+   if(vpoDistPortSlave->sendTimingResp(primMaskReplies.front())){
+      primMaskReplies.pop_front();
+      if(primMaskReplies.size() > 0){
+         cudaGpu->schedule(primMaskReplyEvent, cudaGpu->nextCycle());
+      }
+   }
+}
+
 bool CudaGPU::GPUCluster::recvPrimMask(PacketPtr pkt){
    PrimMaskType* maskData = pkt->getPtr<PrimMaskType>();
    if(cudaGpu->getTheGPU()->getSIMTCluster()[clusterId]->getGraphicsPipeline()->add_primitives(*maskData)){
-      delete pkt->req;
-      delete pkt;
+      pkt->makeTimingResponse();
+      primMaskReplies.push_back(pkt);
+      if(!primMaskReplyEvent.scheduled()){
+         cudaGpu->schedule(primMaskReplyEvent, cudaGpu->nextCycle());
+      }
       return true;
    } else return false;
 }
@@ -1289,7 +1303,7 @@ void CudaGPU::VpoDistSlavePort::recvFunctional(PacketPtr pkt){
 }
 
 void CudaGPU::VpoDistSlavePort::recvRespRetry(){
-   panic("Not implemented");
+   gpu->gpuClusters[clusterId]->sendPrimMaskReply();
 }
 
 AddrRangeList CudaGPU::VpoDistSlavePort::getAddrRanges() const{
