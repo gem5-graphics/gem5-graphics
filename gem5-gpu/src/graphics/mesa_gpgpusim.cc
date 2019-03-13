@@ -1880,7 +1880,11 @@ unsigned renderData_t::getExtraVerts(unsigned vertCount){
          extraThreads = 
             ((vertCount + utpwp - 1)/utpwp) - 1;
          return extraThreads;
+      //TODO: double check the calucations below
       case PIPE_PRIM_TRIANGLES:
+         extraThreads = 
+            ((vertCount + utpwp - 2)/utpwp);
+         return extraThreads;
       case PIPE_PRIM_TRIANGLE_STRIP:
       case PIPE_PRIM_TRIANGLE_FAN:
          extraThreads = 
@@ -1927,7 +1931,7 @@ std::vector<unsigned> renderData_t::getPrimVertices(unsigned primId){
       default:
          assert(0);
    }
-   for(unsigned v=startVert; v<numVerts; v++)
+   for(unsigned v=startVert; v<startVert+numVerts; v++)
       vertices.push_back(v);
 
    return vertices;
