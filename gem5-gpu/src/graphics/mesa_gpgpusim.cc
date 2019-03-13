@@ -2084,8 +2084,7 @@ primitiveFragmentsData_t* renderData_t::getPrimData(unsigned primId){
 }*/
 
 unsigned renderData_t::vShaderAttribWrites() const{
-   //TODO: check if we actually need to count how many stv instructions we have
-   return m_sShading_info.vertOutputAttribs*TGSI_NUM_CHANNELS;
+   return m_sShading_info.vertShaderStvCount;
 }
 
 bool renderData_t::isVertWarpDone(unsigned warpId, unsigned vertCount){
@@ -2785,7 +2784,7 @@ std::string Utils::getFile(std::string filename)
    panic("Unable to open file: %s\n", filename.c_str());
 }
 
-void Utils::replaceStringInFile(std::string filename,
+unsigned Utils::replaceStringInFile(std::string filename,
       std::string oldString, std::string newString){
 
    std::ifstream in(filename.c_str(), 
@@ -2802,7 +2801,9 @@ void Utils::replaceStringInFile(std::string filename,
       std::ofstream out(filename);
       out << fileStr;
       out.close();
+      return 1;
    }
+   return 0;
 }
 
 void RasterTile::addFragment(fragmentData_t* frag){ 
@@ -2882,9 +2883,11 @@ void renderData_t::modifyCodeForVertexWrite(std::string file){
       for(int c=0; c<TGSI_NUM_CHANNELS; c++){
          std::string o = "mov.f32 OUT";
          std::string n = "@pVertex stv.global.f32 OUT";
-         Utils::replaceStringInFile(file, o, n);
+         m_sShading_info.vertShaderStvCount+=
+            Utils::replaceStringInFile(file, o, n);
       }
    }
+
 }
 
 void renderData_t::modifyCodeForDepth(std::string file){

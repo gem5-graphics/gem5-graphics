@@ -370,6 +370,7 @@ struct stage_shading_info_t {
     unsigned currPrimType;
     unsigned vertInputAttribs;
     unsigned vertOutputAttribs;
+    unsigned vertShaderStvCount;
     std::vector<vertexData_t> vertexData;
     unsigned current_prim;
     unsigned sent_simt_prims;
@@ -437,6 +438,7 @@ struct stage_shading_info_t {
         sent_simt_prims = 0;
         vertInputAttribs = 0;
         vertOutputAttribs = 0;
+        vertShaderStvCount = 0;
         vertexData.clear();
         launched_threads_verts = 0;
         completed_threads_verts = 0;
@@ -887,7 +889,7 @@ extern renderData_t g_renderData;
 class Utils {
    public:
       static byte* RGB888_to_RGBA888(byte* rgb, int size, byte alpha=255 /*fully opaque*/);
-      static void replaceStringInFile(std::string fileName, 
+      static unsigned replaceStringInFile(std::string fileName, 
             std::string oldString, std::string newString);
       static std::string getFile(std::string filename);
 };
