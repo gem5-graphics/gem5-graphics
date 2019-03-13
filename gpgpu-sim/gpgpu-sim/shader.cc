@@ -1384,7 +1384,8 @@ void shader_core_ctx::signal_attrib_done(unsigned warp_id, unsigned activeCount)
       if(vw.warp_id == warp_id){
          vw.attrib_count++;
          if(vw.attrib_count == g_renderData.vShaderAttribWrites()){
-            unsigned start_tid = warp_id*MAX_WARP_SIZE;
+            unsigned start_tid = warp_id*g_renderData.getUniqueThreadsPerWarp();
+            activeCount = std::min(activeCount, g_renderData.getUniqueThreadsPerWarp());
             for(unsigned i=start_tid; i<(start_tid+activeCount); i++){
                //populate the list with tid corresponding to the newly
                //done warp
