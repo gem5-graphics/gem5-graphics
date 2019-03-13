@@ -2534,8 +2534,8 @@ void renderData_t::checkGraphicsThreadExit(
             and m_sShading_info.completed_threads_verts == m_sShading_info.launched_threads_verts){
          
          m_flagEndFragmentShader = (m_sShading_info.sent_simt_prims == 0);
-         printf("done verts = %d\n", m_sShading_info.completed_threads_verts);
-         printf("done frags = %d\n", m_sShading_info.completed_threads_frags);
+         //printf("done verts = %d\n", m_sShading_info.completed_threads_verts);
+         //printf("done frags = %d\n", m_sShading_info.completed_threads_frags);
          /*if(m_inShaderDepth or !isDepthTestEnabled())
          {
             m_flagEndFragmentShader = true;
