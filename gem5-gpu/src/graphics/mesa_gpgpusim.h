@@ -562,6 +562,7 @@ public:
       assert(m_sShading_info.vertOutputAttribs > 0);
       return m_sShading_info.vertOutputAttribs;
     }
+    bool gpgpusim_active();
     void gpgpusim_cycle();
     //bool runNextPrim();
     primitiveFragmentsData_t* getPrimData(unsigned primId);

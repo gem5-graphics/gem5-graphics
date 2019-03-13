@@ -767,6 +767,8 @@ bool gpgpu_sim::active()
         return true;
     if( get_more_cta_left() )
         return true;
+    if( g_renderData.gpgpusim_active())
+        return true;
     return false;
 }
 

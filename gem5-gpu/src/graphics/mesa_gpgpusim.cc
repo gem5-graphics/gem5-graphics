@@ -1988,7 +1988,16 @@ unsigned renderData_t::getPrimId(std::list<unsigned> * primWarpTids,
    return primId;
 }
 
-//gpgpusim cycle call
+//gpgpusim calls
+bool renderData_t::gpgpusim_active(){
+   const unsigned batchSize = m_vert_wg_size;
+   const unsigned vertsCount = m_sShading_info.vertexData.size() 
+      + getExtraVerts(m_sShading_info.vertexData.size());
+   const unsigned remainingVerts = vertsCount - m_sShading_info.launched_threads_verts;
+   if(remainingVerts > 0)
+      return true;
+}
+
 void renderData_t::gpgpusim_cycle(){
    /*unsigned readyVerts = 0;
    for(unsigned i=0; i<m_sShading_info.pvb_queue.size(); i++){
