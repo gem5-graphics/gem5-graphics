@@ -488,9 +488,6 @@ public:
        }
     }
 
-    shaderAttrib_t getFragmentData(unsigned utid, unsigned tid, unsigned attribID, unsigned attribIndex, 
-          unsigned fileIdx, unsigned idx2D, void * stream, stage_shading_info_t* shadingData, bool z_unit_disabled);
-
     void addFragment(fragmentData_t fd);
     inline unsigned size() {
       return m_fragments.size();
@@ -566,7 +563,6 @@ public:
     }
     bool gpgpusim_active();
     void gpgpusim_cycle();
-    //bool runNextPrim();
     primitiveFragmentsData_t* getPrimData(unsigned primId);
     std::set<unsigned> getClustersCoveredByPrim(unsigned primId);
     
@@ -574,7 +570,6 @@ public:
     unsigned vShaderAttribWrites() const;
     void allocateVertBuffers();
     unsigned int startShading();
-    unsigned int noDepthFragmentShading();
     void endFragmentShading();
     void setVertexAttribsCount(struct tgsi_exec_machine *mach, int inputAttribsCount, int outputAttribsCount);
     void addVertex(struct tgsi_exec_machine* mach, int pos);
@@ -664,7 +659,6 @@ private:
     bool useInShaderBlending() const;
     void sortFragmentsInRasterOrder(unsigned tileH, unsigned tileW, unsigned blockH, unsigned blockW, RasterDirection dir);
     void runEarlyZ(CudaGPU * cudaGPU, unsigned tileH, unsigned tileW, unsigned blockH, unsigned blockW, RasterDirection dir, unsigned clusterCount);
-    void generateVertexCode();
     void generateFragmentCode(DepthSize);
     void addFragment(fragmentData_t fragmentData);
     void endDrawCall();
@@ -676,7 +670,6 @@ private:
     byte* setRenderBuffer();
     byte* setDepthBuffer();
     void writeTexture(byte* data, unsigned size, unsigned texNum, unsigned h, unsigned w, std::string typeEx);
-    void copyStateData(void** fatCubinHandle);
 
     void incCurrentFrame();
     void incDrawcallNum(){
