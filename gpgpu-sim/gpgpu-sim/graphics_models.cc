@@ -93,6 +93,8 @@ void graphics_simt_pipeline::run_fetch_prim_attribs(){
    if(!m_curr_mapped_prims[m_curr_prim_counter]){
       m_curr_mapped_prims.erase(m_curr_prim_counter);
       m_curr_prim_counter++;
+      //signal that this prim is done for this cluster
+      g_renderData.launchTCTile(m_cluster_id, NULL, 1);
    } else if(m_cluster->get_gpu()->gem5CudaGPU->fetchPrimAttribs(
                m_cluster_id, m_curr_prim_counter)){
          m_curr_mapped_prims.erase(m_curr_prim_counter);

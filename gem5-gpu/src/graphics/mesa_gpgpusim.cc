@@ -2136,6 +2136,8 @@ unsigned int renderData_t::startShading() {
    m_coresPerCluster= gpu->get_config().num_cores_per_cluster(); //TODO: move me
    assert(m_sShading_info.fragCodeAddr == NULL);
    
+   m_sShading_info.sent_simt_prims = m_numClusters*drawPrimitives.size();
+
    simt_core_cluster** simt_clusters = gpu->getSIMTCluster();
    for(unsigned clusterId=0; clusterId < m_numClusters; clusterId++){
       simt_clusters[clusterId]->getGraphicsPipeline()->reset_prim_counter();
@@ -2690,12 +2692,14 @@ void renderData_t::launchTCTile(
       tcTilePtr_t tcTile, unsigned donePrims){
    if(tcTile == NULL){
       assert(donePrims > 0);
-      //assert(m_sShading_info.sent_simt_prims >= donePrims);
-      //m_sShading_info.sent_simt_prims-=donePrims;
+      assert(m_sShading_info.sent_simt_prims >= donePrims);
+      m_sShading_info.sent_simt_prims-=donePrims;
 
       if(m_sShading_info.sent_simt_prims == 0){
          assert(m_sShading_info.fragKernel!=NULL);
-         m_sShading_info.fragKernel->setDrawCallDone();
+         //only will happen if no fragments were shaded
+         if(m_sShading_info.fragKernel!=NULL)
+            m_sShading_info.fragKernel->setDrawCallDone();
          if(m_sShading_info.completed_threads_frags == m_sShading_info.launched_threads_frags){
             m_flagEndFragmentShader = true;
          }
