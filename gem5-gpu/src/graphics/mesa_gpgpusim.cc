@@ -1560,13 +1560,13 @@ unsigned renderData_t::getUniqueThreadsPerWarp(){
    switch (m_sShading_info.currPrimType) {
       case PIPE_PRIM_POINTS: 
       case PIPE_PRIM_LINES:
-         return 32;
+         return MAX_WARP_SIZE;
       case PIPE_PRIM_LINE_STRIP:
-         return 31;
+         return MAX_WARP_SIZE-1;
       case PIPE_PRIM_TRIANGLES:
       case PIPE_PRIM_TRIANGLE_STRIP:
       case PIPE_PRIM_TRIANGLE_FAN:
-         return 30;
+         return MAX_WARP_SIZE-2;
       default:
          assert(0);
    }
@@ -1578,23 +1578,20 @@ unsigned renderData_t::getExtraVerts(unsigned vertCount){
    if(vertCount == 0) return 0;
    unsigned utpwp = getUniqueThreadsPerWarp();
    unsigned extraThreads;
+   unsigned warpsCount;
    switch (m_sShading_info.currPrimType) {
       case PIPE_PRIM_POINTS: 
       case PIPE_PRIM_LINES:
          return 0;
       case PIPE_PRIM_LINE_STRIP:
-         extraThreads = 
-            ((vertCount + utpwp - 1)/utpwp) - 1;
-         return extraThreads;
-      //TODO: double check the calucations below
       case PIPE_PRIM_TRIANGLES:
-         extraThreads = 
-            ((vertCount + utpwp - 2)/utpwp);
-         return extraThreads;
       case PIPE_PRIM_TRIANGLE_STRIP:
       case PIPE_PRIM_TRIANGLE_FAN:
-         extraThreads = 
-            ((vertCount + utpwp - 2)/utpwp) - 1;
+         warpsCount = 
+            ((vertCount + utpwp)/utpwp);
+         extraThreads= (warpsCount-1)*MAX_WARP_SIZE 
+            + (vertCount%utpwp) 
+            - vertCount;
          return extraThreads;
       default:
          assert(0);
