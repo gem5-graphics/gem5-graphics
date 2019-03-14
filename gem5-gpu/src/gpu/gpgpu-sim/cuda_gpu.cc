@@ -1181,7 +1181,7 @@ void CudaGPU::GPUCluster::fetchAttribEventHandler(){
             pendingAttribFetchPkts.end());
       pendingAttribFetchPkts[pvq.pkt] = pvq.primId;
       if(attribFetchAddrs.size() > 0){
-         cudaGpu->schedule(fetchAttribEvent, cudaGpu->nextCycle());
+            cudaGpu->schedule(fetchAttribEvent, cudaGpu->nextCycle());
       }
    }
    //if it failes we should get a retry event
@@ -1346,7 +1346,10 @@ CudaGPU::VpoVertMasterPort::recvTimingResp(PacketPtr pkt)
 void
 CudaGPU::VpoVertMasterPort::recvReqRetry()
 {
-   gpu->gpuClusters[clusterId]->fetchAttribEventHandler();
+   if(!gpu->gpuClusters[clusterId]->fetchAttribEvent.scheduled()){
+      gpu->schedule(gpu->gpuClusters[clusterId]->fetchAttribEvent,
+            gpu->nextCycle());
+   }
 }
 
 Tick

@@ -895,6 +895,7 @@ class CudaGPU : public MemObject
           std::list<PacketPtr>  primMaskReplies;
           EventWrapper<GPUCluster, &GPUCluster::sendPrimMaskReply> 
              primMaskReplyEvent;
+       friend CudaGPU;
     };
     std::vector<GPUCluster*> gpuClusters;
 };
