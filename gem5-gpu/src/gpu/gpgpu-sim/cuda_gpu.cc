@@ -1172,11 +1172,6 @@ void CudaGPU::GPUCluster::fetchAttribEventHandler(){
       DPRINTF(GpuVpo, "Sending attrib fetch of prim %d to %llx from cluster %d\n",
             pvq.primId, pvq.pkt->req->getPaddr(), clusterId);
       attribFetchAddrs.pop_front();
-      if(primPendingPkts.find(pvq.primId) == 
-            primPendingPkts.end()){
-         primPendingPkts[pvq.primId] = 0;
-      }
-      primPendingPkts[pvq.primId]++;
       assert(pendingAttribFetchPkts.find(pvq.pkt) ==
             pendingAttribFetchPkts.end());
       pendingAttribFetchPkts[pvq.pkt] = pvq.primId;
@@ -1213,6 +1208,12 @@ bool CudaGPU::GPUCluster::fetchPrimAttribs(unsigned primId){
             PacketPtr pkt = new Packet(req, MemCmd::ReadReq);
             pkt->allocate();
             attribFetchAddrs.push_back(PrimVaReq(pkt, primId));
+
+            if(primPendingPkts.find(primId) == 
+                  primPendingPkts.end()){
+               primPendingPkts[primId] = 0;
+            }
+            primPendingPkts[primId]++;
          }
       }
    }
