@@ -76,6 +76,8 @@ void writeVertexResultData(const operand_info &dst, const ptx_reg_t &data, unsig
         case VERT_OUT0:  resAttribID = 0; break;
         case VERT_OUT1:  resAttribID = 1; break;
         case VERT_OUT2:  resAttribID = 2; break;
+        case VERT_OUT3:  resAttribID = 3; break;
+        case VERT_OUT4:  resAttribID = 4; break;
         default: printf("Undefined vertex result register \n"); abort();
     }
     writeVertexResult(uniqueThreadId, resAttribID, attribIndex, data.f32);
@@ -119,6 +121,60 @@ shaderAttrib_t readShaderInputData(ptx_thread_info *thread,int builtin_id, unsig
       case SHADER_CONST03: {
         fileIdx = 0;
         idx2D = 3;
+        attribID=TGSI_FILE_CONSTANT;
+        break;
+      }
+      case SHADER_CONST04: {
+        fileIdx = 0;
+        idx2D = 4;
+        attribID=TGSI_FILE_CONSTANT;
+        break;
+      }
+      case SHADER_CONST05: {
+        fileIdx = 0;
+        idx2D = 5;
+        attribID=TGSI_FILE_CONSTANT;
+        break;
+      }
+      case SHADER_CONST06: {
+        fileIdx = 0;
+        idx2D = 6;
+        attribID=TGSI_FILE_CONSTANT;
+        break;
+      }
+      case SHADER_CONST07: {
+        fileIdx = 0;
+        idx2D = 7;
+        attribID=TGSI_FILE_CONSTANT;
+        break;
+      }
+      case SHADER_CONST08: {
+        fileIdx = 0;
+        idx2D = 8;
+        attribID=TGSI_FILE_CONSTANT;
+        break;
+      }
+      case SHADER_CONST09: {
+        fileIdx = 0;
+        idx2D = 9;
+        attribID=TGSI_FILE_CONSTANT;
+        break;
+      }
+      case SHADER_CONST10: {
+        fileIdx = 0;
+        idx2D = 10;
+        attribID=TGSI_FILE_CONSTANT;
+        break;
+      }
+      case SHADER_CONST11: {
+        fileIdx = 0;
+        idx2D = 11;
+        attribID=TGSI_FILE_CONSTANT;
+        break;
+      }
+      case SHADER_CONST12: {
+        fileIdx = 0;
+        idx2D = 12;
         attribID=TGSI_FILE_CONSTANT;
         break;
       }
@@ -193,6 +249,16 @@ shaderAttrib_t readShaderInputData(ptx_thread_info *thread,int builtin_id, unsig
          attribID = VERT_WRITE_ADDR;
          idx2D = attribIndex;
          attribIndex = 2;
+         break;
+      } case VERT_OUT3: {
+         attribID = VERT_WRITE_ADDR;
+         idx2D = attribIndex;
+         attribIndex = 3;
+         break;
+      } case VERT_OUT4: {
+         attribID = VERT_WRITE_ADDR;
+         idx2D = attribIndex;
+         attribIndex = 4;
          break;
       }
       default: printf("Undefined fragment input register \n"); abort();
