@@ -198,8 +198,8 @@ class Request
         TEX_FETCH                  = 0x00000001,
         /** The request is a depth request */
         Z_REQUEST                  = 0x00000002,
-        /** The request is a vertex request */
-        VERT_REQUEST                  = 0x00000004
+        /** The request is a const request */
+        CONST_REQUEST                  = 0x00000004
        };
 
     /** Master Ids that are statically allocated
@@ -818,7 +818,7 @@ class Request
     bool isBypassL1() const { return _flags.isSet(BYPASS_L1); }
     bool isTexFetch() const {return _gpuFlags.isSet(TEX_FETCH); }
     bool isZRequest() const {return _gpuFlags.isSet(Z_REQUEST); }
-    bool isVertRequest() const {return _gpuFlags.isSet(VERT_REQUEST); }
+    bool isVertRequest() const {return _gpuFlags.isSet(CONST_REQUEST); }
 
     bool
     isAtomic() const

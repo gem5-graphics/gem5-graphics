@@ -326,7 +326,8 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
     if(inst.space.is_z()){
        gpuFlags.set(Request::Z_REQUEST);
     } else if(inst.space.is_vert()){
-       gpuFlags.set(Request::VERT_REQUEST);
+       //input vertices are fetched through const ports
+       gpuFlags.set(Request::CONST_REQUEST);
     }
 
     if (inst.space.get_type() == const_space) {
@@ -488,6 +489,7 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
                    }
                    Addr addr = inst.get_addr(lane, reqNum);
                    assert(inst.space.get_type() != tex_space);
+                   assert(inst.space.get_type() != const_space);
                    MasterID reqMasterId = dataMasterId;
                    if(inst.space.is_z())
                       reqMasterId = zMasterId;
@@ -582,6 +584,11 @@ CudaCore::recvLSQDataResp(PacketPtr pkt, int lane_id)
                 DPRINTF(CudaCoreAccess, "Setting z port blocked at lane %d\n", lane_id);
                 assert(writebackBlocked[LSQCntrlPortType::Z] < 0);
                 writebackBlocked[LSQCntrlPortType::Z] = lane_id;
+            } else if(gpuFlags.isSet(Request::CONST_REQUEST)){
+                DPRINTF(CudaCoreAccess, "Setting const port blocked at lane %d\n", 
+                      lane_id);
+                assert(writebackBlocked[LSQCntrlPortType::CONST] < 0);
+                writebackBlocked[LSQCntrlPortType::CONST] = lane_id;
             } else {
                 DPRINTF(CudaCoreAccess, "Setting lsq blocked at lane %d\n", lane_id);
                 assert(writebackBlocked[LSQCntrlPortType::LSQ] < 0);
