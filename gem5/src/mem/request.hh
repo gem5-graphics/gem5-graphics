@@ -818,7 +818,7 @@ class Request
     bool isBypassL1() const { return _flags.isSet(BYPASS_L1); }
     bool isTexFetch() const {return _gpuFlags.isSet(TEX_FETCH); }
     bool isZRequest() const {return _gpuFlags.isSet(Z_REQUEST); }
-    bool isVertRequest() const {return _gpuFlags.isSet(CONST_REQUEST); }
+    bool isConstRequest() const {return _gpuFlags.isSet(CONST_REQUEST); }
 
     bool
     isAtomic() const
