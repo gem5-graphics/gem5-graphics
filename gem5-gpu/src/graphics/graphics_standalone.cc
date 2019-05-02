@@ -52,8 +52,6 @@ GraphicsStandalone::GraphicsStandalone(const Params *p) :
 {
    if(tracePath.size() == 0)
       panic("No graphics trace is specified");
-
-   schedule(tickEvent, 0);
 }
 
 GraphicsStandalone::~GraphicsStandalone(){
@@ -64,6 +62,7 @@ GraphicsStandalone::~GraphicsStandalone(){
 void
 GraphicsStandalone::init()
 {
+   schedule(tickEvent, 0);
 }
 
 void
