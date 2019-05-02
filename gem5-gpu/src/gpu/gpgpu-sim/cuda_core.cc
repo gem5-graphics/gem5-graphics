@@ -321,13 +321,12 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
 
     if(inst.space.get_type() == tex_space){
        gpuFlags.set(Request::TEX_FETCH);
-    }
-
+    } else if(inst.space.get_type() == const_space){
+       gpuFlags.set(Request::CONST_REQUEST);
+    } 
+    
     if(inst.space.is_z()){
        gpuFlags.set(Request::Z_REQUEST);
-    } else if(inst.space.is_vert()){
-       //input vertices are fetched through const ports
-       gpuFlags.set(Request::CONST_REQUEST);
     }
 
     if (inst.space.get_type() == const_space) {
