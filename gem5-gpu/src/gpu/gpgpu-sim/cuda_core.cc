@@ -400,6 +400,7 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
           pkt->setData(blockData[i]);
           if (vpoWritePort.sendTimingReq(pkt)) {
              succeeded = true;
+             DPRINTF(CudaCoreAccess, "Sent a write request to VPO, addr=%llx\n", addrBlocks[i]);
           } else {
              if(succeeded){
                 //if one packet was successful then 
@@ -771,6 +772,7 @@ void
 CudaCore::recvVpoReqRetry(){
    while(vpoWritePkts.size() > 0){
       if(vpoWritePort.sendTimingReq(vpoWritePkts.front())) {
+         DPRINTF(CudaCoreAccess, "Sent a delayed write request to VPO, addr=%llx\n", vpoWritePkts.front()->getAddr());
          vpoWritePkts.pop();
       } else break;
    }
