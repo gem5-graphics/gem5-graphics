@@ -561,6 +561,7 @@ public:
       assert(m_sShading_info.vertOutputAttribs > 0);
       return m_sShading_info.vertOutputAttribs;
     }
+    inline unsigned getVertThreadsCount();
     inline unsigned getVertsCount();
     bool gpgpusim_active();
     void gpgpusim_cycle();

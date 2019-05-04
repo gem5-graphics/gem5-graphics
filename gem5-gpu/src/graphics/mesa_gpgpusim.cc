@@ -558,7 +558,7 @@ shaderAttrib_t renderData_t::getVertexData(unsigned utid, unsigned tid, unsigned
    if( attribID == TGSI_FILE_CONSTANT){
       return getFileConst(m_sShading_info.vertConsts, utid, tid, attribID, attribIndex, fileIdx, idx2D, stream);
    } else if(attribID == VERT_ACTIVE){
-      if(utid >= m_sShading_info.launched_threads_verts)  
+      if(utid >= getVertsCount())
          ret.u64 = 0;
       else 
          ret.u64 = 1;
@@ -1702,13 +1702,18 @@ unsigned renderData_t::getPrimId(std::list<unsigned> * primWarpTids,
 inline unsigned renderData_t::getVertsCount(){
    unsigned vertsCount = m_sShading_info.vertexData.size() 
       + getExtraVerts(m_sShading_info.vertexData.size());
+   return vertsCount;
+}
+
+inline unsigned renderData_t::getVertThreadsCount(){
+   unsigned vertsCount = getVertsCount();
    vertsCount = ((vertsCount+m_vert_wg_size-1)/m_vert_wg_size)*m_vert_wg_size;
    return vertsCount;
 }
 //gpgpusim calls
 bool renderData_t::gpgpusim_active(){
    const unsigned batchSize = m_vert_wg_size;
-   const unsigned remainingVerts = getVertsCount() - m_sShading_info.launched_threads_verts;
+   const unsigned remainingVerts = getVertThreadsCount() - m_sShading_info.launched_threads_verts;
    if(remainingVerts > 0)
       return true;
    return false;
@@ -2048,7 +2053,7 @@ void renderData_t::launchFragmentTile(RasterTile * rasterTile, unsigned tileId){
 
 void renderData_t::launchVRTile(){
    const unsigned batchSize = m_vert_wg_size;
-   const unsigned vertsCount = getVertsCount();
+   const unsigned vertsCount = getVertThreadsCount();
    const unsigned remainingVerts = vertsCount - m_sShading_info.launched_threads_verts;
    assert(m_sShading_info.launched_threads_verts <= vertsCount);
    //all vertices have been launched done here
