@@ -44,11 +44,9 @@ env.Append(LIBS = ['swrast_dri'])
 print "GPGPUSIM_MESA_ROOT: " , mesa_root
 
 SimObject('GraphicsStandalone.py')
-SimObject('GPU_VPO.py')
 SimObject('MasterPacketQueue.py')
 
 Source('gem5_graphics_calls.cc')
-Source('gpu_vpo.cc')
 Source('graphics_standalone.cc')
 Source('graphicsStream.cc')
 Source('graphics_syscall_helper.cc')
@@ -63,6 +61,6 @@ Source('emugl/android/utils/dll.c')
 
 DebugFlag("GraphicsCalls")
 DebugFlag('MesaGpgpusim')
+DebugFlag('GpuVpo')
 DebugFlag('GraphicsStandalone')
-DebugFlag('GPU_VPO')
 DebugFlag('MasterPacketQueue')
