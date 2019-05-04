@@ -386,6 +386,7 @@ def createGPU(options, gpu_mem_range, vpo_mem_start):
 
         sc.lsq.warp_size = options.gpu_warp_size
         sc.tex_lq.warp_size = options.gpu_warp_size
+        sc.const_lsq.warp_size = options.gpu_warp_size
         sc.z_lsq.warp_size = options.gpu_warp_size
 
         sc.lsq.cache_line_size = options.cacheline_size
