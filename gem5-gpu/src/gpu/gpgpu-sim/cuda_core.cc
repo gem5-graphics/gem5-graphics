@@ -414,6 +414,7 @@ CudaCore::executeMemOp(const warp_inst_t &inst)
              }
           }
        }
+       //assuming in-order responses
        lastAttribPkts[lastPacket] = LastAttribPkt(kwip, inst.active_count());
     } else {
        for (int lane = 0; lane < warpSize; lane++) {
