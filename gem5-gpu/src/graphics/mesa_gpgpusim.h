@@ -373,7 +373,7 @@ struct stage_shading_info_t {
     unsigned vertShaderStvCount;
     std::vector<vertexData_t> vertexData;
     unsigned current_prim;
-    unsigned sent_simt_prims;
+    std::unordered_set<unsigned> sent_simt_prims;
     unsigned launched_threads_verts;
     unsigned completed_threads_verts;
     //std::deque<vertStats_t*> pvb_queue;
@@ -435,7 +435,7 @@ struct stage_shading_info_t {
     void clear() {
         currPrimType = PIPE_PRIM_MAX;
         current_prim = 0;
-        sent_simt_prims = 0;
+        sent_simt_prims.clear();
         vertInputAttribs = 0;
         vertOutputAttribs = 0;
         vertShaderStvCount = 0;

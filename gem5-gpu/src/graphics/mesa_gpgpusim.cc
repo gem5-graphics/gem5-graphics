@@ -387,7 +387,7 @@ void primitiveFragmentsData_t::sortFragmentsInTiles(
 
     //add terminating tiles
     for(unsigned s=0; s<clusterCount; s++){
-       RasterTile* rtile = new RasterTile(NULL, -1, -1, -1, -1, -1, -1);
+       RasterTile* rtile = new RasterTile(this, primId, -1, -1, -1, -1, -1);
        m_simtRasterTiles[s].push_back(rtile);
        rtile->lastPrimTile=true;
     }
@@ -558,7 +558,10 @@ shaderAttrib_t renderData_t::getVertexData(unsigned utid, unsigned tid, unsigned
    if( attribID == TGSI_FILE_CONSTANT){
       return getFileConst(m_sShading_info.vertConsts, utid, tid, attribID, attribIndex, fileIdx, idx2D, stream);
    } else if(attribID == VERT_ACTIVE){
-      if(utid >= getVertsCount())
+      unsigned vid = getVertFromId(utid);
+      //unsigned vid = utid;
+      //if(utid > getVertsCount())
+      if(vid >= m_sShading_info.vertexData.size())
          ret.u64 = 0;
       else 
          ret.u64 = 1;
@@ -1648,7 +1651,8 @@ unsigned renderData_t::getPrimId(std::list<unsigned> * primWarpTids,
       unsigned warpSize){
    assert(primWarpTids->size() > 0);
    unsigned ftid = primWarpTids->front();
-   unsigned vid = getVertFromId(ftid);
+   //unsigned vid = getVertFromId(ftid);
+   unsigned vid = ftid;
    unsigned primId = -1;
    unsigned usedVerts = -1;
    switch (m_sShading_info.currPrimType) {
@@ -1691,6 +1695,12 @@ unsigned renderData_t::getPrimId(std::list<unsigned> * primWarpTids,
       default:
          assert(0);
    }
+   /*printf("generated prim %d from warp with vertices ",
+         primId);
+   for(auto v: *primWarpTids){
+      printf("v%d ", v);
+   }
+   printf("\n");*/
    while(usedVerts !=0){
       usedVerts--;
       assert(primWarpTids->size() > 0);
@@ -1798,7 +1808,13 @@ unsigned int renderData_t::startShading() {
    m_coresPerCluster= gpu->get_config().num_cores_per_cluster(); //TODO: move me
    assert(m_sShading_info.fragCodeAddr == NULL);
    
-   m_sShading_info.sent_simt_prims = m_numClusters*drawPrimitives.size();
+
+   for(int pnum=0; pnum<m_numClusters*drawPrimitives.size(); pnum++){
+      //TODO: fix me
+      if(getPrimVertices(pnum).back() < 
+            m_sShading_info.vertexData.size())
+         m_sShading_info.sent_simt_prims.insert(pnum);
+   }
 
    simt_core_cluster** simt_clusters = gpu->getSIMTCluster();
    for(unsigned clusterId=0; clusterId < m_numClusters; clusterId++){
@@ -1965,10 +1981,10 @@ void renderData_t::checkGraphicsThreadExit(
        if(m_sShading_info.completed_threads_frags%10000 == 0)
          DPRINTF(MesaGpgpusim, "completed threads = %d out of %d\n", m_sShading_info.completed_threads_frags,  m_sShading_info.launched_threads_frags);
 
-      if (m_sShading_info.completed_threads_frags == m_sShading_info.launched_threads_frags
+       if (m_sShading_info.completed_threads_frags == m_sShading_info.launched_threads_frags
             and m_sShading_info.completed_threads_verts == m_sShading_info.launched_threads_verts){
          
-         m_flagEndFragmentShader = (m_sShading_info.sent_simt_prims == 0);
+         m_flagEndFragmentShader = (m_sShading_info.sent_simt_prims.size() == 0);
          //printf("done verts = %d\n", m_sShading_info.completed_threads_verts);
          //printf("done frags = %d\n", m_sShading_info.completed_threads_frags);
          /*if(m_inShaderDepth or !isDepthTestEnabled())
@@ -2122,13 +2138,21 @@ void renderData_t::launchVRTile(){
 
 void renderData_t::launchTCTile(
       unsigned clusterId,
-      tcTilePtr_t tcTile, unsigned donePrims){
+      tcTilePtr_t tcTile, unsigned donePrim){
    if(tcTile == NULL){
-      assert(donePrims > 0);
-      assert(m_sShading_info.sent_simt_prims >= donePrims);
-      m_sShading_info.sent_simt_prims-=donePrims;
+      assert(donePrim >= 0);
 
-      if(m_sShading_info.sent_simt_prims == 0){
+      if(m_sShading_info.sent_simt_prims.find(donePrim) 
+            == m_sShading_info.sent_simt_prims.end()){
+         assert(0);
+      }
+      assert(m_sShading_info.sent_simt_prims.find(donePrim) 
+            != m_sShading_info.sent_simt_prims.end());
+      m_sShading_info.sent_simt_prims.erase(donePrim);
+      DPRINTF(MesaGpgpusim, "received a prim done, sent_simt_prims = %d\n", 
+            m_sShading_info.sent_simt_prims.size());
+
+      if(m_sShading_info.sent_simt_prims.size() == 0){
          assert(m_sShading_info.fragKernel!=NULL);
          //only will happen if no fragments were shaded
          if(m_sShading_info.fragKernel!=NULL)
@@ -2320,6 +2344,7 @@ void renderData_t::modifyCodeForVertexWrite(std::string file){
       default:
          assert(0);
    }
+   predCode += "@!pVertex exit;\n";
    Utils::replaceStringInFile(file, "VERTEX_CODE", predCode);
    //TODO: to calc vertex shader addr
    const std::string chanNames [] = {"x", "y", "z", "w"};

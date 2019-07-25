@@ -179,7 +179,8 @@ class tc_engine_t {
                == m_pending_tiles.end());
          m_pending_tiles.insert(
                std::make_pair(std::make_pair(tc_tile->x, tc_tile->y), tc_tile));
-         g_renderData.launchTCTile(m_cluster_id, tc_tile, m_status.done_prims);
+         g_renderData.launchTCTile(m_cluster_id, tc_tile, -1);
+         //g_renderData.launchTCTile(m_cluster_id, tc_tile, m_status.done_prims);
          //reset if no tiles left
          if(m_input_tiles_bin.size() == 0)
             m_status.reset();
@@ -515,7 +516,8 @@ class graphics_simt_pipeline {
          assert(tile->lastPrimTile or (tile->getActiveCount() > 0));
          if(tile->lastPrimTile){
             if(m_ta_stage.empty()){
-               g_renderData.launchTCTile(m_cluster_id, NULL, 1);
+               //printf("exiting prim %d\n", tile->primId);
+               g_renderData.launchTCTile(m_cluster_id, NULL, tile->primId);
                m_ta_pipe->pop();
             }
          } else if(m_ta_stage.insert(tile)){
@@ -538,6 +540,7 @@ class graphics_simt_pipeline {
 
       bool add_primitive(primitiveFragmentsData_t* prim){
          //this primitive doesn't touch this simt core
+         //printf("adding prim %d to pipeline\n", prim->primId);
          if(prim->getSimtTiles(m_cluster_id).size() == 0)
             return true;
          if(m_setup_pipe->full())

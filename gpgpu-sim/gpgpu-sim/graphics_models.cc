@@ -78,6 +78,7 @@ bool graphics_simt_pipeline::add_primitives(
    //e.g., 1-2 slots per source cluster
    for(auto val: primIds){
       m_curr_mapped_prims[val.first] = val.second;
+      //printf("adding prim #%d to list of ready prim coverages\n", val.first);
    }
    return true;
 }
