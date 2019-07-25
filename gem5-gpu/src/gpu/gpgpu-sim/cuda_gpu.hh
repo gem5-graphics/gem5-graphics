@@ -419,8 +419,8 @@ class CudaGPU : public MemObject
 
     //TODO: redo with proper memory management
     class GMemory {
-        static const size_t XLGBLOCK_SIZE  = 9*1024*1024; //was 6
-        static const size_t XLGBLOCK_COUNT = 40;
+        static const size_t XLGBLOCK_SIZE  = 50*1024*1024;
+        static const size_t XLGBLOCK_COUNT = 5;
         static const size_t LGBLOCK_SIZE  = 4*1024*1024;
         static const size_t LGBLOCK_COUNT = 100;
         static const size_t SGBLOCK_SIZE = 128*1024;
