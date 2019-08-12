@@ -23,18 +23,20 @@ apt-get install git g++ python build-essential checkinstall libreadline-gplv2-de
 1. `$ mkdir emerald` 
 2. `$ cd emerald` 
 
-now start with apitrace
-3. `$ git clone https://github.com/gem5-graphics/apitrace`
-4. `$ cd apitrace`
-5. `$ mkdir build`
-6. `$ cd build`
-7. `$ cmake ..`
-8. `$ make -j4`
-9. `$ cd ../..`
+now start with apitrace 
+
+3. `$ git clone https://github.com/gem5-graphics/apitrace` 
+4. `$ cd apitrace` 
+5. `$ mkdir build` 
+6. `$ cd build` 
+7. `$ cmake ..` 
+8. `$ make -j4` 
+9. `$ cd ../..` 
 
 clone emerald:
-10. `$ git clone https://github.com/gem5-graphics/gem5-graphics.git`
-11. `$ cd gem5-graphics`
+
+10. `$ git clone https://github.com/gem5-graphics/gem5-graphics.git` 
+11. `$ cd gem5-graphics` 
 
 
 Update your **setEnvironment**, namely set your **CUDAHOME**, **NVIDIA_CUDA_SDK_LOCATION**, **APITRACE_LIB_PATH** (you can ignore M5_PATH for now). 
@@ -42,17 +44,21 @@ Update your **setEnvironment**, namely set your **CUDAHOME**, **NVIDIA_CUDA_SDK_
 Your **APITRACE_LIB_PATH** is the path to `apitrace/build/retraces/libglretrace.so`.
 
 now source your env
+
 12. `$source setEnvironment`
 
 Now build mesa in OGL mode
+
 13. `$ cd mesa`
 14. `$./autogen.sh --enable-gallium-swrast --with-gallium-drivers=swrast --disable-gallium--llvm --disable-dri --disable-gbm --disable-egl` 
 15. `$ make -j4`
 
 copying libGL (related to some building bug to be fixed)
+
 16. `$ cp lib/gallium/libGL.so lib/gallium/libswrast_dri.so`
 
 Build gem5 with ARM:
+
 17. `$ cd ../gem5`
 Choose one of gem5 builds (most likely you want debug or opt)
 18. `$ scons build/ARM/gem5.{debug, opt, fast,...}  EXTRAS=../gem5-gpu/src:../gpgpu-sim -j4`
