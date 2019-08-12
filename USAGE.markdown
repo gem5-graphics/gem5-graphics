@@ -1,36 +1,75 @@
-NOTE: These instructions are outdated and will be updated later. 
+# Building instructions
 
-* To build the system you will need: Nvidia CUDA Toolkit 3.1 or higher (tested under 3.1). Once installed please set the CUDAHOME env variable in setMesa_GPGPU.
+<span style="color:blue">*Aug-12 2019: These is a beta version of the instructions, I'll be posting further updates in the coming weeks and months to the code base and the instructions here. Future updates will include bug fixes, example workloads, automation scripts, config files, Android images for the full-system mode. For now if you've questions email me at ayoubg@ece.ubc.ca*</span>
 
-* Please check the prerequisites for gem5, gpgpusim and Mesa3D: 
-   * gem5: http://gem5.org/Dependencies.
-   * gpgpusim: https://github.com/gpgpu-sim/gpgpu-sim_distribution/blob/master/README.
-   * and Mesa 3D: http://www.mesa3d.org/install.html.
-   * also you need: the SDL library: http://www.libsdl.org/download-1.2.php and imagemagick.
- 
-   Under Ubuntu to install gem5, gpgpusim and Mesa 3D dependencies and imagemagick you may use the following command to install most dependencies:
+*Note: the older version (no longer supported) of this project which is used in the first use-case of the [Emerald](https://dl.acm.org/citation.cfm?id=3322221) paper is available [here](https://github.com/ayoubg/gem5-graphics_v1). The older version features a less detailed graphics model for the GPU and uses the Ruby memory model instead of gem5's classic model.*
 
-   apt-get install git g++ python build-essential checkinstall libreadline-gplv2-dev libncursesw5-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev scons swig m4 autoconf automake libtool curl make g++ unzip python-pydot flex bison xutils libx11-dev libxt-dev libxmu-dev libxi-dev libgl1-mesa-dev python-dev imagemagick
 
-* To build the simulator:
-   1. Uncomment and set CUDAHOME in setMesa_GPGPU.
+## Prerequisites
+Please check the prerequisites for gem5, gpgpusim and Mesa3D.
+* gem5: http://gem5.org/Dependencies;
+* gpgpusim: https://github.com/gpgpu-sim/gpgpu-sim_distribution/blob/master/README;
+* Mesa 3D: http://www.mesa3d.org/install.html;
+* also, you will need imagemagick.
 
-   2. Source setMesa_GPGPU.
+Under Ubuntu to install gem5, gpgpusim and Mesa 3D dependencies and imagemagick you may use the following command to install most (if not all) dependencies, note that you still need to install CUDA and use its path as described later. 
 
-   3. Compile Mesa3D: go to ./MesaMesa-7.11.2_GPGPU-Sim and run: make linux-x86-64, or, make linux-x86-64-debug.
+```
+apt-get install git g++ python build-essential checkinstall libreadline-gplv2-dev libncursesw5-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev scons swig m4 autoconf automake libtool curl make g++ unzip python-pydot flex bison xutils libx11-dev libxt-dev libxmu-dev libxi-dev libgl1-mesa-dev python-dev imagemagick libpng-dev
+```
 
-   4. Go to ./shader_to_ptx/arb_to_ptx and run make to build the arbToPtx binary.
+    
+## Building Emerald
+1. `$ mkdir emerald` 
+2. `$ cd emerald` 
 
-   5. Now to build gem5 run the following command in ./gem5 (NOTE: an update will be pushed soon for the .opt and .fast builds):
-   scons build/ARM_VI_hammer_GPU/gem5.debug --default=ARM EXTRAS=../gem5-gpu/src:../gpgpu-sim/ PROTOCOL=VI_hammer GPGPU_SIM=True -j8
+now start with apitrace
+3. `$ git clone https://github.com/gem5-graphics/apitrace`
+4. `$ cd apitrace`
+5. `$ mkdir build`
+6. `$ cd build`
+7. `$ cmake ..`
+8. `$ make -j4`
+9. `$ cd ../..`
 
-   6. You will need to run an Android image that was modified to work with our simulator, you may download it from [here](http://www.ece.ubc.ca/~ayoubg/files/android_images.tar.xz). Also you will need Android emulator libraries, you can download the binary from [here](http://www.ece.ubc.ca/~ayoubg/files/android_libs.tar.gz).
-   
-   You can use an already made checkpoint,  taken after Android booted, available [here](http://www.ece.ubc.ca/~ayoubg/files/android_test_cp.tar.gz).
-   
-   Untar android_images.tar.xz, android_libs.tar.gz and android_test_cp.tar.gz and place anroid_images, android_libs and android_test_cp under ./gem5-graphics.
-   NOTE: we will add instructions soon to for how to create a system image, the code has already been posted [here](https://github.com/ayoubg).
+clone emerald:
+10. `$ git clone https://github.com/gem5-graphics/gem5-graphics.git`
+11. `$ cd gem5-graphics`
 
-   7. Run the following command under ./android_test_cp: ../../../gem5-gpu/configs/soc_arm.py -b android --kernel=vmlinux.smp.mouse.arm --frame-capture -r 1 --restore-with-cpu=timing --cpu-type=timing --max-checkpoints=0 --kernel_stats --g_start_frame=455 --g_end_frame=455 --num-dirs=1 --total-mem-size=2112MB --g_skip_cp_frames=1 --g_depth_shader=1
 
-   this command will load the checkpoint and render a frame of Android desktop. To check output go to m5out/gpgpusimFrameDumps for rendering results, and check stats.txt for gem5 performance data. More documentation will be posted later but you may try to modify the run command or/and config files to run gem5 under different modes/configurations. 
+Update your **setEnvironment**, namely set your **CUDAHOME**, **NVIDIA_CUDA_SDK_LOCATION**, **APITRACE_LIB_PATH** (you can ignore M5_PATH for now). 
+
+Your **APITRACE_LIB_PATH** is the path to `apitrace/build/retraces/libglretrace.so`.
+
+now source your env
+12. `$source setEnvironment`
+
+Now build mesa in OGL mode
+13. `$ cd mesa`
+14. `$./autogen.sh --enable-gallium-swrast --with-gallium-drivers=swrast --disable-gallium--llvm --disable-dri --disable-gbm --disable-egl` 
+15. `$ make -j4`
+
+copying libGL (related to some building bug to be fixed)
+16. `$ cp lib/gallium/libGL.so lib/gallium/libswrast_dri.so`
+
+Build gem5 with ARM:
+17. `$ cd ../gem5`
+Choose one of gem5 builds (most likely you want debug or opt)
+18. `$ scons build/ARM/gem5.{debug, opt, fast,...}  EXTRAS=../gem5-gpu/src:../gpgpu-sim -j4`
+
+
+
+Test your build, try to render a cube trace (download  it from [here]((https://drive.google.com/open?id=1q1vdk1beR-4l3oU7VTJAHU3S2dCWHUeJ)):
+`$ build/ARM/gem5.debug ../gem5-gpu/configs/graphics_standalone.py --gtrace={PATH TO textured_cube.trace} --g_start_frame=2 --g_end_frame=2`
+
+Now check that Emerald produced an image (note some pixels may appear missing because they are still in the cache as the image is read from DRAM memory, if you want, you can remove caches in gem5-gpu/configs/GPUConfig.py):
+`$ xdg-open m5out/gpgpusimFrameDumps/gpgpusimBuffer_post_frame2_drawcall0_1024x768_-1.-1.bgra.jpg`
+
+
+### Common issues
+* libEGL warning "DRI2: failed to open swrast…"
+  * Solution: install mesa dri package (libgl1-mesa-dri)
+* GCC version:
+  * Try using GCC 5.5.
+* protobuf errors:
+  * Try to install it from source (https://github.com/protocolbuffers/protobuf)
