@@ -8,6 +8,4 @@ Beside gem5, we several tools: gpgpu-sim, gem5-gpu and Mesa 3D.
 
 Usage
 =====
-*Last update: Aug-12 2019*
-
-Instructions are available [here](USAGE.markdown).
+Instructions are available [here](USAGE.markdown) (*Last update: Aug-12 2019*).
