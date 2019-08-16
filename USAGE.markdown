@@ -1,6 +1,6 @@
 # Building instructions
 
-<span style="color:blue">*Aug-12 2019: These is a beta version of the instructions, I'll be posting further updates in the coming weeks and months to the code base and the instructions here. Future updates will include bug fixes, example workloads, automation scripts, config files, Android images for the full-system mode. For now if you've questions email me at ayoubg@ece.ubc.ca*</span>
+<span style="color:blue">*Aug-12 2019: This is a beta version of the instructions, I'll be posting further updates in the coming weeks and months to the code base and the instructions here. Future updates will include bug fixes, example workloads, automation scripts, config files, Android images for the full-system mode. For now if you've questions email me at ayoubg@ece.ubc.ca*</span>
 
 *Note: the older version (no longer supported) of this project which is used in the first use-case of the [Emerald](https://dl.acm.org/citation.cfm?id=3322221) paper is available [here](https://github.com/ayoubg/gem5-graphics_v1). The older version features a less detailed graphics model for the GPU and uses the Ruby memory model instead of gem5's classic model.*
 
