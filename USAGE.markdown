@@ -65,7 +65,7 @@ Choose one of gem5 builds (most likely you want debug or opt)
 
 
 
-Test your build, try to render a cube trace (download  it from [here]((https://drive.google.com/open?id=1q1vdk1beR-4l3oU7VTJAHU3S2dCWHUeJ)):
+Test your build, try to render a cube trace (download  it from [here](https://drive.google.com/open?id=1q1vdk1beR-4l3oU7VTJAHU3S2dCWHUeJ):
 `$ build/ARM/gem5.debug ../gem5-gpu/configs/graphics_standalone.py --gtrace={PATH TO textured_cube.trace} --g_start_frame=2 --g_end_frame=2`
 
 Now check that Emerald produced an image (note some pixels may appear missing because they are still in the cache as the image is read from DRAM memory, if you want, you can remove caches in gem5-gpu/configs/GPUConfig.py):
