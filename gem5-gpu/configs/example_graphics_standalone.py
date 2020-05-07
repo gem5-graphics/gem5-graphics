@@ -66,9 +66,9 @@ if options.gtrace == "":
    print "Error: no trace (--gtrace) specified"
    exit(1)
 
-options.gpgpusim_config  = "gpu_config2"
-options.config_icnt  = "config_soc2.icnt"
-options.clusters = 6
+options.gpgpusim_config  = "example_gpu_config"
+options.config_icnt  = "example_config.icnt"
+options.clusters = 1
 options.cores_per_cluster = 1
 options.ctas_per_shader = 8
 options.gpu_warp_size = 32
@@ -82,6 +82,7 @@ options.mem_channels = 4
 
 options.g_standalone_mode = True
 options.mem_size = "1GB"
+
 options.g_raster_tw = 8 #1024;
 options.g_raster_th = 8 #768;
 options.g_raster_bw = 8 #1024;
@@ -90,6 +91,7 @@ options.g_raster_bh = 8 #768;
 options.g_setup_delay = 8
 options.g_setup_q = 100000
 options.g_coarse_tiles = 1
+
 options.g_fine_tiles = 1
 options.g_hiz_tiles = 1
 options.g_tc_engines = 2
@@ -98,12 +100,13 @@ options.g_tc_h = 2
 options.g_tc_w = 2
 options.g_tc_block_dim = 2
 options.g_tc_thresh = 20
-options.g_vert_wg_size = 256
+options.g_vert_wg_size = 64
 options.g_frag_wg_size = 256
-options.g_pvb_size = 4096
+options.g_pvb_size = 16384
 options.g_core_prim_pipe_size = 2
 options.g_core_prim_delay = 4
-options.g_core_prim_warps = 2
+#options.g_core_prim_warps = options.gpu_threads_per_core/options.gpu_warp_size
+options.g_core_prim_warps = 5000
 
 #options.gpgpusim_stats = True
 options.drawcall_stats = True
@@ -141,7 +144,7 @@ options.gpu_ttlb_entries = 8
 options.gpu_ttlb_assoc = 8
 options.pwc_size = "128kB"
 options.pwc_assoc = 4
-
+xbarFreq = "2GHz"
 
 
 if args:
@@ -162,20 +165,6 @@ system.voltage_domain = VoltageDomain(voltage = options.sys_voltage)
 system.clk_domain = SrcClockDomain(clock = options.sys_clock,
                                    voltage_domain = system.voltage_domain)
 
-'''Ruby.create_system(options, False, system)
-
-# Create a seperate clock domain for Ruby
-system.ruby.clk_domain = SrcClockDomain(clock = options.ruby_clock,
-                                        voltage_domain = system.voltage_domain)
-
-i = 0
-for ruby_port in system.ruby._cpu_ports:
-     #
-     # Tie the cpu test ports to the ruby cpu port
-     #
-     cpus[i].test = ruby_port.slave
-     i += 1
-'''
 
 MemClass = Simulation.setMemClass(options)
 system.membus = SystemXBar()
@@ -197,9 +186,9 @@ system.gpu.l2cache.tgts_per_mshr = 20
 system.gpu.prim_fetch_buffer_size = 64
 system.membus.width = 128
 system.gpu.l2NetToL2.width = 128
-system.membus.clk_domain = SrcClockDomain(clock = "2GHz",
+system.membus.clk_domain = SrcClockDomain(clock = xbarFreq,
                                    voltage_domain = system.voltage_domain)
-system.gpu.l2NetToL2.clk_domain = SrcClockDomain(clock = "2GHz",
+system.gpu.l2NetToL2.clk_domain = SrcClockDomain(clock = xbarFreq,
                                    voltage_domain = system.voltage_domain)
 
 # -----------------------
@@ -209,8 +198,7 @@ system.gpu.l2NetToL2.clk_domain = SrcClockDomain(clock = "2GHz",
 root = Root(full_system = False, system = system)
 root.system.mem_mode = 'timing'
 
-# Not much point in this being higher than the L1 latency
-m5.ticks.setGlobalFrequency('1ns')
+m5.ticks.setGlobalFrequency('1ps')
 
 # instantiate configuration
 m5.instantiate()
