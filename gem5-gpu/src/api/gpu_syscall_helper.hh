@@ -32,6 +32,7 @@
 #include "arch/isa.hh"
 #include "base/types.hh"
 #include "cpu/thread_context.hh"
+#include "sim/system.hh"
 
 
 #define __POINTER_SIZE__ 8
