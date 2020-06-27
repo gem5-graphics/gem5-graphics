@@ -20,7 +20,6 @@ from common import CacheConfig
 from common import CpuConfig
 from common import MemConfig
 from common.Caches import *
-from common import Simulation
 import GPUConfig
 import GPUMemConfig
 
@@ -121,6 +120,9 @@ options.gpu_ttlb_assoc = 8
 options.pwc_size = "128kB"
 options.pwc_assoc = 4
 xbarFreq = "2GHz"
+
+options.cpu_type = "TimingSimpleCPU"
+
 
 
 if args:
