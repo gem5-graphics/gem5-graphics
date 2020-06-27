@@ -504,6 +504,7 @@ void CudaGPU::processFinishKernelEvent(int grid_id)
     DPRINTF(CudaGPU, "GPU finished a kernel id %d\n", grid_id);
 
     CUstream_st* stream = streamManager->get_kernel_stream(grid_id);
+    kernel_info_t *kernel = stream->front().get_kernel();
     streamManager->register_finished_kernel(grid_id);
 
     kernelTimes.push_back(curTick());
@@ -520,8 +521,10 @@ void CudaGPU::processFinishKernelEvent(int grid_id)
     scheduleStreamEvent();
 
     endStreamOperation(stream);
-
-    g_renderData.checkEndOfShader(this);
+   
+    if(kernel->isGraphicsKernel()) {
+       g_renderData.checkEndOfShader(this);
+    }
 }
 
 CudaCore *CudaGPU::getCudaCore(int coreId)

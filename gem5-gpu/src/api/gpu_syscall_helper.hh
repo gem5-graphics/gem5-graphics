@@ -100,6 +100,9 @@ class GPUSyscallHelper {
     void writeBlob(Addr addr, uint8_t* p, int size, bool is_ptr = false, bool use_phys = false) {
         writeBlob(addr, p, size, tc, is_ptr, use_phys);
     }
+    int getNumArgs() const {
+       return sim_params.num_args;
+    }
 };
 
 #endif

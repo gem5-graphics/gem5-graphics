@@ -899,11 +899,12 @@ cudaBlockThread(ThreadContext *tc, gpusyscall_t *call_params)
     // be set
     GPUSyscallHelper helper(tc, call_params);
     Addr sim_is_free_ptr = *((Addr*)helper.getParam(0, true));
-    CUstream_st* sim_stream = *((CUstream_st**)helper.getParam(1, true));
-
+    CUstream_st* sim_stream = nullptr;
+    if(helper.getNumArgs() > 1) {
+       sim_stream = *((CUstream_st**)helper.getParam(1, true));
+    }
     DPRINTF(GPUSyscalls, "gem5 GPU Syscall: cudaBlockThread(tc = %x, is_free_ptr = %x, stream=%x)\n", 
                                                                        tc, sim_is_free_ptr, sim_stream);
-    
     CudaGPU *cudaGPU = CudaGPU::getCudaGPU(g_active_device);
     cudaGPU->blockThread(tc, sim_is_free_ptr, sim_stream);
 }
