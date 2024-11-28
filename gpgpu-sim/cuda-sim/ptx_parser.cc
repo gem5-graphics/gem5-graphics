@@ -123,15 +123,17 @@ const char *decode_token( int type )
    return g_ptx_token_decode[type].c_str();
 }
 
+/* Reading environment variables that configure aspects of the GPGPU-Sim simulator, particularly related to kernel file input and debugging options
+*/
 void read_parser_environment_variables()
 {
-   g_filename = getenv("PTX_SIM_KERNELFILE");
-   char *dbg_level = getenv("PTX_SIM_DEBUG");
+   g_filename = getenv("PTX_SIM_KERNELFILE"); // Path of kernel file to use
+   char *dbg_level = getenv("PTX_SIM_DEBUG"); // Debug level
    if ( dbg_level && strlen(dbg_level) ) {
-      int debug_execution=0;
+      int debug_execution=0; // Store the parsed debug level
       sscanf(dbg_level,"%d", &debug_execution);
-      if ( debug_execution >= 30 )
-         g_debug_ir_generation=true;
+      if ( debug_execution >= 30 ) // If the parsed debug_execution level is greater than or equal to 30
+         g_debug_ir_generation=true; // Enabling detailed logging or debugging for the intermediate representation generation phase of the simulation
    }
 }
 
